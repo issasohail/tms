@@ -340,7 +340,7 @@
                   </div>
                   <div class="td-side-mini-money">
                     <span>Monthly: {{ lease.get_total_payment|money:2 }}</span>
-                    <span>Total: {{ lease.tenant_detail_total_balance|default:0|money:2 }}</span>
+                    <span>Balance: {{ lease.tenant_detail_total_balance|default:0|money:2 }}</span>
                   </div>
                   <div class="td-side-mini-actions">
                     <a href="{% url 'leases:lease_detail' lease.pk %}" class="btn btn-sm btn-primary">Detail</a>
@@ -869,7 +869,7 @@
                   </div>
                   <div class="td-mobile-lease-money">
                     <span>Monthly: {{ lease.get_total_payment|money:2 }}</span>
-                    <span>Total: {{ lease.tenant_detail_total_balance|default:0|money:2 }}</span>
+                    <span>Balance: {{ lease.tenant_detail_total_balance|default:0|money:2 }}</span>
                   </div>
                   {% if lease.tenant_detail_security_balance %}
                     <div class="td-mobile-muted">

@@ -284,3 +284,76 @@ class UnitListInlineUpdateTests(TestCase):
             '<td class="text-center unit-col sn-col">61</td>',
             html=True,
         )
+
+
+class UnitFormPersistenceRegressionTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="unit-save-regression",
+            email="unit-save-regression@example.com",
+            password="test-password",
+        )
+        self.client.force_login(self.user)
+        self.property = Property.objects.create(
+            property_name="Unit Save Regression Property",
+            owner_name="Owner",
+            owner_cnic="61101-3333333-3",
+            type="Residential",
+            property_type="apartment",
+            total_units=5,
+        )
+
+    def test_unit_form_renders_required_move_out_charge_fields(self):
+        response = self.client.get(reverse("properties:unit_create"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="inspection_incomplete_charge"', html=False)
+        self.assertContains(response, 'name="key_card_not_returned_charge"', html=False)
+
+    def test_create_unit_saves_and_redirects_to_unit_detail(self):
+        response = self.client.post(
+            reverse("properties:unit_create"),
+            {
+                "property": self.property.pk,
+                "unit_number": "SAVE-01",
+                "monthly_rent": "25000.00",
+                "inspection_incomplete_charge": "5000.00",
+                "key_card_not_returned_charge": "1000.00",
+                "status": "vacant",
+                "security_deposit_amount": "0.00",
+                "show_publicly": "on",
+                "use_property_bank_account": "on",
+            },
+        )
+        unit = Unit.objects.get(property=self.property, unit_number="SAVE-01")
+        self.assertRedirects(
+            response,
+            reverse("properties:unit_detail", args=[unit.pk]),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(unit.inspection_incomplete_charge, Decimal("5000.00"))
+        self.assertEqual(unit.key_card_not_returned_charge, Decimal("1000.00"))
+
+    def test_edit_unit_persists_and_redirects_to_same_detail(self):
+        unit = Unit.objects.create(property=self.property, unit_number="SAVE-02")
+        response = self.client.post(
+            reverse("properties:unit_update", args=[unit.pk]),
+            {
+                "property": self.property.pk,
+                "unit_number": "SAVE-02-EDITED",
+                "monthly_rent": "27500.00",
+                "inspection_incomplete_charge": "5500.00",
+                "key_card_not_returned_charge": "1500.00",
+                "status": "vacant",
+                "security_deposit_amount": "0.00",
+                "show_publicly": "on",
+                "use_property_bank_account": "on",
+            },
+        )
+        unit.refresh_from_db()
+        self.assertEqual(unit.unit_number, "SAVE-02-EDITED")
+        self.assertEqual(unit.monthly_rent, Decimal("27500.00"))
+        self.assertRedirects(
+            response,
+            reverse("properties:unit_detail", args=[unit.pk]),
+            fetch_redirect_response=False,
+        )

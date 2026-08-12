@@ -1,0 +1,10 @@
+--- a/smart_meter/tests.py
++++ b/smart_meter/tests.py
+@@ -344,6 +344,7 @@
+         self.user = get_user_model().objects.create_user(
+             username="instant-reading-user", password="test-pass"
+         )
++        self.user.user_permissions.add(Permission.objects.get(codename="change_meter"))
+         self.client.force_login(self.user)
+         self.meter = Meter.objects.create(meter_number="INSTANT-READ-1")
+         self.live = LiveReading.objects.create(

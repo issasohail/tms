@@ -578,7 +578,7 @@
                     <div class="col-6 col-md-2 unit-photo-item" data-media-id="{{ media.pk }}">
                         <div class="unit-photo-card">
                             {% if media.file_type == "image" %}
-                                <a href="{{ media.display_url }}" target="_blank" rel="noopener">
+                                <a href="{{ media.file.url }}" target="_blank" rel="noopener">
                                     <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="img-fluid rounded border unit-photo-thumb" alt="{{ media.description|default:media.original_filename }}">
                                 </a>
                             {% else %}

@@ -922,3 +922,56 @@ class SecurityRefundLinkTests(TestCase):
             Lease.objects.get(pk=self.lease.pk).financial_summary["balance"],
             Decimal("-15300.00"),
         )
+
+
+class EndLeaseWithoutPriorInvoiceRegressionTests(TestCase):
+    def test_end_lease_creates_closing_invoice_and_transfers_security_without_prior_invoice(self):
+        today = date.today()
+        property_obj = Property.objects.create(
+            property_name="No Prior Invoice Property",
+            owner_name="Owner",
+            owner_cnic="6110112345791",
+            type="residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="NP-1", is_smart_meter=False)
+        tenant = Tenant.objects.create(
+            first_name="NoInvoice", last_name="Tenant", cnic="6110112345792"
+        )
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            start_date=today,
+            end_date=today + timedelta(days=180),
+            monthly_rent=ZERO,
+            society_maintenance=ZERO,
+            water_charges=ZERO,
+            internet_charges=ZERO,
+            security_deposit=Decimal("20000.00"),
+            status="active",
+        )
+        LeaseUnitOccupancy.objects.create(lease=lease, unit=unit, move_in_date=today)
+        SecurityDepositTransaction.objects.create(
+            lease=lease, type="PAYMENT", amount=Decimal("20000.00")
+        )
+        self.assertEqual(Invoice.objects.filter(lease=lease).count(), 0)
+
+        result = end_lease(
+            lease,
+            end_date=today,
+            inspection_complete=True,
+            keys_returned=True,
+            other_amount="0",
+            final_electric_amount="0",
+        )
+
+        lease.refresh_from_db()
+        self.assertEqual(lease.status, "ended")
+        self.assertTrue(Invoice.objects.filter(lease=lease).exists())
+        self.assertIsNotNone(result["invoice"])
+        self.assertTrue(
+            SecurityDepositTransaction.objects.filter(
+                lease=lease, type="REFUND", refund_status="TRANSFERRED"
+            ).exists()
+        )

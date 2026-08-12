@@ -545,7 +545,7 @@ class WhatsAppAIAssistant:
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
             notify_staff_pending_request("upload", media)
             return (
-                _media_confirmation_text(media),
+                _tenant_media_confirmation_text(media),
                 "media_pending",
                 {"lease": selected_lease, "pending_media_id": media.pk},
             )
@@ -625,6 +625,21 @@ class WhatsAppAIAssistant:
                 {"lease": lease, "tenant": lease.tenant},
             )
         if _looks_like_invoice_detail(text):
+            invoice = self._latest_invoice_for_lease(lease)
+            metadata = {"lease": lease, "tenant": lease.tenant}
+            if invoice:
+                metadata["invoice_jpg"] = invoice
+            return self._latest_invoice_reply(lease), "latest_invoice", metadata
+
+        # Resolve explicit bill requests from TMS accounting before the language-model
+        # router can confuse an electricity bill with a live meter reading.
+        if _looks_like_electric_bill_request(text):
+            return (
+                self._latest_electric_bill_reply(lease),
+                "electric_bill",
+                {"lease": lease, "tenant": lease.tenant},
+            )
+        if _looks_like_contextual_details(text):
             invoice = self._latest_invoice_for_lease(lease)
             metadata = {"lease": lease, "tenant": lease.tenant}
             if invoice:
@@ -993,7 +1008,7 @@ class WhatsAppAIAssistant:
         conversation.save(update_fields=["pending_state", "context", "updated_at"])
         notify_staff_pending_request("upload", media)
         return (
-            _media_confirmation_text(media),
+            _media_confirmation_text(media) if is_staff_mode else _tenant_media_confirmation_text(media),
             "media_pending",
             {"lease": selected_lease, "pending_media_id": media.pk, "ocr": ocr_json},
         )
@@ -3993,7 +4008,7 @@ class WhatsAppAIAssistant:
             conversation.save(update_fields=["pending_state", "context", "updated_at"])
             return None
 
-        purpose = _upload_purpose_from_text(text)
+        purpose = _tenant_upload_purpose_from_text(text)
         if purpose == "cancel":
             conversation.pending_state = ""
             self._clear_context_keys(conversation, "pending_media_id")
@@ -4002,7 +4017,7 @@ class WhatsAppAIAssistant:
         if not purpose:
             return (
                 "Please reply with a number:\n\n"
-                "1 Property Photo\n2 Unit Photo\n3 Lease Photo\n4 Tenant Document\n5 Maintenance Photo\n6 Payment Receipt\n7 Police Verification\n8 Cancel",
+                "1 Unit Photo\n2 Tenant Document\n3 Maintenance Photo\n4 Payment Receipt\n5 Police Verification\n6 Lease Photo\n7 Cancel",
                 "upload_type_retry",
                 {"lease": selected_lease, "pending_media_id": media.pk},
             )
@@ -4761,6 +4776,8 @@ class WhatsAppAIAssistant:
         )
 
     def _handle_tenant_data_intent(self, message_log, conversation, intent, text, lease):
+        if intent == "electric_bill":
+            return self._latest_electric_bill_reply(lease), "electric_bill", {"lease": lease, "tenant": lease.tenant}
         if intent == "latest_invoice":
             invoice = self._latest_invoice_for_lease(lease)
             metadata = {"lease": lease, "tenant": lease.tenant}
@@ -4832,6 +4849,47 @@ class WhatsAppAIAssistant:
             f"Due Date: {invoice.due_date or '-'}\n"
             f"Status: {invoice.get_status_display()}\n\n"
             f"Link:\n{link}"
+        )
+
+    def _latest_electric_bill_reply(self, lease):
+        electricity_item_filter = (
+            Q(items__category__name__icontains="electric")
+            | Q(items__description__icontains="electric")
+            | Q(items__description__icontains="meter")
+        )
+        invoice = (
+            Invoice.objects.filter(lease=lease)
+            .exclude(status="cancelled")
+            .filter(electricity_item_filter)
+            .distinct()
+            .order_by("-issue_date", "-id")
+            .first()
+        )
+        if not invoice:
+            return "No electricity charge is recorded on an invoice for your active lease yet."
+
+        electric_items = [
+            item
+            for item in invoice.items.select_related("category").all()
+            if (
+                "electric" in ((getattr(item.category, "name", "") or "").lower())
+                or "electric" in ((item.description or "").lower())
+                or "meter" in ((item.description or "").lower())
+            )
+        ]
+        electric_amount = sum(
+            (item.amount or Decimal("0.00") for item in electric_items),
+            Decimal("0.00"),
+        )
+        token = make_public_invoice_token(invoice.pk)
+        link = build_public_url("invoices:public_invoice_detail", args=[token])
+        return (
+            "Current electricity bill\n\n"
+            f"Electricity: Rs. {electric_amount}\n"
+            f"Invoice: {invoice.invoice_number}\n"
+            f"Due Date: {invoice.due_date or '-'}\n"
+            f"Status: {invoice.get_status_display()}\n\n"
+            f"View invoice:\n{link}"
         )
 
     def _invoice_issue_reply(self, lease):
@@ -5195,6 +5253,8 @@ def detect_intent(text):
         return "inspection"
     if _looks_like_maintenance_status(lowered):
         return "maintenance_status"
+    if _looks_like_electric_bill_request(lowered):
+        return "electric_bill"
     if _looks_like_latest_invoice(lowered):
         return "latest_invoice"
     if _looks_like_payment_receipt_request(lowered):
@@ -5273,6 +5333,39 @@ def _looks_like_invoice_detail(text):
             "invoice information",
         )
     )
+
+def _looks_like_electric_bill_request(text):
+    lowered = (text or "").strip().lower()
+    bill_word = any(word in lowered for word in ("bill", "invoice"))
+    electric_word = any(
+        phrase in lowered
+        for phrase in (
+            "electric",
+            "electricity",
+            "bijli",
+            "bijlee",
+            # Common speech-to-text / typing error observed in the exported chat.
+            "election bill",
+        )
+    )
+    return bill_word and electric_word
+
+
+def _looks_like_contextual_details(text):
+    lowered = re.sub(r"\s+", " ", (text or "").strip().lower())
+    return lowered in {
+        "detail",
+        "details",
+        "detail bhejo",
+        "details bhejo",
+        "detail bhej na",
+        "details bhej na",
+        "detail baj na",
+        "details baj na",
+        "details send",
+        "send details",
+    }
+
 
 def _looks_like_latest_invoice(text):
     lowered = (text or "").strip().lower()
@@ -5354,8 +5447,6 @@ def _looks_like_meter_request(text):
             "meter reading",
             "electric reading",
             "utility bill",
-            "electric bill",
-            "bijli bill",
             "kwh",
         )
     )
@@ -5847,6 +5938,46 @@ def _review_date(value):
         except ValueError:
             continue
     return None
+
+
+def _tenant_media_confirmation_text(media):
+    if media.purpose == PendingWhatsAppMedia.PURPOSE_OTHER:
+        return (
+            "We received your media. What would you like to do?\n\n"
+            "1 Unit Photo\n2 Tenant Document\n3 Maintenance Photo\n"
+            "4 Payment Receipt\n5 Police Verification\n6 Lease Photo\n7 Cancel"
+        )
+    return "We received your media and staged it for admin review before attaching it to any record."
+
+
+def _tenant_upload_purpose_from_text(text):
+    lowered = (text or "").strip().lower()
+    choices = {
+        "1": PendingWhatsAppMedia.PURPOSE_UNIT,
+        "unit": PendingWhatsAppMedia.PURPOSE_UNIT,
+        "unit photo": PendingWhatsAppMedia.PURPOSE_UNIT,
+        "unit photos": PendingWhatsAppMedia.PURPOSE_UNIT,
+        "2": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "tenant document": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "tenant documents": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "3": PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+        "maintenance": PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+        "maintenance photo": PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+        "4": PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        "payment": PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        "payment receipt": PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        "receipt": PendingWhatsAppMedia.PURPOSE_PAYMENT,
+        "5": "police_verification",
+        "police": "police_verification",
+        "police verification": "police_verification",
+        "6": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "lease": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "lease photo": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "lease document": PendingWhatsAppMedia.PURPOSE_LEASE,
+        "7": "cancel",
+        "cancel": "cancel",
+    }
+    return choices.get(lowered)
 
 
 def _media_confirmation_text(media):

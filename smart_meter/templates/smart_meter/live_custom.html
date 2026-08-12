@@ -929,6 +929,40 @@
     }
   }
 
+  document.addEventListener("click", async function (event) {
+    const button = event.target.closest(".btn-instant-reading");
+    if (!button) return;
+    const row = button.closest("[data-meter-row]");
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = "Reading...";
+    try {
+      const response = await fetch(button.dataset.url, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")?.value || "{{ csrf_token }}",
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || "Instant reading failed.");
+      button.textContent = "Fresh";
+      if (row) {
+        setCell(row, "updated", data.updated_ts, data.updated_ts);
+        setTotalEnergyCell(row, data.total_energy, data.voltage_a, data.current_a);
+        setCell(row, "balance", data.balance);
+        setCell(row, "voltage_a", data.voltage_a);
+        setCell(row, "current_a", data.current_a);
+        setCell(row, "total_power", data.total_power);
+      }
+    } catch (error) {
+      button.textContent = "Failed";
+      window.alert(error.message || "Instant reading failed.");
+    } finally {
+      window.setTimeout(() => { button.disabled = false; button.textContent = original; }, 1600);
+    }
+  });
+
   async function refreshLiveRows() {
     try {
       const res = await fetch(DATA_URL + window.location.search, {
@@ -1632,6 +1666,9 @@
                 title="Recharge this meter">
                 Recharge
               </button>
+              <button type="button" class="btn btn-outline-primary btn-instant-reading mt-1"
+                data-url="{% url 'smart_meter:smart_meter_instant_live_reading' m.id %}"
+                title="Request a fresh reading from this meter">Instant</button>
             </td>
 
             <td class="sticky-left col-prop text-center" title="{{ p.property_name }}">

@@ -123,7 +123,7 @@
     <div class="media-item" data-masonry-item data-media-id="{{ media.pk }}">
         <div class="card media-card" draggable="true">
             {% if media.file_type == "image" %}
-                <a href="{{ media.display_url }}" target="_blank" rel="noopener">
+                <a href="{{ media.file.url }}" target="_blank" rel="noopener">
                     <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="card-img-top tms-masonry-image" alt="{{ media.description|default:media.display_filename }}">
                 </a>
             {% elif media.file_type == "video" %}

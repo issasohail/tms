@@ -1,0 +1,24 @@
+--- a/whatsapp/tests.py
++++ b/whatsapp/tests.py
+@@ -1821,7 +1821,7 @@
+-    def test_payment_menu_choice_six_is_never_used_as_receipt_amount(self):
++    def test_payment_menu_choice_four_is_never_used_as_receipt_amount(self):
+@@ -1841,7 +1841,7 @@
+         ):
+             response, intent, _metadata = assistant._consume_tenant_upload_type(
+-                self.message, self.conversation, "6", self.lease
++                self.message, self.conversation, "4", self.lease
+             )
+ 
+         self.conversation.refresh_from_db()
+--- a/tenants/tests_cnic_ocr_orientation.py
++++ b/tenants/tests_cnic_ocr_orientation.py
+@@ -384,7 +384,7 @@
+         self.assertIn("const smartCard =", self.image_editor_source)
+         self.assertIn("const olderCard =", self.image_editor_source)
+         self.assertIn("function backLayoutScore(canvas)", self.image_editor_source)
+-        self.assertIn("tms-image-editor.js' %}?v=20260804-2", self.identity_source)
++        self.assertIn("tms-image-editor.js' %}?v=20260812-1", self.identity_source)
+ 
+     def test_quick_registration_shell_names_are_replaceable_by_ocr(self):
+         self.assertIn("TMS_CNIC_REPLACE_SHELL_NAMES", self.public_source)

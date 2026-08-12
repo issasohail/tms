@@ -495,7 +495,12 @@
           reject(new Error("Crop failed"));
           return;
         }
-        const name = String(state.file.name || "image.jpg").replace(/\.[^.]+$/, "") + "-edited.jpg";
+        const fieldName = String(state.input?.name || state.input?.id || "image")
+          .replace(/[^a-z0-9_-]+/gi, "-")
+          .replace(/^-+|-+$/g, "")
+          .toLowerCase() || "image";
+        const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+        const name = `tms-${fieldName}-${stamp}-edited.jpg`;
         resolve(new File([blob], name, {type: "image/jpeg", lastModified: Date.now()}));
       }, "image/jpeg", .92);
     });
@@ -518,6 +523,7 @@
     const initialRotation = await initialIdentityRotation(image, input);
     state = {
       file,
+      input,
       image,
       ratio,
       rotation: initialRotation,

@@ -170,5 +170,6 @@ urlpatterns = [
     path("meters/<int:meter_id>/display/set/",
          views.set_meter_display_balance,   name="set_meter_display_balance"),
     path("live-custom/data/", views.live_custom_data, name="smart_meter_live_custom_data"),
+    path("live-custom/<int:meter_id>/instant/", views.instant_live_reading, name="smart_meter_instant_live_reading"),
      
 ]

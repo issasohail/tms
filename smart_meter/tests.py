@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
@@ -11,7 +12,7 @@ from django.utils import timezone
 
 from leases.models import Lease, LeaseUnitOccupancy
 from properties.models import Property, Unit
-from smart_meter.models import Meter, MeterInstallation, MeterReading, MeterRoleHistory
+from smart_meter.models import LiveReading, Meter, MeterInstallation, MeterReading, MeterRoleHistory
 from smart_meter.services.invoicing import ElectricBillContext
 from tenants.models import Tenant
 
@@ -336,3 +337,54 @@ class MeterEditInstallationSyncTests(TestCase):
         self.assertEqual(new_installation.unit, self.new_unit)
         self.assertEqual(new_installation.lease, self.new_lease)
         self.assertEqual(new_installation.start_reading, Decimal("150.000"))
+
+
+class InstantLiveReadingRegressionTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="instant-reading-user", password="test-pass"
+        )
+        self.user.user_permissions.add(Permission.objects.get(codename="change_meter"))
+        self.client.force_login(self.user)
+        self.meter = Meter.objects.create(meter_number="INSTANT-READ-1")
+        self.live = LiveReading.objects.create(
+            meter=self.meter,
+            total_energy=Decimal("100.000"),
+            voltage_a=Decimal("230.0"),
+        )
+
+    @patch("smart_meter.views.request_instant_live_reading")
+    def test_instant_read_uses_listener_and_returns_fresh_persisted_reading(self, request_read):
+        def listener_request(meter_number, timeout=8.0):
+            self.assertEqual(meter_number, self.meter.meter_number)
+            LiveReading.objects.filter(pk=self.live.pk).update(
+                ts=timezone.now() + timedelta(seconds=1),
+                total_energy=Decimal("101.250"),
+                voltage_a=Decimal("231.0"),
+                current_a=Decimal("1.250"),
+                total_power=Decimal("0.289"),
+            )
+            return {"ok": True}
+
+        request_read.side_effect = listener_request
+        response = self.client.post(
+            reverse("smart_meter:smart_meter_instant_live_reading", args=[self.meter.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["total_energy"], "101.250")
+        self.assertEqual(payload["voltage_a"], "231.0")
+        request_read.assert_called_once()
+
+    @patch(
+        "smart_meter.views.request_instant_live_reading",
+        return_value={"ok": False, "error": "Meter offline"},
+    )
+    def test_instant_read_reports_offline_without_queuing(self, request_read):
+        response = self.client.post(
+            reverse("smart_meter:smart_meter_instant_live_reading", args=[self.meter.pk])
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"], "Meter offline")

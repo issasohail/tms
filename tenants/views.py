@@ -3,8 +3,6 @@ import csv
 import hashlib
 import json
 import logging
-import re
-import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -34,7 +32,7 @@ from django.db.models import (
     Value,
     When,
 )
-from django.db.models.functions import Coalesce, Replace
+from django.db.models.functions import Coalesce
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -42,9 +40,9 @@ from django.urls import (
     reverse,
     reverse_lazy,
 )
-from django.utils.text import slugify
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import (
     CreateView,
@@ -157,7 +155,10 @@ def temporary_registration_upload(request, token):
         tenant = _tenant_from_registration_token(token)
     except SignatureExpired:
         return _private_draft_response(
-            JsonResponse({"ok": False, "message": "This registration link has expired."}, status=410)
+            JsonResponse(
+                {"ok": False, "message": "This registration link has expired."},
+                status=410,
+            )
         )
     except BadSignature:
         raise Http404("Invalid registration link")
@@ -166,7 +167,10 @@ def temporary_registration_upload(request, token):
     if not temporary_upload_rate_allowed(tenant.pk, client_ip, "upload", 240):
         return _private_draft_response(
             JsonResponse(
-                {"ok": False, "message": "Temporary upload limit reached. Try again later."},
+                {
+                    "ok": False,
+                    "message": "Temporary upload limit reached. Try again later.",
+                },
                 status=429,
             )
         )
@@ -256,7 +260,10 @@ def temporary_registration_upload_list(request, token):
     client_ip = request.META.get("REMOTE_ADDR", "unknown")
     if not temporary_upload_rate_allowed(tenant.pk, client_ip, "list", 240):
         return _private_draft_response(
-            JsonResponse({"ok": False, "message": "Draft previews are temporarily busy."}, status=429)
+            JsonResponse(
+                {"ok": False, "message": "Draft previews are temporarily busy."},
+                status=429,
+            )
         )
 
     uploads = {}
@@ -283,7 +290,10 @@ def cnic_identity_ocr(request):
     can_change = request.user.has_perm("tenants.change_tenant")
     if not (can_add or can_change or request.user.is_superuser):
         return JsonResponse(
-            {"ok": False, "message": "You do not have permission to use tenant CNIC OCR."},
+            {
+                "ok": False,
+                "message": "You do not have permission to use tenant CNIC OCR.",
+            },
             status=403,
         )
     return _cnic_identity_ocr_response(
@@ -308,7 +318,9 @@ def _existing_tenant_ocr_payload(cnic):
         "last_name": tenant.last_name,
         "father_husband_name": tenant.last_name,
         "cnic": tenant.cnic,
-        "date_of_birth": tenant.date_of_birth.isoformat() if tenant.date_of_birth else "",
+        "date_of_birth": tenant.date_of_birth.isoformat()
+        if tenant.date_of_birth
+        else "",
         "phone": tenant.phone,
         "gender": tenant.gender,
         "country": tenant.country,
@@ -350,11 +362,7 @@ def _cnic_identity_ocr_response(request, *, can_overwrite=False):
         )
         if payload.get("ok"):
             cnic_value = next(
-                (
-                    item["value"]
-                    for item in payload["fields"]
-                    if item["name"] == "cnic"
-                ),
+                (item["value"] for item in payload["fields"] if item["name"] == "cnic"),
                 "",
             )
             payload.update(
@@ -378,17 +386,26 @@ def _cnic_identity_ocr_response(request, *, can_overwrite=False):
             )
         except SignatureExpired:
             return JsonResponse(
-                {"ok": False, "message": "The front reading expired. Read the CNIC front again."},
+                {
+                    "ok": False,
+                    "message": "The front reading expired. Read the CNIC front again.",
+                },
                 status=410,
             )
         except BadSignature:
             return JsonResponse(
-                {"ok": False, "message": "The front reading is invalid. Read the CNIC front again."},
+                {
+                    "ok": False,
+                    "message": "The front reading is invalid. Read the CNIC front again.",
+                },
                 status=400,
             )
         if token_data.get("scope") != _cnic_staged_scope(request):
             return JsonResponse(
-                {"ok": False, "message": "The front reading belongs to a different registration. Read it again."},
+                {
+                    "ok": False,
+                    "message": "The front reading belongs to a different registration. Read it again.",
+                },
                 status=400,
             )
         from tenants.services.cnic_ocr import extract_cnic_back_identity
@@ -439,8 +456,7 @@ def _cnic_identity_result_payload(
         return (
             {
                 "ok": False,
-                "message": result.get("message")
-                or "CNIC details were not detected.",
+                "message": result.get("message") or "CNIC details were not detected.",
                 "sides_were_swapped": bool(result.get("sides_were_swapped")),
             },
             status,
@@ -482,9 +498,7 @@ def _cnic_identity_result_payload(
             "ok": True,
             "fields": fields,
             "existing_tenant": (
-                _existing_tenant_ocr_payload(cnic_value)
-                if include_existing
-                else None
+                _existing_tenant_ocr_payload(cnic_value) if include_existing else None
             ),
             "confidence": result.get("confidence", 0),
             "warnings": result.get("warnings", []),
@@ -520,7 +534,10 @@ def public_cnic_identity_ocr(request, token):
     request_units = 1 if phase in {"front", "back"} else 2
     if request_count + request_units > 24:
         return JsonResponse(
-            {"ok": False, "message": "OCR limit reached. Try again later or contact management for assistance."},
+            {
+                "ok": False,
+                "message": "OCR limit reached. Try again later or contact management for assistance.",
+            },
             status=429,
         )
     cache.set(rate_key, request_count + request_units, 60 * 60)
@@ -562,17 +579,13 @@ def tenant_saved_cnic_identity_ocr(request, pk):
             current = current.isoformat()
         current = str(current or "")
         item["current_value"] = current
-        current_compare = (
-            normalize_cnic(current) if name == "cnic" else current.strip()
-        )
+        current_compare = normalize_cnic(current) if name == "cnic" else current.strip()
         incoming_compare = (
             normalize_cnic(item["value"])
             if name == "cnic"
             else str(item["value"] or "").strip()
         )
-        item["different"] = bool(
-            current and current_compare != incoming_compare
-        )
+        item["different"] = bool(current and current_compare != incoming_compare)
 
     payload["photo_saved"] = False
     portrait_data = payload.get("portrait_data_uri")
@@ -926,7 +939,9 @@ _PERSON_REVIEW_FIELD_LABELS = {
 
 
 def _pending_person_review_fields(person, relationship_labels):
-    relationship = relationship_labels.get(person.relationship_type_id) or person.relationship
+    relationship = (
+        relationship_labels.get(person.relationship_type_id) or person.relationship
+    )
     values = [
         ("Father / husband", person.father_husband_name),
         ("Date of birth", person.date_of_birth),
@@ -936,12 +951,20 @@ def _pending_person_review_fields(person, relationship_labels):
     ]
     additional = (person.processing_result or {}).get("ocr_fields", {})
     values.extend(
-        (_PERSON_REVIEW_FIELD_LABELS.get(field_name, field_name.replace("_", " ").title()), value)
+        (
+            _PERSON_REVIEW_FIELD_LABELS.get(
+                field_name, field_name.replace("_", " ").title()
+            ),
+            value,
+        )
         for field_name, value in additional.items()
         if str(value or "").strip()
     )
     return [
-        {"label": label, "value": value.isoformat() if hasattr(value, "isoformat") else value}
+        {
+            "label": label,
+            "value": value.isoformat() if hasattr(value, "isoformat") else value,
+        }
         for label, value in values
         if str(value or "").strip()
     ]
@@ -1101,7 +1124,9 @@ def _existing_family_updates_from_post(
                 "family_link_id": link.pk,
             },
         )
-        person.save(update_fields=["proposed_updates", "processing_result", "updated_at"])
+        person.save(
+            update_fields=["proposed_updates", "processing_result", "updated_at"]
+        )
         created += 1
     return created
 
@@ -1122,15 +1147,21 @@ def _apply_pending_family_person_updates(submission, tenant):
         target = person.matched_tenant or match_tenant_by_cnic(person.cnic)
         family_link_id = (person.processing_result or {}).get("family_link_id")
         if not target and family_link_id:
-            link = LeaseFamilyMember.objects.select_related("family_member").filter(
-                pk=family_link_id, primary_tenant=tenant
-            ).first()
+            link = (
+                LeaseFamilyMember.objects.select_related("family_member")
+                .filter(pk=family_link_id, primary_tenant=tenant)
+                .first()
+            )
             target = link.family_member if link else None
         if not target and lease:
-            link = lease.family_members.select_related("family_member").filter(
-                family_member__first_name__iexact=person.first_name,
-                family_member__last_name__iexact=person.last_name,
-            ).first()
+            link = (
+                lease.family_members.select_related("family_member")
+                .filter(
+                    family_member__first_name__iexact=person.first_name,
+                    family_member__last_name__iexact=person.last_name,
+                )
+                .first()
+            )
             target = link.family_member if link else None
         if not target:
             continue
@@ -1187,14 +1218,17 @@ def _registration_submission_comparison(submission):
         if field_name == "interested_in":
             existing_ids = list(tenant.interested_in.values_list("pk", flat=True))
             submitted_ids = [int(value) for value in (submitted or [])]
-            existing_display = ", ".join(
-                tenant.interested_in.values_list("name", flat=True)
-            ) or "-"
-            submitted_display = ", ".join(
-                tenant.interested_in.model.objects.filter(
-                    pk__in=submitted_ids
-                ).values_list("name", flat=True)
-            ) or "-"
+            existing_display = (
+                ", ".join(tenant.interested_in.values_list("name", flat=True)) or "-"
+            )
+            submitted_display = (
+                ", ".join(
+                    tenant.interested_in.model.objects.filter(
+                        pk__in=submitted_ids
+                    ).values_list("name", flat=True)
+                )
+                or "-"
+            )
             changed = sorted(existing_ids) != sorted(submitted_ids)
             label = "Interested In"
         else:
@@ -1225,8 +1259,12 @@ def _registration_submission_comparison(submission):
                 "label": label,
                 "existing": existing_display,
                 "submitted": submitted_display,
-                "submitted_raw": submitted_compare if field_name != "interested_in" else "",
-                "submitted_is_blank": not submitted if field_name != "interested_in" else not submitted_ids,
+                "submitted_raw": submitted_compare
+                if field_name != "interested_in"
+                else "",
+                "submitted_is_blank": not submitted
+                if field_name != "interested_in"
+                else not submitted_ids,
                 "changed": changed,
                 "is_phone": field_name in phone_fields,
                 "can_update_submitted": field_name != "interested_in",
@@ -1249,8 +1287,7 @@ def _registration_submission_comparison(submission):
             submitted_exists = False
         try:
             existing_exists = bool(
-                existing_file
-                and existing_file.storage.exists(existing_file.name)
+                existing_file and existing_file.storage.exists(existing_file.name)
             )
         except Exception:
             existing_exists = False
@@ -1260,7 +1297,9 @@ def _registration_submission_comparison(submission):
                 "label": label,
                 "existing": "Current file" if existing_file else "No current file",
                 "submitted": (
-                    "New upload" if submitted_exists else "New upload - file missing from storage"
+                    "New upload"
+                    if submitted_exists
+                    else "New upload - file missing from storage"
                 ),
                 "existing_url": existing_file.url if existing_exists else "",
                 "submitted_url": submitted_file.url if submitted_exists else "",
@@ -1435,7 +1474,9 @@ def tenant_public_registration_update(request, token):
         "gender": tenant.gender,
         "date_of_birth": tenant.date_of_birth if tenant.date_of_birth else None,
         "cnic_issue_date": tenant.cnic_issue_date if tenant.cnic_issue_date else None,
-        "cnic_expiry_date": tenant.cnic_expiry_date if tenant.cnic_expiry_date else None,
+        "cnic_expiry_date": tenant.cnic_expiry_date
+        if tenant.cnic_expiry_date
+        else None,
         "address": tenant.address,
         "temporary_address": tenant.temporary_address,
         "permanent_address": tenant.permanent_address,
@@ -1528,9 +1569,7 @@ def tenant_public_registration_update(request, token):
             submitted_data["interested_in"] = [
                 item.pk for item in submitted_data.get("interested_in", [])
             ]
-            for date_field in [
-                "date_of_birth", "cnic_issue_date", "cnic_expiry_date"
-            ]:
+            for date_field in ["date_of_birth", "cnic_issue_date", "cnic_expiry_date"]:
                 if submitted_data.get(date_field):
                     submitted_data[date_field] = submitted_data[date_field].isoformat()
             for file_field in ["photo", "cnic_front", "cnic_back"]:
@@ -1568,7 +1607,7 @@ def tenant_public_registration_update(request, token):
                 "witness2": PendingRegistrationPerson.ROLE_WITNESS_2,
             }
             for prefix, role in role_prefixes.items():
-                indexes = range(0, 20) if prefix == "family" else range(0, 1)
+                indexes = range(20) if prefix == "family" else range(1)
                 for index in indexes:
                     base = f"{prefix}-{index}-" if prefix == "family" else f"{prefix}-"
                     first_name = (request.POST.get(base + "first_name") or "").strip()
@@ -1612,7 +1651,9 @@ def tenant_public_registration_update(request, token):
                         cnic=cnic,
                         phone=(request.POST.get(base + "phone") or "").strip(),
                         date_of_birth=parse_date(
-                            request.POST.get(base + "date_of_birth") or request.POST.get(base + "dob") or ""
+                            request.POST.get(base + "date_of_birth")
+                            or request.POST.get(base + "dob")
+                            or ""
                         ),
                         address=(request.POST.get(base + "address") or "").strip(),
                         relationship=(
@@ -1624,7 +1665,9 @@ def tenant_public_registration_update(request, token):
                         photo=person_photo,
                         cnic_front=person_front,
                         cnic_back=registration_file(base + "cnic_back"),
-                        processing_result={"ocr_fields": ocr_fields} if ocr_fields else {},
+                        processing_result={"ocr_fields": ocr_fields}
+                        if ocr_fields
+                        else {},
                     )
                     from tenants.services.registration_workflow import proposed_changes
 
@@ -1643,7 +1686,13 @@ def tenant_public_registration_update(request, token):
                                 "submitted": submitted_value,
                             }
                     person.proposed_updates = person_changes
-                    person.save(update_fields=["proposed_updates", "processing_result", "updated_at"])
+                    person.save(
+                        update_fields=[
+                            "proposed_updates",
+                            "processing_result",
+                            "updated_at",
+                        ]
+                    )
             _existing_family_updates_from_post(
                 request,
                 submission,
@@ -1662,7 +1711,9 @@ def tenant_public_registration_update(request, token):
                     form.add_error(None, error)
             else:
                 if registration_draft_id:
-                    from tenants.services.registration_drafts import delete_draft_uploads
+                    from tenants.services.registration_drafts import (
+                        delete_draft_uploads,
+                    )
 
                     transaction.on_commit(
                         lambda tenant_id=tenant.pk, draft_id=registration_draft_id: (
@@ -1687,9 +1738,7 @@ def tenant_public_registration_update(request, token):
                     },
                 )
     else:
-        form = TenantPublicRegistrationForm(
-            initial=initial, registration_tenant=tenant
-        )
+        form = TenantPublicRegistrationForm(initial=initial, registration_tenant=tenant)
     existing_family = []
     try:
         lease = tenant.current_lease
@@ -1776,23 +1825,33 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
             )
             vehicle.duplicate_warning = (
                 f"Already active on Lease #{duplicate.lease_id} for {duplicate.tenant}."
-                if duplicate else ""
+                if duplicate
+                else ""
             )
         context["pending_vehicle_submissions"] = pending_vehicles
         pending_people = list(
-            self.object.pending_people.select_related("matched_tenant", "processed_tenant")
+            self.object.pending_people.select_related(
+                "matched_tenant", "processed_tenant"
+            )
         )
         relationship_labels = dict(
             LeaseRelationshipType.objects.filter(
-                pk__in={person.relationship_type_id for person in pending_people if person.relationship_type_id}
+                pk__in={
+                    person.relationship_type_id
+                    for person in pending_people
+                    if person.relationship_type_id
+                }
             ).values_list("pk", "name")
         )
         for person in pending_people:
-            person.review_fields = _pending_person_review_fields(person, relationship_labels)
+            person.review_fields = _pending_person_review_fields(
+                person, relationship_labels
+            )
         from tenants.services.registration_workflow import (
             applicant_cnic_conflict,
             registration_required_party_reviews,
         )
+
         context["required_party_reviews"] = registration_required_party_reviews(
             self.object
         )
@@ -1818,20 +1877,19 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
         context["submission_change_count"] = sum(
             1 for row in context["submission_comparison"] if row["changed"]
         )
-        context["identity_documents"] = _registration_identity_documents(
-            self.object
-        )
+        context["identity_documents"] = _registration_identity_documents(self.object)
         context["cnic_conflict"] = applicant_cnic_conflict(self.object)
         approval_target = context["cnic_conflict"] or self.object.tenant
         context["current_registration_lease"] = approval_target.current_lease
         context["can_edit_submission"] = (
             self.object.is_editable
-            and self.request.user.has_perm("tenants.change_tenantregistrationsubmission")
+            and self.request.user.has_perm(
+                "tenants.change_tenantregistrationsubmission"
+            )
         )
-        context["can_apply_submission"] = (
-            context["can_edit_submission"]
-            and self.request.user.has_perm("tenants.change_tenant")
-        )
+        context["can_apply_submission"] = context[
+            "can_edit_submission"
+        ] and self.request.user.has_perm("tenants.change_tenant")
         context["can_create_registration_lease"] = (
             context["can_apply_submission"]
             and self.request.user.has_perm("leases.add_lease")
@@ -1852,7 +1910,9 @@ class TenantRegistrationSubmissionDetailView(LoginRequiredMixin, DetailView):
         context["selected_registration_unit_id"] = (
             approval_error.get("unit_id") if approval_error else None
         )
-        context["audit_entries"] = self.object.audit_entries.select_related("edited_by")[:10]
+        context["audit_entries"] = self.object.audit_entries.select_related(
+            "edited_by"
+        )[:10]
         return context
 
 
@@ -1874,7 +1934,10 @@ def tenant_registration_submission_review(request, pk):
         messages.info(request, "This registration has already been approved.")
         return redirect("tenants:tenant_detail", pk=submission.tenant_id)
     if not submission.is_editable:
-        messages.error(request, "This submission is no longer editable or has already created a lease.")
+        messages.error(
+            request,
+            "This submission is no longer editable or has already created a lease.",
+        )
         return redirect("tenants:registration_submission_detail", pk=submission.pk)
 
     if action == "save_review":
@@ -1882,7 +1945,10 @@ def tenant_registration_submission_review(request, pk):
         if not form.is_valid():
             messages.error(request, "Could not update registration submission.")
             return redirect("tenants:registration_submission_detail", pk=submission.pk)
-        old_values = {"status": submission.status, "admin_notes": submission.admin_notes}
+        old_values = {
+            "status": submission.status,
+            "admin_notes": submission.admin_notes,
+        }
         obj = form.save(commit=False)
         if obj.status in {obj.STATUS_APPROVED, obj.STATUS_PROCESSING}:
             messages.error(request, "Use the approval action to apply applicant data.")
@@ -1897,7 +1963,8 @@ def tenant_registration_submission_review(request, pk):
             action="save_review",
             changes={
                 key: {"old": old_values[key], "new": getattr(obj, key)}
-                for key in old_values if old_values[key] != getattr(obj, key)
+                for key in old_values
+                if old_values[key] != getattr(obj, key)
             },
         )
         messages.success(request, "Tenant registration submission updated.")
@@ -1914,22 +1981,31 @@ def tenant_registration_submission_review(request, pk):
     if action == "reject_collision":
         reason = (request.POST.get("rejection_reason") or "").strip()
         if not conflict or not reason:
-            messages.error(request, "A rejection reason is required for the CNIC conflict.")
+            messages.error(
+                request, "A rejection reason is required for the CNIC conflict."
+            )
             return redirect("tenants:registration_submission_detail", pk=submission.pk)
         old_status = submission.status
         submission.status = submission.STATUS_REJECTED
         submission.admin_notes = reason
         submission.reviewed_by = request.user
         submission.reviewed_at = timezone.now()
-        submission.save(update_fields=["status", "admin_notes", "reviewed_by", "reviewed_at"])
+        submission.save(
+            update_fields=["status", "admin_notes", "reviewed_by", "reviewed_at"]
+        )
         cache.delete("core.pending_approval_count")
         TenantRegistrationSubmissionAudit.objects.create(
             submission=submission,
             edited_by=request.user,
             action="reject_cnic_collision",
-            changes={"status": {"old": old_status, "new": submission.status}, "reason": {"old": "", "new": reason}},
+            changes={
+                "status": {"old": old_status, "new": submission.status},
+                "reason": {"old": "", "new": reason},
+            },
         )
-        messages.success(request, "Registration rejected without changing either tenant.")
+        messages.success(
+            request, "Registration rejected without changing either tenant."
+        )
         return redirect("tenants:registration_submission_detail", pk=submission.pk)
 
     if action not in approval_actions:
@@ -1956,7 +2032,10 @@ def tenant_registration_submission_review(request, pk):
         ):
             raise PermissionDenied
     if bool(property_id) != bool(unit_id):
-        messages.error(request, "Select both property and unit, or leave both blank for tenant-only approval.")
+        messages.error(
+            request,
+            "Select both property and unit, or leave both blank for tenant-only approval.",
+        )
         return redirect("tenants:registration_submission_detail", pk=submission.pk)
     create_lease = bool(property_id and unit_id) and not existing_lease
     unit = None
@@ -1992,11 +2071,15 @@ def tenant_registration_submission_review(request, pk):
             and request.user.has_perm("leases.change_lease")
         ):
             raise PermissionDenied
-        unit = Unit.objects.select_related("property").filter(
-            pk=unit_id, property_id=property_id
-        ).first()
+        unit = (
+            Unit.objects.select_related("property")
+            .filter(pk=unit_id, property_id=property_id)
+            .first()
+        )
         if not unit:
-            messages.error(request, "Select a valid property and unit for the new lease.")
+            messages.error(
+                request, "Select a valid property and unit for the new lease."
+            )
             return redirect("tenants:registration_submission_detail", pk=submission.pk)
 
         requested_move_in_date = (
@@ -2015,7 +2098,9 @@ def tenant_registration_submission_review(request, pk):
                     "attempted_start_date": requested_move_in_date,
                     "suggested_start_date": timezone.localdate().isoformat(),
                 }
-                return redirect("tenants:registration_submission_detail", pk=submission.pk)
+                return redirect(
+                    "tenants:registration_submission_detail", pk=submission.pk
+                )
         if align_billing_to_month_start and move_in_date.day != 1:
             if move_in_date.month == 12:
                 lease_start_date = move_in_date.replace(
@@ -2075,10 +2160,7 @@ def tenant_registration_submission_review(request, pk):
     for row in comparison:
         decision = request.POST.get(f"decision_{row['field']}")
         if not row["changed"]:
-            if (
-                decision == "update_submitted"
-                and row.get("can_update_submitted")
-            ):
+            if decision == "update_submitted" and row.get("can_update_submitted"):
                 previous_updated_values[row["field"]] = (
                     submission.submitted_data or {}
                 ).get(row["field"])
@@ -2088,9 +2170,9 @@ def tenant_registration_submission_review(request, pk):
                 decisions[row["field"]] = "accept_submitted"
             continue
         if decision == "update_submitted" and row.get("can_update_submitted"):
-            previous_updated_values[row["field"]] = (submission.submitted_data or {}).get(
-                row["field"]
-            )
+            previous_updated_values[row["field"]] = (
+                submission.submitted_data or {}
+            ).get(row["field"])
             updated_values[row["field"]] = request.POST.get(
                 f"updated_{row['field']}", ""
             )
@@ -2137,14 +2219,19 @@ def tenant_registration_submission_review(request, pk):
     conflict = applicant_cnic_conflict(submission)
     collision_action = request.POST.get("collision_action") or ""
     if conflict and collision_action != "merge":
-        messages.error(request, f"CNIC matches Tenant #{conflict.pk}; explicitly choose merge or reject.")
+        messages.error(
+            request,
+            f"CNIC matches Tenant #{conflict.pk}; explicitly choose merge or reject.",
+        )
         return redirect("tenants:registration_submission_detail", pk=submission.pk)
 
     submission.field_decisions = decisions
     submission.status = submission.STATUS_PROCESSING
     submission.reviewed_by = request.user
     submission.reviewed_at = timezone.now()
-    submission.save(update_fields=["field_decisions", "status", "reviewed_by", "reviewed_at"])
+    submission.save(
+        update_fields=["field_decisions", "status", "reviewed_by", "reviewed_at"]
+    )
     shell_id = submission.tenant_id
     lease = None
     created_new_lease = False
@@ -2163,7 +2250,9 @@ def tenant_registration_submission_review(request, pk):
                     apply_initial_billing,
                     ensure_move_in_proration_invoice,
                 )
-                from tenants.services.registration_workflow import attach_registration_to_lease
+                from tenants.services.registration_workflow import (
+                    attach_registration_to_lease,
+                )
 
                 lease_months = GlobalSettings.get_solo().default_lease_months or 11
                 lease = Lease.objects.create(
@@ -2222,7 +2311,9 @@ def tenant_registration_submission_review(request, pk):
                     and request.user.has_perm("leases.change_lease")
                 ):
                     raise PermissionDenied
-                from tenants.services.registration_workflow import attach_registration_to_lease
+                from tenants.services.registration_workflow import (
+                    attach_registration_to_lease,
+                )
 
                 lease = tenant.current_lease
                 workflow_result = attach_registration_to_lease(
@@ -2322,7 +2413,9 @@ def tenant_registration_submission_edit(request, pk):
         return HttpResponse("This submission is not editable.", status=409)
 
     people = list(submission.pending_people.all())
-    vehicles = list(submission.pending_vehicle_submissions.select_related("vehicle_type"))
+    vehicles = list(
+        submission.pending_vehicle_submissions.select_related("vehicle_type")
+    )
     role_prefix = {
         PendingRegistrationPerson.ROLE_PROPOSER: "proposer",
         PendingRegistrationPerson.ROLE_SECONDER: "seconder",
@@ -2375,7 +2468,9 @@ def tenant_registration_submission_edit(request, pk):
     vehicles.append(blank_vehicle)
 
     relationship_types = list(
-        LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name")
+        LeaseRelationshipType.objects.filter(is_active=True).order_by(
+            "sort_order", "name"
+        )
     )
     vehicle_types = list(
         LeaseVehicleType.objects.filter(is_active=True).order_by("sort_order", "name")
@@ -2383,7 +2478,11 @@ def tenant_registration_submission_edit(request, pk):
 
     def selected_relationship(person):
         selected = next(
-            (item for item in relationship_types if item.pk == person.relationship_type_id),
+            (
+                item
+                for item in relationship_types
+                if item.pk == person.relationship_type_id
+            ),
             None,
         )
         person.selected_relationship_type = selected
@@ -2404,9 +2503,13 @@ def tenant_registration_submission_edit(request, pk):
                 with transaction.atomic():
                     old_data = dict(submission.submitted_data or {})
                     new_data = form.cleaned_data.copy()
-                    new_data["interested_in"] = [item.pk for item in new_data.get("interested_in", [])]
+                    new_data["interested_in"] = [
+                        item.pk for item in new_data.get("interested_in", [])
+                    ]
                     if new_data.get("date_of_birth"):
-                        new_data["date_of_birth"] = new_data["date_of_birth"].isoformat()
+                        new_data["date_of_birth"] = new_data[
+                            "date_of_birth"
+                        ].isoformat()
                     for file_field in ("photo", "cnic_front", "cnic_back"):
                         new_data.pop(file_field, None)
                         if request.FILES.get(file_field):
@@ -2416,19 +2519,29 @@ def tenant_registration_submission_edit(request, pk):
                     submission.save()
 
                     changes = {
-                        f"applicant.{field}": {"old": old_data.get(field), "new": new_value}
+                        f"applicant.{field}": {
+                            "old": old_data.get(field),
+                            "new": new_value,
+                        }
                         for field, new_value in new_data.items()
                         if old_data.get(field) != new_value
                     }
-                    from tenants.services.registration_workflow import match_tenant_by_cnic, proposed_changes
+                    from tenants.services.registration_workflow import (
+                        match_tenant_by_cnic,
+                        proposed_changes,
+                    )
 
                     for person in people:
                         prefix = person.edit_prefix
                         posted_values = {
                             field: (request.POST.get(f"{prefix}-{field}") or "").strip()
                             for field in (
-                                "first_name", "last_name", "father_husband_name", "cnic",
-                                "phone", "address",
+                                "first_name",
+                                "last_name",
+                                "father_husband_name",
+                                "cnic",
+                                "phone",
+                                "address",
                             )
                         }
                         relationship_choice = (
@@ -2441,15 +2554,30 @@ def tenant_registration_submission_edit(request, pk):
                             request.FILES.get(f"{prefix}-{field}")
                             for field in ("photo", "cnic_front", "cnic_back")
                         )
-                        if not person.pk and not any(posted_values.values()) and not relationship_choice and not custom_relationship and not has_files:
+                        if (
+                            not person.pk
+                            and not any(posted_values.values())
+                            and not relationship_choice
+                            and not custom_relationship
+                            and not has_files
+                        ):
                             continue
 
                         old_person = {
                             field: str(getattr(person, field) or "")
                             for field in (
-                                "first_name", "last_name", "father_husband_name", "cnic",
-                                "phone", "date_of_birth", "address", "relationship",
-                                "relationship_type_id", "photo", "cnic_front", "cnic_back",
+                                "first_name",
+                                "last_name",
+                                "father_husband_name",
+                                "cnic",
+                                "phone",
+                                "date_of_birth",
+                                "address",
+                                "relationship",
+                                "relationship_type_id",
+                                "photo",
+                                "cnic_front",
+                                "cnic_back",
                             )
                         }
                         for field, value in posted_values.items():
@@ -2460,35 +2588,57 @@ def tenant_registration_submission_edit(request, pk):
                         relationship_type = None
                         if relationship_choice.isdigit():
                             relationship_type = next(
-                                (item for item in relationship_types if item.pk == int(relationship_choice)),
+                                (
+                                    item
+                                    for item in relationship_types
+                                    if item.pk == int(relationship_choice)
+                                ),
                                 None,
                             )
                             if not relationship_type:
-                                raise ValidationError(f"{person.get_role_display()}: select a valid relationship.")
+                                raise ValidationError(
+                                    f"{person.get_role_display()}: select a valid relationship."
+                                )
                         elif relationship_choice == "__new__":
                             if not custom_relationship:
-                                raise ValidationError(f"{person.get_role_display()}: enter the new relationship name.")
+                                raise ValidationError(
+                                    f"{person.get_role_display()}: enter the new relationship name."
+                                )
                             relationship_type = LeaseRelationshipType.objects.filter(
                                 name__iexact=custom_relationship
                             ).first()
                             if not relationship_type:
-                                base_code = slugify(custom_relationship)[:70] or "relationship"
+                                base_code = (
+                                    slugify(custom_relationship)[:70] or "relationship"
+                                )
                                 code = base_code
                                 suffix = 2
-                                while LeaseRelationshipType.objects.filter(code=code).exists():
+                                while LeaseRelationshipType.objects.filter(
+                                    code=code
+                                ).exists():
                                     code = f"{base_code[:74]}-{suffix}"
                                     suffix += 1
-                                relationship_type = LeaseRelationshipType.objects.create(
-                                    name=custom_relationship[:80], code=code
+                                relationship_type = (
+                                    LeaseRelationshipType.objects.create(
+                                        name=custom_relationship[:80], code=code
+                                    )
                                 )
                                 relationship_types.append(relationship_type)
-                        person.relationship_type_id = relationship_type.pk if relationship_type else None
+                        person.relationship_type_id = (
+                            relationship_type.pk if relationship_type else None
+                        )
                         person.relationship = (
-                            relationship_type.code if relationship_type else custom_relationship
+                            relationship_type.code
+                            if relationship_type
+                            else custom_relationship
                         )[:30]
                         for file_field in ("photo", "cnic_front", "cnic_back"):
                             if request.FILES.get(f"{prefix}-{file_field}"):
-                                setattr(person, file_field, request.FILES[f"{prefix}-{file_field}"])
+                                setattr(
+                                    person,
+                                    file_field,
+                                    request.FILES[f"{prefix}-{file_field}"],
+                                )
                         if old_person["cnic"] != str(person.cnic or ""):
                             person.matched_tenant = match_tenant_by_cnic(person.cnic)
                         person.proposed_updates = proposed_changes(person)
@@ -2496,59 +2646,106 @@ def tenant_registration_submission_edit(request, pk):
                         for field, old_value in old_person.items():
                             new_value = str(getattr(person, field) or "")
                             if old_value != new_value:
-                                changes[f"{prefix}.{field}"] = {"old": old_value, "new": new_value}
+                                changes[f"{prefix}.{field}"] = {
+                                    "old": old_value,
+                                    "new": new_value,
+                                }
 
-                    active_vehicle_types = {str(item.pk): item for item in vehicle_types}
+                    active_vehicle_types = {
+                        str(item.pk): item for item in vehicle_types
+                    }
                     seen_registrations = set()
                     for vehicle in vehicles:
                         prefix = vehicle.edit_prefix
-                        vehicle_type_id = (request.POST.get(f"{prefix}-vehicle_type") or "").strip()
+                        vehicle_type_id = (
+                            request.POST.get(f"{prefix}-vehicle_type") or ""
+                        ).strip()
                         values = {
                             field: (request.POST.get(f"{prefix}-{field}") or "").strip()
                             for field in (
-                                "registration_number", "make", "model", "color", "year",
-                                "owner_name", "owner_cnic",
+                                "registration_number",
+                                "make",
+                                "model",
+                                "color",
+                                "year",
+                                "owner_name",
+                                "owner_cnic",
                             )
                         }
                         has_files = any(
                             request.FILES.get(f"{prefix}-{field}")
                             for field in ("vehicle_photo", "registration_book_photo")
                         )
-                        if not vehicle.pk and not vehicle_type_id and not any(values.values()) and not has_files:
+                        if (
+                            not vehicle.pk
+                            and not vehicle_type_id
+                            and not any(values.values())
+                            and not has_files
+                        ):
                             continue
                         if vehicle_type_id not in active_vehicle_types:
-                            raise ValidationError(f"Vehicle {vehicle.pk or 'new'}: vehicle type is required.")
+                            raise ValidationError(
+                                f"Vehicle {vehicle.pk or 'new'}: vehicle type is required."
+                            )
                         if not values["registration_number"]:
-                            raise ValidationError(f"Vehicle {vehicle.pk or 'new'}: registration number is required.")
+                            raise ValidationError(
+                                f"Vehicle {vehicle.pk or 'new'}: registration number is required."
+                            )
                         registration_key = values["registration_number"].casefold()
                         if registration_key in seen_registrations:
-                            raise ValidationError(f"Duplicate vehicle registration number: {values['registration_number']}.")
+                            raise ValidationError(
+                                f"Duplicate vehicle registration number: {values['registration_number']}."
+                            )
                         seen_registrations.add(registration_key)
                         old_vehicle = {
                             field: str(getattr(vehicle, field) or "")
                             for field in (
-                                "vehicle_type_id", "registration_number", "make", "model",
-                                "color", "year", "owner_name", "owner_cnic",
+                                "vehicle_type_id",
+                                "registration_number",
+                                "make",
+                                "model",
+                                "color",
+                                "year",
+                                "owner_name",
+                                "owner_cnic",
                             )
                         }
                         vehicle.vehicle_type = active_vehicle_types[vehicle_type_id]
-                        for field in ("registration_number", "make", "model", "color", "owner_name", "owner_cnic"):
+                        for field in (
+                            "registration_number",
+                            "make",
+                            "model",
+                            "color",
+                            "owner_name",
+                            "owner_cnic",
+                        ):
                             setattr(vehicle, field, values[field])
                         try:
-                            vehicle.year = int(values["year"]) if values["year"] else None
+                            vehicle.year = (
+                                int(values["year"]) if values["year"] else None
+                            )
                         except (TypeError, ValueError):
-                            raise ValidationError(f"Vehicle {vehicle.pk or 'new'}: year must be a number.")
+                            raise ValidationError(
+                                f"Vehicle {vehicle.pk or 'new'}: year must be a number."
+                            )
                         vehicle.pending_tenant_submission = submission
                         vehicle.tenant = submission.tenant
                         for file_field in ("vehicle_photo", "registration_book_photo"):
                             if request.FILES.get(f"{prefix}-{file_field}"):
-                                setattr(vehicle, file_field, request.FILES[f"{prefix}-{file_field}"])
+                                setattr(
+                                    vehicle,
+                                    file_field,
+                                    request.FILES[f"{prefix}-{file_field}"],
+                                )
                         vehicle.full_clean()
                         vehicle.save()
                         for field, old_value in old_vehicle.items():
                             new_value = str(getattr(vehicle, field) or "")
                             if old_value != new_value:
-                                changes[f"{prefix}.{field}"] = {"old": old_value, "new": new_value}
+                                changes[f"{prefix}.{field}"] = {
+                                    "old": old_value,
+                                    "new": new_value,
+                                }
 
                     TenantRegistrationSubmissionAudit.objects.create(
                         submission=submission,
@@ -2560,7 +2757,9 @@ def tenant_registration_submission_edit(request, pk):
                 form.add_error(None, exc)
             else:
                 messages.success(request, "Registration submission edits saved.")
-                return redirect("tenants:registration_submission_detail", pk=submission.pk)
+                return redirect(
+                    "tenants:registration_submission_detail", pk=submission.pk
+                )
     else:
         form = TenantPublicRegistrationForm(
             initial=submission.submitted_data,
@@ -2769,7 +2968,11 @@ def tenant_family_create_and_add(request, pk):
         return redirect(
             f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
         )
-    if parsed_issue_date and parsed_expiry_date and parsed_expiry_date < parsed_issue_date:
+    if (
+        parsed_issue_date
+        and parsed_expiry_date
+        and parsed_expiry_date < parsed_issue_date
+    ):
         messages.error(request, "CNIC expiry date cannot be before its issue date.")
         return redirect(
             f"{reverse('tenants:tenant_detail', args=[tenant.pk])}#tenantFamily"
@@ -2833,6 +3036,7 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
                         "lease__tenant",
                         "lease__unit",
                         "lease__unit__property",
+                        "detail",
                     ),
                 ),
                 Prefetch(
@@ -2879,6 +3083,7 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
                 row["lease_id"]: row["total"] or zero
                 for row in (
                     Invoice.objects.filter(lease_id__in=lease_ids)
+                    .exclude(status="cancelled")
                     .values("lease_id")
                     .annotate(total=Coalesce(Sum("amount"), zero))
                 )
@@ -2916,22 +3121,23 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
 
         tenant.current_balance = Decimal("0.00")
         for item in all_leases:
-            lease_balance = invoice_totals.get(item.id, zero) - payment_totals.get(
-                item.id, zero
-            )
+            # Use the same canonical balance calculation as Lease Detail.  The
+            # prefetched invoice/payment rows above keep this inexpensive while
+            # preventing the two screens from drifting as accounting rules evolve.
+            lease_balance = item.get_balance
             sd = security_totals.get(item.id, {})
             security_balance = (
-                (getattr(item, "security_deposit", None) or zero)
-                - sd.get("PAYMENT", zero)
-            )
-            if security_balance < zero:
-                security_balance = zero
+                getattr(item, "security_deposit", None) or zero
+            ) - sd.get("PAYMENT", zero)
+            security_balance = max(security_balance, zero)
             item.list_balance = lease_balance
             item.list_security_due = security_balance
             item.tenant_detail_lease_balance = lease_balance
             item.tenant_detail_security_balance = security_balance
-            item.tenant_detail_total_balance = lease_balance + security_balance
-            tenant.current_balance += item.tenant_detail_total_balance
+            # Tenant Detail's "Balance" must match Lease.get_balance()/Lease Detail.
+            # Security due is displayed separately and must not be folded into this figure.
+            item.tenant_detail_total_balance = lease_balance
+            tenant.current_balance += lease_balance
 
         # Defaults for the “active lease” tables
         invoices = Invoice.objects.none()
@@ -3457,8 +3663,8 @@ def ledger_pdf(request, tenant_id):
 
     except Exception as e:
         # Log the error (you can use logging module)
-        print(f"PDF generation error: {str(e)}")
-        return HttpResponse(f"Failed to generate PDF: {str(e)}", status=500)
+        print(f"PDF generation error: {e!s}")
+        return HttpResponse(f"Failed to generate PDF: {e!s}", status=500)
 
 
 # leases/views.py or tenants/views.py
@@ -3535,9 +3741,9 @@ def send_ledger(request, lease_id):
         )
 
     except Exception as e:
-        logger.error(f"Failed to send ledger: {str(e)}", exc_info=True)
+        logger.error(f"Failed to send ledger: {e!s}", exc_info=True)
         return JsonResponse(
-            {"status": "error", "message": f"Failed to send ledger: {str(e)}"},
+            {"status": "error", "message": f"Failed to send ledger: {e!s}"},
             status=500,
         )
 
@@ -3620,7 +3826,11 @@ def tenant_search(request):
             | Q(email__icontains=search_term)
         )
         if identity_term:
-            search_query |= Q(phone__icontains=identity_term) | Q(phone2__icontains=identity_term) | Q(phone3__icontains=identity_term)
+            search_query |= (
+                Q(phone__icontains=identity_term)
+                | Q(phone2__icontains=identity_term)
+                | Q(phone3__icontains=identity_term)
+            )
         if cnic_term:
             search_query |= Q(cnic_digits__icontains=cnic_term)
         tenants = tenants.filter(search_query)
@@ -3771,6 +3981,7 @@ def get_units_by_property(request):
 
 # tenants/views.py (update_tenant_field)
 
+
 @login_required
 @require_POST
 def update_tenant_field(request, tenant_id):
@@ -3798,9 +4009,7 @@ def update_tenant_field(request, tenant_id):
             try:
                 validate_cnic(digits)
             except ValidationError as exc:
-                return JsonResponse(
-                    {"success": False, "error": exc.messages[0]}
-                )
+                return JsonResponse({"success": False, "error": exc.messages[0]})
 
             # Duplicate check
             qs = Tenant.objects.exclude(pk=tenant.pk).filter(cnic_digits=digits)
@@ -3818,11 +4027,17 @@ def update_tenant_field(request, tenant_id):
         setattr(tenant, field, value)
         update_fields = [field, "cnic_digits"] if field == "cnic" else [field]
         tenant.save(update_fields=update_fields)
-        return JsonResponse({
-            "success": True,
-            "value": getattr(tenant, field) or "",
-            "display_value": format_cnic(getattr(tenant, field)) if field == "cnic" else format_phone(getattr(tenant, field)) if field == "phone" else getattr(tenant, field),
-        })
+        return JsonResponse(
+            {
+                "success": True,
+                "value": getattr(tenant, field) or "",
+                "display_value": format_cnic(getattr(tenant, field))
+                if field == "cnic"
+                else format_phone(getattr(tenant, field))
+                if field == "phone"
+                else getattr(tenant, field),
+            }
+        )
     except Tenant.DoesNotExist:
         return JsonResponse({"success": False, "error": "Tenant not found"})
     except Exception as e:
@@ -3905,7 +4120,11 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             normalized_cnic = normalize_cnic(phone)
             phone_query = Q(first_name__icontains=phone) | Q(last_name__icontains=phone)
             if normalized_phone:
-                phone_query |= Q(phone__icontains=normalized_phone) | Q(phone2__icontains=normalized_phone) | Q(phone3__icontains=normalized_phone)
+                phone_query |= (
+                    Q(phone__icontains=normalized_phone)
+                    | Q(phone2__icontains=normalized_phone)
+                    | Q(phone3__icontains=normalized_phone)
+                )
             if normalized_cnic:
                 phone_query |= Q(cnic_digits__icontains=normalized_cnic)
             queryset = queryset.filter(phone_query)
@@ -4095,9 +4314,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                 lease.id, zero
             )
             paid_in = security_totals.get(lease.id, {}).get("PAYMENT", zero)
-            security_due = max(
-                (lease.security_deposit or zero) - paid_in, zero
-            )
+            security_due = max((lease.security_deposit or zero) - paid_in, zero)
 
             recurring_total = (
                 recurring_global
@@ -4418,14 +4635,20 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
                     # ===== REPORT TITLE =====
                     last_column = 19
-                    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_column)
+                    ws.merge_cells(
+                        start_row=1, start_column=1, end_row=1, end_column=last_column
+                    )
                     title_cell = ws.cell(row=1, column=1, value="TENANT LIST REPORT")
                     title_cell.font = Font(bold=True, color="FFFFFF", size=16)
                     title_cell.fill = PatternFill("solid", fgColor="1F4E78")
-                    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+                    title_cell.alignment = Alignment(
+                        horizontal="center", vertical="center"
+                    )
                     ws.row_dimensions[1].height = 28
 
-                    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_column)
+                    ws.merge_cells(
+                        start_row=2, start_column=1, end_row=2, end_column=last_column
+                    )
                     info_cell = ws.cell(
                         row=2,
                         column=1,
@@ -4436,7 +4659,9 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                     )
                     info_cell.font = Font(italic=True, color="44546A", size=10)
                     info_cell.fill = PatternFill("solid", fgColor="D9EAF7")
-                    info_cell.alignment = Alignment(horizontal="center", vertical="center")
+                    info_cell.alignment = Alignment(
+                        horizontal="center", vertical="center"
+                    )
                     ws.row_dimensions[2].height = 20
 
                     # ===== HEADER FORMATTING =====
@@ -4531,9 +4756,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                             tenant.email,
                             lease.unit.property.property_name if lease else "",
                             lease.unit.unit_number if lease else "",
-                            lease.end_date
-                            if lease
-                            else None,
+                            lease.end_date if lease else None,
                             lease.get_total_payment if lease else None,
                             lease.get_balance if lease else None,
                             tenant.number_of_family_member,
@@ -4557,7 +4780,9 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                             if idx % 2 == 0:
                                 cell.fill = PatternFill("solid", fgColor="F2F6FC")
                             if col_num in [9, 10]:
-                                cell.number_format = '"Rs." #,##0.00;[Red]-"Rs." #,##0.00'
+                                cell.number_format = (
+                                    '"Rs." #,##0.00;[Red]-"Rs." #,##0.00'
+                                )
                             elif col_num == 8 and value:
                                 cell.number_format = "dd-mmm-yyyy"
 
@@ -4611,7 +4836,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                     return response
 
                 except Exception as e:
-                    logger.error(f"Excel export error: {str(e)}", exc_info=True)
+                    logger.error(f"Excel export error: {e!s}", exc_info=True)
                     messages.error(
                         self.request, "Failed to generate Excel file. Please try again."
                     )
@@ -4687,8 +4912,8 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                 )
                 return response
         except Exception as e:
-            logger.error(f"Export failed: {str(e)}")
-            messages.error(self.request, f"Export failed: {str(e)}")
+            logger.error(f"Export failed: {e!s}")
+            messages.error(self.request, f"Export failed: {e!s}")
             return redirect("tenants:tenant_list")
 
     def get(self, request, *args, **kwargs):
@@ -4739,8 +4964,12 @@ def tenant_ajax_update(request):
                 payload["value"] = normalized_value
                 payload["display_value"] = format_cnic(normalized_value)
             elif name in {
-                "phone", "phone2", "phone3", "employer_phone",
-                "reference_phone_1", "reference_phone_2",
+                "phone",
+                "phone2",
+                "phone3",
+                "employer_phone",
+                "reference_phone_1",
+                "reference_phone_2",
                 "emergency_contact_phone",
             }:
                 payload["value"] = normalized_value

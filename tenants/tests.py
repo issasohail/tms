@@ -1,9 +1,11 @@
 # Create your tests here.
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
 from django.test import RequestFactory, SimpleTestCase, TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from leases.services.lease_expiry import (
@@ -2149,3 +2151,75 @@ class TenantIncomeOccupationFormTests(TestCase):
             "occupation-select-tags",
             form.fields["occupation"].widget.attrs["class"],
         )
+
+
+class TenantDetailLeaseBalanceRegressionTests(TestCase):
+    def setUp(self):
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+
+        from invoices.models import Invoice
+        from leases.models import Lease
+        from properties.models import Property, Unit
+        from tenants.models import Tenant
+
+        self.user = get_user_model().objects.create_superuser(
+            username="tenant-detail-balance",
+            email="tenant-detail-balance@example.com",
+            password="test-password",
+        )
+        self.client.force_login(self.user)
+        property_obj = Property.objects.create(
+            property_name="Balance Consistency Property",
+            owner_name="Owner",
+            owner_cnic="61101-4444444-4",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="B-1")
+        self.tenant = Tenant.objects.create(
+            first_name="Balance", last_name="Tenant", cnic="61101-5555555-5"
+        )
+        self.lease = Lease.objects.create(
+            tenant=self.tenant,
+            unit=unit,
+            start_date=timezone.localdate() - timedelta(days=30),
+            end_date=timezone.localdate() + timedelta(days=300),
+            monthly_rent=Decimal("17300.00"),
+            status="active",
+        )
+        Invoice.objects.create(
+            lease=self.lease,
+            issue_date=timezone.localdate(),
+            due_date=timezone.localdate(),
+            amount=Decimal("7991.00"),
+            status="sent",
+        )
+        Invoice.objects.create(
+            lease=self.lease,
+            issue_date=timezone.localdate(),
+            due_date=timezone.localdate(),
+            amount=Decimal("1590.00"),
+            status="cancelled",
+        )
+
+    def test_tenant_detail_uses_same_balance_as_lease_detail(self):
+        response = self.client.get(
+            reverse("tenants:tenant_detail", args=[self.tenant.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        displayed_lease = next(
+            item
+            for item in response.context["tenant"].leases.all()
+            if item.pk == self.lease.pk
+        )
+        self.assertEqual(
+            displayed_lease.tenant_detail_total_balance, self.lease.get_balance
+        )
+        self.assertEqual(
+            displayed_lease.tenant_detail_total_balance, Decimal("7991.00")
+        )
+        self.assertContains(response, "Balance:")
+        self.assertNotContains(response, "Total: Rs. 9,581")

@@ -22,7 +22,7 @@ from django.db.models import F, OuterRef, Subquery, DecimalField, DateTimeField
 from smart_meter.forms import MeterPrepaidSettingsForm
 from smart_meter.models import MeterPrepaidSettings, Meter
 from .forms import SwitchLabForm
-from smart_meter.utils.commands import refresh_live
+from smart_meter.utils.commands import refresh_live, request_instant_live_reading
 from smart_meter.utils.tenants import (
     attach_active_tenant_names,
     attach_tenant_names_for_dates,
@@ -3837,6 +3837,54 @@ def _fmt(v, decimals=None):
 
 def _ts_iso(dt):
     return dt.isoformat() if dt else ""
+
+@login_required
+@require_POST
+def instant_live_reading(request, meter_id):
+    """Request one fresh DL/T645 0x028011FF reading without changing the normal reader."""
+    import time as time_module
+    meter = get_object_or_404(Meter, pk=meter_id)
+    before = LiveReading.objects.filter(meter=meter).values_list("ts", flat=True).first()
+    result = request_instant_live_reading(meter.meter_number, timeout=8.0)
+    if not result.get("ok"):
+        return JsonResponse(
+            {"ok": False, "error": result.get("error") or "Instant reading failed."},
+            status=409,
+        )
+
+    # The listener remains responsible for parsing and persisting the reading.
+    deadline = time_module.time() + 2.0
+    reading = None
+    while time_module.time() < deadline:
+        reading = LiveReading.objects.filter(meter=meter).first()
+        if reading and (before is None or reading.ts > before):
+            break
+        time_module.sleep(0.1)
+    if not reading or (before is not None and reading.ts <= before):
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "The meter replied, but a fresh live reading was not persisted yet. Refresh and try again.",
+            },
+            status=409,
+        )
+
+    relay_state = getattr(meter, "relay_state", None)
+    return JsonResponse(
+        {
+            "ok": True,
+            "meter_id": meter.pk,
+            "meter_number": meter.meter_number,
+            "updated_ts": _ts_iso(reading.ts),
+            "total_energy": _fmt(reading.total_energy, 3),
+            "balance": _fmt(reading.balance, 2),
+            "voltage_a": _fmt(reading.voltage_a, 1),
+            "current_a": _fmt(reading.current_a, 3),
+            "total_power": _fmt(reading.total_power, 3),
+            "relay_state": relay_state or "unknown",
+        }
+    )
+
 
 def live_custom_data(request):
     # keep filters identical to live_custom

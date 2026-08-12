@@ -1095,7 +1095,7 @@ class UnitCreateView(CreateView):
 
     def get_success_url(self):
         messages.success(self.request, "Unit created successfully.")
-        return reverse("properties:unit_list")
+        return reverse("properties:unit_detail", args=[self.object.pk])
 
 
 class UnitUpdateView(UpdateView):
@@ -1105,7 +1105,7 @@ class UnitUpdateView(UpdateView):
 
     def get_success_url(self):
         messages.success(self.request, "Unit updated successfully.")
-        return reverse("properties:unit_list")
+        return reverse("properties:unit_detail", args=[self.object.pk])
 
 
 class UnitDeleteView(DeleteView):

@@ -1841,7 +1841,7 @@ class WhatsAppControlledAssistantTests(TestCase):
             return_value={"engine": "unavailable", "confidence": 0, "text": ""},
         ):
             response, intent, _metadata = assistant._consume_tenant_upload_type(
-                self.message, self.conversation, "6", self.lease
+                self.message, self.conversation, "4", self.lease
             )
 
         self.conversation.refresh_from_db()
@@ -4111,3 +4111,74 @@ class ChatExportTests(TestCase):
         self.assertIsNotNone(media_row["media"])
         self.assertEqual(media_row["media"]["purpose"], "payment")
         self.assertEqual(media_row["media"]["filename"], "receipt.jpg")
+
+
+class WhatsAppProductionChatRegressionTests(TestCase):
+    def setUp(self):
+        from invoices.models import InvoiceItem, ItemCategory
+
+        self.property = Property.objects.create(
+            property_name="WhatsApp Bill Property",
+            owner_name="Owner",
+            owner_cnic="61101-6666666-6",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(property=self.property, unit_number="WA-1")
+        self.tenant = Tenant.objects.create(
+            first_name="WhatsApp", last_name="Tenant", cnic="61101-7777777-7",
+            phone="03001234567",
+        )
+        self.lease = Lease.objects.create(
+            tenant=self.tenant,
+            unit=self.unit,
+            start_date=timezone.localdate() - timedelta(days=10),
+            end_date=timezone.localdate() + timedelta(days=300),
+            monthly_rent=Decimal("20000.00"),
+            status="active",
+        )
+        self.invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=timezone.localdate(),
+            due_date=timezone.localdate() + timedelta(days=5),
+            amount=Decimal("23000.00"),
+            status="sent",
+        )
+        electric, _ = ItemCategory.objects.get_or_create(name="Electricity")
+        rent, _ = ItemCategory.objects.get_or_create(name="Rent")
+        InvoiceItem.objects.create(
+            invoice=self.invoice, category=electric, description="Electric meter bill", amount=Decimal("3000.00")
+        )
+        InvoiceItem.objects.create(
+            invoice=self.invoice, category=rent, description="Monthly Rent", amount=Decimal("20000.00")
+        )
+
+    def test_electric_bill_phrases_are_not_meter_reading_intent(self):
+        self.assertEqual(detect_intent("Send me electric bill"), "electric_bill")
+        self.assertEqual(detect_intent("what's my current electricity bill"), "electric_bill")
+        self.assertEqual(detect_intent("what's my current election bill just electric bill"), "electric_bill")
+        self.assertEqual(detect_intent("meter reading"), "meter")
+
+    def test_electric_bill_reply_returns_invoice_electricity_component(self):
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+        reply = assistant._latest_electric_bill_reply(self.lease)
+        self.assertIn("Current electricity bill", reply)
+        self.assertIn("Rs. 3000.00", reply)
+        self.assertIn(self.invoice.invoice_number, reply)
+        self.assertNotIn("Rs. 23000.00", reply)
+
+    def test_contextual_details_and_tenant_media_menu_match_chat_regressions(self):
+        from whatsapp.services.whatsapp_ai import (
+            _looks_like_contextual_details,
+            _tenant_media_confirmation_text,
+            _tenant_upload_purpose_from_text,
+        )
+
+        self.assertTrue(_looks_like_contextual_details("Details baj na"))
+        media = SimpleNamespace(purpose=PendingWhatsAppMedia.PURPOSE_OTHER)
+        menu = _tenant_media_confirmation_text(media)
+        self.assertIn("1 Unit Photo", menu)
+        self.assertNotIn("Property Photo", menu)
+        self.assertEqual(_tenant_upload_purpose_from_text("4"), PendingWhatsAppMedia.PURPOSE_PAYMENT)
+        self.assertEqual(_tenant_upload_purpose_from_text("7"), "cancel")

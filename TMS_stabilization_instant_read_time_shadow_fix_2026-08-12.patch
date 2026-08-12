@@ -1,0 +1,29 @@
+diff --git a/smart_meter/views.py b/smart_meter/views.py
+index a86bdc9..67b7868 100644
+--- a/smart_meter/views.py
++++ b/smart_meter/views.py
+@@ -3842,6 +3842,7 @@ def _ts_iso(dt):
+ @require_POST
+ def instant_live_reading(request, meter_id):
+     """Request one fresh DL/T645 0x028011FF reading without changing the normal reader."""
++    import time as time_module
+     meter = get_object_or_404(Meter, pk=meter_id)
+     before = LiveReading.objects.filter(meter=meter).values_list("ts", flat=True).first()
+     result = request_instant_live_reading(meter.meter_number, timeout=8.0)
+@@ -3852,13 +3853,13 @@ def instant_live_reading(request, meter_id):
+         )
+ 
+     # The listener remains responsible for parsing and persisting the reading.
+-    deadline = time.time() + 2.0
++    deadline = time_module.time() + 2.0
+     reading = None
+-    while time.time() < deadline:
++    while time_module.time() < deadline:
+         reading = LiveReading.objects.filter(meter=meter).first()
+         if reading and (before is None or reading.ts > before):
+             break
+-        time.sleep(0.1)
++        time_module.sleep(0.1)
+     if not reading or (before is not None and reading.ts <= before):
+         return JsonResponse(
+             {

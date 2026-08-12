@@ -384,7 +384,7 @@ class CNICRegistrationTemplateCoverageTests(SimpleTestCase):
         self.assertIn("const smartCard =", self.image_editor_source)
         self.assertIn("const olderCard =", self.image_editor_source)
         self.assertIn("function backLayoutScore(canvas)", self.image_editor_source)
-        self.assertIn("tms-image-editor.js' %}?v=20260804-2", self.identity_source)
+        self.assertIn("tms-image-editor.js' %}?v=20260812-1", self.identity_source)
 
     def test_quick_registration_shell_names_are_replaceable_by_ocr(self):
         self.assertIn("TMS_CNIC_REPLACE_SHELL_NAMES", self.public_source)

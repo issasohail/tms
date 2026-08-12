@@ -131,3 +131,77 @@ class UnknownMeterAdmin(admin.ModelAdmin):
                     "last_seen", "seen_count")
     search_fields = ("meter_number",)
     list_filter = ("status",)
+
+# Credit-control / prepaid pilot diagnostics
+from .models import (
+    MeterCommand, MeterCreditAccount, MeterEvaluationRequest, MeterCreditAudit,
+    MeterPrepaidPilot, MeterPrepaidParameterRead, MeterPrepaidWriteAttempt,
+    MeterPrepaidRecharge,
+)
+
+
+@admin.register(MeterCreditAccount)
+class MeterCreditAccountAdmin(admin.ModelAdmin):
+    list_display = ("id", "meter", "installation", "lease", "is_enabled", "effective_credit_limit", "current_exposure", "enforcement_state", "updated_at")
+    list_filter = ("is_enabled", "enforcement_state", "credit_limit_source", "automatic_cutoff", "automatic_restore")
+    search_fields = ("meter__meter_number", "installation__unit__unit_number", "lease__tenant__first_name", "lease__tenant__last_name")
+    raw_id_fields = ("meter", "installation", "lease", "notifications_muted_by", "enforcement_hold_by")
+    readonly_fields = ("active_installation_key", "deposit_reference_amount", "effective_credit_limit", "limit_explanation", "policy_snapshot", "last_evaluated_at", "last_evaluated_reading_kwh", "accrued_usage_amount", "previous_unpaid_electricity", "payments_applied", "credits_applied", "current_exposure", "created_at", "updated_at")
+
+
+@admin.register(MeterEvaluationRequest)
+class MeterEvaluationRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "meter", "status", "attempts", "reading_timestamp", "created_at", "processed_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("meter__meter_number", "last_error")
+    readonly_fields = ("created_at", "updated_at", "processed_at")
+
+
+@admin.register(MeterCommand)
+class MeterCommandAdmin(admin.ModelAdmin):
+    list_display = ("id", "meter_number", "command_type", "desired_state", "source", "status", "priority", "attempt_count", "created_at")
+    list_filter = ("status", "command_type", "source", "desired_state", "created_at")
+    search_fields = ("meter_number", "reason", "error", "idempotency_key")
+    raw_id_fields = ("meter", "related_credit_account", "related_payment", "related_invoice", "related_enforcement_event")
+    readonly_fields = ("reply_hex", "raw_ack_hex", "status_query_hex", "parsed_relay_state", "acknowledged_at", "verified_at", "created_at", "updated_at")
+
+
+@admin.register(MeterCreditAudit)
+class MeterCreditAuditAdmin(admin.ModelAdmin):
+    list_display = ("id", "action_type", "meter", "lease", "source", "previous_state", "new_state", "exposure_after", "created_at")
+    list_filter = ("action_type", "source", "created_at")
+    search_fields = ("meter__meter_number", "reason", "lease__tenant__first_name", "lease__tenant__last_name")
+    raw_id_fields = ("meter", "installation", "lease", "tenant", "credit_account", "invoice", "payment", "user")
+    readonly_fields = ("created_at", "metadata")
+
+
+@admin.register(MeterPrepaidPilot)
+class MeterPrepaidPilotAdmin(admin.ModelAdmin):
+    list_display = ("meter", "installation", "status", "model_name", "firmware_version", "display_balance", "updated_at")
+    list_filter = ("status", "updated_at")
+    search_fields = ("meter__meter_number", "model_name", "firmware_version")
+    raw_id_fields = ("meter", "installation", "enabled_by")
+
+
+@admin.register(MeterPrepaidParameterRead)
+class MeterPrepaidParameterReadAdmin(admin.ModelAdmin):
+    list_display = ("pilot", "parameter", "di", "parsed_value", "unit", "parse_status", "created_at")
+    list_filter = ("parse_status", "parameter", "created_at")
+    search_fields = ("pilot__meter__meter_number", "parameter", "di")
+    readonly_fields = ("raw_response", "metadata", "created_at")
+
+
+@admin.register(MeterPrepaidWriteAttempt)
+class MeterPrepaidWriteAttemptAdmin(admin.ModelAdmin):
+    list_display = ("pilot", "parameter", "requested_value", "actual_value", "status", "user", "created_at")
+    list_filter = ("status", "parameter", "created_at")
+    search_fields = ("pilot__meter__meter_number", "reason")
+    readonly_fields = ("read_before_hex", "command_hex", "ack_hex", "read_back_hex", "created_at", "verified_at")
+
+
+@admin.register(MeterPrepaidRecharge)
+class MeterPrepaidRechargeAdmin(admin.ModelAdmin):
+    list_display = ("transaction_id", "pilot", "amount", "before_balance", "after_balance", "status", "created_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("transaction_id", "pilot__meter__meter_number", "manufacturer_sequence")
+    readonly_fields = ("raw_command", "raw_ack", "created_at", "updated_at")

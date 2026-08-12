@@ -28,7 +28,9 @@ from django.db.models import Q
 class Meter(models.Model):
     BILLING_MODE_CHOICES = [
         ("postpaid", "Postpaid"),
-        ("prepaid", "Prepaid"),
+        ("credit_controlled", "Postpaid with Credit Limit"),
+        ("prepaid", "Prepaid (Legacy)"),
+        ("prepaid_pilot", "DL/T645 Prepaid Pilot"),
     ]
     METER_TYPE_ELECTRIC = "electric"
     METER_TYPE_GAS = "gas"
@@ -102,7 +104,11 @@ class Meter(models.Model):
 
     @property
     def is_prepaid(self):
-        return self.billing_mode == "prepaid"
+        return self.billing_mode in {"prepaid", "prepaid_pilot"}
+
+    @property
+    def is_credit_controlled(self):
+        return self.billing_mode == "credit_controlled"
 
     @property
     def is_check_meter(self):
@@ -175,27 +181,16 @@ class Meter(models.Model):
         return lease.tenant if lease else None
 
     @property
-    def is_cutoff(self) -> bool:
-        """
-        Compute OFF/ON from the live status_word.
-        TODO: Replace the heuristic with your meter's exact bit map.
-        """
+    def relay_state(self):
+        """Authoritative relay state from the documented 0x028011FF status word."""
+        from smart_meter.dlt645 import relay_state_from_status_word
         lr = self.latest_live
-        sw = (lr and lr.status_word) or ""
-        sw = str(sw).strip()
-        if not sw:
-            return False  # unknown => treat as ON
+        return relay_state_from_status_word((lr and lr.status_word) or "")
 
-        # Heuristic that matches what you had; safe-guarded:
-        try:
-            # If it's binary like '0110'
-            if set(sw) <= {"0", "1"}:
-                return sw[0] == "1" or sw.endswith("10")
-            # If it's hex like '0000', parse and check a relay bit (example: bit 0)
-            bits = int(sw, 16)
-            return bool(bits & 0x01)
-        except Exception:
-            return False
+    @property
+    def is_cutoff(self) -> bool:
+        # Unknown remains non-cutoff for backward-compatible display behavior.
+        return self.relay_state == "off"
 
     def __str__(self):
         return f"Meter #{self.meter_number} → {self.unit}"
@@ -1001,36 +996,355 @@ class MeterPrepaidSettings(models.Model):
 
 class MeterCommand(models.Model):
     STATUS_CHOICES = [
-        ("new", "New"),
+        ("new", "New (legacy)"),
+        ("pending", "Pending"),
+        ("waiting_online", "Waiting for Meter"),
+        ("claimed", "Claimed"),
         ("sent", "Sent"),
-        ("ok", "OK"),
-        ("timeout", "Timeout"),
-        ("error", "Error"),
+        ("acknowledged", "Acknowledged"),
+        ("verified", "Verified"),
+        ("retry", "Retry Scheduled"),
+        ("cancelled", "Cancelled"),
+        ("expired", "Expired"),
+        ("failed", "Failed"),
+        ("ok", "OK (legacy)"),
+        ("timeout", "Timeout (legacy)"),
+        ("error", "Error (legacy)"),
+    ]
+    COMMAND_TYPES = [
+        ("relay", "Relay"),
+        ("read", "Read"),
+        ("prepaid_read", "Prepaid Read"),
+        ("prepaid_write", "Prepaid Write"),
+        ("prepaid_recharge", "Prepaid Recharge"),
+        ("other", "Other"),
+    ]
+    DESIRED_STATES = [("", "Not applicable"), ("on", "On"), ("off", "Off")]
+    SOURCES = [
+        ("manual", "Manual"),
+        ("credit_control", "Credit Control"),
+        ("payment", "Payment"),
+        ("prepaid", "Prepaid Pilot"),
+        ("system", "System"),
     ]
 
     meter = models.ForeignKey(
-        "smart_meter.Meter", null=True, blank=True, on_delete=models.SET_NULL)
+        "smart_meter.Meter", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="commands",
+    )
     meter_number = models.CharField(max_length=32, db_index=True)
-    # DL/T645 frame hex (FEFE...16)
     frame_hex = models.TextField()
-    expect_di = models.CharField(
-        max_length=16, blank=True)  # optional DI to match
-    timeout = models.FloatField(default=12.0)               # seconds
-    status = models.CharField(
-        max_length=16, choices=STATUS_CHOICES, default="new", db_index=True)
+    expect_di = models.CharField(max_length=16, blank=True)
+    timeout = models.FloatField(default=12.0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True)
     reply_hex = models.TextField(blank=True)
     error = models.TextField(blank=True)
 
+    command_type = models.CharField(max_length=24, choices=COMMAND_TYPES, default="other", db_index=True)
+    desired_state = models.CharField(max_length=8, choices=DESIRED_STATES, blank=True, default="")
+    source = models.CharField(max_length=24, choices=SOURCES, default="manual", db_index=True)
+    priority = models.PositiveSmallIntegerField(default=50)
+    idempotency_key = models.CharField(max_length=160, null=True, blank=True, unique=True)
+    not_before = models.DateTimeField(null=True, blank=True, db_index=True)
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    attempt_count = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=5)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    next_attempt_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    requires_verification = models.BooleanField(default=False)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancelled_reason = models.CharField(max_length=255, blank=True)
+    raw_ack_hex = models.TextField(blank=True)
+    status_query_hex = models.TextField(blank=True)
+    parsed_relay_state = models.CharField(max_length=16, blank=True)
+
+    related_credit_account = models.ForeignKey(
+        "smart_meter.MeterCreditAccount", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="commands",
+    )
+    related_payment = models.ForeignKey(
+        "payments.Payment", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="meter_commands",
+    )
+    related_invoice = models.ForeignKey(
+        "invoices.Invoice", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="meter_commands",
+    )
+    related_enforcement_event = models.ForeignKey(
+        "smart_meter.MeterCreditAudit", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="commands",
+    )
+
     initiated_by = models.CharField(max_length=128, blank=True)
     reason = models.CharField(max_length=256, blank=True)
-
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         indexes = [
             models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["meter_number", "status", "priority"]),
+            models.Index(fields=["source", "desired_state", "status"]),
         ]
+        permissions = [
+            ("cancel_meter_command", "Can cancel pending meter command"),
+            ("view_raw_dlt645_frames", "Can view raw DL/T645 frames"),
+        ]
+
+    @property
+    def is_terminal(self):
+        return self.status in {"verified", "cancelled", "expired", "failed", "ok", "error"}
 
     def __str__(self):
         return f"{self.meter_number} {self.status} {self.created_at:%Y-%m-%d %H:%M:%S}"
+
+
+class MeterCreditAccount(models.Model):
+    MODE_CHOICES = [("credit_controlled", "Postpaid with Credit Limit")]
+    LIMIT_SOURCES = [
+        ("fixed", "Fixed monetary limit"),
+        ("deposit_percent", "Percentage of electricity security deposit"),
+        ("lower_of", "Lower of fixed and deposit-derived"),
+        ("lease_override", "Lease-specific manual override"),
+    ]
+    STATES = [
+        ("normal", "Normal"), ("warning_1", "Warning 1"), ("warning_2", "Warning 2"),
+        ("cutoff_eligible", "Cutoff eligible"), ("cutoff_pending", "Cutoff pending"),
+        ("cutoff_sent", "Cutoff sent"), ("disconnected", "Disconnected"),
+        ("reconnect_eligible", "Reconnect eligible"), ("reconnect_pending", "Reconnect pending"),
+        ("reconnect_sent", "Reconnect sent"), ("connected", "Connected"),
+        ("manual_hold", "Manual hold"), ("data_review_required", "Data review required"),
+        ("reading_reset_detected", "Reading reset detected"), ("tariff_missing", "Tariff missing"),
+        ("stale_reading", "Stale reading"), ("installation_mismatch", "Installation mismatch"),
+        ("command_failed", "Command failed"),
+    ]
+    RECONNECT_POLICIES = [
+        ("below_reconnect", "Exposure below reconnect threshold"),
+        ("below_cutoff", "Exposure below cutoff threshold"),
+        ("full_balance", "Full enforceable electricity balance paid"),
+        ("minimum_payment", "Minimum fixed payment"),
+        ("staff_approval", "Staff approval required"),
+    ]
+
+    meter = models.ForeignKey(Meter, on_delete=models.PROTECT, related_name="credit_accounts")
+    installation = models.ForeignKey(MeterInstallation, on_delete=models.PROTECT, related_name="credit_accounts")
+    lease = models.ForeignKey(Lease, on_delete=models.PROTECT, related_name="meter_credit_accounts")
+    mode = models.CharField(max_length=24, choices=MODE_CHOICES, default="credit_controlled")
+    is_enabled = models.BooleanField(default=False, db_index=True)
+    active_installation_key = models.PositiveBigIntegerField(null=True, blank=True, unique=True, editable=False)
+
+    credit_limit_source = models.CharField(max_length=24, choices=LIMIT_SOURCES, default="fixed")
+    fixed_credit_limit = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    deposit_percentage = models.DecimalField(max_digits=6, decimal_places=2, default=Decimal("100.00"))
+    lease_override_limit = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    deposit_reference_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    effective_credit_limit = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    limit_explanation = models.CharField(max_length=255, blank=True)
+
+    warning_threshold_percent = models.DecimalField(max_digits=6, decimal_places=2, default=Decimal("75.00"))
+    final_warning_threshold_percent = models.DecimalField(max_digits=6, decimal_places=2, default=Decimal("90.00"))
+    cutoff_threshold_percent = models.DecimalField(max_digits=6, decimal_places=2, default=Decimal("100.00"))
+    reconnect_threshold_percent = models.DecimalField(max_digits=6, decimal_places=2, default=Decimal("80.00"))
+    reconnect_policy = models.CharField(max_length=24, choices=RECONNECT_POLICIES, default="below_reconnect")
+    minimum_reconnect_payment = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    automatic_cutoff = models.BooleanField(default=False)
+    automatic_restore = models.BooleanField(default=False)
+    manual_only_cutoff = models.BooleanField(default=True)
+    staff_approval_required = models.BooleanField(default=True)
+
+    activated_at = models.DateTimeField(null=True, blank=True)
+    activation_reading_kwh = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
+    checkpoint_reading_kwh = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
+    checkpoint_at = models.DateTimeField(null=True, blank=True)
+    starting_tariff = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+    policy_snapshot = models.JSONField(default=dict, blank=True)
+    last_evaluated_reading_kwh = models.DecimalField(max_digits=16, decimal_places=3, null=True, blank=True)
+    last_evaluated_at = models.DateTimeField(null=True, blank=True)
+
+    accrued_usage_amount = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    previous_unpaid_electricity = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    payments_applied = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    credits_applied = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    current_exposure = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+
+    enforcement_state = models.CharField(max_length=32, choices=STATES, default="normal", db_index=True)
+    data_quality_reason = models.CharField(max_length=255, blank=True)
+    last_warning_level = models.PositiveSmallIntegerField(default=0)
+    max_consumption_jump_kwh = models.DecimalField(max_digits=12, decimal_places=3, default=Decimal("250.000"))
+    stale_after_minutes = models.PositiveIntegerField(default=30)
+
+    notifications_muted_until = models.DateTimeField(null=True, blank=True)
+    notifications_muted_for_period = models.CharField(max_length=20, blank=True)
+    notification_mute_reason = models.CharField(max_length=255, blank=True)
+    notifications_muted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="meter_credit_notification_mutes")
+    notification_muted_at = models.DateTimeField(null=True, blank=True)
+
+    enforcement_hold_until = models.DateTimeField(null=True, blank=True)
+    enforcement_hold_for_period = models.CharField(max_length=20, blank=True)
+    enforcement_hold_reason = models.CharField(max_length=255, blank=True)
+    enforcement_hold_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="meter_credit_enforcement_holds")
+    enforcement_hold_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["meter", "is_enabled"]),
+            models.Index(fields=["installation", "is_enabled"]),
+            models.Index(fields=["lease", "is_enabled"]),
+            models.Index(fields=["enforcement_state", "is_enabled"]),
+        ]
+        constraints = [
+            models.CheckConstraint(check=Q(reconnect_threshold_percent__lte=models.F("cutoff_threshold_percent")), name="meter_credit_reconnect_lte_cutoff"),
+            models.CheckConstraint(check=Q(warning_threshold_percent__lte=models.F("final_warning_threshold_percent")), name="meter_credit_warning_order_1"),
+            models.CheckConstraint(check=Q(final_warning_threshold_percent__lte=models.F("cutoff_threshold_percent")), name="meter_credit_warning_order_2"),
+        ]
+        permissions = [
+            ("view_meter_credit_details", "Can view meter credit details"),
+            ("change_meter_credit_settings", "Can change meter credit settings"),
+            ("activate_meter_credit", "Can activate meter credit control"),
+            ("deactivate_meter_credit", "Can deactivate meter credit control"),
+            ("mute_meter_credit_notifications", "Can mute meter credit notifications"),
+            ("hold_meter_credit_enforcement", "Can hold meter credit enforcement"),
+            ("approve_meter_credit_cutoff", "Can approve meter credit cutoff"),
+            ("override_meter_credit_reconnect", "Can override meter credit reconnection policy"),
+            ("use_meter_credit_emergency_stop", "Can use meter credit emergency stop"),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.active_installation_key = self.installation_id if self.is_enabled else None
+        super().save(*args, **kwargs)
+
+    @property
+    def percent_used(self):
+        if not self.effective_credit_limit or self.effective_credit_limit <= 0:
+            return Decimal("0.00")
+        return (self.current_exposure * Decimal("100") / self.effective_credit_limit).quantize(Decimal("0.01"))
+
+    @property
+    def remaining_credit(self):
+        return max(Decimal("0.00"), self.effective_credit_limit - self.current_exposure)
+
+    def __str__(self):
+        return f"Credit account {self.pk or 'new'} - {self.meter.meter_number}"
+
+
+class MeterEvaluationRequest(models.Model):
+    STATUS_CHOICES = [("pending", "Pending"), ("processing", "Processing"), ("done", "Done"), ("failed", "Failed")]
+    meter = models.ForeignKey(Meter, on_delete=models.CASCADE, related_name="credit_evaluation_requests")
+    latest_reading_id = models.PositiveBigIntegerField(null=True, blank=True)
+    reading_timestamp = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="pending", db_index=True)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["status", "created_at"]), models.Index(fields=["meter", "status"])]
+
+
+class MeterCreditAudit(models.Model):
+    SOURCES = [("automatic", "Automatic"), ("scheduled", "Scheduled"), ("manual", "Manual"), ("payment", "Payment"), ("reading", "Reading"), ("system", "System")]
+    action_type = models.CharField(max_length=64, db_index=True)
+    meter = models.ForeignKey(Meter, null=True, blank=True, on_delete=models.SET_NULL, related_name="credit_audits")
+    installation = models.ForeignKey(MeterInstallation, null=True, blank=True, on_delete=models.SET_NULL, related_name="credit_audits")
+    lease = models.ForeignKey(Lease, null=True, blank=True, on_delete=models.SET_NULL, related_name="meter_credit_audits")
+    tenant = models.ForeignKey("tenants.Tenant", null=True, blank=True, on_delete=models.SET_NULL, related_name="meter_credit_audits")
+    credit_account = models.ForeignKey(MeterCreditAccount, null=True, blank=True, on_delete=models.SET_NULL, related_name="audit_events")
+    invoice = models.ForeignKey("invoices.Invoice", null=True, blank=True, on_delete=models.SET_NULL, related_name="meter_credit_audits")
+    payment = models.ForeignKey("payments.Payment", null=True, blank=True, on_delete=models.SET_NULL, related_name="meter_credit_audits")
+    previous_state = models.CharField(max_length=64, blank=True)
+    new_state = models.CharField(max_length=64, blank=True)
+    exposure_before = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    exposure_after = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    threshold = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="meter_credit_audits")
+    source = models.CharField(max_length=16, choices=SOURCES, default="system")
+    reason = models.TextField(blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["meter", "created_at"]), models.Index(fields=["credit_account", "created_at"])]
+
+
+class MeterPrepaidPilot(models.Model):
+    STATUSES = [
+        ("disabled", "Disabled"), ("read_only", "Read only"), ("configuration_pending", "Configuration pending"),
+        ("configuration_sent", "Configuration sent"), ("configuration_verified", "Configuration verified"),
+        ("recharge_pending", "Recharge pending"), ("active_test", "Active test"), ("failed", "Failed"),
+        ("rolled_back", "Rolled back"),
+    ]
+    meter = models.OneToOneField(Meter, on_delete=models.CASCADE, related_name="prepaid_pilot")
+    installation = models.ForeignKey(MeterInstallation, null=True, blank=True, on_delete=models.PROTECT, related_name="prepaid_pilots")
+    status = models.CharField(max_length=32, choices=STATUSES, default="disabled", db_index=True)
+    model_name = models.CharField(max_length=100, blank=True)
+    firmware_version = models.CharField(max_length=100, blank=True)
+    display_balance = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    notes = models.TextField(blank=True)
+    enabled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="enabled_prepaid_pilots")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        permissions = [
+            ("enable_prepaid_pilot", "Can enable prepaid pilot"),
+            ("read_prepaid_parameters", "Can read prepaid parameters"),
+            ("write_prepaid_parameters", "Can write prepaid parameters"),
+            ("recharge_prepaid_meter", "Can recharge prepaid meter"),
+            ("rollback_prepaid_meter", "Can roll back prepaid meter"),
+        ]
+
+
+class MeterPrepaidParameterRead(models.Model):
+    pilot = models.ForeignKey(MeterPrepaidPilot, on_delete=models.CASCADE, related_name="parameter_reads")
+    di = models.CharField(max_length=16, blank=True)
+    parameter = models.CharField(max_length=64)
+    raw_response = models.TextField(blank=True)
+    parsed_value = models.CharField(max_length=128, blank=True)
+    unit = models.CharField(max_length=32, blank=True)
+    parse_status = models.CharField(max_length=24, default="pending")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+
+class MeterPrepaidWriteAttempt(models.Model):
+    STATUSES = [("pending", "Pending"), ("sent", "Sent"), ("verified", "Verified"), ("failed", "Failed"), ("rolled_back", "Rolled back")]
+    pilot = models.ForeignKey(MeterPrepaidPilot, on_delete=models.CASCADE, related_name="write_attempts")
+    parameter = models.CharField(max_length=64)
+    requested_value = models.CharField(max_length=128)
+    original_value = models.CharField(max_length=128, blank=True)
+    read_before_hex = models.TextField(blank=True)
+    command_hex = models.TextField(blank=True)
+    ack_hex = models.TextField(blank=True)
+    read_back_hex = models.TextField(blank=True)
+    actual_value = models.CharField(max_length=128, blank=True)
+    status = models.CharField(max_length=16, choices=STATUSES, default="pending")
+    reason = models.CharField(max_length=255)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="prepaid_write_attempts")
+    created_at = models.DateTimeField(auto_now_add=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+
+
+class MeterPrepaidRecharge(models.Model):
+    STATUSES = [("disabled", "Disabled"), ("pending", "Pending"), ("verified", "Verified"), ("failed", "Failed"), ("uncertain", "Uncertain")]
+    pilot = models.ForeignKey(MeterPrepaidPilot, on_delete=models.CASCADE, related_name="recharges")
+    transaction_id = models.CharField(max_length=64, unique=True)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    manufacturer_sequence = models.CharField(max_length=64, blank=True)
+    before_balance = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    after_balance = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    status = models.CharField(max_length=16, choices=STATUSES, default="disabled")
+    reconciliation_note = models.TextField(blank=True)
+    raw_command = models.TextField(blank=True)
+    raw_ack = models.TextField(blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="prepaid_recharges")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)

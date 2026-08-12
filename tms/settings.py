@@ -601,3 +601,36 @@ if os.getenv("MEDIA_URL"):
     MEDIA_URL = os.getenv("MEDIA_URL")
 elif FORCE_SCRIPT_NAME and MEDIA_URL == "/media/":
     MEDIA_URL = f"{FORCE_SCRIPT_NAME.rstrip('/')}/media/"
+
+# ---------------------------------------------------------------------------
+# Smart-meter credit control / DL/T645 prepaid pilot safety switches
+# Dangerous writes are intentionally disabled unless explicitly enabled by env.
+# ---------------------------------------------------------------------------
+def _env_bool(name, default=False):
+    return os.getenv(name, "1" if default else "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int_list(name):
+    values = []
+    for raw in os.getenv(name, "").split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            values.append(int(raw))
+        except ValueError:
+            pass
+    return tuple(values)
+
+
+METER_ENABLE_AUTOMATIC_CREDIT_EVALUATION = _env_bool("METER_ENABLE_AUTOMATIC_CREDIT_EVALUATION", False)
+METER_ENABLE_AUTOMATIC_NOTIFICATIONS = _env_bool("METER_ENABLE_AUTOMATIC_NOTIFICATIONS", False)
+METER_ENABLE_AUTOMATIC_CUTOFF = _env_bool("METER_ENABLE_AUTOMATIC_CUTOFF", False)
+METER_ENABLE_AUTOMATIC_RESTORE = _env_bool("METER_ENABLE_AUTOMATIC_RESTORE", False)
+METER_ENABLE_PREPAID_READS = _env_bool("METER_ENABLE_PREPAID_READS", False)
+METER_ENABLE_PREPAID_WRITES = _env_bool("METER_ENABLE_PREPAID_WRITES", False)
+METER_EMERGENCY_STOP = _env_bool("METER_EMERGENCY_STOP", False)
+METER_PREPAID_ALLOWED_METER_IDS = _env_int_list("METER_PREPAID_ALLOWED_METER_IDS")
+METER_CREDIT_ALLOWED_METER_IDS = _env_int_list("METER_CREDIT_ALLOWED_METER_IDS")
+METER_AUTOMATIC_CUTOFF_PROTECTED_START = os.getenv("METER_AUTOMATIC_CUTOFF_PROTECTED_START", "20:00")
+METER_AUTOMATIC_CUTOFF_PROTECTED_END = os.getenv("METER_AUTOMATIC_CUTOFF_PROTECTED_END", "08:00")

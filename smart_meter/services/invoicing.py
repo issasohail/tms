@@ -250,7 +250,7 @@ def compute_electric_bill(lease, meter, period_start: date, period_end: date) ->
 
 def billing_contexts_for_period(period_start: date, period_end: date, *, property_id=None, unit_id=None, meter_id=None):
     installations = MeterInstallation.objects.filter(
-        meter__billing_mode="postpaid",
+        meter__billing_mode__in=("postpaid", "credit_controlled"),
         start_date__lte=period_end,
     ).filter(Q(end_date__isnull=True) | Q(end_date__gte=period_start)).select_related(
         "meter",

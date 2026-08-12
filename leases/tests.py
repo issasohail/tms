@@ -202,7 +202,7 @@ class LeaseInventorySynchronizationTests(TestCase):
         # runs, so ensure_lease_inventory_snapshot already reconciles all six
         # legacy fields at Lease-creation time (see leases/services/
         # inventory_parking.py). This explicit call has nothing left to fix.
-        self.assertEqual(updated, 6)
+        self.assertEqual(updated, 0)
         self.assertEqual(
             quantities,
             {

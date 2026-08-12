@@ -72,6 +72,34 @@ def _extract_di(data: bytes) -> str:
     di = bytes(((b - 0x33) & 0xFF) for b in data[0:4])
     return di[::-1].hex().upper()
 
+
+def relay_state_from_status_word(status_word: str):
+    """Return ON/OFF from the manufacturer 2024 Wi-Fi status word.
+
+    For DI 0x028011FF, Bit8 is the relay/switch state: 0 = closed
+    (power ON), 1 = tripped/open (power OFF). ``status_word`` is
+    stored here as a big-endian hexadecimal word.
+    """
+    sw = str(status_word or "").strip().replace("0x", "").replace("0X", "")
+    if not sw:
+        return None
+    try:
+        value = int(sw, 16)
+    except (TypeError, ValueError):
+        return None
+    return "off" if (value & 0x0100) else "on"
+
+
+def power_protection_from_status_word(status_word: str):
+    """Return documented Bit15 power-protection flag, or None if unknown."""
+    sw = str(status_word or "").strip().replace("0x", "").replace("0X", "")
+    if not sw:
+        return None
+    try:
+        return bool(int(sw, 16) & 0x8000)
+    except (TypeError, ValueError):
+        return None
+
 # ----------------------------
 # Checksum
 # ----------------------------

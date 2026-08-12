@@ -1443,6 +1443,28 @@ def meter_detail(request, pk):
         reading.day_max_voltage = max_voltage_by_day.get(reading.local_day)
         recent_daily_readings.append(reading)
 
+    from smart_meter.models import MeterCreditAccount, MeterCommand, MeterPrepaidPilot
+    credit_account = (
+        MeterCreditAccount.objects
+        .filter(meter=meter)
+        .select_related("installation", "lease")
+        .order_by("-is_enabled", "-created_at")
+        .first()
+    )
+    recent_commands = MeterCommand.objects.filter(meter=meter).order_by("-created_at")[:20]
+    prepaid_pilot = MeterPrepaidPilot.objects.filter(meter=meter).first()
+    meter_feature_flags = {
+        "credit_eval": bool(getattr(settings, "METER_ENABLE_AUTOMATIC_CREDIT_EVALUATION", False)),
+        "notifications": bool(getattr(settings, "METER_ENABLE_AUTOMATIC_NOTIFICATIONS", False)),
+        "auto_cutoff": bool(getattr(settings, "METER_ENABLE_AUTOMATIC_CUTOFF", False)),
+        "auto_restore": bool(getattr(settings, "METER_ENABLE_AUTOMATIC_RESTORE", False)),
+        "prepaid_reads": bool(getattr(settings, "METER_ENABLE_PREPAID_READS", False)),
+        "prepaid_writes": bool(getattr(settings, "METER_ENABLE_PREPAID_WRITES", False)),
+        "prepaid_allowlisted": meter.pk in set(getattr(settings, "METER_PREPAID_ALLOWED_METER_IDS", ()) or ()),
+        "credit_allowlisted": meter.pk in set(getattr(settings, "METER_CREDIT_ALLOWED_METER_IDS", ()) or ()),
+        "emergency_stop": bool(getattr(settings, "METER_EMERGENCY_STOP", False)),
+    }
+
     return render(
         request,
         'smart_meter/meter_detail.html',
@@ -1455,6 +1477,10 @@ def meter_detail(request, pk):
             'latest_reading': latest_reading,
             'latest_live': latest_live,
             'recent_daily_readings': recent_daily_readings,
+            'credit_account': credit_account,
+            'recent_commands': recent_commands,
+            'prepaid_pilot': prepaid_pilot,
+            'meter_feature_flags': meter_feature_flags,
         },
     )
 
@@ -1911,6 +1937,9 @@ def cutoff_meter(request, meter_id):
                 allow_switch=True,                                 # <-- explicit
                 initiated_by=request.user.get_username(),          # <-- who clicked
                 reason="manual switch from UI",                    # <-- audit
+                command_type="relay",
+                desired_state="off",
+                source="manual",
                 auth=secret,                                       # <-- optional shared secret
             )
             logger.info("RESPONSE RX CUT-OFF meter=%s cmd=%s ok=%s error=%s payload=%s",
@@ -2016,6 +2045,9 @@ def restore_meter(request, meter_id):
                 allow_switch=True,                                 # <-- explicit
                 initiated_by=request.user.get_username(),          # <-- who clicked
                 reason="manual switch from UI",                    # <-- audit
+                command_type="relay",
+                desired_state="on",
+                source="manual",
                 auth=secret,                                       # <-- optional shared secret
             )
             logger.info("RESPONSE meter=%s cmd=%s ok=%s error=%s payload=%s",
@@ -3276,6 +3308,9 @@ def meter_switch(request):
                     allow_switch=True,                                 # <-- explicit
                     initiated_by=request.user.get_username(),          # <-- who clicked
                     reason="manual switch from UI",                    # <-- audit
+                    command_type="relay",
+                    desired_state="on" if on else "off",
+                    source="manual",
                     auth=secret,                                       # <-- optional shared secret
                 )
                 ok = bool(res.get("ok"))

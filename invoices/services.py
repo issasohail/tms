@@ -812,7 +812,7 @@ def _latest_meter_reading_for_lease(lease, period_end: date):
         MeterInstallation.objects.filter(
             lease=lease,
             meter__meter_type="electric",
-            meter__billing_mode="postpaid",
+            meter__billing_mode__in=("postpaid", "credit_controlled"),
             start_date__lte=period_end,
         )
         .filter(Q(end_date__isnull=True) | Q(end_date__gte=period_end))
@@ -1326,7 +1326,7 @@ def generate_monthly_billing_electric(run, *, dry_run=False, progress_callback=N
             MeterInstallation.objects.filter(
                 lease=item.lease,
                 meter__meter_type="electric",
-                meter__billing_mode="postpaid",
+                meter__billing_mode__in=("postpaid", "credit_controlled"),
                 start_date__lte=period_end,
             )
             .filter(Q(end_date__isnull=True) | Q(end_date__gte=period_start))

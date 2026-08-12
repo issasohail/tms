@@ -18,10 +18,12 @@ from typing import Optional, Tuple
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import close_old_connections, connection, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from smart_meter.dlt645 import parse_frame, verify_checksum
 from smart_meter.models import LiveReading, Meter, MeterReading, UnknownMeter
+from smart_meter.services.command_lifecycle import revalidate_command
 
 # ==== WINDOWS-SAFE LOGGING (same as before) ====
 import logging
@@ -184,6 +186,14 @@ def _register_handler(meter_number: str, handler: "ClientHandler"):
             except Exception:
                 pass
         ACTIVE_HANDLERS[meter_number] = handler
+    # Wake deferred DB commands after the socket identity is known. This is
+    # fail-open for the reading path; the periodic poller remains the fallback.
+    try:
+        MeterCommand.objects.filter(
+            meter_number=meter_number, status="waiting_online"
+        ).update(status="pending", next_attempt_at=None)
+    except Exception as exc:
+        logger.debug("Unable to wake deferred commands for %s: %s", meter_number, exc)
 
 
 def _unregister_handler(meter_number: Optional[str], handler: "ClientHandler"):
@@ -559,7 +569,7 @@ class ClientHandler(threading.Thread):
             'last3_days_flat_energy':   data.get('last3_days_flat_energy'),
         }
         with transaction.atomic():
-            LiveReading.objects.update_or_create(
+            live_reading, _live_created = LiveReading.objects.update_or_create(
                 meter=meter, defaults=live_defaults)
 
         # Historical snapshot on cadence
@@ -593,6 +603,16 @@ class ClientHandler(threading.Thread):
             logger.info("%s ✅ Stored live reading for meter %s",
                         timezone.localtime().isoformat(timespec="seconds"), meter_number)
 
+        # Credit-control observation is intentionally fail-open and occurs only
+        # after normal live/history persistence has completed.  It only debounces
+        # a DB evaluation request; no accounting, WhatsApp, or relay work happens
+        # in the parser/listener path.
+        try:
+            from smart_meter.services.credit_control import request_credit_evaluation
+            request_credit_evaluation(meter, live_reading)
+        except Exception as exc:
+            logger.warning("credit_evaluation_enqueue_failed meter=%s error=%s", meter_number, exc)
+
         connection.close()
 
 # =========================
@@ -601,9 +621,10 @@ class ClientHandler(threading.Thread):
 
 
 class DbCommandPoller(threading.Thread):
-    """
-    Polls MeterCommand rows (status='new'), sends frames via active meter sockets,
-    and writes back the result (ok/timeout/error).
+    """Durable command worker using the existing active socket registry.
+
+    Offline meters remain queued. Automatic relay commands are revalidated
+    immediately before transmission. Reading storage does not depend on this worker.
     """
     daemon = True
 
@@ -621,23 +642,26 @@ class DbCommandPoller(threading.Thread):
         while not self._stop.is_set():
             try:
                 close_old_connections()
-                # lock and take one (or a few) new commands
+                now = timezone.now()
                 with transaction.atomic():
                     qs = (MeterCommand.objects
                           .select_for_update(skip_locked=True)
-                          .filter(status="new")
-                          .order_by("created_at")[:5])
+                          .filter(status__in=("new", "pending", "retry", "waiting_online"))
+                          .filter(Q(not_before__isnull=True) | Q(not_before__lte=now))
+                          .filter(Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now))
+                          .order_by("priority", "created_at")[:5])
                     cmds = list(qs)
-
-                    # Mark as 'sent' to show in-flight
                     for cmd in cmds:
-                        cmd.status = "sent"
-                        cmd.save(update_fields=["status", "updated_at"])
-
-                # process outside the transaction
+                        if cmd.expires_at and cmd.expires_at <= now:
+                            cmd.status = "expired"
+                            cmd.error = "command expired before dispatch"
+                            cmd.save(update_fields=["status", "error", "updated_at"])
+                        else:
+                            cmd.status = "claimed"
+                            cmd.save(update_fields=["status", "updated_at"])
                 for cmd in cmds:
-                    self._process_command(cmd)
-
+                    if cmd.status == "claimed":
+                        self._process_command(cmd)
             except Exception as e:
                 logger.warning("DbCommandPoller loop error: %s", e)
             finally:
@@ -651,16 +675,18 @@ class DbCommandPoller(threading.Thread):
                 self._fail(cmd, "meter_number missing")
                 return
 
-            h = _get_handler(meter_no)
-            if not h:
-                self._fail(cmd, f"meter {meter_no} not connected")
+            result = revalidate_command(cmd)
+            if not result.allowed:
+                self._cancel(cmd, result.reason)
                 return
 
-            # Prepare waiter
+            h = _get_handler(meter_no)
+            if not h:
+                self._wait_online(cmd, f"meter {meter_no} not connected")
+                return
+
             waiter: "queue.Queue" = queue.Queue()
             _push_waiter(meter_no, waiter, cmd.expect_di or None)
-
-            # Enqueue frame
             try:
                 frame = bytes.fromhex(cmd.frame_hex.strip())
             except Exception:
@@ -668,38 +694,73 @@ class DbCommandPoller(threading.Thread):
                 return
 
             ttl = float(cmd.timeout or 12.0)
+            now = timezone.now()
+            MeterCommand.objects.filter(pk=cmd.pk).update(
+                status="sent",
+                attempt_count=cmd.attempt_count + 1,
+                last_attempt_at=now,
+                error="",
+            )
             h.enqueue_send(frame, expire_at=time.time() + ttl)
 
-            # Wait for reply (if expect_di provided) or just succeed after send
             if (cmd.expect_di or "").strip():
                 try:
                     reply = waiter.get(timeout=ttl)
-                    self._ok(cmd, reply.hex().upper())
+                    self._ack(cmd, reply.hex().upper())
                 except queue.Empty:
-                    self._timeout(cmd)
+                    self._retry_or_fail(cmd, "timeout waiting for reply")
             else:
-                # No specific reply required; mark OK immediately
-                self._ok(cmd, reply_hex="")
+                # Existing switch frames do not currently declare a verified relay
+                # status DI. Record transport acknowledgement only; automatic
+                # enforcement never treats this as authoritative relay verification.
+                self._ack(cmd, "")
         except Exception as e:
-            self._fail(cmd, str(e))
+            self._retry_or_fail(cmd, str(e))
 
-    def _ok(self, cmd, reply_hex):
+    def _ack(self, cmd, reply_hex):
         with transaction.atomic():
-            cmd.status = "ok"
+            cmd = MeterCommand.objects.select_for_update().get(pk=cmd.pk)
+            cmd.status = "acknowledged" if cmd.status not in ("ok",) else cmd.status
             cmd.reply_hex = reply_hex or ""
+            cmd.raw_ack_hex = reply_hex or ""
+            cmd.acknowledged_at = timezone.now()
             cmd.error = ""
-            cmd.save(update_fields=[
-                     "status", "reply_hex", "error", "updated_at"])
+            cmd.save(update_fields=["status", "reply_hex", "raw_ack_hex", "acknowledged_at", "error", "updated_at"])
 
-    def _timeout(self, cmd):
+    def _wait_online(self, cmd, msg):
         with transaction.atomic():
-            cmd.status = "timeout"
-            cmd.error = "timeout waiting for reply"
-            cmd.save(update_fields=["status", "error", "updated_at"])
+            cmd = MeterCommand.objects.select_for_update().get(pk=cmd.pk)
+            cmd.status = "waiting_online"
+            cmd.error = msg
+            cmd.next_attempt_at = timezone.now() + datetime.timedelta(seconds=10)
+            cmd.save(update_fields=["status", "error", "next_attempt_at", "updated_at"])
+
+    def _retry_or_fail(self, cmd, msg):
+        with transaction.atomic():
+            cmd = MeterCommand.objects.select_for_update().get(pk=cmd.pk)
+            if cmd.attempt_count >= cmd.max_attempts:
+                cmd.status = "failed"
+                cmd.error = msg
+                cmd.next_attempt_at = None
+            else:
+                cmd.status = "retry"
+                cmd.error = msg
+                delay = min(300, 2 ** max(1, cmd.attempt_count))
+                cmd.next_attempt_at = timezone.now() + datetime.timedelta(seconds=delay)
+            cmd.save(update_fields=["status", "error", "next_attempt_at", "updated_at"])
+
+    def _cancel(self, cmd, msg):
+        with transaction.atomic():
+            cmd = MeterCommand.objects.select_for_update().get(pk=cmd.pk)
+            cmd.status = "cancelled"
+            cmd.cancelled_at = timezone.now()
+            cmd.cancelled_reason = msg[:255]
+            cmd.error = ""
+            cmd.save(update_fields=["status", "cancelled_at", "cancelled_reason", "error", "updated_at"])
 
     def _fail(self, cmd, msg):
         with transaction.atomic():
-            cmd.status = "error"
+            cmd.status = "failed"
             cmd.error = msg
             cmd.save(update_fields=["status", "error", "updated_at"])
 

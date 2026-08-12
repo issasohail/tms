@@ -17,7 +17,7 @@ def generate_bill_for_unit(unit, period_start, period_end, tariff: Tariff = None
     meter = meter.meter if meter else None
     if not meter:
         raise ValueError("Unit has no meter")
-    if getattr(meter, "billing_mode", "postpaid") == "prepaid":
+    if getattr(meter, "billing_mode", "postpaid") in {"prepaid", "prepaid_pilot"}:
         raise ValueError("Prepaid meters are skipped for postpaid bill generation")
 
     t = tariff or Tariff.objects.filter(active=True).first()

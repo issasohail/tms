@@ -270,6 +270,54 @@
     </div>
   </div>
 
+  {% if meter.billing_mode == "credit_controlled" or credit_account %}
+  <div class="meter-detail-card bg-white p-3 mt-3">
+    <h5 class="meter-panel-title">Credit Control</h5>
+    {% if credit_account %}
+      <div class="meter-kv-grid">
+        <div class="meter-kv"><span class="meter-kv-label">Enabled</span><div class="meter-kv-value">{% if credit_account.is_enabled %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">State</span><div class="meter-kv-value">{{ credit_account.get_enforcement_state_display }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Exposure</span><div class="meter-kv-value">Rs. {{ credit_account.current_exposure }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Credit Limit</span><div class="meter-kv-value">Rs. {{ credit_account.effective_credit_limit }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Used</span><div class="meter-kv-value">{{ credit_account.percent_used }}%</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Remaining</span><div class="meter-kv-value">Rs. {{ credit_account.remaining_credit }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Thresholds</span><div class="meter-kv-value">{{ credit_account.warning_threshold_percent }} / {{ credit_account.final_warning_threshold_percent }} / {{ credit_account.cutoff_threshold_percent }} / {{ credit_account.reconnect_threshold_percent }}%</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Last Evaluation</span><div class="meter-kv-value">{{ credit_account.last_evaluated_at|date:"M d, Y H:i"|default:"-" }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Data Quality</span><div class="meter-kv-value">{{ credit_account.data_quality_reason|default:"OK" }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Notification Mute</span><div class="meter-kv-value">{{ credit_account.notifications_muted_for_period|default:credit_account.notifications_muted_until|default:"No" }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Enforcement Hold</span><div class="meter-kv-value">{{ credit_account.enforcement_hold_for_period|default:credit_account.enforcement_hold_until|default:"No" }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Automatic Safety</span><div class="meter-kv-value">Eval {{ meter_feature_flags.credit_eval|yesno:"ON,OFF" }} / Cutoff {{ meter_feature_flags.auto_cutoff|yesno:"ON,OFF" }} / Restore {{ meter_feature_flags.auto_restore|yesno:"ON,OFF" }}</div></div>
+      </div>
+    {% else %}
+      <p class="text-muted mb-0">No credit account has been activated for this meter installation.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if meter.billing_mode == "prepaid_pilot" or prepaid_pilot %}
+  <div class="meter-detail-card bg-white p-3 mt-3">
+    <h5 class="meter-panel-title">DL/T645 Prepaid Pilot</h5>
+    <div class="meter-kv-grid">
+      <div class="meter-kv"><span class="meter-kv-label">Pilot Status</span><div class="meter-kv-value">{% if prepaid_pilot %}{{ prepaid_pilot.get_status_display }}{% else %}Not configured{% endif %}</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Allowlisted</span><div class="meter-kv-value">{{ meter_feature_flags.prepaid_allowlisted|yesno:"Yes,No" }}</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Global Reads</span><div class="meter-kv-value">{{ meter_feature_flags.prepaid_reads|yesno:"Enabled,Disabled" }}</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Global Writes</span><div class="meter-kv-value">{{ meter_feature_flags.prepaid_writes|yesno:"Enabled,Disabled" }}</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Display Balance</span><div class="meter-kv-value">{{ prepaid_pilot.display_balance|default:"-" }}</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Protocol Safety</span><div class="meter-kv-value">Recharge/write verification remains blocked until manufacturer DI/acknowledgement documentation is supplied.</div></div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="meter-detail-card bg-white p-3 mt-3">
+    <h5 class="meter-panel-title">Commands</h5>
+    {% if recent_commands %}
+    <div class="table-responsive"><table class="table table-sm meter-table mb-0">
+      <thead><tr><th>ID</th><th>Type</th><th>Desired</th><th>Source</th><th>Status</th><th>Attempts</th><th>Created</th><th>Error / cancel reason</th></tr></thead>
+      <tbody>{% for command in recent_commands %}<tr><td>{{ command.id }}</td><td>{{ command.command_type }}</td><td>{{ command.desired_state|default:"-" }}</td><td>{{ command.source }}</td><td>{{ command.status }}</td><td>{{ command.attempt_count }}/{{ command.max_attempts }}</td><td>{{ command.created_at|date:"M d H:i" }}</td><td>{{ command.cancelled_reason|default:command.error|default:"-" }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="text-muted mb-0">No queued meter commands.</p>{% endif %}
+  </div>
+
   <div class="meter-detail-card bg-white p-3 mt-3">
     <div class="meter-section mt-0">
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">

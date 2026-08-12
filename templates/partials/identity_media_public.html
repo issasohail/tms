@@ -74,9 +74,11 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
   function statusHost(context,back){if(context.isMain){const docs=back.closest('.td-card');return docs?.querySelector('.td-form-doc-grid')||docs||back.parentElement}return context.container.querySelector('.party-card-body,.family-member-grid')||context.container}
   function ensureStatus(context,back){let s=context.container.querySelector(':scope > .tms-identity-status,.party-card-body > .tms-identity-status,.family-member-grid > .tms-identity-status,.td-form-doc-grid > .tms-identity-status');if(!s){s=document.createElement('div');s.className='tms-identity-status';statusHost(context,back).prepend(s)}return s}
   function shouldLockMain(){return window.TMS_IDENTITY_LOCK_MAIN!==false}
+  function identityFieldsStayEditable(){return window.TMS_IDENTITY_ALLOW_EDIT_AFTER_OCR===true}
   function controls(context){if(context.isMain)return Array.from(context.form.elements);return Array.from(context.container.querySelectorAll('input,select,textarea,button'))}
   function isIdentityControl(el,context){if(el.type==='file')return true;if(el.name==='csrfmiddlewaretoken')return true;if(el.type==='hidden')return true;if(el.classList?.contains('remove-family-member'))return true;return false}
-  function lock(context,on){if(context.isMain&&!shouldLockMain())return;controls(context).forEach(el=>{if(isIdentityControl(el,context))return;if(el.type==='submit'||el.getAttribute('form')===context.form.id)return;if(on){if(!('ocrWasDisabled'in el.dataset))el.dataset.ocrWasDisabled=el.disabled?'1':'0';el.disabled=true;el.closest('.td-form-cell,.field-wrap,.party-card-body>div')?.classList.add('tms-identity-locked')}else{if(el.dataset.ocrWasDisabled==='0')el.disabled=false;el.closest('.td-form-cell,.field-wrap,.party-card-body>div')?.classList.remove('tms-identity-locked')}});const c=cnicField(context);if(c){c.disabled=false;c.readOnly=true;c.classList.add('tms-cnic-readonly')}}
+  function setCnicReadOnly(context,on){const c=cnicField(context);if(!c)return;c.disabled=false;c.readOnly=Boolean(on&&!identityFieldsStayEditable());c.classList.toggle('tms-cnic-readonly',c.readOnly)}
+  function lock(context,on){if(identityFieldsStayEditable()){controls(context).forEach(el=>el.closest('.td-form-cell,.field-wrap,.party-card-body>div')?.classList.remove('tms-identity-locked'));setCnicReadOnly(context,false);return}if(context.isMain&&!shouldLockMain())return;controls(context).forEach(el=>{if(isIdentityControl(el,context))return;if(el.type==='submit'||el.getAttribute('form')===context.form.id)return;if(on){if(!('ocrWasDisabled'in el.dataset))el.dataset.ocrWasDisabled=el.disabled?'1':'0';el.disabled=true;el.closest('.td-form-cell,.field-wrap,.party-card-body>div')?.classList.add('tms-identity-locked')}else{if(el.dataset.ocrWasDisabled==='0')el.disabled=false;el.closest('.td-form-cell,.field-wrap,.party-card-body>div')?.classList.remove('tms-identity-locked')}});setCnicReadOnly(context,true)}
   function hasRestoredCnicPair(front,back){return Boolean(front?.dataset?.temporaryUploadId&&back?.dataset?.temporaryUploadId)}
   function unlockRestoredIdentity(front,back,status){const context=contextFor(front);if(!hasRestoredCnicPair(front,back))return false;lock(context,false);status.className='tms-identity-status is-success';status.textContent='Saved CNIC images restored. You can review or edit the available details.';return true}
   async function restoredUploadFile(input){const id=input?.dataset?.temporaryUploadId,template=window.TMS_REGISTRATION_DRAFT_PREVIEW_TEMPLATE,draft=document.getElementById('registrationDraftId')?.value;if(!id||!template||!draft)return null;try{const url=String(template).replace('00000000-0000-0000-0000-000000000000',id)+'?draft='+encodeURIComponent(draft),response=await fetch(url,{credentials:'same-origin'});if(!response.ok)return null;const blob=await response.blob();return new File([blob],input.dataset.temporaryUploadName||'saved-cnic.jpg',{type:blob.type||'image/jpeg'})}catch(_){return null}}
@@ -194,8 +196,7 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
               if(extractedPhoto){assignFiles(photoInput,[extractedPhoto]);photoInput.dataset.tmsImageEditorApplying='1';photoInput.dispatchEvent(new Event('change',{bubbles:true}));delete photoInput.dataset.tmsImageEditorApplying}
             }
           }
-          const c=cnicField(context);
-          if(c){c.readOnly=true;c.classList.add('tms-cnic-readonly')}
+          setCnicReadOnly(context,true)
           if(phase==='front'){
             lock(context,true);
             status.className='tms-identity-status is-success';
@@ -206,9 +207,9 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
           lock(context,false);
           status.className='tms-identity-status is-success';
           if(p.existing_tenant?.matched){
-            status.textContent=`CNIC front and back numbers verified${sidesMoved?' and moved into the correct Front/Back boxes':''}. An existing tenant record was found and ${loadedExisting} saved visible field(s) were loaded. ${written} visible OCR field(s) were accepted${hiddenSaved?`; ${hiddenSaved} additional CNIC field(s) saved for review`:''}. This submission will reuse the existing record after staff approval.`;
+            status.textContent=`CNIC front and back numbers verified${sidesMoved?' and moved into the correct Front/Back boxes':''}. An existing tenant record was found and ${loadedExisting} saved visible field(s) were loaded. ${written} visible OCR field(s) were accepted${hiddenSaved?`; ${hiddenSaved} additional CNIC field(s) saved for review`:''}. Please review and correct any field, including the CNIC number, before submitting. This submission will reuse the existing record after staff approval.`;
           }else{
-            status.textContent=`CNIC front and back numbers verified${sidesMoved?' and moved into the correct Front/Back boxes':''}. ${written} visible field(s) accepted${hiddenSaved?`; ${hiddenSaved} additional CNIC field(s) saved for review`:''}${retained?`; ${retained} current value(s) kept`:''}. Please complete the remaining information.`;
+            status.textContent=`CNIC front and back numbers verified${sidesMoved?' and moved into the correct Front/Back boxes':''}. ${written} visible field(s) accepted${hiddenSaved?`; ${hiddenSaved} additional CNIC field(s) saved for review`:''}${retained?`; ${retained} current value(s) kept`:''}. Please review and correct any field, including the CNIC number, before submitting.`;
           }
           status.title=(p.warnings||[]).join(' ');
           return true;
@@ -217,7 +218,7 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
           if(phase==='front')frontToken='';
           const allowManualEntry=window.TMS_CNIC_ALLOW_MANUAL_ENTRY===true;
           lock(context,!allowManualEntry);
-          if(allowManualEntry){const c=cnicField(context);if(c){c.disabled=false;c.readOnly=false;c.classList.remove('tms-cnic-readonly')}}
+          if(allowManualEntry)setCnicReadOnly(context,false)
           status.className='tms-identity-status is-error';
           status.textContent=(e.message||'CNIC could not be read.')+(allowManualEntry?' You can enter or correct the details manually.':' Please verify the selected image and upload a clearer copy.');
           return false;

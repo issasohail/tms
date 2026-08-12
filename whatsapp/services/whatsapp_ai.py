@@ -306,6 +306,65 @@ class WhatsAppAIAssistant:
             return response, "staff", {"staff_user": staff_user}
 
         if simulation:
+            # LIVE tenant simulation is pinned to the tenant explicitly selected by staff.
+            # If another workflow changes conversation.tenant or its lease, never silently
+            # continue as a different tenant. Close the corrupted/mismatched simulation
+            # and return to Staff Mode so a new tenant must be selected explicitly.
+            simulated_tenant_id = simulation.get("tenant_id")
+            selected_lease_tenant_id = getattr(conversation.selected_lease, "tenant_id", None)
+            tenant_context_mismatch = bool(
+                not simulated_tenant_id
+                or getattr(conversation, "tenant_id", None) != simulated_tenant_id
+                or (selected_lease_tenant_id is not None and selected_lease_tenant_id != simulated_tenant_id)
+            )
+            if tenant_context_mismatch:
+                started_by_staff_id = simulation.get("started_by_staff_id")
+                conversation.context.pop("staff_tenant_simulation", None)
+                self._clear_context_keys(
+                    conversation,
+                    "lease_options",
+                    "selected_tenant_identity_id",
+                    "pending_media_id",
+                    "pending_payment_id",
+                    "payment_apply_lease_options",
+                    "payment_apply_retry_count",
+                    "payment_receipt_review",
+                    "pending_maintenance_id",
+                    "maintenance_draft",
+                )
+                conversation.selected_mode = WhatsAppConversation.MODE_STAFF
+                conversation.mode_expires_at = timezone.now() + timedelta(
+                    minutes=getattr(settings, "WHATSAPP_MODE_SESSION_MINUTES", 60)
+                )
+                conversation.pending_state = ""
+                conversation.tenant = None
+                conversation.selected_lease = None
+                conversation.selected_property = None
+                conversation.selected_unit = None
+                conversation.save(update_fields=[
+                    "selected_mode", "mode_expires_at", "pending_state", "tenant",
+                    "selected_lease", "selected_property", "selected_unit", "context", "updated_at",
+                ])
+                actual_identity = identify_sender(message_log.phone_number, conversation=conversation)
+                staff_user = actual_identity.staff_user if actual_identity.has_staff else None
+                if staff_user and staff_user.pk == started_by_staff_id:
+                    resolve_mode(conversation, "staff", actual_identity)
+                    log_staff_action(
+                        staff_user,
+                        message_log.phone_number,
+                        "tenant_simulation_context_mismatch",
+                        "blocked",
+                        simulated_tenant_id=simulated_tenant_id,
+                    )
+                    return (
+                        "The previous Act as Tenant session was closed because its tenant context changed. "
+                        "Start Act as Tenant again for the tenant you want to manage.\n\n"
+                        + staff_menu_text(staff_user),
+                        "staff_tenant_simulation_context_mismatch",
+                        {"staff_user": staff_user},
+                    )
+                return guest_menu_text(), "staff_tenant_simulation_context_mismatch", {}
+
             simulator_staff = identity.staff_user
             selected_property = getattr(getattr(conversation.selected_lease, "unit", None), "property", None)
             simulation_allowed = bool(

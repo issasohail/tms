@@ -2314,6 +2314,55 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn(f"{self.property.property_name} / {self.unit.unit_number}", sent_text)
         self.assertIn("Type EXIT", sent_text)
 
+    def test_tenant_assist_never_switches_to_a_different_tenant_implicitly(self):
+        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
+        self.staff1.groups.add(simulator_group)
+        service = MagicMock()
+        assistant = WhatsAppAIAssistant(service=service)
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            pending_state="mode_selection",
+        )
+        start_log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.assist.mismatch.start",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": f"Tenant {self.tenant.phone}"}},
+        )
+        assistant._handle(start_log, conversation)
+        conversation.refresh_from_db()
+        self.assertEqual(conversation.context["staff_tenant_simulation"]["tenant_id"], self.tenant.pk)
+
+        other_tenant = Tenant.objects.create(
+            first_name="Different", last_name="Tenant", phone="+923001234567", cnic="37405-5555555-5"
+        )
+        conversation.tenant = other_tenant
+        conversation.save(update_fields=["tenant", "updated_at"])
+
+        hi_log = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.assist.mismatch.hi",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": "Hi"}},
+        )
+        response, intent, _metadata = assistant._handle(hi_log, conversation)
+
+        self.assertEqual(intent, "staff_tenant_simulation_context_mismatch")
+        self.assertIn("tenant context changed", response)
+        self.assertIn("Staff Inbox / Menu", response)
+        self.assertNotIn("ACTING AS TENANT (LIVE)", response)
+        conversation.refresh_from_db()
+        self.assertEqual(conversation.selected_mode, WhatsAppConversation.MODE_STAFF)
+        self.assertNotIn("staff_tenant_simulation", conversation.context)
+        self.assertIsNone(conversation.tenant)
+        self.assertIsNone(conversation.selected_lease)
+
     def test_staff_lease_menu_exposes_and_selects_lease_photo_upload(self):
         WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
         conversation = WhatsAppConversation.objects.create(

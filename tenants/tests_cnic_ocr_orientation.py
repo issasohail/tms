@@ -386,6 +386,14 @@ class CNICRegistrationTemplateCoverageTests(SimpleTestCase):
         self.assertIn("function backLayoutScore(canvas)", self.image_editor_source)
         self.assertIn("tms-image-editor.js' %}?v=20260812-1", self.identity_source)
 
+    def test_public_registration_ocr_keeps_all_identity_parties_editable(self):
+        self.assertIn("TMS_IDENTITY_LOCK_MAIN = false;", self.public_source)
+        self.assertIn("TMS_IDENTITY_ALLOW_EDIT_AFTER_OCR = true;", self.public_source)
+        self.assertIn("function identityFieldsStayEditable()", self.identity_source)
+        self.assertIn("function setCnicReadOnly(context,on)", self.identity_source)
+        self.assertIn("if(identityFieldsStayEditable())", self.identity_source)
+        self.assertIn("including the CNIC number, before submitting", self.identity_source)
+
     def test_quick_registration_shell_names_are_replaceable_by_ocr(self):
         self.assertIn("TMS_CNIC_REPLACE_SHELL_NAMES", self.public_source)
         self.assertIn("isReplaceableShellName", self.identity_source)

@@ -8,7 +8,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
@@ -18,7 +18,109 @@ from leases.models_parking_inventory import (
     UnitInventoryItem,
 )
 
-from .models import Property, Unit
+from .models import (
+    Property,
+    PropertyMedia,
+    Unit,
+    UnitMedia,
+    _media_stamped_path,
+    _media_thumbnail_path,
+    _media_upload_path,
+    _name_part,
+)
+
+
+class PropertyAndUnitMediaPathTests(SimpleTestCase):
+    def _property_media(self, property_name="F35"):
+        media = PropertyMedia(
+            property=Property(pk=35, property_name=property_name)
+        )
+        media._media_serial = 1
+        return media
+
+    def _unit_media(self, property_name="F35", unit_number="F35-FLAT# 03"):
+        property_obj = Property(pk=35, property_name=property_name)
+        unit = Unit(pk=88, property=property_obj, unit_number=unit_number)
+        media = UnitMedia(unit=unit)
+        media._media_serial = 1
+        return media
+
+    def test_property_media_paths_remain_unchanged(self):
+        media = self._property_media()
+
+        self.assertTrue(
+            _media_upload_path(media, "photo.JPG").startswith(
+                "properties/F35/original/"
+            )
+        )
+        self.assertTrue(
+            _media_stamped_path(media, "photo.jpg").startswith(
+                "properties/F35/stamped/"
+            )
+        )
+        self.assertTrue(
+            _media_thumbnail_path(media, "photo.jpg").startswith(
+                "properties/F35/thumbs/"
+            )
+        )
+
+    def test_unit_media_paths_use_property_units_and_safe_unit_directories(self):
+        media = self._unit_media()
+
+        self.assertEqual(media.storage_folder, "F35/units/F35-FLAT-03")
+        self.assertTrue(
+            _media_upload_path(media, "photo.JPG").startswith(
+                "properties/F35/units/F35-FLAT-03/original/"
+            )
+        )
+        self.assertTrue(
+            _media_stamped_path(media, "photo.jpg").startswith(
+                "properties/F35/units/F35-FLAT-03/stamped/"
+            )
+        )
+        self.assertTrue(
+            _media_thumbnail_path(media, "photo.jpg").startswith(
+                "properties/F35/units/F35-FLAT-03/thumbs/"
+            )
+        )
+        self.assertNotIn("F35-F35-FLAT-03", media.storage_folder)
+
+    def test_unit_storage_folder_does_not_prepend_property_to_unit_number(self):
+        media = self._unit_media(
+            property_name="F56", unit_number="F56-FLAT# 05"
+        )
+
+        self.assertEqual(media.storage_folder, "F56/units/F56-FLAT-05")
+
+    def test_name_part_normalizes_whitespace_and_repeated_punctuation(self):
+        cases = (
+            ("F35-FLAT# 03", "F35-FLAT-03"),
+            ("  F35   FLAT   03  ", "F35-FLAT-03"),
+            ("F35---###///FLAT...03", "F35-FLAT-03"),
+        )
+
+        for value, expected in cases:
+            with self.subTest(value=value):
+                self.assertEqual(_name_part(value, "unit"), expected)
+
+    def test_blank_names_use_existing_fallbacks(self):
+        media = self._unit_media(property_name="   ", unit_number="   ")
+
+        self.assertEqual(media.storage_folder, "property/units/unit-88")
+
+    def test_storage_folder_truncates_each_name_part_to_42_characters(self):
+        media = self._unit_media(property_name="P" * 50, unit_number="U" * 50)
+
+        self.assertEqual(
+            media.storage_folder,
+            f"{'P' * 42}/units/{'U' * 42}",
+        )
+
+    def test_name_part_documents_sanitization_collision(self):
+        self.assertEqual(
+            _name_part("F35-FLAT# 03"),
+            _name_part("F35-FLAT/03"),
+        )
 
 
 class PublicUnitPhotoUploadTests(TestCase):

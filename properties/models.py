@@ -657,7 +657,7 @@ class UnitMedia(BasePropertyMedia):
     @property
     def storage_folder(self):
         return (
-            f"{_name_part(self.unit.property.property_name, 'property')}-"
+            f"{_name_part(self.unit.property.property_name, 'property')}/units/"
             f"{_name_part(self.unit.unit_number, f'unit-{self.unit_id}')}"
         )
 

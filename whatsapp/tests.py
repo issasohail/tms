@@ -3001,6 +3001,109 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual(staged.property, self.property)
         self.assertEqual(staged.submitted_by_staff, self.staff1)
 
+    def test_staff_property_name_can_be_sent_before_photo_type(self):
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            selected_mode=WhatsAppConversation.MODE_STAFF,
+            mode_expires_at=timezone.now() + timedelta(hours=1),
+            pending_state="staff_property_media_menu",
+        )
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+
+        response = assistant._consume_staff_menu_state(
+            self.message, conversation, self.property.property_name, self.staff1
+        )
+        conversation.refresh_from_db()
+        self.assertIn(f"Property selected: {self.property.property_name}", response)
+        self.assertEqual(conversation.pending_state, "staff_property_media_menu")
+        self.assertEqual(
+            conversation.context["staff_property_media_property_hint_id"],
+            self.property.pk,
+        )
+
+        response = assistant._consume_staff_menu_state(
+            self.message, conversation, "2", self.staff1
+        )
+        conversation.refresh_from_db()
+        self.assertIn(f"Select unit for {self.property.property_name}", response)
+        self.assertEqual(conversation.pending_state, "staff_upload_target_selection")
+        self.assertNotIn("staff_property_media_property_hint_id", conversation.context)
+        self.assertEqual(
+            conversation.context["staff_upload_kind"],
+            PendingWhatsAppMedia.TARGET_UNIT_PHOTO,
+        )
+
+    def test_staff_media_auto_confirms_selected_unit_photo_target_without_yes(self):
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number,
+            staff_user=self.staff1,
+            selected_mode=WhatsAppConversation.MODE_STAFF,
+            mode_expires_at=timezone.now() + timedelta(hours=1),
+            context={
+                "staff_upload_kind": PendingWhatsAppMedia.TARGET_UNIT_PHOTO,
+            },
+        )
+        assistant = WhatsAppAIAssistant(service=MagicMock())
+        assistant._select_staff_upload_target(
+            self.message,
+            conversation,
+            self.staff1,
+            {
+                "type": "unit",
+                "id": self.unit.pk,
+                "label": f"{self.property.property_name} / {self.unit.unit_number}",
+            },
+        )
+        conversation.refresh_from_db()
+        self.assertEqual(
+            conversation.pending_state, "staff_upload_target_confirmation"
+        )
+
+        media_log = WhatsAppMessageLog.objects.create(
+            direction="inbound",
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.staff.unit-photo.no-yes",
+            message_type="image",
+            status="received",
+            payload={"type": "image", "image": {"filename": "unit.jpg"}},
+        )
+        staged = PendingWhatsAppMedia.objects.create(
+            conversation=conversation,
+            phone=self.staff1.whatsapp_number,
+            file=ContentFile(b"jpg", name="unit.jpg"),
+            original_filename="unit.jpg",
+            media_type="image",
+        )
+        media_log.api_response = {"simulator_pending_media_id": staged.pk}
+        media_log.save(update_fields=["api_response"])
+
+        response, intent, metadata = assistant._handle_media_message(
+            media_log,
+            conversation,
+            "",
+            "image",
+            resolve_sender(self.staff1.whatsapp_number, conversation=conversation),
+        )
+
+        conversation.refresh_from_db()
+        staged.refresh_from_db()
+        self.assertEqual(intent, "staff_upload_batched")
+        self.assertIn("Photo/file 1 added", response)
+        self.assertEqual(conversation.pending_state, "staff_waiting_upload")
+        self.assertTrue(conversation.context.get("staff_upload_batch_key"))
+        self.assertEqual(staged.target_kind, PendingWhatsAppMedia.TARGET_UNIT_PHOTO)
+        self.assertEqual(staged.property, self.property)
+        self.assertEqual(staged.unit, self.unit)
+        self.assertEqual(staged.submitted_by_staff, self.staff1)
+        self.assertEqual(metadata["pending_media_id"], staged.pk)
+
     @patch("whatsapp.services.whatsapp_ai.notify_staff_pending_request")
     def test_dual_role_staff_generic_media_never_inherits_tenant_lease(
         self, _notify_pending

@@ -831,12 +831,19 @@ class WhatsAppAIAssistant:
         )
         staff_upload_kind = conversation.context.get("staff_upload_kind")
         if is_staff_mode and conversation.pending_state == "staff_upload_target_confirmation":
-            return (
-                "Confirm the exact upload target first. Reply YES to begin uploading or BACK to change it. "
-                "This file was not added.",
-                "staff_upload_confirmation_required",
-                {"staff_user": identity.staff_user},
+            # Sending media is an unambiguous confirmation of the target the staff
+            # member just selected. Do not discard the file when YES was skipped.
+            self._confirm_staff_upload_target(
+                message_log, conversation, identity.staff_user
             )
+            staff_upload_kind = conversation.context.get("staff_upload_kind")
+            if conversation.pending_state != "staff_waiting_upload":
+                return (
+                    "The selected upload target is no longer valid or accessible. "
+                    "Please start again from the Staff Menu.",
+                    "staff_upload_target_invalid",
+                    {"staff_user": identity.staff_user},
+                )
         if (
             is_staff_mode
             and conversation.pending_state == "staff_waiting_upload"
@@ -2535,14 +2542,45 @@ class WhatsAppAIAssistant:
             if lowered in kind_map:
                 kind = kind_map[lowered]
                 prompt = "Send the building/property name to select the photo target." if kind == PendingWhatsAppMedia.TARGET_PROPERTY_PHOTO else "Send the property and unit to select the unit target." if kind == PendingWhatsAppMedia.TARGET_UNIT_PHOTO else "Send tenant name, property, unit, phone, or CNIC to select the lease target."
-                return self._start_staff_upload_target_search(conversation, kind, prompt, staff_user)
+                response = self._start_staff_upload_target_search(conversation, kind, prompt, staff_user)
+                hinted_property_id = conversation.context.pop(
+                    "staff_property_media_property_hint_id", None
+                )
+                if hinted_property_id:
+                    hinted_property = next(
+                        (
+                            item
+                            for item in self._staff_accessible_properties(staff_user)
+                            if item.pk == hinted_property_id
+                        ),
+                        None,
+                    )
+                    conversation.save(update_fields=["context", "updated_at"])
+                    if hinted_property:
+                        return self._consume_staff_upload_target_query(
+                            message_log, conversation, hinted_property.property_name, staff_user
+                        )
+                return response
             if lowered in {"5", "view photos"}:
                 return self._staff_property_media_summary(message_log, staff_user)
             if lowered in {"6", "back"}:
                 conversation.pending_state = ""
-                conversation.save(update_fields=["pending_state", "updated_at"])
+                conversation.context.pop("staff_property_media_property_hint_id", None)
+                conversation.save(update_fields=["pending_state", "context", "updated_at"])
                 return staff_menu_text(staff_user)
-            return "Please choose a Property Menu option by number, or type BACK."
+
+            # Accept the property before the photo-type prompt. Staff commonly send
+            # "F35" first and then choose Property Photos or Unit Photos.
+            properties = self._staff_accessible_properties(staff_user)
+            property_obj, unit_hint = self._resolve_staff_property_unit_text(text, properties)
+            if property_obj is not None and not unit_hint:
+                conversation.context["staff_property_media_property_hint_id"] = property_obj.pk
+                conversation.save(update_fields=["context", "updated_at"])
+                return (
+                    f"Property selected: {property_obj.property_name}.\n\n"
+                    f"{staff_submenu_text('5')}"
+                )
+            return "Please choose a Property Menu option by number, type a property name, or type BACK."
 
         if state == "staff_upload_target_query":
             return self._consume_staff_upload_target_query(message_log, conversation, text, staff_user)

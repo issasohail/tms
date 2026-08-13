@@ -17,7 +17,7 @@ from typing import Optional, Tuple
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
-from django.db import close_old_connections, connection, transaction
+from django.db import DatabaseError, close_old_connections, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -182,7 +182,7 @@ def _register_handler(meter_number: str, handler: "ClientHandler"):
             try:
                 logger.info("🔁 Meter %s reconnected from %s; closing old peer %s",
                             meter_number, handler.peer, getattr(old, "peer", "?"))
-                old.close()  # politely stop the old thread/socket
+                old.close(reason="replaced")  # politely stop the old thread/socket
             except Exception:
                 pass
         ACTIVE_HANDLERS[meter_number] = handler
@@ -287,6 +287,7 @@ class ClientHandler(threading.Thread):
         self.meter_number: Optional[str] = None
         self.last_seen = time.time()
         self.peer = f"{addr[0]}:{addr[1]}"
+        self.disconnect_reason = "shutdown"
 
         # UPDATED: heartbeat thread control
         self._hb_stop = threading.Event()
@@ -295,7 +296,8 @@ class ClientHandler(threading.Thread):
         self.tx.put((frame, float(expire_at or 0.0)))
 
     # UPDATED: clean close that other code can call
-    def close(self):
+    def close(self, reason="shutdown"):
+        self.disconnect_reason = reason
         self.alive = False
         self._hb_stop.set()
         try:
@@ -327,7 +329,11 @@ class ClientHandler(threading.Thread):
                     pass
 
     def run(self):
-        logger.info(f"📡 Connection from {self.addr}")
+        # Django request middleware does not run for management-command threads.
+        # Explicitly bracket this long-lived worker so it never inherits or leaves
+        # behind a thread-local database connection.
+        close_old_connections()
+        logger.info("TCP_CONNECTED peer=%s", self.peer)
         threading.Thread(target=self._heartbeat_loop,
                          name=f"hb@{self.addr[0]}:{self.addr[1]}", daemon=True).start()
         try:
@@ -336,12 +342,14 @@ class ClientHandler(threading.Thread):
                 try:
                     chunk = self.conn.recv(4096)
                     if chunk == b"":  # peer closed (EOF)
-                        logger.info(f"EOF from {self.addr} — closing")
+                        self.disconnect_reason = "eof"
                         break
                 except socket.timeout:
                     chunk = None
                 except Exception as e:
-                    logger.debug(f"recv error {self.addr}: {e}")
+                    if self.alive:
+                        self.disconnect_reason = "recv_error"
+                    logger.warning("TCP_RECV_ERROR peer=%s error=%s", self.peer, e)
                     break
 
                 if chunk:
@@ -352,6 +360,7 @@ class ClientHandler(threading.Thread):
 
                     # Guard against memory abuse
                     if len(self.buffer) > MAX_BUFFER_BYTES:
+                        self.disconnect_reason = "buffer_cap"
                         logger.warning(
                             f"Buffer cap exceeded from {self.addr}; dropping connection")
                         break
@@ -429,13 +438,23 @@ class ClientHandler(threading.Thread):
                 except queue.Empty:
                     pass
                 except Exception as e:
+                    if self.alive:
+                        self.disconnect_reason = "send_error"
                     logger.warning(f"Send error to {self.addr}: {e}")
                     break
 
                 # UPDATED: removed idle-close block entirely.
                 # We only exit on explicit peer close or I/O error.
 
+                # recv() wakes on its 30-second timeout even when the meter is
+                # quiet. This lets the handler retire connections older than
+                # CONN_MAX_AGE without closing the persistent TCP meter session.
+                close_old_connections()
+
         except Exception as e:
+            self.disconnect_reason = (
+                "db_error" if isinstance(e, DatabaseError) else "handler_error"
+            )
             logger.exception(f"ClientHandler error for {self.addr}: {e}")
         finally:
             try:
@@ -445,11 +464,36 @@ class ClientHandler(threading.Thread):
             self.alive = False
             if self.meter_number:
                 _unregister_handler(self.meter_number, self)
-            timestamp = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-            logger.info(f"🔌 Connection closed {self.addr} at {timestamp}")
+            close_old_connections()
+            connection.close()
+            logger.info(
+                "TCP_DISCONNECTED meter=%s peer=%s reason=%s",
+                self.meter_number or "unknown",
+                self.peer,
+                self.disconnect_reason,
+            )
 
     def process_frame(self, frame: bytes):
+        # A persistent meter socket can outlive CONN_MAX_AGE by hours or days.
+        # Treat each frame as one unit of DB work, including early returns and
+        # exceptions, so the handler's thread-local connection stays bounded.
         close_old_connections()
+        try:
+            self._process_frame(frame)
+        except DatabaseError as exc:
+            logger.exception(
+                "DB_ERROR meter=%s peer=%s operation=frame_persistence error=%s",
+                self.meter_number or "unknown",
+                self.peer,
+                exc,
+            )
+            # The meter TCP session is independent of MySQL. Retire only this
+            # thread's failed DB connection and allow the next frame to retry.
+            connection.close()
+        finally:
+            close_old_connections()
+
+    def _process_frame(self, frame: bytes):
 
         start = frame.find(b'\x68')
         ok, cs_style = verify_checksum(frame, start)
@@ -524,7 +568,6 @@ class ClientHandler(threading.Thread):
                             "seen_count", "last_raw_hex", "status", "last_seen"])
             logger.info(
                 f"🆕 Unknown meter discovered: {meter_number} (seen {um.seen_count}x)")
-            connection.close()
             return
 
         # Live upsert
@@ -612,8 +655,6 @@ class ClientHandler(threading.Thread):
             request_credit_evaluation(meter, live_reading)
         except Exception as exc:
             logger.warning("credit_evaluation_enqueue_failed meter=%s error=%s", meter_number, exc)
-
-        connection.close()
 
 # =========================
 # Django management command

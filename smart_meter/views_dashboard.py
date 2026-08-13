@@ -56,6 +56,7 @@ from openpyxl.utils import get_column_letter
 
 from properties.models import Property, Unit
 from smart_meter.models import Meter, MeterReading, LiveReading, MeterBalance, MeterInstallation
+from smart_meter.status import online_threshold_minutes
 import json
 from django.utils.safestring import mark_safe
 
@@ -71,9 +72,6 @@ except Exception:
     Category = None
 
 BILLING_CURRENCY = "Rs."
-ONLINE_MINUTES = 10
-
-
 def _aware_range(start_d: date, end_d: date):
     tz = timezone.get_current_timezone()
     start_naive = datetime.combine(start_d, time.min)
@@ -591,7 +589,7 @@ def energy_dashboard(request):
             total_energy = getattr(snap, "total_energy",
                                    None) if snap else None
 
-        cutoff_dt = timezone.now() - timedelta(minutes=ONLINE_MINUTES)
+        cutoff_dt = timezone.now() - timedelta(minutes=online_threshold_minutes())
         is_online = bool(lr and lr.ts >= cutoff_dt)
         bal_obj = MeterBalance.objects.filter(unit=selected_meter.unit).first()
 
@@ -625,7 +623,7 @@ def energy_dashboard(request):
     online_count = offline_count = 0
     online_set = set()
     if not per_meter_mode:
-        cutoff = timezone.now() - timedelta(minutes=ONLINE_MINUTES)
+        cutoff = timezone.now() - timedelta(minutes=online_threshold_minutes())
         # get latest live-reading timestamps for all selected meters
         live_map = {lr.meter_id: lr.ts for lr in LiveReading.objects.filter(
             meter__in=display_meters)}
@@ -691,7 +689,7 @@ def energy_dashboard(request):
         "report_type": report_type,
         "start_date": start_date,
         "end_date": end_date,
-        "online_minutes": ONLINE_MINUTES,
+        "online_minutes": online_threshold_minutes(),
 
         "labels": labels,
         "datasets": datasets,

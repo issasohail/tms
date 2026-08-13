@@ -28,6 +28,7 @@ from smart_meter.utils.tenants import (
     attach_tenant_names_for_dates,
     active_tenant_info_for_units,
 )
+from smart_meter.status import online_threshold_minutes
 from smart_meter.models import Meter, LiveReading
 from smart_meter.utils.commands import send_cutoff_command, send_restore_command
 from django.shortcuts import redirect
@@ -532,19 +533,14 @@ def view_bills(request, unit_id):
 def meter_status(request, meter_id: int):
     """
     Returns whether the meter is 'online' based on last LiveReading.ts.
-    Online if ts within ONLINE_MINUTES (default 10) or ?minutes= override.
+    Online if ts is within the shared persisted-reading freshness window.
     """
     try:
         meter = Meter.objects.get(pk=meter_id)
     except Meter.DoesNotExist:
         raise Http404("Meter not found")
 
-    # allow ?minutes= override; else from settings; else 10
-    try:
-        minutes = int(request.GET.get("minutes") or getattr(
-            settings, "ONLINE_MINUTES", 10))
-    except ValueError:
-        minutes = getattr(settings, "ONLINE_MINUTES", 10)
+    minutes = online_threshold_minutes()
 
     # prefer OneToOne 'live' row if present
     lr = getattr(meter, "live", None)
@@ -769,13 +765,13 @@ def _meter_chip_cards(request, base_qs, url_name):
 
 
 def meter_list(request):
-    ONLINE_MINUTES = 10
+    online_minutes = online_threshold_minutes()
 
     # Your existing helper builds the base queryset with flags/filters.
     # Add chip flags/counts before applying the selected chip filter so the chips
     # always show the full count for the current property/unit/meter/search filter.
     meters_base_qs = _with_meter_operational_flags(
-        _meters_annotated_qs(request, online_minutes=ONLINE_MINUTES)
+        _meters_annotated_qs(request, online_minutes=online_minutes)
     )
     current_chip = _normalized_meter_chip(request)
     chip_cards = _meter_chip_cards(request, meters_base_qs, "smart_meter:meter_list")
@@ -855,7 +851,7 @@ def meter_list(request):
         "paginator": paginator,
         "total_count": total_count,
         # ...your existing filters...
-        "online_minutes": ONLINE_MINUTES,
+        "online_minutes": online_minutes,
         "chip_cards": chip_cards,
         "current_chip": current_chip, }
 
@@ -1712,10 +1708,8 @@ def refund_balance(request, meter_id):
 
 # ... keep your other imports
 
-ONLINE_MINUTES = 10  # consider 'online' if ts within this many minutes
-
-
 def live_custom(request):
+    online_minutes = online_threshold_minutes()
     # 1) Pull the filter values from query string
     q = (request.GET.get("q") or "").strip()
     offline_only = (request.GET.get("offline") == "1")
@@ -1734,7 +1728,7 @@ def live_custom(request):
         filtered_meters = filtered_meters.filter(is_active=False)
 
     meter_scope_qs = _with_meter_operational_flags(
-        _meters_annotated_qs(request, online_minutes=ONLINE_MINUTES)
+        _meters_annotated_qs(request, online_minutes=online_minutes)
     )
     if active_filter == "active":
         meter_scope_qs = meter_scope_qs.filter(is_active=True)
@@ -1782,7 +1776,7 @@ def live_custom(request):
     qs = qs.filter(meter_id__in=meter_scope_qs.values("id"))
 
     # 5) Compute 'is_online' and apply offline-only filter if requested
-    cutoff = timezone.now() - timedelta(minutes=ONLINE_MINUTES)
+    cutoff = timezone.now() - timedelta(minutes=online_minutes)
     rows = []
     for r in qs:
         r.is_online = bool(r.ts and r.ts >= cutoff)
@@ -1824,7 +1818,7 @@ def live_custom(request):
     # 6) Render with everything the filter bar needs
     return render(request, "smart_meter/live_custom.html", {
         "rows": rows,
-        "online_minutes": ONLINE_MINUTES,
+        "online_minutes": online_minutes,
         "q": q,
         "offline_only": offline_only,
         "active_filter": active_filter,
@@ -2176,9 +2170,6 @@ except Exception:
 
 
 BILLING_RATE = Decimal("7.50")
-ONLINE_MINUTES = 10
-
-
 def _filtered_meter_sets(request, include_meter_property=True):
     """Return (meters_qs, all_properties, filtered_units, filtered_meters, current ids) for meter_filters.html."""
     prop_id = (request.GET.get("property") or "").strip()
@@ -2241,9 +2232,6 @@ try:
     from smart_meter.utils import build_whatsapp_url
 except Exception:
     build_whatsapp_url = None
-
-ONLINE_MINUTES = 10  # consider live online if LiveReading.ts within this window
-
 
 def _aware_midnight(d: date):
     tz = timezone.get_current_timezone()
@@ -2478,7 +2466,7 @@ def energy_dashboard(request):
     # Fleet online/offline counts
     online_count = offline_count = 0
     if not per_meter_mode:
-        cutoff = timezone.now() - timedelta(minutes=ONLINE_MINUTES)
+        cutoff = timezone.now() - timedelta(minutes=online_threshold_minutes())
         latest_live = {lr.meter_id: lr.ts for lr in LiveReading.objects.filter(
             meter__in=selected_meters)}
         for mid in selected_meters.values_list("id", flat=True):
@@ -2521,7 +2509,7 @@ def energy_dashboard(request):
         "billing_rate": billing_rate,  # Rs./kWh (None if mixed)
         "online_count": online_count,
         "offline_count": offline_count,
-        "online_minutes": ONLINE_MINUTES,
+        "online_minutes": online_threshold_minutes(),
 
         "selected_property_id": selected_property_id,
         "selected_unit_id": selected_unit_id,
@@ -3899,7 +3887,7 @@ def live_custom_data(request):
      )
 
     meter_scope_qs = _with_meter_operational_flags(
-        _meters_annotated_qs(request, online_minutes=ONLINE_MINUTES)
+        _meters_annotated_qs(request, online_minutes=online_threshold_minutes())
     )
     if active_filter == "active":
         meter_scope_qs = meter_scope_qs.filter(is_active=True)
@@ -3944,7 +3932,7 @@ def live_custom_data(request):
 
     qs = qs.filter(meter_id__in=meter_scope_qs.values("id"))
 
-    cutoff = timezone.now() - timedelta(minutes=ONLINE_MINUTES)
+    cutoff = timezone.now() - timedelta(minutes=online_threshold_minutes())
     tenant_info = active_tenant_info_for_units(
         qs.values_list("meter__unit_id", flat=True)
     )
@@ -3986,4 +3974,4 @@ def live_custom_data(request):
             "pf_total": _fmt(r.pf_total, 3),
         })
 
-    return JsonResponse({"rows": payload, "online_minutes": ONLINE_MINUTES})
+    return JsonResponse({"rows": payload, "online_minutes": online_threshold_minutes()})

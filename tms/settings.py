@@ -28,6 +28,7 @@ AUTH_USER_MODEL = "accounts.Account"
 # turn off if you don’t want any deduction yet
 METER_ENABLE_BALANCE_DEDUCTION = True
 METER_ENABLE_PREPAID_CUTOFF = False  # keep False until prepaid is live
+SMART_METER_ONLINE_THRESHOLD_MINUTES = 10
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent

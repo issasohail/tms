@@ -13,13 +13,11 @@ from leases.models import Lease, LeaseRenewal
 from payments.models import Payment
 from properties.models import Property, Unit
 from smart_meter.models import LiveReading
+from smart_meter.status import online_threshold_minutes
 from smart_meter.utils.tenants import attach_active_tenant_names
 from tenants.models import Tenant
 
 ZERO = Decimal("0.00")
-METER_ONLINE_MINUTES = 3
-
-
 def dashboard(request):
     today = timezone.now().date()
 
@@ -138,7 +136,8 @@ def dashboard(request):
         .order_by("due_date", "id")[:5]
     )
 
-    meter_offline_cutoff = timezone.now() - timedelta(minutes=METER_ONLINE_MINUTES)
+    meter_online_minutes = online_threshold_minutes()
+    meter_offline_cutoff = timezone.now() - timedelta(minutes=meter_online_minutes)
     offline_meter_readings = list(
         LiveReading.objects.select_related(
             "meter",
@@ -362,7 +361,7 @@ def dashboard(request):
         "recent_payments": recent_payments,
         "upcoming_invoices": upcoming_invoices,
         "offline_meter_readings": offline_meter_readings,
-        "meter_online_minutes": METER_ONLINE_MINUTES,
+        "meter_online_minutes": meter_online_minutes,
         "ending_soon_leases": ending_soon_leases,
         "vacant_units": vacant_units,
         "recent_expenses": recent_expenses,

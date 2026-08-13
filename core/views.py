@@ -43,9 +43,9 @@ from expenses.models import Expense
 from properties.models import BuildingType, Property, Unit
 from leases.models import Lease, LeaseRenewal
 from smart_meter.models import LiveReading
+from smart_meter.status import online_threshold_minutes
 from django.contrib.auth.decorators import login_required
 
-METER_ONLINE_MINUTES = 3
 logger = logging.getLogger(__name__)
 VIDEO_FRAME_NOTE_PREFIX = "[Extracted video frame]"
 
@@ -2137,7 +2137,8 @@ def dashboard(request):
         .order_by("due_date", "id")[:5]
     )
 
-    meter_offline_cutoff = timezone.now() - timedelta(minutes=METER_ONLINE_MINUTES)
+    meter_online_minutes = online_threshold_minutes()
+    meter_offline_cutoff = timezone.now() - timedelta(minutes=meter_online_minutes)
     offline_meter_readings = (
         LiveReading.objects.select_related(
             "meter",
@@ -2214,7 +2215,7 @@ def dashboard(request):
         'recent_invoices': Invoice.objects.order_by('-issue_date')[:5],
         'upcoming_invoices': upcoming_invoices,
         'offline_meter_readings': offline_meter_readings,
-        'meter_online_minutes': METER_ONLINE_MINUTES,
+        'meter_online_minutes': meter_online_minutes,
         'ending_soon_leases': ending_soon_leases,
         'recent_expenses': recent_expenses,
         'lease_balances': lease_balances,

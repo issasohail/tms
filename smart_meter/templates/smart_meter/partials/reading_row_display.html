@@ -21,11 +21,15 @@
   <td class="col-prop" title="{{ r.meter.unit.property.property_name }}">
     <div>{{ r.meter.unit.property.property_name|slice:":8" }}</div>
     <div class="text-muted d-sm-none sm-unit-under-prop">{{ r.meter.display_location_name }}</div>
-    <div class="text-muted d-sm-none sm-unit-under-prop">{{ r.tenant_name|default:"Vacant" }}</div>
+    <div class="text-muted d-sm-none sm-unit-under-prop">
+      {% if r.tenant_lease_id %}<a href="{% url 'leases:lease_detail' r.tenant_lease_id %}">{{ r.tenant_name|default:"Vacant" }}</a>{% else %}{{ r.tenant_name|default:"Vacant" }}{% endif %}
+    </div>
   </td>
 
   <td class="col-unit">{{ r.meter.display_location_name }}</td>
-  <td class="col-tenant" title="{{ r.tenant_name|default:"Vacant" }}">{{ r.tenant_name|default:"Vacant" }}</td>
+  <td class="col-tenant" title="{{ r.tenant_name|default:"Vacant" }}">
+    {% if r.tenant_lease_id %}<a href="{% url 'leases:lease_detail' r.tenant_lease_id %}">{{ r.tenant_name|default:"Vacant" }}</a>{% else %}{{ r.tenant_name|default:"Vacant" }}{% endif %}
+  </td>
 
   <td class="col-meter">
     <div><span >{{ r.meter.meter_number }}</span></div>

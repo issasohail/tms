@@ -31,7 +31,7 @@
     <thead>
       <tr>
         <th style="width:22px">S.N.</th>
-        <th style="width:80px">Unit</th>
+        <th style="width:80px">Unit / Meter</th>
         <th style="width:120px">Tenant</th>
         <th style="width:80px">Phone</th>
         {% for col in header_cols_pdf %}
@@ -53,7 +53,7 @@
         {% for r in g.rows %}
           <tr>
             <td>{{ r.sn }}</td>
-            <td>{{ r.unit.unit_number }}</td>
+            <td>{{ r.unit_display_label }}</td>
             <td>{{ r.tenant_name }}</td>
             <td>{{ r.tenant_phone|format_phone }}</td>
             {% for cell in r.cells %}

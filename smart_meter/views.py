@@ -1748,7 +1748,7 @@ def live_custom(request):
             "id", "meter", "ts", "source_ip", "source_port", "balance",
             "total_energy", "voltage_a", "current_a", "total_power", "pf_total",
             "meter__id", "meter__unit", "meter__meter_number", "meter__power_status",
-            "meter__is_active", "meter__meter_role",
+            "meter__name", "meter__is_active", "meter__meter_role",
             "meter__unit__id", "meter__unit__property", "meter__unit__unit_number",
             "meter__unit__property__id", "meter__unit__property__property_name",
         )
@@ -3913,7 +3913,7 @@ def live_custom_data(request):
             "id", "meter", "ts", "source_ip", "source_port", "balance",
             "total_energy", "voltage_a", "current_a", "total_power", "pf_total",
             "meter__id", "meter__unit", "meter__meter_number", "meter__power_status",
-            "meter__is_active", "meter__meter_role",
+            "meter__name", "meter__is_active", "meter__meter_role",
             "meter__unit__id", "meter__unit__property", "meter__unit__unit_number",
             "meter__unit__property__id", "meter__unit__property__property_name",
         )
@@ -3947,7 +3947,8 @@ def live_custom_data(request):
     )
 
     payload = []
-    for r in qs:
+    rows = attach_active_meter_counts(qs, lambda reading: reading.meter)
+    for r in rows:
         is_online = bool(r.ts and r.ts >= cutoff)
         if offline_only and is_online:
             continue
@@ -3964,7 +3965,7 @@ def live_custom_data(request):
             # values that map to your table columns
             "property_name": p.property_name or "",
             "property_short": (p.property_name or "")[:8],
-            "unit_number": u.unit_number or "",
+            "unit_number": m.display_location_name,
             "tenant_name": tenant_info.get(u.id, {}).get("name", "Vacant"),
             "tenant_id": tenant_info.get(u.id, {}).get("tenant_id"),
             "meter_number": m.meter_number or "",

@@ -186,11 +186,16 @@ class Meter(models.Model):
         unit_number = getattr(self.unit, "unit_number", "") if self.unit_id else ""
         active_count = getattr(self, "_active_unit_meter_count", None)
         if active_count is None and self.unit_id:
-            active_count = MeterInstallation.objects.filter(
+            active_meter_ids = set(MeterInstallation.objects.filter(
                 unit_id=self.unit_id,
                 is_active=True,
                 end_date__isnull=True,
-            ).count()
+            ).values_list("meter_id", flat=True))
+            active_meter_ids.update(Meter.objects.filter(
+                unit_id=self.unit_id,
+                is_active=True,
+            ).values_list("id", flat=True))
+            active_count = len(active_meter_ids)
         if (active_count or 0) > 1:
             return (self.name or "").strip() or self.meter_number
         return unit_number or (self.name or "").strip() or self.meter_number

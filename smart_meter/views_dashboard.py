@@ -57,7 +57,7 @@ from openpyxl.utils import get_column_letter
 from properties.models import Property, Unit
 from smart_meter.models import Meter, MeterReading, LiveReading, MeterBalance, MeterInstallation
 from smart_meter.status import online_threshold_minutes
-from smart_meter.utils.display import attach_active_meter_counts
+from smart_meter.utils.display import attach_active_meter_counts, display_labels_for_units
 import json
 from django.utils.safestring import mark_safe
 
@@ -1324,6 +1324,9 @@ def build_billing_summary_context(request):
     # This keeps historical tenant names correct and shows Vacant when no lease
     # overlaps the month.
     row_sources = _billing_month_units_and_leases(start, end)
+    unit_display_labels = display_labels_for_units(
+        source["unit"] for source in row_sources
+    )
     row_lease_ids = [
         source["lease"].id
         for source in row_sources
@@ -1463,6 +1466,7 @@ def build_billing_summary_context(request):
             "lease": lease,
             "property": prop,
             "unit": unit,
+            "unit_display_label": unit_display_labels.get(unit.id, unit.unit_number),
             "tenant_name": full_name,
             "tenant_phone": phone,
             "cells": cells,
@@ -1937,7 +1941,7 @@ def billing_summary_export_excel(request):
                        end_row=ws.max_row, end_column=len(headers))
 
         for r in g["rows"]:
-            row = [r["sn"], r["unit"].unit_number,
+            row = [r["sn"], r["unit_display_label"],
                    r["tenant_name"], r["tenant_phone"]]
             for cell in r["cells"]:
                 if cell["kind"] == "whatsapp":

@@ -224,8 +224,8 @@
     /* ===== Column widths (large) ===== */
     --lg-col-idx: 4%;
     --lg-col-ts:  13%;
-    --lg-col-prop:14%;
-    --lg-col-unit:8%;
+    --lg-col-prop:11%;
+    --lg-col-unit:11%;
     --lg-col-tenant:12%;
     --lg-col-meter:10%;
     --lg-col-role: 10%;
@@ -260,7 +260,7 @@
     .col-ts    { width: var(--lg-col-ts); }
     .col-prop  { width: var(--lg-col-prop); }
     .col-unit  { width: var(--lg-col-unit); }
-    .col-tenant{ width: var(--lg-col-tenant); }
+    .col-tenant{ width: var(--lg-col-tenant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .col-meter { width: var(--lg-col-meter); }
     .ld-col-role { width: var(--lg-col-role); }
     .col-ip    { width: var(--lg-col-ip); }

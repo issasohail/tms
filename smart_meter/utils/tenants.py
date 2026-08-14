@@ -61,6 +61,7 @@ def active_tenant_info_for_units(unit_ids, today=None):
             tenant_info[lease.unit_id] = {
                 "name": tenant_display_name(lease.tenant),
                 "tenant_id": lease.tenant_id,
+                "lease_id": lease.id,
             }
     return tenant_info
 
@@ -73,7 +74,13 @@ def attach_active_tenant_names(objects, unit_id_getter, attr_name="tenant_name")
     return objects
 
 
-def attach_tenant_names_for_dates(objects, unit_id_getter, date_getter, attr_name="tenant_name"):
+def attach_tenant_names_for_dates(
+    objects,
+    unit_id_getter,
+    date_getter,
+    attr_name="tenant_name",
+    lease_attr_name="tenant_lease_id",
+):
     dated = []
     for obj in objects:
         unit_id = unit_id_getter(obj)
@@ -82,6 +89,7 @@ def attach_tenant_names_for_dates(objects, unit_id_getter, date_getter, attr_nam
             dated.append((obj, unit_id, used_date))
         else:
             setattr(obj, attr_name, "Vacant")
+            setattr(obj, lease_attr_name, None)
 
     if not dated:
         return objects
@@ -111,6 +119,7 @@ def attach_tenant_names_for_dates(objects, unit_id_getter, date_getter, attr_nam
 
     for obj, unit_id, used_date in dated:
         name = "Vacant"
+        lease_id = None
         for occupancy in occupancies:
             if occupancy.unit_id != unit_id:
                 continue
@@ -118,6 +127,7 @@ def attach_tenant_names_for_dates(objects, unit_id_getter, date_getter, attr_nam
                 occupancy.move_out_date is None or occupancy.move_out_date >= used_date
             ):
                 name = tenant_display_name(occupancy.lease.tenant)
+                lease_id = occupancy.lease_id
                 break
         if name == "Vacant":
             for lease in leases:
@@ -127,7 +137,9 @@ def attach_tenant_names_for_dates(objects, unit_id_getter, date_getter, attr_nam
                     lease.end_date is None or lease.end_date >= used_date
                 ):
                     name = tenant_display_name(lease.tenant)
+                    lease_id = lease.id
                     break
         setattr(obj, attr_name, name)
+        setattr(obj, lease_attr_name, lease_id)
 
     return objects

@@ -354,7 +354,9 @@ document.querySelectorAll(".js-long-operation").forEach(function (form) {
     message.textContent = isRestore
       ? "TMS is creating a safety backup and restoring the selected data."
       : "TMS is preparing and saving your backup.";
-    logoutWarning.classList.toggle("d-none", !isRestore);
+    if (logoutWarning) {
+      logoutWarning.classList.toggle("d-none", !isRestore);
+    }
     overlay.classList.remove("d-none");
     document.body.style.overflow = "hidden";
     const startedAt = Date.now();
@@ -390,7 +392,9 @@ document.querySelectorAll(".js-long-operation").forEach(function (form) {
             window.clearInterval(timerInterval);
             title.textContent = label + " connection interrupted";
             message.textContent = "The server response could not be received. Check the backup list before trying this operation again.";
-            logoutWarning.classList.add("d-none");
+            if (logoutWarning) {
+              logoutWarning.classList.add("d-none");
+            }
           });
       }, 50);
     });

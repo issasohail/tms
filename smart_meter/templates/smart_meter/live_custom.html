@@ -1573,7 +1573,7 @@
               <option value="">All meters</option>
               {% for m in filtered_meters %}
               <option value="{{ m.id }}" {% if m.is_selected %} selected{% endif %}>
-                {{ m.meter_number }} — {{ m.unit.unit_number }}
+                {{ m.meter_number }} — {{ m.display_location_name }}
               </option>
               {% endfor %}
 
@@ -1635,7 +1635,7 @@
             <th class="sticky-left sno">S/N</th>
             <th class="sticky-left col-recharge">Recharge</th>
             <th class="sticky-left col-prop">Property</th>
-            <th class="sticky-left col-unit">Unit</th>
+            <th class="sticky-left col-unit">Unit / Meter</th>
             <th class="sticky-left col-tenant">Tenant</th>
             <th class="sticky-left col-meter">Meter #</th>
             <th class="sticky-left col-status">Status</th>
@@ -1673,7 +1673,7 @@
 
             <td class="sticky-left col-prop text-center" title="{{ p.property_name }}">
               <span class="mobile-property">{{ p.property_name|slice:":8" }}</span>
-              <span class="mobile-unit" aria-hidden="true">{{ u.unit_number|default:"" }}</span>
+              <span class="mobile-unit" aria-hidden="true">{{ m.display_location_name|default:"" }}</span>
               <span class="mobile-tenant" title="{{ r.tenant_name|default:"Vacant" }}">
                 {% if r.tenant_id %}
                   <a href="{% url 'tenants:tenant_detail' r.tenant_id %}" class="live-detail-link">{{ r.tenant_name|default:"Vacant"|slice:":20" }}</a>
@@ -1683,8 +1683,8 @@
               </span>
             </td>
 
-            <td class="sticky-left col-unit text-center" title="{{ u.unit_number }}">
-              {{ u.unit_number|default:"" }}
+            <td class="sticky-left col-unit text-center" title="{{ m.display_location_name }}">
+              {{ m.display_location_name|default:"" }}
             </td>
 
             <td class="sticky-left col-tenant text-center" title="{{ r.tenant_name|default:"Vacant" }}">
@@ -1716,7 +1716,7 @@
                 </span>
                 <button type="button" class="btn btn-sm btn-secondary power-toggle" title="Toggle power"
                   aria-label="Toggle power" data-status="{{ m.power_status|upper|default:'OFF' }}"
-                  data-meter-id="{{ m.id }}" data-unit-number="{{ u.unit_number }}"
+                  data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
                   data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
                   data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
                   data-status-url="{% url 'smart_meter:meter_status' m.id %}">
@@ -1741,7 +1741,7 @@
               </span>
               <button type="button" class="btn btn-sm btn-secondary power-toggle" title="Toggle power"
                 aria-label="Toggle power" data-status="{{ m.power_status|upper|default:'OFF' }}"
-                data-meter-id="{{ m.id }}" data-unit-number="{{ u.unit_number }}"
+                data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
                 data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
                 data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
                 data-status-url="{% url 'smart_meter:meter_status' m.id %}">

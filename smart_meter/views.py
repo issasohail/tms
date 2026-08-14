@@ -28,6 +28,7 @@ from smart_meter.utils.tenants import (
     attach_tenant_names_for_dates,
     active_tenant_info_for_units,
 )
+from smart_meter.utils.display import attach_active_meter_counts
 from smart_meter.status import online_threshold_minutes
 from smart_meter.models import Meter, LiveReading
 from smart_meter.utils.commands import send_cutoff_command, send_restore_command
@@ -839,6 +840,7 @@ def meter_list(request):
     }
     paginator = Paginator(meters_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
+    page_obj.object_list = attach_active_meter_counts(page_obj.object_list)
     attach_active_tenant_names(
         page_obj.object_list,
         lambda meter: meter.unit_id,
@@ -1793,6 +1795,7 @@ def live_custom(request):
         info = tenant_info.get(unit_key)
         reading.tenant_name = info["name"] if info else "Vacant"
         reading.tenant_id = info["tenant_id"] if info else None
+    attach_active_meter_counts(rows, lambda reading: reading.meter)
 
     # Mark selected flags (NO template comparison needed)
     # formatter-proof flags (avoid template comparisons)
@@ -2768,6 +2771,7 @@ def reading_list(request):
     page_items = list(readings[offset:offset + page_size + 1])
     has_next = len(page_items) > page_size
     rows = page_items[:page_size]
+    attach_active_meter_counts(rows, lambda reading: reading.meter)
     attach_tenant_names_for_dates(
         rows,
         lambda reading: reading.meter.unit_id if reading.meter else None,
@@ -2883,6 +2887,7 @@ def _reading_export_chunks(qs, chunk_size=2000):
             lambda reading: reading.meter.unit_id if reading.meter else None,
             _reading_local_date,
         )
+        attach_active_meter_counts(rows, lambda reading: reading.meter)
         yield rows
         offset += chunk_size
 
@@ -2895,7 +2900,7 @@ def export_meter_readings_csv(request):
     writer = csv.writer(resp)
 
     headers = [
-        "Timestamp", "Property", "Unit", "Tenant", "Meter",
+        "Timestamp", "Property", "Unit / Meter Name", "Tenant", "Meter",
         "Voltage_A(V)", "Current_A(A)", "Total_Power(W)",
         "Total_Energy(kWh)", "PF_Total"
     ]
@@ -2907,7 +2912,7 @@ def export_meter_readings_csv(request):
             row = [
                 ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "",
                 getattr(r.meter.unit.property, "property_name", ""),
-                getattr(r.meter.unit, "unit_number", ""),
+                r.meter.display_location_name,
                 getattr(r, "tenant_name", "Vacant"),
                 r.meter.meter_number,
                 r.voltage_a if r.voltage_a is not None else "",
@@ -2929,7 +2934,7 @@ def export_meter_readings_xlsx(request):
     ws.title = "Readings"
 
     headers = [
-        "Timestamp", "Property", "Unit", "Tenant", "Meter",
+        "Timestamp", "Property", "Unit / Meter Name", "Tenant", "Meter",
         "Voltage_A(V)", "Current_A(A)", "Total_Power(W)",
         "Total_Energy(kWh)", "PF_Total"
     ]
@@ -2941,7 +2946,7 @@ def export_meter_readings_xlsx(request):
             row = [
                 ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "",
                 getattr(r.meter.unit.property, "property_name", ""),
-                getattr(r.meter.unit, "unit_number", ""),
+                r.meter.display_location_name,
                 getattr(r, "tenant_name", "Vacant"),
                 r.meter.meter_number,
                 r.voltage_a if r.voltage_a is not None else None,
@@ -2984,20 +2989,22 @@ def meters_export_csv(request):
     w = csv.writer(resp)
 
     headers = [
-        "Status", "Meter #", "Name", "Property", "Unit",
+        "Status", "Meter #", "Name", "Property", "Unit / Meter Name",
         "Power", "Unit Rate", "Min Alert", "Min Cutoff", "Active",
         "Installed", "Balance",
         "Last Reading", "Voltage_A(V)", "Current_A(A)", "Total_kWh",
     ]
     w.writerow(headers)
 
-    for m in qs.iterator(chunk_size=1000):
-        w.writerow([
+    for offset in range(0, qs.count(), 1000):
+        meters = attach_active_meter_counts(qs[offset:offset + 1000])
+        for m in meters:
+            w.writerow([
             "Online" if m.is_online else "Offline",
             m.meter_number,
             m.name,
             getattr(m.unit.property, "property_name", ""),
-            getattr(m.unit, "unit_number", ""),
+            m.display_location_name,
             m.power_status,
             float(m.unit_rate) if m.unit_rate is not None else "",
             float(m.min_balance_alert) if m.min_balance_alert is not None else "",
@@ -3009,7 +3016,7 @@ def meters_export_csv(request):
             float(m.last_voltage_a) if m.last_voltage_a is not None else "",
             float(m.last_current_a) if m.last_current_a is not None else "",
             float(m.last_total_energy) if m.last_total_energy is not None else "",
-        ])
+            ])
     return resp
 
 
@@ -3022,20 +3029,22 @@ def meters_export_xlsx(request):
     ws.title = "Meters"
 
     headers = [
-        "Status", "Meter #", "Name", "Property", "Unit",
+        "Status", "Meter #", "Name", "Property", "Unit / Meter Name",
         "Power", "Unit Rate", "Min Alert", "Min Cutoff", "Active",
         "Installed", "Balance",
         "Last Reading", "Voltage_A(V)", "Current_A(A)", "Total_kWh",
     ]
     ws.append(headers)
 
-    for m in qs.iterator(chunk_size=1000):
-        ws.append([
+    for offset in range(0, qs.count(), 1000):
+        meters = attach_active_meter_counts(qs[offset:offset + 1000])
+        for m in meters:
+            ws.append([
             "Online" if m.is_online else "Offline",
             m.meter_number,
             m.name,
             getattr(m.unit.property, "property_name", ""),
-            getattr(m.unit, "unit_number", ""),
+            m.display_location_name,
             m.power_status,
             float(m.unit_rate) if m.unit_rate is not None else None,
             float(m.min_balance_alert) if m.min_balance_alert is not None else None,
@@ -3047,7 +3056,7 @@ def meters_export_xlsx(request):
             float(m.last_voltage_a) if m.last_voltage_a is not None else None,
             float(m.last_current_a) if m.last_current_a is not None else None,
             float(m.last_total_energy) if m.last_total_energy is not None else None,
-        ])
+            ])
 
     # auto widths
     for col in ws.columns:

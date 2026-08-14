@@ -1,6 +1,7 @@
 # invoices/tables.py
 from django.utils.html import format_html
 from django.urls import reverse
+from urllib.parse import urlencode
 from django.template.loader import render_to_string
 from django.core.cache import cache
 import django_tables2 as tables
@@ -216,11 +217,16 @@ class InvoiceTable(ExportableTable):
         )
 
     def render_actions(self, record):
+        delete_url = reverse('invoices:invoice_delete', args=[record.pk])
+        request = getattr(self, "request", None)
+        if request is not None:
+            return_to = request.get_full_path()
+            delete_url = f"{delete_url}?{urlencode({'return_to': return_to})}"
         return render_to_string('components/action_buttons.html', {
             'record': record,  # <-- IMPORTANT: give the template access to the row
             'view_url': reverse('invoices:invoice_detail', args=[record.pk]),
             'edit_url': reverse('invoices:invoice_update', args=[record.pk]),
-            'delete_url': reverse('invoices:invoice_delete', args=[record.pk]),
+            'delete_url': delete_url,
             # optional
             'make_payment_url': reverse('payments:payment_create') + f'?invoice={record.pk}',
             'whatsapp_url': (

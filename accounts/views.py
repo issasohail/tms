@@ -1,14 +1,18 @@
 from __future__ import annotations
+import hashlib
+import logging
+
 from django.views.decorators.http import require_http_methods
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import authenticate, login, logout as auth_logout
+from django.contrib.auth import logout as auth_logout
 from django.contrib import messages
 from django.contrib.auth import views as auth_views
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from django.core.cache import cache
 from django.db.models import ProtectedError
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
@@ -23,6 +27,9 @@ from .forms import (
 )
 
 Account = get_user_model()
+security_logger = logging.getLogger("security.accounts")
+SIGNUP_RATE_LIMIT = 5
+SIGNUP_RATE_WINDOW_SECONDS = 15 * 60
 PERMISSION_ACTIONS = [
     ("view", "View"),
     ("add", "Add"),
@@ -59,19 +66,42 @@ class LogoutView(auth_views.LogoutView):
 @require_http_methods(["GET", "POST"])
 def signup(request):
     if request.method == "POST":
+        remote_address = request.META.get("REMOTE_ADDR", "unknown")
+        address_hash = hashlib.sha256(remote_address.encode("utf-8")).hexdigest()
+        rate_key = f"accounts:signup-attempts:{address_hash}"
+        if cache.add(rate_key, 1, SIGNUP_RATE_WINDOW_SECONDS):
+            attempt_count = 1
+        else:
+            try:
+                attempt_count = cache.incr(rate_key)
+            except ValueError:
+                cache.set(rate_key, 1, SIGNUP_RATE_WINDOW_SECONDS)
+                attempt_count = 1
         form = AccountCreationForm(request.POST)
+        if attempt_count > SIGNUP_RATE_LIMIT:
+            form.add_error(
+                None,
+                "Too many registration attempts. Please try again in 15 minutes.",
+            )
+            return render(
+                request,
+                "accounts/signup.html",
+                {"form": form},
+                status=429,
+            )
         if form.is_valid():
             user = form.save()
-            # Auto-login after signup
-            raw_password = form.cleaned_data.get("password1")
-            user = authenticate(username=user.username, password=raw_password)
-            if user:
-                login(request, user)
+            security_logger.info(
+                "registration_submitted target_user_id=%s username=%s ip_hash=%s",
+                user.pk,
+                user.username,
+                address_hash,
+            )
             messages.success(
-                request, "Welcome! Your account has been created.")
-            if request.path_info.startswith("/tms/"):
-                return redirect("/tms/accounts/profile/")
-            return redirect("accounts:profile")
+                request,
+                "Your registration has been submitted for approval.",
+            )
+            return redirect("login")
     else:
         form = AccountCreationForm()
     return render(request, "accounts/signup.html", {"form": form})
@@ -167,6 +197,57 @@ def user_access_update(request, pk):
         "selected_permissions": selected_permissions,
         "is_create": False,
     })
+
+
+def _public_registration_target(pk):
+    target = get_object_or_404(Account, pk=pk)
+    if target.is_staff or target.is_superuser:
+        raise PermissionDenied(
+            "Staff and superuser accounts must be managed through the user editor."
+        )
+    return target
+
+
+@login_required
+@require_POST
+def user_registration_approve(request, pk):
+    denied = _account_perm_required(request, "change")
+    if denied:
+        return denied
+    target = _public_registration_target(pk)
+    if not target.is_active:
+        target.is_active = True
+        target.save(update_fields=["is_active"])
+    security_logger.info(
+        "registration_approved target_user_id=%s username=%s actor_user_id=%s actor_username=%s",
+        target.pk,
+        target.username,
+        request.user.pk,
+        request.user.get_username(),
+    )
+    messages.success(request, f"Approved registration for {target.username}.")
+    return redirect("accounts:user_access_list")
+
+
+@login_required
+@require_POST
+def user_registration_reject(request, pk):
+    denied = _account_perm_required(request, "change")
+    if denied:
+        return denied
+    target = _public_registration_target(pk)
+    if target.is_active:
+        target.is_active = False
+        target.save(update_fields=["is_active"])
+    security_logger.info(
+        "registration_rejected target_user_id=%s username=%s actor_user_id=%s actor_username=%s",
+        target.pk,
+        target.username,
+        request.user.pk,
+        request.user.get_username(),
+    )
+    messages.success(request, f"Registration for {target.username} remains inactive.")
+    return redirect("accounts:user_access_list")
 
 
 @login_required

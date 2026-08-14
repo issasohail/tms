@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Pending Approvals{% endblock %}
+{% block main_container_class %}container pending-approval-page-shell{% endblock %}
 {% block content %}
 <style>
+  .pending-approval-page-shell {
+    max-width: 1420px;
+  }
   .pending-approval-table {
     table-layout: fixed;
   }
@@ -368,7 +372,7 @@
                     <td class="pending-status" data-label="Status">
                       <div class="{% if section.kind == 'maintenance' %}pending-maintenance-actions{% else %}pending-status-line{% endif %}">
                         <span class="badge {% if item.status == 'approved' or item.status == 'active' %}bg-success{% elif item.status == 'rejected' %}bg-danger{% elif item.status == 'pending' or item.status == 'pending_approval' or item.status == 'confirmed' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ item.get_status_display }}</span>
-                        {% if section.kind != "registration" and item.status == "pending" or section.kind != "registration" and item.status == "pending_approval" or section.kind != "registration" and item.status == "confirmed" %}
+                        {% if row.can_change and section.kind != "registration" and item.status == "pending" or row.can_change and section.kind != "registration" and item.status == "pending_approval" or row.can_change and section.kind != "registration" and item.status == "confirmed" %}
                           <form method="post" action="{{ row.urls.approve }}" class="d-inline pending-approval-action" data-action="approve" {% if section.kind == "maintenance" %}id="maintenance-approval-{{ item.pk }}"{% endif %}>
                             {% csrf_token %}
                             {% if section.kind == "maintenance" %}
@@ -384,7 +388,7 @@
                     </td>
                     {% if section.kind == "media" %}
                       <td class="pending-move" data-label="Move To">
-                        {% if item.status == "pending" %}
+                        {% if row.can_change and item.status == "pending" %}
                           <form method="post" action="{{ row.urls.approve }}" class="pending-approval-action pending-move-form" data-action="move">
                             {% csrf_token %}
                             <select name="media_destination" class="form-select form-select-sm" aria-label="Move media to">
@@ -401,16 +405,16 @@
                     <td class="pending-review" data-label="Review">
                       <div class="pending-review-line">
                       <a class="btn btn-sm btn-outline-primary" href="{{ row.urls.detail }}">{% if section.kind == "registration" %}Review{% else %}Detail{% endif %}</a>
-                      {% if section.kind != "registration" and item.status == "pending" or section.kind != "registration" and item.status == "pending_approval" or section.kind != "registration" and item.status == "confirmed" %}
+                      {% if row.can_change and section.kind != "registration" and item.status == "pending" or row.can_change and section.kind != "registration" and item.status == "pending_approval" or row.can_change and section.kind != "registration" and item.status == "confirmed" %}
                         <form method="post" action="{{ row.urls.reject }}" class="d-inline pending-approval-action" data-action="reject">
                           {% csrf_token %}
                           <button type="submit" class="btn btn-sm btn-outline-danger">Reject</button>
                         </form>
                       {% endif %}
-                      {% if row.can_delete and item.status == "pending" or row.can_delete and item.status == "pending_approval" or row.can_delete and item.status == "confirmed" %}
-                        <form method="post" action="{{ row.urls.delete }}" class="d-inline pending-approval-action" data-action="delete" data-confirm-delete="1">
+                      {% if row.can_delete %}
+                        <form method="post" action="{{ row.urls.delete }}" class="d-inline pending-approval-action" data-action="delete">
                           {% csrf_token %}
-                          <button type="submit" class="btn btn-sm btn-danger" title="Permanently delete this pending approval" aria-label="Delete pending approval"><i class="fas fa-trash"></i></button>
+                          <button type="submit" class="btn btn-sm btn-danger" title="Permanently delete this approval record and unreferenced files" aria-label="Permanently delete approval record"><i class="fas fa-trash"></i></button>
                         </form>
                       {% endif %}
                       </div>
@@ -523,10 +527,6 @@
   document.addEventListener("submit", async function (event) {
     const form = event.target.closest("form.pending-approval-action");
     if (!form) return;
-    if (form.dataset.confirmDelete === "1" && !window.confirm("Delete this pending approval permanently? This cannot be undone.")) {
-      event.preventDefault();
-      return;
-    }
     event.preventDefault();
 
     const submitter = event.submitter;

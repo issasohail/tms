@@ -435,6 +435,23 @@ def _can_delete_pending_approval(user, item):
     return user.has_perm(f"{opts.app_label}.delete_{opts.model_name}")
 
 
+def _can_change_pending_approval(user, item):
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    opts = item._meta
+    return user.has_perm(f"{opts.app_label}.change_{opts.model_name}")
+
+
+def _can_hard_delete_pending_approval(user, item):
+    if not _can_delete_pending_approval(user, item):
+        return False
+    if item._meta.label_lower == "leases.lease":
+        return getattr(item, "status", "") in {"pending_approval", "rejected"}
+    return True
+
+
 @login_required
 def pending_approvals(request):
     from handyman.models import HandymanProfile
@@ -642,7 +659,8 @@ def pending_approvals(request):
                     if section["kind"] == "media"
                     else []
                 ),
-                "can_delete": _can_delete_pending_approval(request.user, item),
+                "can_change": _can_change_pending_approval(request.user, item),
+                "can_delete": _can_hard_delete_pending_approval(request.user, item),
             }
             for item in section["items"]
         ]
@@ -734,40 +752,31 @@ def _pending_item_for_kind(kind, pk):
 @login_required
 @require_POST
 def pending_approval_delete(request, kind, pk):
-    """Delete an unreviewed approval item when the user has its Django delete permission."""
+    """Hard-delete an approval row when the user has its Django delete permission."""
     from tenants.models import TenantRegistrationSubmission
     from whatsapp.models import PendingWhatsAppMedia
+    from core.pending_approval_purge import hard_delete_pending_objects
 
     if kind == "registration":
         item = get_object_or_404(TenantRegistrationSubmission, pk=pk)
     else:
         item = _pending_item_for_kind(kind, pk)
 
-    if not _can_delete_pending_approval(request.user, item):
+    if not _can_hard_delete_pending_approval(request.user, item):
         raise PermissionDenied
 
-    pending_statuses = {"pending", "pending_approval", "confirmed"}
-    if getattr(item, "status", "") not in pending_statuses:
-        messages.error(request, "Only pending approval items can be deleted.")
-        response = _pending_ajax_response(
-            request,
-            "Only pending approval items can be deleted.",
-            redirect_url=reverse("core:pending_approvals"),
-            status=409,
-        )
-        return response or redirect("core:pending_approvals")
-
     deleted_count = 1
-    with transaction.atomic():
-        if kind == "media" and getattr(item, "batch_key", None):
-            batch = PendingWhatsAppMedia.objects.filter(
-                batch_key=item.batch_key,
-                status=PendingWhatsAppMedia.STATUS_PENDING,
-            )
-            deleted_count = batch.count()
-            batch.delete()
-        else:
-            item.delete()
+    if kind == "media" and getattr(item, "batch_key", None):
+        batch = PendingWhatsAppMedia.objects.filter(
+            batch_key=item.batch_key,
+            status=item.status,
+        )
+        deleted_count = batch.count()
+        hard_delete_pending_objects(batch)
+    elif kind == "lease":
+        item.delete()
+    else:
+        hard_delete_pending_objects([item])
 
     message = (
         f"Pending approval deleted ({deleted_count} linked files)."
@@ -775,9 +784,7 @@ def pending_approval_delete(request, kind, pk):
         else "Pending approval deleted."
     )
     messages.success(request, message)
-    response = _pending_ajax_response(
-        request, message, redirect_url=reverse("core:pending_approvals")
-    )
+    response = _pending_ajax_response(request, message)
     return response or redirect("core:pending_approvals")
 
 
@@ -1565,6 +1572,8 @@ def pending_approval_approve(request, kind, pk):
     from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia
 
     item = _pending_item_for_kind(kind, pk)
+    if not _can_change_pending_approval(request.user, item):
+        raise PermissionDenied
     try:
         if kind == "payment" and request.POST.get("approval_action") == "reclassify":
             with transaction.atomic():
@@ -1892,6 +1901,8 @@ def pending_approval_reject(request, kind, pk):
     from whatsapp.models import PendingWhatsAppMaintenance, PendingWhatsAppMedia, PendingWhatsAppPayment
 
     item = _pending_item_for_kind(kind, pk)
+    if not _can_change_pending_approval(request.user, item):
+        raise PermissionDenied
     if kind == "agreement":
         item.status = PendingAgreementApproval.STATUS_REJECTED
         item.reviewed_by = request.user

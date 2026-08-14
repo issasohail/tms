@@ -228,12 +228,13 @@ def apply_fixed_recurring(period_date: date, cutoff_today: bool = False):
                 continue
 
         # choose targets by scope
+        month_leases = _active_leases_for_month(period_first)
         if rc.scope == "LEASE" and rc.lease_id:
-            targets = active_leases_qs().filter(pk=rc.lease_id)
+            targets = month_leases.filter(pk=rc.lease_id)
         elif rc.scope == "PROPERTY" and rc.property_id:
-            targets = active_leases_qs().filter(unit__property_id=rc.property_id)
+            targets = month_leases.filter(unit__property_id=rc.property_id)
         else:  # GLOBAL
-            targets = active_leases_qs()
+            targets = month_leases
 
         for lease in targets:
             inv = ensure_month_invoice(lease, period_first)  # invoice date = 1st
@@ -256,7 +257,11 @@ def post_water_bill(water_bill_id: int):
     if wb.posted:
         return
 
-    leases = list(active_leases_qs().filter(unit__property=wb.property))
+    leases = list(
+        _active_leases_for_month(first_of_month(wb.period)).filter(
+            unit__property=wb.property
+        )
+    )
     if not leases:
         wb.posted = True
         wb.save(update_fields=["posted"])
@@ -290,7 +295,7 @@ def post_water_bill(water_bill_id: int):
 def run_monthly_billing_for(period_date: date, cutoff_today: bool = False):
     """One-click: ensure monthly invoices and apply recurring rules."""
     # 1) one invoice per active lease
-    for lease in active_leases_qs():
+    for lease in _active_leases_for_month(first_of_month(period_date)):
         ensure_month_invoice(lease, first_of_month(period_date))
 
     # 2) apply FIXED recurring rows

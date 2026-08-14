@@ -36,7 +36,7 @@
             <option value="">All meters</option>
             {% for m in filtered_meters %}
               <option value="{{ m.id }}" {% if current_meter == m.id|stringformat:"s" %}selected{% endif %}>
-                {{ m.meter_number }} — {{ m.unit.unit_number }}
+                {{ m.meter_number }} — {{ m.display_location_name }}
               </option>
             {% endfor %}
           </select>

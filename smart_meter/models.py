@@ -181,6 +181,21 @@ class Meter(models.Model):
         return lease.tenant if lease else None
 
     @property
+    def display_location_name(self):
+        """Return the unit label, or this meter's name on multi-meter units."""
+        unit_number = getattr(self.unit, "unit_number", "") if self.unit_id else ""
+        active_count = getattr(self, "_active_unit_meter_count", None)
+        if active_count is None and self.unit_id:
+            active_count = MeterInstallation.objects.filter(
+                unit_id=self.unit_id,
+                is_active=True,
+                end_date__isnull=True,
+            ).count()
+        if (active_count or 0) > 1:
+            return (self.name or "").strip() or self.meter_number
+        return unit_number or (self.name or "").strip() or self.meter_number
+
+    @property
     def relay_state(self):
         """Authoritative relay state from the documented 0x028011FF status word."""
         from smart_meter.dlt645 import relay_state_from_status_word

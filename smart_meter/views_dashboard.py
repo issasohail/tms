@@ -57,6 +57,7 @@ from openpyxl.utils import get_column_letter
 from properties.models import Property, Unit
 from smart_meter.models import Meter, MeterReading, LiveReading, MeterBalance, MeterInstallation
 from smart_meter.status import online_threshold_minutes
+from smart_meter.utils.display import attach_active_meter_counts
 import json
 from django.utils.safestring import mark_safe
 
@@ -252,7 +253,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     """
     start_dt, end_dt, tz = _aware_range(start_d, end_d)
 
-    meters = list(meters_qs)
+    meters = attach_active_meter_counts(meters_qs)
     meter_ids = [m.id for m in meters]
     meter_to_rows = {}
     key_union = set()
@@ -358,7 +359,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     service_total = Decimal("0")
 
     for m in meters:
-        unit_number = getattr(m.unit, "unit_number", "")
+        unit_number = m.display_location_name
         legend_label = f"{unit_number} / {m.meter_number}"
         key_to_row = {r["period_key"]: r for r in meter_to_rows.get(m, [])}
         series = []
@@ -574,6 +575,7 @@ def energy_dashboard(request):
     live_panel = {}
     if per_meter_mode:
         selected_meter = get_object_or_404(Meter, id=meter_id)
+        attach_active_meter_counts([selected_meter])
         lr = LiveReading.objects.filter(meter=selected_meter).first()
         if lr:
             last_ts = lr.ts
@@ -594,7 +596,7 @@ def energy_dashboard(request):
         bal_obj = MeterBalance.objects.filter(unit=selected_meter.unit).first()
 
         live_panel = {
-            "unit_name": getattr(selected_meter.unit, "unit_number", ""),
+            "unit_name": selected_meter.display_location_name,
             "meter_number": selected_meter.meter_number,
             "is_online": is_online,
             "last_ts": last_ts,

@@ -1,6 +1,8 @@
 import logging
 import threading
 
+from django.db import close_old_connections
+
 from whatsapp.services.ai_config import get_whatsapp_ai_config
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,7 @@ def enqueue_whatsapp_ai_message(message_log_id):
             logger.exception("Could not queue WhatsApp AI message %s with Celery; using thread fallback.", message_log_id)
 
     def runner():
+        close_old_connections()
         try:
             from whatsapp.models import WhatsAppMessageLog
             from whatsapp.services.whatsapp_ai import process_inbound_whatsapp_message
@@ -29,6 +32,8 @@ def enqueue_whatsapp_ai_message(message_log_id):
             process_inbound_whatsapp_message(message_log)
         except Exception:
             logger.exception("Failed to process WhatsApp AI message %s", message_log_id)
+        finally:
+            close_old_connections()
 
     thread = threading.Thread(target=runner, daemon=True)
     thread.start()
@@ -50,6 +55,7 @@ def enqueue_pending_media_download(pending_media_id):
             )
 
     def runner():
+        close_old_connections()
         try:
             from whatsapp.tasks import download_pending_media
 
@@ -59,6 +65,8 @@ def enqueue_pending_media_download(pending_media_id):
                 "Failed to download deferred WhatsApp media %s",
                 pending_media_id,
             )
+        finally:
+            close_old_connections()
 
     # Keep the Gunicorn worker alive until the media file has either been
     # stored or marked failed. A daemon thread can be terminated during a

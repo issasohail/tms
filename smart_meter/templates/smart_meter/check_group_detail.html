@@ -45,7 +45,7 @@
               {% for membership in memberships %}
                 <tr>
                   <td>{{ membership.billing_meter.meter_number }}</td>
-                  <td>{{ membership.billing_meter.unit.property.property_name }} / {{ membership.billing_meter.unit.unit_number }}</td>
+                  <td>{{ membership.billing_meter.unit.property.property_name }} / {{ membership.billing_meter.display_location_name }}</td>
                   <td>{{ membership.start_date|date:'Y-m-d' }}</td>
                   <td>{{ membership.end_date|date:'Y-m-d'|default:'—' }}</td>
                   <td>{% if membership.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Ended</span>{% endif %}</td>

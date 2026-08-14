@@ -7,6 +7,7 @@ from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
+from urllib.parse import urlsplit
 from django.conf import settings
 from django.apps import apps  # (ensure this import exists at the top)
 from django.conf import settings
@@ -47,6 +48,7 @@ from django.urls import (
     reverse_lazy,
 )
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
 from django.views import View
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -943,6 +945,18 @@ class InvoiceDeleteView(LoginRequiredMixin, DeleteView):
                     "end_date": end_date,
                 }
             )
+        return_to = (self.request.GET.get("return_to") or "").strip()
+        invoice_list_path = reverse("invoices:invoice_list")
+        if (
+            return_to
+            and url_has_allowed_host_and_scheme(
+                return_to,
+                allowed_hosts={self.request.get_host()},
+                require_https=self.request.is_secure(),
+            )
+            and urlsplit(return_to).path == invoice_list_path
+        ):
+            return return_to
         return str(self.success_url)
 
 
@@ -1804,6 +1818,14 @@ def last_of_month(d: date) -> date:
     return date(d.year, d.month, monthrange(d.year, d.month)[1])
 
 
+def _active_leases_for_month(month_start: date):
+    month_first = first_of_month(month_start)
+    month_end = last_of_month(month_first)
+    return active_leases_qs().filter(
+        start_date__lte=month_end,
+    ).filter(Q(end_date__gte=month_first) | Q(end_date__isnull=True))
+
+
 def apply_fixed_recurring(period_date: date, cutoff_today: bool = False):
     """
     Apply all active FIXED RecurringCharge rows into invoices for the month of `period_date`.
@@ -1842,12 +1864,13 @@ def apply_fixed_recurring(period_date: date, cutoff_today: bool = False):
                 continue
 
         # Determine target leases
+        month_leases = _active_leases_for_month(period_first)
         if rc.scope == "LEASE" and rc.lease_id:
-            targets = active_leases_qs().filter(pk=rc.lease_id)
+            targets = month_leases.filter(pk=rc.lease_id)
         elif rc.scope == "PROPERTY" and rc.property_id:
-            targets = active_leases_qs().filter(unit__property_id=rc.property_id)
+            targets = month_leases.filter(unit__property_id=rc.property_id)
         else:  # GLOBAL
-            targets = active_leases_qs()
+            targets = month_leases
 
         # Post one item per target lease, idempotently
         for lease in targets:
@@ -1870,7 +1893,9 @@ def post_water_bill(water_bill_id):
     if wb.posted:
         return  # idempotent
 
-    leases = list(active_leases_qs().filter(unit__property=wb.property))
+    leases = list(
+        _active_leases_for_month(wb.period).filter(unit__property=wb.property)
+    )
     if not leases:
         wb.posted = True
         wb.save(update_fields=["posted"])
@@ -1909,7 +1934,7 @@ def run_monthly_billing_for(period_date: date, cutoff_today: bool = False):
     skip recurring rows whose end_date has already passed (end_date < today).
     """
     # 1) Ensure one invoice per active lease (invoice date = 1st of month)
-    for lease in active_leases_qs():
+    for lease in _active_leases_for_month(period_date):
         ensure_month_invoice(lease, first_of_month(period_date))
 
     # 2) Apply fixed recurring rows with optional "current-month cutoff" logic

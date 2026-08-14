@@ -45,7 +45,7 @@
             <option value="">All meters</option>
             {% for m in dropdown_meters %}
               <option value="{{ m.id }}" {% if current_meter == m.id|stringformat:"s" %}selected{% endif %}>
-                {{ m.meter_number }} — {{ m.unit.unit_number }}
+                {{ m.meter_number }} — {{ m.display_location_name }}
               </option>
             {% empty %}
               <option disabled>No meters found</option>
@@ -147,7 +147,7 @@
   {% if current_meter and latest_ts %}
   <div class="card mb-3">
     <div class="card-body py-2">
-      <h6 class="mb-2">Current Status — Meter {{ selected_meter.meter_number }} ({{ unit.unit_number }})</h6>
+      <h6 class="mb-2">Current Status — Meter {{ selected_meter.meter_number }} ({{ selected_meter.display_location_name }})</h6>
       <div class="row row-cols-2 row-cols-md-4 g-2 small">
         <div><strong>Latest Energy:</strong> {{ latest_total_energy|default:"-"|floatformat:2 }} kWh <small class="text-muted">({{ latest_ts|date:"M d, Y H:i" }})</small></div>
         <div><strong>Voltage A:</strong> {{ latest_voltage_a|default:"-"|floatformat:1 }} V</div>
@@ -183,7 +183,7 @@
           {% else %}
             <h6 class="mb-0">Energy {{ start_date|date:'F d, Y' }} – {{ end_date|date:'F d, Y' }}</h6>
           {% endif %}
-          {% if current_meter %}<div class="small text-muted">Meter {{ selected_meter.meter_number }} — Unit {{ selected_meter.unit.unit_number }}</div>{% endif %}
+          {% if current_meter %}<div class="small text-muted">Meter {{ selected_meter.meter_number }} — Unit / Meter {{ selected_meter.display_location_name }}</div>{% endif %}
           <div class="small mt-1">
             {% if current_role == 'all' or current_role == 'billing' %}<span class="badge bg-success me-1">Billing</span>{% endif %}
             {% if current_role == 'all' or current_role == 'check' %}<span class="badge bg-warning text-dark">Audit</span>{% endif %}

@@ -8,7 +8,7 @@
       style="cursor: pointer;">
     <td>{{ r.ts|date:"Y-m-d H:i:s" }}</td>
     <td>{{ r.meter.unit.property.property_name }}</td>
-    <td>{{ r.meter.unit.unit_number }}</td>
+    <td>{{ r.meter.display_location_name }}</td>
     <td><span class="badge bg-primary">{{ r.meter.meter_number }}</span></td>
     <td>{{ r.source_ip|default_if_none:"" }}</td>
     <td>{{ r.source_port|default_if_none:"" }}</td>
@@ -29,7 +29,7 @@
       {% csrf_token %}
       <td style="min-width: 170px">{{ form.ts }}</td>
       <td>{{ r.meter.unit.property.property_name }}</td>
-      <td>{{ r.meter.unit.unit_number }}</td>
+      <td>{{ r.meter.display_location_name }}</td>
       <td>{{ form.meter }}</td>
       <td>{{ form.source_ip }}</td>
       <td>{{ form.source_port }}</td>

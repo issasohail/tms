@@ -131,7 +131,7 @@
               </th>
               <th class="col-unit">
                 <a href="{{ header_links.unit }}">
-                  Unit
+                  Unit / Meter
                   {% if current_sort == 'unit' %}
                     <span class="text-muted">{% if current_dir == 'asc' %}&#9650;{% else %}&#9660;{% endif %}</span>
                   {% endif %}
@@ -207,7 +207,7 @@
                 </div>
               </td>
               <td class="col-prop" title="{{ m.unit.property.property_name }}">{{ m.unit.property.property_name|truncatechars:8 }}</td>
-              <td class="col-unit" title="{{ m.unit.unit_number }}">{{ m.unit.unit_number }}</td>
+              <td class="col-unit" title="{{ m.display_location_name }}">{{ m.display_location_name }}</td>
               <td class="col-tenant" title="{{ m.tenant_name }}">{{ m.tenant_name|default:"Vacant" }}</td>
 
               <td class="col-power">
@@ -297,7 +297,7 @@
           </div>
           <div class="meter-mobile-location">
             <span><i class="fas fa-building me-1"></i>{{ m.unit.property.property_name }}</span>
-            <span><i class="fas fa-door-open me-1"></i>{{ m.unit.unit_number }}</span>
+            <span><i class="fas fa-door-open me-1"></i>{{ m.display_location_name }}</span>
           </div>
           <div class="meter-mobile-tenant-reading">
             <span class="meter-mobile-tenant" title="{{ m.tenant_name|default:'Vacant' }}"><i class="fas fa-user me-1"></i>{{ m.tenant_name|default:"Vacant" }}</span>

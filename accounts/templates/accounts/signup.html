@@ -7,12 +7,15 @@
 {% block content %}
   <span class="auth-eyebrow">Create your account</span>
   <h2>Join Kirayas.com</h2>
-  <p class="auth-intro">Enter your details to set up secure access.</p>
+  <p class="auth-intro">Submit your details for administrator approval.</p>
 
   {% if form.non_field_errors %}<div class="auth-errors">{{ form.non_field_errors }}</div>{% endif %}
 
   <form method="post" novalidate>
     {% csrf_token %}
+    <div aria-hidden="true" style="position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden;">
+      {{ form.website.label_tag }}{{ form.website }}
+    </div>
     <div class="auth-form-grid">
       <div class="auth-field">
         <label for="{{ form.first_name.id_for_label }}">First name</label>
@@ -43,7 +46,7 @@
         {{ form.password2 }}{{ form.password2.errors }}
       </div>
     </div>
-    <button class="auth-button" type="submit">Create my account</button>
+    <button class="auth-button" type="submit">Submit registration</button>
   </form>
 
   <p class="auth-footer">Already have an account? <a href="{% url 'login' %}">Log in</a></p>

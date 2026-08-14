@@ -7,6 +7,7 @@ from django.contrib.auth.forms import (
     UserChangeForm,
 )
 from django.contrib.auth.models import Group, Permission
+from django.core.exceptions import ValidationError
 from core.utils.text import add_auto_titlecase_class
 
 Account = get_user_model()
@@ -28,8 +29,35 @@ class LoginForm(AuthenticationForm):
         widget=forms.PasswordInput(attrs={"placeholder": "Password"}),
     )
 
+    def clean(self):
+        try:
+            return super().clean()
+        except ValidationError:
+            username = (self.data.get("username") or "").strip()
+            password = self.data.get("password") or ""
+            pending_user = Account._default_manager.filter(
+                username__iexact=username,
+                is_active=False,
+                is_staff=False,
+                is_superuser=False,
+            ).first()
+            if pending_user and pending_user.check_password(password):
+                raise ValidationError(
+                    "Your registration is awaiting administrator approval.",
+                    code="inactive",
+                )
+            raise
+
 
 class AccountCreationForm(UserCreationForm):
+    website = forms.CharField(
+        required=False,
+        label="Website",
+        widget=forms.TextInput(
+            attrs={"autocomplete": "off", "tabindex": "-1"}
+        ),
+    )
+
     class Meta(UserCreationForm.Meta):
         model = Account
         fields = ("username", "email", "first_name",
@@ -38,6 +66,21 @@ class AccountCreationForm(UserCreationForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         add_auto_titlecase_class(self.fields)
+
+    def clean_website(self):
+        value = (self.cleaned_data.get("website") or "").strip()
+        if value:
+            raise forms.ValidationError("Registration could not be submitted.")
+        return ""
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.is_active = False
+        user.is_staff = False
+        user.is_superuser = False
+        if commit:
+            user.save()
+        return user
 
 
 class AccountChangeForm(UserChangeForm):

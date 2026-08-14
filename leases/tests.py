@@ -804,6 +804,63 @@ class ActiveAgreementAndMoveInBillingTests(TestCase):
         self.assertIn("rent_increase_percent", form.fields)
         self.assertIn("terms", form.fields)
 
+    def test_active_history_edit_saves_on_first_submission(self):
+        from unittest.mock import patch
+
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+
+        from leases.services.lease_history import ensure_original_history
+
+        user = get_user_model().objects.create_superuser(
+            username="history-editor",
+            email="history-editor@example.com",
+            password="test-password",
+        )
+        self.client.force_login(user)
+        history = ensure_original_history(self.lease)
+
+        with (
+            patch("leases.views_renewal.is_active_history", return_value=True),
+            patch("leases.views_renewal.update_billing_on_change") as update_billing,
+        ):
+            response = self.client.post(
+                reverse(
+                    "leases:lease_history_edit",
+                    kwargs={"pk": self.lease.pk, "renewal_id": history.pk},
+                ),
+                {
+                    "start_date": "2026-08-01",
+                    "end_date": "2027-06-30",
+                    "lease_months": "11",
+                    "agreement_date": "2026-08-01",
+                    "monthly_rent": "13500.00",
+                    "society_maintenance": "800.00",
+                    "water_charges": "2000.00",
+                    "bill_water_charges": "on",
+                    "bill_recurring_charges": "on",
+                    "internet_charges": "500.00",
+                    "agreement_charges": "1500.00",
+                    "security_deposit": "18300.00",
+                    "rent_increase_percent": "10.00",
+                    "terms": history.terms or "",
+                    "notes": history.notes or "",
+                },
+            )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "leases:lease_history_detail",
+                kwargs={"pk": self.lease.pk, "renewal_id": history.pk},
+            ),
+        )
+        history.refresh_from_db()
+        self.lease.refresh_from_db()
+        self.assertEqual(history.monthly_rent, 13500)
+        self.assertEqual(self.lease.monthly_rent, 13500)
+        update_billing.assert_called_once()
+
     def test_agreement_fee_is_created_once(self):
         from invoices.models import InvoiceItem
         from leases.utils.billing import ensure_agreement_fee_invoice

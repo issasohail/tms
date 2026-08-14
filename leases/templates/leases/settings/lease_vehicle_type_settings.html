@@ -41,6 +41,7 @@
     <table class="table table-sm table-striped align-middle">
       <thead>
         <tr>
+          <th style="width: 56px;">#</th>
           <th>Name</th>
           <th>Code</th>
           <th class="text-center">Sort</th>
@@ -51,6 +52,7 @@
       <tbody>
         {% for vehicle_type in vehicle_types %}
           <tr>
+            <td>{{ forloop.counter }}</td>
             <td>{{ vehicle_type.name }}</td>
             <td><code>{{ vehicle_type.code }}</code></td>
             <td class="text-center">{{ vehicle_type.sort_order }}</td>
@@ -77,7 +79,7 @@
           </tr>
         {% empty %}
           <tr>
-            <td colspan="5" class="text-muted text-center py-3">No vehicle types found.</td>
+            <td colspan="6" class="text-muted text-center py-3">No vehicle types found.</td>
           </tr>
         {% endfor %}
       </tbody>

@@ -356,59 +356,8 @@
     </div>
   </div>
 
-  {% if requires_active_confirmation %}
-    <div class="lhf-alert lhf-alert-danger">
-      <i class="ti ti-shield-exclamation"></i>
-      <div>
-        <div class="lhf-alert-title">Confirm active financial update</div>
-        <div class="lhf-alert-text">Review the recurring charge preview below. Paid invoices will not be changed unless you explicitly update existing invoice items.</div>
-      </div>
-    </div>
-  {% endif %}
-
-  {% if billing_plan %}
-    <div class="lhf-card">
-      <div class="lhf-card-head">
-        <i class="ti ti-receipt"></i>
-        Recurring Charge Preview
-      </div>
-      <div class="table-responsive">
-        <table class="table table-bordered lhf-preview-table">
-          <thead>
-            <tr>
-              <th>Category</th>
-              <th class="text-end">Before</th>
-              <th class="text-end">After</th>
-              <th>Start</th>
-              <th>End</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in billing_plan.recurring %}
-              <tr>
-                <td class="fw-semibold">{{ row.category }}</td>
-                <td class="text-end">Rs {{ row.before.amount|default:0|floatformat:0|intcomma }}</td>
-                <td class="text-end fw-semibold text-primary">Rs {{ row.after.amount|default:0|floatformat:0|intcomma }}</td>
-                <td>{{ row.after.start_date|date:"M d, Y" }}</td>
-                <td>{{ row.after.end_date|date:"M d, Y"|default:"-" }}</td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="5" class="text-muted p-3">No recurring charge changes detected.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  {% endif %}
-
   <form method="post" enctype="multipart/form-data" novalidate>
     {% csrf_token %}
-    {% if requires_active_confirmation %}
-      <input type="hidden" name="confirm_active_financial" value="1">
-      {% for field in form %}
-        <input type="hidden" name="{{ field.html_name }}" value="{{ field.value|default_if_none:'' }}">
-      {% endfor %}
-    {% endif %}
 
     <div class="lhf-card">
       <div class="lhf-card-head">
@@ -458,7 +407,7 @@
           </a>
           <button type="submit" class="btn btn-primary btn-sm">
             <i class="ti ti-device-floppy"></i>
-            {% if requires_active_confirmation %}Confirm & Save{% else %}Save History{% endif %}
+            Save History
           </button>
         </div>
       </div>

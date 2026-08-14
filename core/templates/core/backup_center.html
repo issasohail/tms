@@ -386,7 +386,7 @@ document.querySelectorAll(".js-long-operation").forEach(function (form) {
         })
           .then(function (response) {
             window.clearInterval(timerInterval);
-            window.top.location.assign(response.url || submitUrl);
+            window.location.assign(response.url || submitUrl);
           })
           .catch(function () {
             window.clearInterval(timerInterval);

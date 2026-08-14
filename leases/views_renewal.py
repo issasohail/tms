@@ -10,8 +10,6 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 from django.views.generic import DetailView, FormView, UpdateView
 from datetime import timedelta
-from copy import copy
-
 from .forms_renewal import LeaseHistoryEditForm, LeaseRenewalForm
 from .models import Lease
 from .models_renewal import LeaseRenewal
@@ -22,57 +20,11 @@ from .services.lease_history import (
     sync_history_to_master_lease,
 )
 from .utils.agreement_generator import generate_renewal_agreement_pdf
-from .utils.billing import preview_billing_on_change, update_billing_on_change
+from .utils.billing import update_billing_on_change
 
 
 def _copy_clauses_to_renewal(lease, renewal):
     copy_previous_history_clauses(lease, renewal)
-
-
-HISTORY_FINANCIAL_FIELDS = [
-    "start_date",
-    "end_date",
-    "lease_months",
-    "monthly_rent",
-    "society_maintenance",
-    "water_charges",
-    "bill_water_charges",
-    "bill_recurring_charges",
-    "internet_charges",
-    "agreement_charges",
-    "security_deposit",
-    "rent_increase_percent",
-]
-
-
-def _lease_with_history_values(lease, history):
-    draft = copy(lease)
-    for field in [
-        "start_date",
-        "end_date",
-        "lease_months",
-        "agreement_date",
-        "monthly_rent",
-        "society_maintenance",
-        "water_charges",
-        "bill_water_charges",
-        "bill_recurring_charges",
-        "internet_charges",
-        "agreement_charges",
-        "security_deposit",
-        "terms",
-        "rent_increase_percent",
-    ]:
-        if hasattr(history, field):
-            setattr(draft, field, getattr(history, field))
-    return draft
-
-
-def _history_financial_changed(old_history, new_history):
-    return any(
-        getattr(old_history, field, None) != getattr(new_history, field, None)
-        for field in HISTORY_FINANCIAL_FIELDS
-    )
 
 
 class RenewLeaseView(LoginRequiredMixin, FormView):
@@ -247,18 +199,8 @@ class LeaseHistoryUpdateView(LoginRequiredMixin, UpdateView):
 
     def form_valid(self, form):
         is_ajax = self.request.headers.get("x-requested-with") == "XMLHttpRequest"
-        old_history = LeaseRenewal.objects.get(pk=self.object.pk)
-        active = is_active_history(old_history)
-        confirm_active = self.request.POST.get("confirm_active_financial") == "1"
+        active = is_active_history(self.object)
         history = form.save(commit=False)
-
-        if active and _history_financial_changed(old_history, history) and not confirm_active:
-            lease_preview = _lease_with_history_values(old_history.lease, history)
-            plan = preview_billing_on_change(lease_preview, old_history.lease)
-            context = self.get_context_data(form=form)
-            context["billing_plan"] = plan
-            context["requires_active_confirmation"] = True
-            return self.render_to_response(context)
 
         history.updated_by = self.request.user if self.request.user.is_authenticated else None
         response = super().form_valid(form)

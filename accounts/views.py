@@ -9,13 +9,21 @@ from django.contrib.auth import logout as auth_logout
 from django.contrib import messages
 from django.contrib.auth import views as auth_views
 from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import SetPasswordForm
 from django.contrib.auth.models import Group, Permission
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import ProtectedError
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+from django.views.decorators.debug import sensitive_post_parameters
+
+from .whatsapp_password_reset import (
+    resolve_whatsapp_password_reset_token,
+    whatsapp_password_reset_request_url,
+)
 
 from .forms import (
     LoginForm,
@@ -42,6 +50,11 @@ class LoginView(auth_views.LoginView):
     form_class = LoginForm
     template_name = "accounts/login.html"
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["whatsapp_password_reset_url"] = whatsapp_password_reset_request_url()
+        return context
+
     def get_default_redirect_url(self):
         if self.request.path_info.startswith("/tms/"):
             return "/tms/"
@@ -62,6 +75,31 @@ class LogoutView(auth_views.LogoutView):
         messages.success(request, "You have been logged out.")
         return redirect(f"{settings.MARKETING_PUBLIC_BASE_URL.rstrip('/')}/")
 
+
+@sensitive_post_parameters("new_password1", "new_password2")
+@require_http_methods(["GET", "POST"])
+def whatsapp_password_reset_confirm(request, token):
+    if request.method == "POST":
+        with transaction.atomic():
+            user = resolve_whatsapp_password_reset_token(token, for_update=True)
+            form = SetPasswordForm(user, request.POST) if user else None
+            if form and form.is_valid():
+                form.save()
+                security_logger.info("WhatsApp password reset completed account_id=%s", user.pk)
+                messages.success(request, "Your password has been updated. You can now log in.")
+                return redirect("accounts:login")
+    else:
+        user = resolve_whatsapp_password_reset_token(token)
+        form = SetPasswordForm(user) if user else None
+    return render(
+        request,
+        "accounts/password_reset_confirm.html",
+        {
+            "form": form,
+            "validlink": bool(user),
+            "whatsapp_password_reset_url": whatsapp_password_reset_request_url(),
+        },
+    )
 
 @require_http_methods(["GET", "POST"])
 def signup(request):

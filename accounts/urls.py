@@ -5,6 +5,11 @@ from . import views
 urlpatterns = [
     path("login/",  LoginView.as_view(),  name="login"),
     path("logout/", LogoutView.as_view(), name="logout"),
+    path(
+        "whatsapp-reset/<str:token>/",
+        views.whatsapp_password_reset_confirm,
+        name="whatsapp_password_reset_confirm",
+    ),
     path("signup/", views.signup,         name="signup"),
     path("profile/", views.profile,       name="profile"),
     path("password/", views.auth_views.PasswordChangeView.as_view(

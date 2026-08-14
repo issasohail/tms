@@ -438,7 +438,12 @@ def _log_webhook_payload(payload):
                         lease=conversation.selected_lease if conversation else None,
                     )
                 if _inbound_rate_allowed(inbound_phone):
-                    _queue_ai_message(message_log.pk)
+                    from accounts.whatsapp_password_reset import is_whatsapp_password_reset_request
+
+                    _queue_ai_message(
+                        message_log.pk,
+                        force=is_whatsapp_password_reset_request(message),
+                    )
                 else:
                     logger.warning("Rate-limited inbound WhatsApp sender %s", inbound_phone)
 
@@ -560,10 +565,10 @@ def _status_error_text(status):
     return f"{title}" + (f" (code {code})" if code else "")
 
 
-def _queue_ai_message(message_log_id):
+def _queue_ai_message(message_log_id, force=False):
     from .services.queue import enqueue_whatsapp_ai_message
 
-    enqueue_whatsapp_ai_message(message_log_id)
+    enqueue_whatsapp_ai_message(message_log_id, force=force)
 
 
 @login_required

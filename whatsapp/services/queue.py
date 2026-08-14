@@ -8,9 +8,9 @@ from whatsapp.services.ai_config import get_whatsapp_ai_config
 logger = logging.getLogger(__name__)
 
 
-def enqueue_whatsapp_ai_message(message_log_id):
+def enqueue_whatsapp_ai_message(message_log_id, force=False):
     config = get_whatsapp_ai_config()
-    if not config.enabled:
+    if not config.enabled and not force:
         return "disabled"
 
     if config.use_celery:

@@ -6139,6 +6139,10 @@ def _json_safe(value):
 
 
 def process_inbound_whatsapp_message(message_log):
+    from accounts.whatsapp_password_reset import handle_whatsapp_password_reset_request
+
+    if handle_whatsapp_password_reset_request(message_log):
+        return
     if not get_whatsapp_ai_config().enabled:
         return
     # Meta delivers album items as independent webhooks. Serializing each phone's

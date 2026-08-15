@@ -397,6 +397,22 @@ class PaymentAndNotificationIntegrationTests(MeterCreditFixture):
             PaymentDetail.objects.create(payment=payment, lease_amount=Decimal("100.00"))
         self.assertEqual(MeterEvaluationRequest.objects.filter(meter=self.meter, status="pending").count(), 1)
 
+    def test_deleting_payment_with_detail_does_not_requery_deleted_payment(self):
+        self.account(is_enabled=True)
+        payment = Payment.objects.create(lease=self.lease, amount=Decimal("100.00"))
+        PaymentDetail.objects.create(payment=payment, lease_amount=Decimal("100.00"))
+        MeterEvaluationRequest.objects.all().delete()
+        payment_id = payment.pk
+
+        with self.captureOnCommitCallbacks(execute=True):
+            payment.delete()
+
+        self.assertFalse(Payment.objects.filter(pk=payment_id).exists())
+        self.assertEqual(
+            MeterEvaluationRequest.objects.filter(meter=self.meter, status="pending").count(),
+            1,
+        )
+
     @override_settings(METER_ENABLE_AUTOMATIC_NOTIFICATIONS=True)
     @patch("smart_meter.services.notifications.WhatsAppService.send_text")
     def test_notification_mute_suppresses_whatsapp(self, send_text):

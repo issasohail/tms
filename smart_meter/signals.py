@@ -42,7 +42,13 @@ def payment_detail_saved(sender, instance, **kwargs):
 
 @receiver(post_delete, sender=PaymentDetail, dispatch_uid="smart_meter_credit_payment_detail_deleted")
 def payment_detail_deleted(sender, instance, **kwargs):
-    payment = getattr(instance, "payment", None)
+    payment = instance._state.fields_cache.get("payment")
     lease_id = getattr(payment, "lease_id", None)
+    if not lease_id and instance.payment_id:
+        lease_id = (
+            Payment.objects.filter(pk=instance.payment_id)
+            .values_list("lease_id", flat=True)
+            .first()
+        )
     if lease_id:
         transaction.on_commit(lambda: _enqueue_for_lease(lease_id))

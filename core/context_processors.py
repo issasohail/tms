@@ -31,7 +31,12 @@ def global_settings(request):
 
     approval_count = 0
     if getattr(request.user, "is_authenticated", False):
-        approval_count = pending_approval_count()
+        request_cache_attr = "_tms_pending_approval_count"
+        if hasattr(request, request_cache_attr):
+            approval_count = getattr(request, request_cache_attr)
+        else:
+            approval_count = pending_approval_count()
+            setattr(request, request_cache_attr, approval_count)
 
     embedded = _is_settings_embedded_request(request)
 

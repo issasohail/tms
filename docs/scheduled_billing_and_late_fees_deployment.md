@@ -21,6 +21,9 @@ Monthly scheduling is configured under TMS Settings, in **Billing Scale & Locale
 - Monthly Billing Day (1-28, default 2)
 
 Late-fee automatic scheduling remains controlled by **Send reminders automatically**. The Invoice List **Run Due Late Fees** action is a manual fallback and processes only reminders already due.
+Set **Automation start date** before enabling the timer. Batch runs exclude invoices
+due before that date, preventing historical overdue invoices from being messaged or
+charged when automation is first enabled.
 
 ## Production application deployment
 

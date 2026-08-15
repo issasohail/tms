@@ -1,6 +1,7 @@
 from django.core.cache import cache
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.utils import timezone
 from core.model_fields import NormalizedPhoneField
 from core.utils.text import smart_title
 
@@ -67,6 +68,13 @@ class GlobalSettings(models.Model):
     late_fee_auto_send_reminders = models.BooleanField(
         default=False,
         help_text="If on, the scheduled late fee job sends WhatsApp reminders automatically.",
+    )
+    late_fee_automation_start_date = models.DateField(
+        default=timezone.localdate,
+        help_text=(
+            "Batch late-fee reminders only consider invoices due on or after this date. "
+            "Older overdue invoices remain available for individual review."
+        ),
     )
     late_fee_auto_apply = models.BooleanField(
         default=True,

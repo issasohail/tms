@@ -1,10 +1,25 @@
 from django import forms
+from django.core.cache import cache
+from django.forms.models import ModelChoiceIterator
 from .models import GlobalSettings
 from django import forms
 from .models import GlobalSettings
 from zoneinfo import available_timezones
 from core.utils.text import add_auto_titlecase_class
 from core.utils.identity import normalize_phone
+
+
+class PreloadedModelChoiceIterator(ModelChoiceIterator):
+    """Render repeated model selectors from one preloaded object list."""
+
+    def __iter__(self):
+        if self.field.empty_label is not None:
+            yield ("", self.field.empty_label)
+        for obj in self.field.preloaded_choice_objects:
+            yield self.choice(obj)
+
+    def __len__(self):
+        return len(self.field.preloaded_choice_objects) + bool(self.field.empty_label)
 
 
 class GlobalSettingsForm(forms.ModelForm):
@@ -27,7 +42,8 @@ class GlobalSettingsForm(forms.ModelForm):
                   "late_fee_enabled", "late_fee_type", "late_fee_amount",
                   "late_fee_percent", "late_fee_grace_days",
                   "late_fee_reminder_interval_days", "late_fee_max_reminders",
-                  "late_fee_auto_send_reminders", "late_fee_auto_apply",
+                  "late_fee_auto_send_reminders", "late_fee_automation_start_date",
+                  "late_fee_auto_apply",
                   "billing_cap_amount", "automatic_monthly_billing", "monthly_billing_day",
                   "default_lease_months",
                   "end_lease_proration_interval_days",
@@ -80,6 +96,11 @@ class GlobalSettingsForm(forms.ModelForm):
             "automatic_monthly_billing", "monthly_billing_day",
             "default_lease_months",
             "end_lease_proration_interval_days",
+            "late_fee_enabled", "late_fee_type", "late_fee_amount",
+            "late_fee_percent", "late_fee_grace_days",
+            "late_fee_reminder_interval_days", "late_fee_max_reminders",
+            "late_fee_auto_send_reminders", "late_fee_automation_start_date",
+            "late_fee_auto_apply",
         ]),
         ("Parking & Water Penalties", "fas fa-motorcycle", [
             "default_parking_enabled", "default_motorcycle_parking_rate",
@@ -95,19 +116,11 @@ class GlobalSettingsForm(forms.ModelForm):
             "tenant_income_brackets",
             "tenant_occupation_options",
         ]),
-        ("Late Fees", "fas fa-clock", [
-            "late_fee_enabled", "late_fee_type", "late_fee_amount",
-            "late_fee_percent", "late_fee_grace_days",
-            "late_fee_reminder_interval_days", "late_fee_max_reminders",
-            "late_fee_auto_send_reminders", "late_fee_auto_apply",
-        ]),
         ("WhatsApp / Twilio", "fab fa-whatsapp", [
             "whatsapp_number", "twilio_account_sid", "twilio_auth_token",
             "twilio_from_number", "whatsapp_media_retention_days",
             "whatsapp_pending_request_notifications_enabled",
             "whatsapp_pending_request_staff_numbers",
-        ]),
-        ("WhatsApp AI Assistant", "fas fa-robot", [
             "whatsapp_ai_enabled", "whatsapp_ai_provider", "whatsapp_ai_model",
             "whatsapp_ai_ocr_provider", "whatsapp_ai_use_celery",
             "whatsapp_ai_routing_enabled", "whatsapp_ai_generated_responses_enabled",
@@ -151,6 +164,27 @@ class GlobalSettingsForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        staff_field_names = (
+            "whatsapp_default_support_staff",
+            "whatsapp_accounts_staff",
+            "whatsapp_maintenance_staff",
+            "whatsapp_leasing_staff",
+            "whatsapp_escalation_staff",
+        )
+        account_choices_cache_key = "core.settings_whatsapp_account_choices"
+        account_objects = cache.get(account_choices_cache_key)
+        if account_objects is None:
+            account_objects = list(
+                self.fields[staff_field_names[0]].queryset
+                .only("id", "username")
+                .order_by("username")
+            )
+            cache.set(account_choices_cache_key, account_objects, 60)
+        for field_name in staff_field_names:
+            field = self.fields[field_name]
+            field.preloaded_choice_objects = account_objects
+            field.iterator = PreloadedModelChoiceIterator
+            field.widget.choices = field.choices
         try:
             from handyman.models import MaintenanceHandymanAssignment
 
@@ -179,6 +213,8 @@ class GlobalSettingsForm(forms.ModelForm):
         self.fields["late_fee_max_reminders"].help_text = "Use 0 for unlimited reminder-based fees."
         self.fields["late_fee_auto_send_reminders"].label = "Send reminders automatically"
         self.fields["late_fee_auto_send_reminders"].help_text = "On = the daily late fee job sends WhatsApp reminders. Off = reminders are sent manually from invoice detail."
+        self.fields["late_fee_automation_start_date"].label = "Automation start date"
+        self.fields["late_fee_automation_start_date"].widget.input_type = "date"
         self.fields["late_fee_auto_apply"].label = "Apply fee automatically"
         self.fields["late_fee_auto_apply"].help_text = "Off = reminder is sent, but the late fee waits in the pending approval queue."
         self.fields["automatic_monthly_billing"].label = "Automatic Monthly Billing"

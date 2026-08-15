@@ -30,10 +30,18 @@ class Command(BaseCommand):
         )
         if summary.get("reason"):
             self.stdout.write(self.style.WARNING(summary["reason"]))
+        if summary.get("automation_start_date"):
+            self.stdout.write(
+                "Automation start date: "
+                f"{summary['automation_start_date']}. "
+                f"Older overdue invoices excluded: {summary['excluded_before_start']}."
+            )
         for detail in summary["details"]:
             prefix = "[dry-run] " if options["dry_run"] else ""
             message = (
-                f"{prefix}Invoice #{detail['invoice_number']}: "
+                f"{prefix}Invoice #{detail['invoice_number']} | "
+                f"{detail['property_name']} | Unit {detail['unit_name']} | "
+                f"Due {detail['due_date']}: "
                 f"reminder #{detail['reminder_number']}"
             )
             if detail.get("error"):

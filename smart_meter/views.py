@@ -732,10 +732,15 @@ def _apply_meter_chip_filter(qs, chip):
 
 
 def _meter_chip_counts(base_qs):
-    return {
-        key: (base_qs.count() if key == "total" else base_qs.filter(_meter_chip_q(key)).count())
+    from django.db.models import Count
+
+    aggregates = {"total": Count("pk")}
+    aggregates.update({
+        key: Count("pk", filter=_meter_chip_q(key))
         for key in SMART_METER_CHIPS.keys()
-    }
+        if key != "total"
+    })
+    return base_qs.aggregate(**aggregates)
 
 
 def _meter_chip_cards(request, base_qs, url_name):
@@ -779,9 +784,13 @@ def meter_list(request):
     meters_qs = _apply_meter_chip_filter(meters_base_qs, current_chip)
 
     # ✅ Make it efficient for template access (no N+1)
-    meters_qs = meters_qs.select_related(
-        'unit', 'unit__property', 'live')
-    # 'live' is OneToOne related_name
+    meters_qs = meters_qs.select_related('unit', 'unit__property').only(
+        "id", "meter_number", "name", "billing_mode", "meter_role",
+        "unit_rate", "min_balance_alert", "min_balance_cutoff", "is_active",
+        "installed_at", "power_status", "unit_id",
+        "unit__id", "unit__property_id", "unit__unit_number",
+        "unit__property__id", "unit__property__property_name",
+    )
 
     # (Optional) ensure each row has a balance value for scripts like "auto-select negative"
     latest_balance = (LiveReading.objects
@@ -1728,6 +1737,14 @@ def live_custom(request):
         filtered_meters = filtered_meters.filter(is_active=True)
     elif active_filter == "inactive":
         filtered_meters = filtered_meters.filter(is_active=False)
+    # The dropdown renders ``display_location_name`` too. Attach the same
+    # bulk unit counts used by the live rows so that property never falls back
+    # to two per-unit database lookups.
+    filtered_meters = attach_active_meter_counts(filtered_meters)
+    active_meter_count_by_id = {
+        meter.id: meter._active_unit_meter_count
+        for meter in filtered_meters
+    }
 
     meter_scope_qs = _with_meter_operational_flags(
         _meters_annotated_qs(request, online_minutes=online_minutes)
@@ -1795,7 +1812,19 @@ def live_custom(request):
         info = tenant_info.get(unit_key)
         reading.tenant_name = info["name"] if info else "Vacant"
         reading.tenant_id = info["tenant_id"] if info else None
-    attach_active_meter_counts(rows, lambda reading: reading.meter)
+    readings_missing_counts = []
+    for reading in rows:
+        if reading.meter_id in active_meter_count_by_id:
+            reading.meter._active_unit_meter_count = active_meter_count_by_id[
+                reading.meter_id
+            ]
+        else:
+            readings_missing_counts.append(reading)
+    if readings_missing_counts:
+        attach_active_meter_counts(
+            readings_missing_counts,
+            lambda reading: reading.meter,
+        )
 
     # Mark selected flags (NO template comparison needed)
     # formatter-proof flags (avoid template comparisons)
@@ -2191,13 +2220,13 @@ def _filtered_meter_sets(request, include_meter_property=True):
     meters_qs = Meter.objects.select_related(*meter_related)
     if include_meter_property:
         meters_qs = meters_qs.only(
-            "id", "meter_number", "unit",
+            "id", "meter_number", "name", "unit",
             "unit__id", "unit__unit_number", "unit__property",
             "unit__property__id", "unit__property__property_name",
         )
     else:
         meters_qs = meters_qs.only(
-            "id", "meter_number", "unit",
+            "id", "meter_number", "name", "unit",
             "unit__id", "unit__unit_number",
         )
     if unit_id:
@@ -2548,13 +2577,13 @@ def _filtered_meter_sets(request, include_meter_property=True):
     meters_qs = Meter.objects.select_related(*meter_related)
     if include_meter_property:
         meters_qs = meters_qs.only(
-            "id", "meter_number", "unit",
+            "id", "meter_number", "name", "unit",
             "unit__id", "unit__unit_number", "unit__property",
             "unit__property__id", "unit__property__property_name",
         )
     else:
         meters_qs = meters_qs.only(
-            "id", "meter_number", "unit",
+            "id", "meter_number", "name", "unit",
             "unit__id", "unit__unit_number",
         )
     if unit_id:
@@ -2743,6 +2772,13 @@ def reading_list(request):
     # ---------- Base queryset ----------
     readings = MeterReading.objects.select_related(
         "meter", "meter__unit", "meter__unit__property"
+    ).only(
+        "id", "meter_id", "ts", "source_ip", "source_port", "total_energy",
+        "total_power", "pf_total", "voltage_a", "current_a",
+        "meter__id", "meter__meter_number", "meter__name", "meter__meter_role",
+        "meter__unit_id", "meter__unit__id", "meter__unit__property_id",
+        "meter__unit__unit_number", "meter__unit__property__id",
+        "meter__unit__property__property_name",
     )
 
     if meter_id:

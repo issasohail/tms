@@ -1,8 +1,10 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
@@ -25,6 +27,7 @@ class LateFeeSchedulerTests(TestCase):
         settings_obj.late_fee_grace_days = 5
         settings_obj.late_fee_reminder_interval_days = 5
         settings_obj.late_fee_max_reminders = 3
+        settings_obj.late_fee_automation_start_date = date(2026, 8, 1)
         settings_obj.save()
         tenant = Tenant.objects.create(first_name="Late", last_name="Tenant", cnic="1234512345671", phone="03000000000")
         prop = Property.objects.create(property_name="Late Test", owner_name="Owner", owner_cnic="1234512345672", type="apartment", property_type="apartment", total_units=1)
@@ -78,6 +81,57 @@ class LateFeeSchedulerTests(TestCase):
         self.invoice.status = "paid"
         self.invoice.save(update_fields=["status"])
         self.assertEqual(run_due_late_fee_reminders(source="manual", today=date(2026, 9, 1))["processed"], 0)
+
+    def test_batch_excludes_old_invoices_and_reports_property_and_unit(self):
+        Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 7, 1),
+            due_date=date(2026, 7, 31),
+            amount=Decimal("20000.00"),
+            status="overdue",
+        )
+
+        result = run_due_late_fee_reminders(
+            source="auto", today=date(2026, 8, 6), dry_run=True
+        )
+
+        self.assertEqual(result["excluded_before_start"], 1)
+        self.assertEqual(result["processed"], 1)
+        self.assertEqual(result["details"][0]["property_name"], "Late Test")
+        self.assertEqual(result["details"][0]["unit_name"], "L-1")
+        self.assertEqual(result["details"][0]["due_date"], "2026-08-01")
+
+    @patch("invoices.management.commands.send_late_fee_reminders.run_due_late_fee_reminders")
+    def test_command_lists_invoice_property_unit_and_start_boundary(self, run_service):
+        run_service.return_value = {
+            "reason": "",
+            "automation_start_date": date(2026, 8, 16),
+            "excluded_before_start": 124,
+            "details": [{
+                "invoice_number": "INV-1",
+                "property_name": "Late Test",
+                "unit_name": "L-1",
+                "due_date": "2026-08-16",
+                "reminder_number": 1,
+            }],
+            "examined": 1,
+            "due": 1,
+            "processed": 1,
+            "fees_applied": 0,
+            "fees_pending": 0,
+            "failed": 0,
+            "skipped": 0,
+        }
+        output = StringIO()
+
+        call_command("send_late_fee_reminders", "--dry-run", stdout=output)
+
+        text = output.getvalue()
+        self.assertIn("Older overdue invoices excluded: 124", text)
+        self.assertIn(
+            "Invoice #INV-1 | Late Test | Unit L-1 | Due 2026-08-16",
+            text,
+        )
 
     @patch("invoices.late_fees.run_due_late_fee_reminders")
     def test_invoice_list_button_uses_shared_batch_service(self, run_service):

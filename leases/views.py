@@ -1080,6 +1080,23 @@ class LeaseListView(SingleTableView):
         nonzero_balance = self.request.GET.get("nonzero_balance") == "on"
         bill_water_filter = self.request.GET.get("bill_water_charges") == "on"
 
+        # Apply filters that use stored columns before adding the expensive
+        # financial subqueries and related-object counts. This also gives the
+        # summary cards lightweight querysets for their simple counts.
+        if property_id:
+            queryset = queryset.filter(unit__property_id=property_id)
+        if unit_id:
+            queryset = queryset.filter(unit_id=unit_id)
+        if tenant_id:
+            queryset = queryset.filter(tenant_id=tenant_id)
+        if bill_water_filter:
+            queryset = queryset.filter(bill_water_charges=True)
+
+        statusless_count_queryset = queryset
+        if status and summary_filter != "ended_recently":
+            queryset = queryset.filter(status=status)
+        base_count_queryset = queryset
+
         queryset = self._annotate_list_financials(queryset).annotate(
             family_member_count=Count("family_members", distinct=True),
             pending_family_count=Count(
@@ -1107,24 +1124,15 @@ class LeaseListView(SingleTableView):
             ),
         )
 
-        # Apply filters
-        if property_id:
-            queryset = queryset.filter(unit__property_id=property_id)
-        if unit_id:
-            queryset = queryset.filter(unit_id=unit_id)
-        if tenant_id:
-            queryset = queryset.filter(tenant_id=tenant_id)
         if nonzero_balance:
             queryset = queryset.filter(list_balance__gt=0)
-        if bill_water_filter:
-            queryset = queryset.filter(bill_water_charges=True)
+            base_count_queryset = queryset
+            statusless_count_queryset = self._annotate_list_financials(
+                statusless_count_queryset
+            ).filter(list_balance__gt=0)
 
-        self._lease_list_statusless_queryset = queryset
-
-        if status and summary_filter != "ended_recently":
-            queryset = queryset.filter(status=status)
-
-        self._lease_list_base_queryset = queryset
+        self._lease_list_statusless_queryset = statusless_count_queryset
+        self._lease_list_base_queryset = base_count_queryset
 
         if summary_filter == "expiring_soon":
             today = timezone.localdate()

@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
+from django.core.cache import cache
 from django.utils import timezone
 from core.utils.text import normalize_title_fields
 from core.model_fields import NormalizedPhoneField
@@ -48,4 +49,11 @@ class Account(AbstractBaseUser, PermissionsMixin):
 
     def save(self, *args, **kwargs):
         normalize_title_fields(self, ("first_name", "last_name"))
-        super().save(*args, **kwargs)
+        result = super().save(*args, **kwargs)
+        cache.delete("core.settings_whatsapp_account_choices")
+        return result
+
+    def delete(self, *args, **kwargs):
+        result = super().delete(*args, **kwargs)
+        cache.delete("core.settings_whatsapp_account_choices")
+        return result

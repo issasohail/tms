@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from calendar import monthrange
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
@@ -262,18 +263,6 @@ class InvoiceListView(SingleTableView):
             return
 
         money_field = DecimalField(max_digits=12, decimal_places=2)
-        invoice_totals = {
-            row["lease_id"]: row["total"] or Decimal("0.00")
-            for row in (
-                Invoice.objects.filter(lease_id__in=lease_ids)
-                .values("lease_id")
-                .annotate(
-                    total=Coalesce(
-                        Sum("amount"), Value(Decimal("0.00")), output_field=money_field
-                    )
-                )
-            )
-        }
         payment_totals = {
             row["lease_id"]: row["total"] or Decimal("0.00")
             for row in (
@@ -317,18 +306,28 @@ class InvoiceListView(SingleTableView):
         allocation_by_invoice = {}
         invoice_rows = (
             Invoice.objects.filter(lease_id__in=lease_ids)
-            .exclude(lifecycle_status__in=["cancelled", "void"])
-            .exclude(status="cancelled")
             .order_by("lease_id", "issue_date", "id")
-            .values("id", "lease_id", "amount", "due_date")
+            .values(
+                "id", "lease_id", "amount", "due_date",
+                "lifecycle_status", "status",
+            )
         )
         available_by_lease = dict(payment_totals)
         today = timezone.localdate()
         last_invoice_id_by_lease = {}
         rows_buffer = list(invoice_rows)
+        invoice_totals = defaultdict(lambda: Decimal("0.00"))
+        eligible_rows = []
         for row in rows_buffer:
+            invoice_totals[row["lease_id"]] += row["amount"] or Decimal("0.00")
+            if (
+                row["lifecycle_status"] in {"cancelled", "void"}
+                or row["status"] == "cancelled"
+            ):
+                continue
+            eligible_rows.append(row)
             last_invoice_id_by_lease[row["lease_id"]] = row["id"]
-        for row in rows_buffer:
+        for row in eligible_rows:
             lease_id = row["lease_id"]
             amount = row["amount"] or Decimal("0.00")
             available = available_by_lease.get(lease_id, Decimal("0.00"))

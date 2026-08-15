@@ -9,9 +9,12 @@ from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from django.conf import settings
+from django.core.cache import cache
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -27,6 +30,74 @@ from core.backup_utils import (
     purge_old_backups,
 )
 from core.views import _pending_approval_filter_state
+from core.forms import GlobalSettingsForm
+from core.models import GlobalSettings
+
+
+class SettingsConsolidationTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="settings-query-admin",
+            email="settings-query@example.com",
+            password="test-password",
+        )
+        self.client.force_login(self.user)
+
+    def test_whatsapp_staff_selectors_share_one_account_query(self):
+        field_names = (
+            "whatsapp_default_support_staff",
+            "whatsapp_accounts_staff",
+            "whatsapp_maintenance_staff",
+            "whatsapp_leasing_staff",
+            "whatsapp_escalation_staff",
+        )
+
+        cache.delete("core.global_settings")
+        cache.delete("core.settings_whatsapp_account_choices")
+        with CaptureQueriesContext(connection) as queries:
+            form = GlobalSettingsForm(instance=GlobalSettings.get_solo())
+            rendered = "".join(str(form[field_name]) for field_name in field_names)
+
+        account_queries = [
+            query["sql"] for query in queries.captured_queries
+            if " from `accounts_account`" in query["sql"].lower()
+        ]
+        self.assertTrue(rendered)
+        self.assertEqual(len(account_queries), 1)
+
+        cache.delete("core.global_settings")
+        with CaptureQueriesContext(connection) as warm_queries:
+            warm_form = GlobalSettingsForm(instance=GlobalSettings.get_solo())
+            "".join(str(warm_form[field_name]) for field_name in field_names)
+        warm_account_queries = [
+            query["sql"] for query in warm_queries.captured_queries
+            if " from `accounts_account`" in query["sql"].lower()
+        ]
+        self.assertEqual(warm_account_queries, [])
+
+    def test_settings_combines_sections_and_loads_embeds_lazily(self):
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse("core:settings"))
+
+        self.assertEqual(response.status_code, 200)
+        group_titles = [title for title, _icon, _fields in response.context["settings_field_groups"]]
+        self.assertIn("Billing Scale & Locale", group_titles)
+        self.assertIn("WhatsApp / Twilio", group_titles)
+        self.assertNotIn("Late Fees", group_titles)
+        self.assertNotIn("WhatsApp AI Assistant", group_titles)
+        self.assertContains(response, "Billing &amp; Late Fees")
+        self.assertContains(response, 'id="settings-tool-whatsapp-templates"')
+        self.assertContains(response, 'id="settings-tool-whatsapp-webhook-logs"')
+        self.assertContains(response, 'src="about:blank"')
+        self.assertNotContains(
+            response,
+            'data-settings-target="settings-group-late-fees"',
+        )
+        building_type_queries = [
+            query["sql"] for query in queries.captured_queries
+            if "properties_buildingtype" in query["sql"].lower()
+        ]
+        self.assertEqual(len(building_type_queries), 1)
 
 
 class PendingApprovalDetailTemplateTests(SimpleTestCase):

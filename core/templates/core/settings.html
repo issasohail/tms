@@ -21,16 +21,10 @@
         <span class="settings-tab-icon"><i class="fas fa-building"></i></span><span>Branding</span>
       </a>
       <a class="settings-tab-card" href="#settings-group-billing-scale-locale" data-settings-target="settings-group-billing-scale-locale">
-        <span class="settings-tab-icon"><i class="fas fa-coins"></i></span><span>Billing Scale</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-group-late-fees" data-settings-target="settings-group-late-fees">
-        <span class="settings-tab-icon"><i class="fas fa-clock"></i></span><span>Late Fees</span>
+        <span class="settings-tab-icon"><i class="fas fa-coins"></i></span><span>Billing &amp; Late Fees</span>
       </a>
       <a class="settings-tab-card" href="#settings-group-whatsapp-twilio" data-settings-target="settings-group-whatsapp-twilio">
-        <span class="settings-tab-icon"><i class="fab fa-whatsapp"></i></span><span>WhatsApp / Twilio</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-group-whatsapp-ai-assistant" data-settings-target="settings-group-whatsapp-ai-assistant">
-        <span class="settings-tab-icon"><i class="fas fa-robot"></i></span><span>WhatsApp AI</span>
+        <span class="settings-tab-icon"><i class="fab fa-whatsapp"></i></span><span>WhatsApp</span>
       </a>
       <a class="settings-tab-card" href="#settings-group-email-smtp" data-settings-target="settings-group-email-smtp">
         <span class="settings-tab-icon"><i class="fas fa-envelope"></i></span><span>Email / SMTP</span>
@@ -62,9 +56,6 @@
       <a class="settings-tab-card" href="#settings-tool-lease-parties" data-settings-target="settings-tool-lease-parties">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-file-signature"></i></span><span>Lease Parties</span>
       </a>
-      <a class="settings-tab-card" href="#settings-tool-whatsapp-templates" data-settings-target="settings-tool-whatsapp-templates">
-        <span class="settings-tab-icon settings-tab-icon-success"><i class="fab fa-whatsapp"></i></span><span>WhatsApp Templates</span>
-      </a>
       <a class="settings-tab-card" href="#settings-tool-inspections" data-settings-target="settings-tool-inspections">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-clipboard-check"></i></span><span>Inspections</span>
       </a>
@@ -73,9 +64,6 @@
       </a>
       <a class="settings-tab-card" href="#settings-move-out-charges" data-settings-target="settings-move-out-charges">
         <span class="settings-tab-icon settings-tab-icon-warning"><i class="fas fa-door-open"></i></span><span>Move-out Charges</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-tool-whatsapp-webhook-logs" data-settings-target="settings-tool-whatsapp-webhook-logs">
-        <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-chat-dots"></i></span><span>WhatsApp Webhook Logs</span>
       </a>
       <a class="settings-tab-card" href="#settings-tool-whatsapp-ai-review" data-settings-target="settings-tool-whatsapp-ai-review">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-inboxes"></i></span><span>AI Review</span>
@@ -171,7 +159,7 @@
                   </a>
                 </div>
               {% endif %}
-              {% if group_title == "WhatsApp AI Assistant" %}
+              {% if group_title == "WhatsApp / Twilio" %}
                 <div class="row g-2 mt-2">
                   <div class="col-12 col-md-6">
                     <div class="border rounded p-2 h-100">
@@ -216,6 +204,27 @@
                       <span class="text-muted small">{{ whatsapp_ai_status.celery_broker|default:"Not configured" }}</span>
                     </div>
                   </div>
+                </div>
+                <div class="mt-3 border-top pt-3">
+                  <h5 class="mb-2"><i class="fab fa-whatsapp me-1 text-success"></i>WhatsApp Management</h5>
+                  <details class="border rounded mb-2 settings-whatsapp-embed" id="settings-tool-whatsapp-templates" data-settings-embed>
+                    <summary class="p-2 fw-semibold">WhatsApp Utility Templates</summary>
+                    <div class="border-top p-2">
+                      <div class="text-end mb-2">
+                        <a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:utility_template_list' %}" target="_blank" rel="noopener">Open Full Page</a>
+                      </div>
+                      <iframe class="settings-inline-frame" src="about:blank" data-settings-src="{% url 'whatsapp:utility_template_list' %}?embed=1" title="WhatsApp Utility Templates"></iframe>
+                    </div>
+                  </details>
+                  <details class="border rounded settings-whatsapp-embed" id="settings-tool-whatsapp-webhook-logs" data-settings-embed>
+                    <summary class="p-2 fw-semibold">WhatsApp Webhook Logs</summary>
+                    <div class="border-top p-2">
+                      <div class="text-end mb-2">
+                        <a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:webhook_log_list' %}" target="_blank" rel="noopener">Open Full Page</a>
+                      </div>
+                      <iframe class="settings-inline-frame settings-inline-frame-tall" src="about:blank" data-settings-src="{% url 'whatsapp:webhook_log_list' %}?embed=1" title="WhatsApp Webhook Logs"></iframe>
+                    </div>
+                  </details>
                 </div>
               {% endif %}
               {% if group_title == "Handyman" %}
@@ -324,16 +333,6 @@
       </div>
     </div>
 
-    <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-templates">
-      <div class="card shadow-sm settings-embedded-panel">
-        <div class="card-header py-2 d-flex justify-content-between align-items-center">
-          <h4 class="mb-0"><i class="fab fa-whatsapp me-2"></i>WhatsApp Utility Templates</h4>
-          <a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:utility_template_list' %}" target="_blank" rel="noopener">Open Full Page</a>
-        </div>
-        <iframe class="settings-inline-frame" src="{% url 'whatsapp:utility_template_list' %}?embed=1" title="WhatsApp Utility Templates"></iframe>
-      </div>
-    </div>
-
     <div class="settings-tab-panel d-none" id="settings-tool-inspections">
       <div class="card shadow-sm settings-embedded-panel">
         <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -347,16 +346,6 @@
           </div>
         </div>
         <iframe id="settings-inspections-frame" class="settings-inline-frame" src="{% url 'leases:inspection_settings' 'all' %}?embed=1" title="Inspection Settings"></iframe>
-      </div>
-    </div>
-
-    <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-webhook-logs">
-      <div class="card shadow-sm settings-embedded-panel">
-        <div class="card-header py-2 d-flex justify-content-between align-items-center">
-          <h4 class="mb-0"><i class="bi bi-chat-dots me-2"></i>WhatsApp Webhook Logs</h4>
-          <a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:webhook_log_list' %}" target="_blank" rel="noopener">Open Full Page</a>
-        </div>
-        <iframe class="settings-inline-frame settings-inline-frame-tall" src="{% url 'whatsapp:webhook_log_list' %}?embed=1" title="WhatsApp Webhook Logs"></iframe>
       </div>
     </div>
 
@@ -984,8 +973,23 @@ document.addEventListener("DOMContentLoaded", function () {
   const settingsForm = document.querySelector(".settings-form");
   const settingsSavebar = document.querySelector(".settings-savebar");
   const autosaveStatus = document.getElementById("settings-autosave-status");
+  const settingsTargetAliases = {
+    "settings-group-late-fees": "settings-group-billing-scale-locale",
+    "settings-group-whatsapp-ai-assistant": "settings-group-whatsapp-twilio",
+    "settings-tool-whatsapp-templates": "settings-group-whatsapp-twilio",
+    "settings-tool-whatsapp-webhook-logs": "settings-group-whatsapp-twilio",
+  };
 
-  function showSettingsPanel(targetId, updateHash) {
+  function loadSettingsEmbed(container) {
+    const frame = container ? container.querySelector("iframe[data-settings-src]") : null;
+    if (frame && frame.dataset.settingsSrc) {
+      frame.src = frame.dataset.settingsSrc;
+      delete frame.dataset.settingsSrc;
+    }
+  }
+
+  function showSettingsPanel(requestedTargetId, updateHash) {
+    const targetId = settingsTargetAliases[requestedTargetId] || requestedTargetId;
     const targetPanel = document.getElementById(targetId);
     if (!targetPanel) return;
 
@@ -1004,9 +1008,23 @@ document.addEventListener("DOMContentLoaded", function () {
       autosaveStatus.classList.toggle("d-none", !isGlobalSettingsPanel);
     }
     if (updateHash) {
-      history.replaceState(null, "", "#" + targetId);
+      history.replaceState(null, "", "#" + requestedTargetId);
+    }
+    if (requestedTargetId !== targetId) {
+      const embeddedTarget = document.getElementById(requestedTargetId);
+      if (embeddedTarget && embeddedTarget.matches("details[data-settings-embed]")) {
+        embeddedTarget.open = true;
+        loadSettingsEmbed(embeddedTarget);
+        window.requestAnimationFrame(() => embeddedTarget.scrollIntoView({block: "start"}));
+      }
     }
   }
+
+  document.querySelectorAll("details[data-settings-embed]").forEach(container => {
+    container.addEventListener("toggle", function () {
+      if (this.open) loadSettingsEmbed(this);
+    });
+  });
 
   settingsTabs.forEach(tab => {
     tab.addEventListener("click", function (event) {

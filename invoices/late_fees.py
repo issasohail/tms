@@ -239,15 +239,34 @@ def reject_pending_late_fee(reminder):
     return {"ok": True, "reminder": reminder}
 
 
-def collect_due_invoices(today=None):
+def collect_due_invoices(today=None, start_date=None):
     today = today or timezone.localdate()
-    return (
+    invoices = (
         Invoice.objects
         .exclude(status__in=["paid", "cancelled"])
         .filter(due_date__lte=today)
-        .select_related("lease", "lease__tenant")
+        .select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property")
         .prefetch_related("late_fee_reminders", "items")
     )
+    if start_date:
+        invoices = invoices.filter(due_date__gte=start_date)
+    return invoices
+
+
+def _invoice_summary_detail(invoice, reminder_number, error=None):
+    unit = getattr(invoice.lease, "unit", None)
+    property_obj = getattr(unit, "property", None) if unit else None
+    detail = {
+        "invoice_id": invoice.pk,
+        "invoice_number": invoice.invoice_number,
+        "reminder_number": reminder_number,
+        "property_name": getattr(property_obj, "property_name", "") or "—",
+        "unit_name": getattr(unit, "unit_number", "") or "—",
+        "due_date": invoice.due_date.isoformat() if invoice.due_date else "",
+    }
+    if error:
+        detail["error"] = str(error)
+    return detail
 
 
 def run_due_late_fee_reminders(
@@ -278,6 +297,8 @@ def run_due_late_fee_reminders(
         "fees_applied": 0,
         "fees_pending": 0,
         "skipped": 0,
+        "excluded_before_start": 0,
+        "automation_start_date": settings_obj.late_fee_automation_start_date,
         "dry_run": bool(dry_run),
         "details": [],
     }
@@ -288,7 +309,13 @@ def run_due_late_fee_reminders(
         summary["reason"] = "Automatic late fee reminders are disabled."
         return summary
 
-    for invoice in collect_due_invoices(today=today):
+    all_due_invoices = collect_due_invoices(today=today)
+    start_date = settings_obj.late_fee_automation_start_date
+    if start_date:
+        summary["excluded_before_start"] = all_due_invoices.filter(
+            due_date__lt=start_date
+        ).count()
+    for invoice in collect_due_invoices(today=today, start_date=start_date):
         summary["examined"] += 1
         cfg = get_effective_late_fee_settings(invoice.lease)
         reminder_number = get_due_reminder_number(invoice, cfg, today=today)
@@ -299,11 +326,9 @@ def run_due_late_fee_reminders(
         summary["due"] += 1
         if dry_run:
             summary["processed"] += 1
-            summary["details"].append({
-                "invoice_id": invoice.pk,
-                "invoice_number": invoice.invoice_number,
-                "reminder_number": reminder_number,
-            })
+            summary["details"].append(
+                _invoice_summary_detail(invoice, reminder_number)
+            )
             continue
 
         try:
@@ -315,22 +340,18 @@ def run_due_late_fee_reminders(
             )
         except Exception as exc:
             summary["failed"] += 1
-            summary["details"].append({
-                "invoice_id": invoice.pk,
-                "invoice_number": invoice.invoice_number,
-                "reminder_number": reminder_number,
-                "error": str(exc),
-            })
+            summary["details"].append(
+                _invoice_summary_detail(invoice, reminder_number, error=exc)
+            )
             continue
 
         if not result.get("ok"):
             summary["failed"] += 1
-            summary["details"].append({
-                "invoice_id": invoice.pk,
-                "invoice_number": invoice.invoice_number,
-                "reminder_number": reminder_number,
-                "error": result.get("reason") or "Late-fee reminder failed.",
-            })
+            summary["details"].append(_invoice_summary_detail(
+                invoice,
+                reminder_number,
+                error=result.get("reason") or "Late-fee reminder failed.",
+            ))
             continue
 
         summary["processed"] += 1
@@ -339,6 +360,9 @@ def run_due_late_fee_reminders(
             summary["fees_applied"] += 1
         elif reminder.status == InvoiceLateFeeReminder.STATUS_FEE_PENDING:
             summary["fees_pending"] += 1
+        summary["details"].append(
+            _invoice_summary_detail(invoice, reminder_number)
+        )
 
     summary["skipped"] += max(
         0, summary["examined"] - summary["due"] - summary["skipped"]

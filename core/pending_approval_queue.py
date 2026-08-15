@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Count, Q
 
 
 def pending_approval_status_filters():
@@ -46,14 +46,18 @@ def actionable_media_count(queryset):
     Count approval actions, not files: one uploaded media batch is one action,
     while every standalone media record is one action.
     """
-    standalone_count = queryset.filter(batch_key__isnull=True).count()
-    batch_count = (
-        queryset.filter(batch_key__isnull=False)
-        .values("batch_key")
-        .distinct()
-        .count()
+    counts = queryset.aggregate(
+        standalone_count=Count(
+            "pk",
+            filter=Q(batch_key__isnull=True),
+        ),
+        batch_count=Count(
+            "batch_key",
+            filter=Q(batch_key__isnull=False),
+            distinct=True,
+        ),
     )
-    return standalone_count + batch_count
+    return counts["standalone_count"] + counts["batch_count"]
 
 
 def pending_approval_actionable_counts():

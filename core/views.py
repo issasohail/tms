@@ -2425,12 +2425,11 @@ class SettingsView(FormView):
         ctx["payment_methods"] = PaymentMethod.objects.order_by(
             "sort_order", "name"
         )
-        ctx["move_out_charge_building_types"] = BuildingType.objects.filter(
-            is_active=True
-        ).order_by(
-            "sort_order", "name"
-        )
-        ctx["building_types"] = BuildingType.objects.order_by("sort_order", "name")
+        building_types = list(BuildingType.objects.order_by("sort_order", "name"))
+        ctx["building_types"] = building_types
+        ctx["move_out_charge_building_types"] = [
+            building_type for building_type in building_types if building_type.is_active
+        ]
         doc_cat_sort = self.request.GET.get("doc_cat_sort")
         ctx["doc_cat_sort"] = doc_cat_sort
         doc_cat_ordering = ("name", "sort_order") if doc_cat_sort == "name" else ("sort_order", "name")

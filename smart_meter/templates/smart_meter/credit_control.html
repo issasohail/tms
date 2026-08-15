@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% load money_tags %}
+{% block title %}Credit Control - {{ meter.meter_number }}{% endblock %}
+{% block extra_css %}
+<style>
+  .credit-help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-left: 3px;
+    padding: 0;
+    border: 1px solid #6c757d;
+    border-radius: 50%;
+    background: transparent;
+    color: #495057;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    vertical-align: text-bottom;
+    cursor: help;
+  }
+  .credit-help:hover, .credit-help:focus { background: #eef3f8; color: #0d6efd; border-color: #0d6efd; outline: none; }
+  .tooltip.credit-help-tooltip .tooltip-inner { max-width: 330px; text-align: left; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid px-2 px-md-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div><h2 class="h4 mb-1">Smart Meter Credit Control</h2><div class="text-muted small">Meter {{ meter.meter_number }}</div></div>
+    <a href="{% url 'smart_meter:meter_detail' meter.pk %}" class="btn btn-sm btn-outline-secondary">Back to Meter</a>
+  </div>
+
+  <ul class="nav nav-tabs mb-3" aria-label="Meter detail sections">
+    <li class="nav-item">
+      <a class="nav-link" href="{% url 'smart_meter:meter_detail' meter.pk %}">
+        <i class="fas fa-tachometer-alt me-1"></i> Meter Overview
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link active" aria-current="page" href="{% url 'smart_meter:credit_control' meter.pk %}">
+        <i class="fas fa-bolt me-1"></i> Credit Control
+      </a>
+    </li>
+  </ul>
+
+  <div class="row g-3">
+    <div class="col-12 col-xl-7">
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h5 class="card-title">Account Summary</h5>
+        <div class="row g-2 small">
+          <div class="col-6 col-md-4"><strong>Property</strong><br>{{ meter.unit.property.property_name|default:"-" }}</div>
+          <div class="col-6 col-md-4"><strong>Unit</strong><br>{{ meter.unit.unit_number|default:"-" }}</div>
+          <div class="col-6 col-md-4"><strong>Tenant</strong><br>{{ tenant|default:"-" }}</div>
+          <div class="col-6 col-md-4"><strong>Lease</strong><br>{% if lease %}<a href="{% url 'leases:lease_detail' lease.pk %}">#{{ lease.pk }}</a>{% else %}-{% endif %}</div>
+          <div class="col-6 col-md-4"><strong>Installation</strong><br>{% if installation %}#{{ installation.pk }} (active){% else %}<span class="text-danger">Missing</span>{% endif %}</div>
+          <div class="col-6 col-md-4"><strong>Billing Mode</strong><br>{{ meter.get_billing_mode_display }}</div>
+          <div class="col-6 col-md-4"><strong>Status</strong><br>{% if account.is_enabled %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</div>
+          <div class="col-6 col-md-4"><strong>State</strong><br><span class="badge {% if account.enforcement_state == 'normal' %}bg-success{% elif account.enforcement_state == 'warning_1' %}bg-warning text-dark{% elif account.enforcement_state == 'warning_2' or account.enforcement_state == 'cutoff_eligible' %}bg-danger{% else %}bg-secondary{% endif %}">{{ account.get_enforcement_state_display|default:"Not configured" }}</span></div>
+          <div class="col-6 col-md-4"><strong>Last Evaluation</strong><br>{{ account.last_evaluated_at|date:"M d, Y H:i"|default:"-" }}</div>
+          <div class="col-6 col-md-4"><strong>Last Reading</strong><br>{{ latest_reading.total_energy|default:"-" }} kWh</div>
+          <div class="col-12 col-md-8"><strong>Electricity Security Deposit</strong><button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="The refundable electricity deposit recorded on the lease. It can be used as a reference for calculating a credit limit, but it is not automatically treated as an invoice payment.">?</button><br>Rs. {{ lease.electricity_security_deposit|default:0|money:2 }} {% if lease %}<a class="ms-2" href="{% url 'leases:lease_update' lease.pk %}">Edit lease</a>{% endif %}</div>
+        </div>
+      </div></div>
+
+      <form method="post" class="card shadow-sm mb-3"><div class="card-body">
+        {% csrf_token %}<input type="hidden" name="action" value="save">
+        <h5 class="card-title">Credit Limit &amp; Thresholds</h5>
+        {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="row g-2">
+          {% for field in form %}
+          <div class="{% if field.field.widget.input_type == 'checkbox' %}col-6 col-md-3{% else %}col-12 col-md-6{% endif %}">
+            {% if field.field.widget.input_type == 'checkbox' %}<div class="form-check mt-3">{{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.help_text %}<button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="{{ field.help_text }}" aria-label="Help for {{ field.label }}">?</button>{% endif %}</div>{% else %}<label class="form-label small mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.help_text %}<button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="{{ field.help_text }}" aria-label="Help for {{ field.label }}">?</button>{% endif %}{{ field }}{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+        <hr><div class="row small g-2">
+          <div class="col-md-4"><strong>Electricity Security Reference</strong><button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="The electricity security amount currently stored on the lease and available to deposit-based limit calculations.">?</button><br>Rs. {{ lease.electricity_security_deposit|default:0|money:2 }}</div>
+          <div class="col-md-4"><strong>Effective Credit Limit</strong><button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="The actual rupee limit produced by the selected Credit limit source. Warnings, cutoff, remaining credit, and percentage used are calculated from this amount.">?</button><br>Rs. {{ computed_limit|default:0|money:2 }}</div>
+          <div class="col-md-4"><strong>Limit Explanation</strong><button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="Shows which configured value produced the current effective credit limit.">?</button><br>{{ computed_explanation }}</div>
+        </div>
+        {% if perms.smart_meter.change_meter_credit_settings %}<button class="btn btn-primary btn-sm mt-3" type="submit">Save Settings</button>{% endif %}
+      </div></form>
+    </div>
+
+    <div class="col-12 col-xl-5">
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h5 class="card-title">Current Exposure</h5>
+        <div class="row g-2 small">
+          <div class="col-6">Accrued / unbilled<br><strong>Rs. {{ account.accrued_usage_amount|default:0|money:2 }}</strong></div>
+          <div class="col-6">Previous unpaid electricity<br><strong>Rs. {{ account.previous_unpaid_electricity|default:0|money:2 }}</strong></div>
+          <div class="col-6">Payments / credits<br><strong>Rs. {{ account.payments_applied|default:0|money:2 }} / {{ account.credits_applied|default:0|money:2 }}</strong></div>
+          <div class="col-6">Current exposure<br><strong>Rs. {{ account.current_exposure|default:0|money:2 }}</strong></div>
+          <div class="col-6">Remaining credit<br><strong>Rs. {{ account.remaining_credit|default:0|money:2 }}</strong></div>
+          <div class="col-6">Percentage used<br><strong>{{ account.percent_used|default:0 }}%</strong></div>
+        </div>
+      </div></div>
+
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h5 class="card-title">Server Safety Gates</h5>
+        <div class="row g-2 small">
+          <div class="col-6">Automatic evaluation<button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="Server-wide gate that permits new readings and payments to trigger credit evaluations. This must be enabled before automatic cutoff or restore can run.">?</button><br><strong>{{ safety.evaluation|yesno:"ENABLED,DISABLED" }}</strong></div>
+          <div class="col-6">Automatic cutoff<button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="Server-wide safety gate for automatic OFF commands. It must be enabled together with the account's combined Automatic cutoff &amp; restore option.">?</button><br><strong>{{ safety.cutoff|yesno:"ENABLED,DISABLED" }}</strong></div>
+          <div class="col-6">Automatic restore<button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="Server-wide safety gate for automatic ON commands. It must be enabled together with the account's combined Automatic cutoff &amp; restore option.">?</button><br><strong>{{ safety.restore|yesno:"ENABLED,DISABLED" }}</strong></div>
+          <div class="col-6">Meter allowlisted<button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="Only explicitly approved meter IDs may receive automatic credit-control relay commands.">?</button><br><strong>{{ safety.allowlisted|yesno:"YES,NO" }}</strong></div>
+          <div class="col-6">Emergency stop<button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="A server-wide emergency switch. When ON, it blocks automatic cutoff and automatic restore commands.">?</button><br><strong>{{ safety.emergency_stop|yesno:"ON,OFF" }}</strong></div>
+        </div>
+      </div></div>
+
+      {% if account %}
+      <div class="card shadow-sm"><div class="card-body">
+        <h5 class="card-title">Actions</h5>
+        <form method="post" class="mb-2">{% csrf_token %}<input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Reason / note"><div class="d-flex flex-wrap gap-2">
+          {% if perms.smart_meter.activate_meter_credit and not account.is_enabled %}<button name="action" value="activate" class="btn btn-sm btn-success">Activate Credit Control</button>{% endif %}
+          {% if perms.smart_meter.deactivate_meter_credit and account.is_enabled %}<button name="action" value="deactivate" class="btn btn-sm btn-outline-danger">Deactivate</button>{% endif %}
+          {% if perms.smart_meter.change_meter_credit_settings and account.is_enabled %}<button name="action" value="evaluate" class="btn btn-sm btn-outline-primary">Evaluate Now</button>{% endif %}
+          {% if perms.smart_meter.mute_meter_credit_notifications %}<button name="action" value="clear_mute" class="btn btn-sm btn-outline-secondary">Clear Mute</button>{% endif %}
+          {% if perms.smart_meter.hold_meter_credit_enforcement %}<button name="action" value="clear_hold" class="btn btn-sm btn-outline-secondary">Clear Hold</button>{% endif %}
+        </div></form>
+        {% if perms.smart_meter.mute_meter_credit_notifications or perms.smart_meter.hold_meter_credit_enforcement %}
+        <form method="post">{% csrf_token %}<input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Required reason"><div class="row g-2 mb-2"><div class="col-6"><select name="period" class="form-select form-select-sm"><option value="">Until date/time</option><option value="current_month">Current month</option><option value="indefinite">Indefinite (superuser)</option></select></div><div class="col-6"><input type="datetime-local" name="until" class="form-control form-control-sm"></div></div><div class="d-flex gap-2">{% if perms.smart_meter.mute_meter_credit_notifications %}<button name="action" value="mute" class="btn btn-sm btn-outline-warning">Mute Notifications</button>{% endif %}{% if perms.smart_meter.hold_meter_credit_enforcement %}<button name="action" value="hold" class="btn btn-sm btn-outline-warning">Temporary Hold</button>{% endif %}</div></form>
+        {% endif %}
+      </div></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!window.bootstrap || !bootstrap.Tooltip) return;
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (element) {
+      bootstrap.Tooltip.getOrCreateInstance(element);
+    });
+  });
+</script>
+{% endblock %}

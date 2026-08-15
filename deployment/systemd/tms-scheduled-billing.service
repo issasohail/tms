@@ -1,0 +1,16 @@
+[Unit]
+Description=TMS scheduled monthly billing due check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ivs
+WorkingDirectory=/home/ivs/apps/tms
+EnvironmentFile=-/home/ivs/apps/tms/.env
+ExecStart=/home/ivs/apps/tms/.venv/bin/python /home/ivs/apps/tms/manage.py run_scheduled_billing
+StandardOutput=journal
+StandardError=journal
+
+# Before installation, compare User/EnvironmentFile with:
+# systemctl cat tms-kirayas.service tms-billing-worker.service

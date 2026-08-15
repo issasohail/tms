@@ -274,16 +274,56 @@ class PaymentDetailForm(forms.ModelForm):
 
     class Meta:
         model = PaymentDetail
-        fields = ["payment_type", "lease_amount", "security_amount", "security_type"]
+        fields = [
+            "payment_type",
+            "lease_amount",
+            "security_amount",
+            "electricity_amount",
+            "electricity_meter",
+            "security_type",
+        ]
         widgets = {
             "lease_amount": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),
             "security_amount": forms.NumberInput(attrs={"step": "0.01", "class": "form-control"}),
+            "electricity_amount": forms.NumberInput(
+                attrs={"step": "0.01", "min": "0", "class": "form-control"}
+            ),
+            "electricity_meter": forms.Select(attrs={"class": "form-select"}),
             "security_type": forms.HiddenInput(),
         }
 
     def __init__(self, *args, **kwargs):
         self.payment_total = kwargs.pop("payment_total", None)
+        self.lease = kwargs.pop("lease", None)
         super().__init__(*args, **kwargs)
+
+        from smart_meter.models import Meter, MeterInstallation
+
+        if self.lease is None:
+            instance_payment = getattr(getattr(self, "instance", None), "payment", None)
+            self.lease = getattr(instance_payment, "lease", None)
+        meter_ids = []
+        if self.lease:
+            meter_ids = MeterInstallation.objects.filter(
+                lease=self.lease,
+            ).values_list("meter_id", flat=True)
+        elif getattr(self.instance, "electricity_meter_id", None):
+            meter_ids = [self.instance.electricity_meter_id]
+        self.fields["electricity_meter"].queryset = Meter.objects.filter(
+            pk__in=meter_ids
+        ).order_by("meter_number")
+        self.fields["electricity_amount"].required = False
+        self.fields["electricity_amount"].initial = Decimal("0.00")
+        self.fields["electricity_meter"].required = False
+        self.fields["electricity_meter"].empty_label = "Select electricity meter"
+        self.fields["electricity_amount"].label = "Electricity Allocation"
+        self.fields["electricity_amount"].help_text = (
+            "This is part of Lease Amount, not an additional charge. Enter the amount the tenant "
+            "is specifically paying toward electricity."
+        )
+        self.fields["electricity_meter"].help_text = (
+            "Select the meter whose electricity balance should receive this allocation."
+        )
 
         # When editing an existing payment detail, pick the correct mode so JS doesn't overwrite values.
         inst = getattr(self, "instance", None)
@@ -317,6 +357,26 @@ class PaymentDetailForm(forms.ModelForm):
         cleaned_data = super().clean()
         lease_amount = cleaned_data.get("lease_amount") or Decimal("0.00")
         security_amount = cleaned_data.get("security_amount") or Decimal("0.00")
+        electricity_amount = cleaned_data.get("electricity_amount") or Decimal("0.00")
+        electricity_meter = cleaned_data.get("electricity_meter")
+
+        if electricity_amount < 0:
+            self.add_error("electricity_amount", "Electricity allocation cannot be negative.")
+        if electricity_amount > max(lease_amount, Decimal("0.00")):
+            self.add_error(
+                "electricity_amount",
+                "Electricity allocation cannot exceed the positive lease amount.",
+            )
+        if electricity_amount > 0 and not electricity_meter:
+            self.add_error("electricity_meter", "Select the electricity meter for this allocation.")
+        if electricity_meter and self.lease:
+            from smart_meter.models import MeterInstallation
+
+            if not MeterInstallation.objects.filter(
+                lease=self.lease,
+                meter=electricity_meter,
+            ).exists():
+                self.add_error("electricity_meter", "The selected meter is not linked to this lease.")
 
         if lease_amount < 0 and security_amount != 0:
             raise forms.ValidationError(
@@ -354,5 +414,6 @@ class PaymentDetailForm(forms.ModelForm):
         cleaned_data["payment_type"] = mode
         cleaned_data["lease_amount"] = lease_amount
         cleaned_data["security_amount"] = abs(security_amount) if mode == "REFUND" else security_amount
+        cleaned_data["electricity_amount"] = electricity_amount
         cleaned_data["security_type"] = security_type
         return cleaned_data

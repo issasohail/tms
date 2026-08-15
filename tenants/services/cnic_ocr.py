@@ -295,8 +295,9 @@ def extract_cnic_front_identity(front_file, model):
     except ImportError:
         return _unavailable("The openai Python package is not installed.")
     except Exception as exc:
-        logger.warning("CNIC staged front OCR failed error=%s", _openai_error_kind(exc))
-        return _unavailable("The CNIC front could not be read. Try a clearer image.")
+        error_kind = _openai_error_kind(exc)
+        logger.warning("CNIC staged front OCR failed error=%s", error_kind)
+        return _unavailable(_staged_ocr_error_message(error_kind, "front"))
     primary_ms = round((time.monotonic() - primary_started) * 1000)
 
     result = _parse_json(getattr(response, "output_text", "") or "")
@@ -427,8 +428,9 @@ def extract_cnic_back_identity(back_file, expected_front_number, model):
     except ImportError:
         return _unavailable("The openai Python package is not installed.")
     except Exception as exc:
-        logger.warning("CNIC staged back OCR failed error=%s", _openai_error_kind(exc))
-        return _unavailable("The CNIC back could not be read. Try a clearer image.")
+        error_kind = _openai_error_kind(exc)
+        logger.warning("CNIC staged back OCR failed error=%s", error_kind)
+        return _unavailable(_staged_ocr_error_message(error_kind, "back"))
     primary_ms = round((time.monotonic() - primary_started) * 1000)
 
     result = _parse_json(getattr(response, "output_text", "") or "")
@@ -1374,6 +1376,21 @@ def portrait_content_file_from_cnic_front(front_file, filename="cnic-portrait.jp
 
 def _age_on(dob, today):
     return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+
+
+def _staged_ocr_error_message(error_kind, side):
+    if error_kind == "insufficient_quota":
+        return (
+            "CNIC OCR is unavailable because the OpenAI credit or quota is exhausted. "
+            "Continue with manual entry or ask an administrator to check API billing."
+        )
+    if error_kind == "rate_limit":
+        return "CNIC OCR is temporarily rate limited. Wait one minute or continue with manual entry."
+    if error_kind == "timeout":
+        return "CNIC OCR timed out. Try again later or continue with manual entry."
+    if error_kind == "connection_error":
+        return "CNIC OCR could not reach OpenAI. Check the connection or continue with manual entry."
+    return f"The CNIC {side} could not be read. Try a clearer image or continue with manual entry."
 
 
 def _unavailable(message):

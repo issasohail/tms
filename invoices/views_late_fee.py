@@ -17,7 +17,6 @@ def send_late_fee_reminder(request, pk):
         invoice,
         sent_via=InvoiceLateFeeReminder.SOURCE_MANUAL,
         user=request.user,
-        force=True,
     )
     if result.get("ok"):
         fee = result.get("fee") or Decimal("0.00")

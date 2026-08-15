@@ -9,6 +9,7 @@ from invoices.services import security_deposit_totals
 from core.utils.identity import format_phone
 from payments.models import PaymentDetail
 from payments.services.payment_detail import rebuild_payment_detail
+from smart_meter.models import Meter, MeterInstallation
 
 
 def _dec(value, default="0.00"):
@@ -33,12 +34,20 @@ def payment_detail_prefill_api(request):
         PaymentDetail.objects.select_related("payment", "payment__lease"),
         pk=payment_detail_id,
     )
+    meter_options = list(
+        Meter.objects.filter(
+            installations__lease=detail.payment.lease,
+        ).distinct().order_by("meter_number").values("id", "meter_number")
+    )
     return JsonResponse({
         "payment_detail_id": detail.id,
         "payment_id": detail.payment_id,
         "payment_amount": str(getattr(detail.payment, "amount", "0.00") or "0.00"),
         "lease_amount": str(detail.lease_amount or "0.00"),
         "security_amount": str(detail.security_amount or "0.00"),
+        "electricity_amount": str(detail.electricity_amount or "0.00"),
+        "electricity_meter_id": detail.electricity_meter_id,
+        "electricity_meter_options": meter_options,
         "security_type": detail.security_type or "PAYMENT",
     })
 
@@ -60,10 +69,27 @@ def payment_detail_update_api(request):
 
     lease_amt = _dec(request.POST.get("lease_amount"))
     sec_amt = _dec(request.POST.get("security_amount"))
+    electricity_amt = _dec(request.POST.get("electricity_amount"))
+    electricity_meter_id = request.POST.get("electricity_meter")
+    electricity_meter = None
+    if electricity_meter_id:
+        electricity_meter = get_object_or_404(Meter, pk=electricity_meter_id)
     sec_type = (request.POST.get("security_type") or detail.security_type or "PAYMENT").upper()
 
     if sec_amt < 0:
         return JsonResponse({"error": "Security payment detail amount cannot be negative."}, status=400)
+    if electricity_amt < 0 or electricity_amt > max(lease_amt, Decimal("0.00")):
+        return JsonResponse(
+            {"error": "Electricity allocation must be between zero and the positive lease amount."},
+            status=400,
+        )
+    if electricity_amt > 0 and not electricity_meter:
+        return JsonResponse({"error": "Select an electricity meter."}, status=400)
+    if electricity_meter and not MeterInstallation.objects.filter(
+        lease=payment.lease,
+        meter=electricity_meter,
+    ).exists():
+        return JsonResponse({"error": "The selected meter is not linked to this lease."}, status=400)
 
     total = lease_amt + sec_amt
     if total != payment.amount:
@@ -76,6 +102,8 @@ def payment_detail_update_api(request):
         payment=payment,
         lease_amount=lease_amt,
         security_amount=sec_amt,
+        electricity_amount=electricity_amt,
+        electricity_meter=electricity_meter,
         security_type=sec_type,
         user=request.user,
         reason="Payment detail edited from payment list",
@@ -114,6 +142,7 @@ def api_payment_detail_receipt_whatsapp(request, pk: int):
         lines.append(f"*Date: {payment.payment_date:%b %d, %Y}*")
     lease_amount = _dec(detail.lease_amount)
     security_amount = _dec(detail.security_amount)
+    electricity_amount = _dec(detail.electricity_amount)
     positive_parts = [
         label
         for label, value in (
@@ -132,6 +161,9 @@ def api_payment_detail_receipt_whatsapp(request, pk: int):
         label = "Security Refund" if detail.security_type == "REFUND" else "Security Portion"
         lines.append(f"{label}: {_money(detail.security_amount)}")
         lines.append(f"Security Status: {sec_status}")
+    if electricity_amount > 0:
+        meter_number = getattr(detail.electricity_meter, "meter_number", "")
+        lines.append(f"Electricity Allocation ({meter_number}): {_money(electricity_amount)}")
     lease_balance = getattr(lease, "get_balance", 0) if lease else 0
     if callable(lease_balance):
         lease_balance = lease_balance()

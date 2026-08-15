@@ -1238,6 +1238,18 @@ class MeterCreditAccount(models.Model):
         self.active_installation_key = self.installation_id if self.is_enabled else None
         super().save(*args, **kwargs)
 
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.warning_threshold_percent > self.final_warning_threshold_percent:
+            errors["warning_threshold_percent"] = "Warning threshold must not exceed final warning threshold."
+        if self.final_warning_threshold_percent > self.cutoff_threshold_percent:
+            errors["final_warning_threshold_percent"] = "Final warning threshold must not exceed cutoff threshold."
+        if self.reconnect_threshold_percent > self.cutoff_threshold_percent:
+            errors["reconnect_threshold_percent"] = "Reconnect threshold must not exceed cutoff threshold."
+        if errors:
+            raise ValidationError(errors)
+
     @property
     def percent_used(self):
         if not self.effective_credit_limit or self.effective_credit_limit <= 0:

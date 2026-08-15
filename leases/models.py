@@ -108,6 +108,12 @@ class Lease(models.Model):
     security_deposit = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
+    electricity_security_deposit = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Separate deposit used only for smart-meter electricity credit control.",
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
     terms = models.TextField(
         default=default_lease_terms,

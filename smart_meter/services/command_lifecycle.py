@@ -15,6 +15,7 @@ from typing import Optional
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from smart_meter.models import LiveReading, Meter, MeterCommand, MeterCreditAccount
@@ -48,6 +49,36 @@ def automatic_evaluation_enabled() -> bool:
 def _credit_allowlisted(meter_id: int) -> bool:
     allowed = set(getattr(settings, "METER_CREDIT_ALLOWED_METER_IDS", ()) or ())
     return bool(allowed and meter_id in allowed)
+
+
+def latest_credit_cutoff_command(account: MeterCreditAccount, *, before=None):
+    """Return the latest OFF command that proves a credit-control cutoff was attempted.
+
+    A queued/pending OFF command is not enough provenance for an automatic restore. A
+    command must have reached the meter, been acknowledged/verified, or retain that
+    evidence after being superseded by the compensating ON request.
+    """
+    queryset = MeterCommand.objects.filter(
+        meter_id=account.meter_id,
+        related_credit_account=account,
+        command_type="relay",
+        desired_state="off",
+        source="credit_control",
+    )
+    if before is not None:
+        queryset = queryset.filter(created_at__lt=before)
+    queryset = queryset.filter(
+        Q(status__in=("sent", "acknowledged", "verified", "ok"))
+        | Q(acknowledged_at__isnull=False)
+        | Q(verified_at__isnull=False)
+        | Q(parsed_relay_state="off")
+        | Q(
+            status="cancelled",
+            cancelled_reason__startswith="superseded by on request",
+            last_attempt_at__isnull=False,
+        )
+    )
+    return queryset.order_by("-created_at", "-id").first()
 
 
 def _account_hold_active(account: MeterCreditAccount, now=None) -> bool:
@@ -108,6 +139,10 @@ def still_should_disconnect(command: MeterCommand) -> RevalidationResult:
     account = command.related_credit_account
     if not account or not account.is_enabled:
         return RevalidationResult(False, "credit account inactive", desired_state="off")
+    if command.source == "credit_control" and not (
+        account.automatic_cutoff and account.automatic_restore and not account.manual_only_cutoff
+    ):
+        return RevalidationResult(False, "combined automatic cutoff and restore is disabled", desired_state="off")
     if command.source == "credit_control":
         if not automatic_evaluation_enabled():
             return RevalidationResult(False, "automatic credit evaluation feature switch disabled", desired_state="off")
@@ -144,6 +179,10 @@ def still_should_reconnect(command: MeterCommand) -> RevalidationResult:
     account = command.related_credit_account
     if not account or not account.is_enabled:
         return RevalidationResult(False, "credit account inactive", desired_state="on")
+    if command.source in {"credit_control", "payment"} and not (
+        account.automatic_cutoff and account.automatic_restore and not account.manual_only_cutoff
+    ):
+        return RevalidationResult(False, "combined automatic cutoff and restore is disabled", desired_state="on")
     if command.source in {"credit_control", "payment"}:
         if not automatic_evaluation_enabled():
             return RevalidationResult(False, "automatic credit evaluation feature switch disabled", desired_state="on")
@@ -159,6 +198,9 @@ def still_should_reconnect(command: MeterCommand) -> RevalidationResult:
         return RevalidationResult(False, f"account blocked by {account.enforcement_state}", account.current_exposure, None, account.installation_id, account.lease_id, "on")
     if not _active_installation_matches(account) or not _lease_is_active(account):
         return RevalidationResult(False, "installation or lease mismatch", account.current_exposure, None, account.installation_id, account.lease_id, "on")
+    cutoff_origin = latest_credit_cutoff_command(account, before=command.created_at)
+    if not cutoff_origin:
+        return RevalidationResult(False, "no prior credit-control cutoff command", account.current_exposure, None, account.installation_id, account.lease_id, "on")
     threshold = account.effective_credit_limit * account.reconnect_threshold_percent / 100
     if account.current_exposure >= threshold:
         return RevalidationResult(False, "exposure remains above reconnect threshold", account.current_exposure, threshold, account.installation_id, account.lease_id, "on")
@@ -167,8 +209,9 @@ def still_should_reconnect(command: MeterCommand) -> RevalidationResult:
         command_type="relay",
         desired_state="off",
         source="manual",
-        created_at__gt=command.created_at,
-        status__in=ACTIVE,
+        created_at__gt=cutoff_origin.created_at,
+    ).exclude(
+        status__in=("cancelled", "expired", "failed", "error"),
     ).exists()
     if newer_manual_off:
         return RevalidationResult(False, "newer manual OFF command exists", account.current_exposure, threshold, account.installation_id, account.lease_id, "on")

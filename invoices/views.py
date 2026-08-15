@@ -1715,65 +1715,26 @@ def invoice_item_inline_delete(request, pk):
 
 @login_required
 @require_POST
-@transaction.atomic
 def apply_late_fees(request):
-    settings_obj = GlobalSettings.get_solo()
-    if not settings_obj.late_fee_enabled:
-        messages.error(request, "Late fee is disabled in settings.")
-        return redirect("invoices:invoice_list")
+    from invoices.late_fees import run_due_late_fee_reminders
+    from invoices.models import InvoiceLateFeeReminder
 
-    today = timezone.localdate()
-    grace_days = settings_obj.late_fee_grace_days or 0
-    late_fee_category, _ = ItemCategory.objects.get_or_create(
-        name="Late Fee",
-        defaults={"is_active": True},
+    summary = run_due_late_fee_reminders(
+        source=InvoiceLateFeeReminder.SOURCE_MANUAL,
+        user=request.user,
     )
-    invoices = (
-        Invoice.objects.exclude(status__in=["paid", "cancelled"])
-        .filter(due_date__lt=today - timedelta(days=grace_days))
-        .prefetch_related("items")
+    message = (
+        "Late-fee run complete: "
+        f"{summary['examined']} checked, {summary['processed']} reminders processed, "
+        f"{summary['fees_applied']} fees applied, {summary['fees_pending']} pending approval, "
+        f"{summary['failed']} failed."
     )
-
-    applied = skipped_duplicate = skipped_cap = 0
-    cap = settings_obj.billing_cap_amount or Decimal("0.00")
-    for invoice in invoices:
-        if invoice.items.filter(category=late_fee_category).exists():
-            skipped_duplicate += 1
-            continue
-
-        base_amount = invoice.amount or Decimal("0.00")
-        if settings_obj.late_fee_type == "percent":
-            fee = (
-                base_amount
-                * (settings_obj.late_fee_percent or Decimal("0.00"))
-                / Decimal("100.00")
-            ).quantize(Decimal("0.01"))
-        else:
-            fee = settings_obj.late_fee_amount or Decimal("0.00")
-
-        if cap and base_amount >= cap:
-            skipped_cap += 1
-            continue
-        if cap and base_amount + fee > cap:
-            fee = cap - base_amount
-        if fee <= 0:
-            continue
-
-        InvoiceItem.objects.create(
-            invoice=invoice,
-            category=late_fee_category,
-            description=f"Late fee applied on {today:%Y-%m-%d}",
-            amount=fee,
-            is_recurring=False,
-        )
-        invoice.status = "overdue"
-        invoice.save(update_fields=["status", "updated_at"])
-        applied += 1
-
-    messages.success(
-        request,
-        f"Late fees applied: {applied}. Skipped duplicates: {skipped_duplicate}. Skipped by cap: {skipped_cap}.",
-    )
+    if summary.get("reason"):
+        messages.warning(request, f"{message} {summary['reason']}")
+    elif summary["failed"]:
+        messages.warning(request, message)
+    else:
+        messages.success(request, message)
     return redirect("invoices:invoice_list")
 
 
@@ -3788,6 +3749,7 @@ from invoices.services import (
     rollback_monthly_billing_run,
     run_monthly_billing_dry_run,
     run_monthly_billing_full,
+    run_monthly_billing_engine,
     run_monthly_billing_preflight,
     send_monthly_billing_item,
     send_monthly_billing_ready,
@@ -4048,7 +4010,11 @@ def monthly_billing_invoice_list_action(request):
                 run = run_monthly_billing_preflight(month, created_by=request.user)
 
             if action == "generate":
-                run_monthly_billing_full(run, created_by=request.user)
+                result = run_monthly_billing_engine(
+                    month,
+                    created_by=request.user,
+                )
+                run = result["run"]
                 success_message = f"Monthly billing generated for {month:%B %Y}."
 
             elif action == "send_ready":
@@ -4106,7 +4072,10 @@ def monthly_billing_run_action(request, pk):
                 f"Dry run completed: {summary.get('would_send', 0)} would send, {summary.get('manual_electric', 0)} manual electric.",
             )
         elif action == "run_billing":
-            run_monthly_billing_full(run, created_by=request.user)
+            run_monthly_billing_engine(
+                run.billing_month,
+                created_by=request.user,
+            )
             messages.success(request, "Billing run completed through ready validation.")
         elif action == "preflight":
             run_monthly_billing_preflight(run.billing_month, created_by=request.user)

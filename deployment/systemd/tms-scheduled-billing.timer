@@ -1,0 +1,10 @@
+[Unit]
+Description=Check TMS scheduled monthly billing daily
+
+[Timer]
+OnCalendar=*-*-* 09:05:00 Asia/Karachi
+Persistent=true
+Unit=tms-scheduled-billing.service
+
+[Install]
+WantedBy=timers.target

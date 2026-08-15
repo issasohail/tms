@@ -32,13 +32,36 @@ def sync_security_deposit_paid_flag(lease):
 
 
 @transaction.atomic
-def rebuild_payment_detail(*, payment, lease_amount, security_amount, security_type="PAYMENT", user=None, reason=""):
+def rebuild_payment_detail(
+    *,
+    payment,
+    lease_amount,
+    security_amount,
+    electricity_amount=Decimal("0.00"),
+    electricity_meter=None,
+    security_type="PAYMENT",
+    user=None,
+    reason="",
+):
     lease_amt = D(lease_amount)
     sec_amt = D(security_amount)
+    electric_amt = D(electricity_amount)
     sec_type = (security_type or "PAYMENT").upper()
 
     if sec_amt < 0:
         raise ValueError("Security payment detail amount cannot be negative.")
+    if electric_amt < 0 or electric_amt > max(lease_amt, Decimal("0.00")):
+        raise ValueError("Electricity allocation must be between zero and the positive lease amount.")
+    if electric_amt > 0 and electricity_meter is None:
+        raise ValueError("An electricity meter is required for an electricity allocation.")
+    if electricity_meter is not None:
+        from smart_meter.models import MeterInstallation
+
+        if not MeterInstallation.objects.filter(
+            lease=payment.lease,
+            meter=electricity_meter,
+        ).exists():
+            raise ValueError("The electricity meter is not linked to this payment's lease.")
 
     signed_security = -sec_amt if sec_type == "REFUND" else sec_amt
     total = lease_amt + signed_security
@@ -51,6 +74,8 @@ def rebuild_payment_detail(*, payment, lease_amount, security_amount, security_t
         defaults={
             "lease_amount": lease_amt,
             "security_amount": sec_amt,
+            "electricity_amount": electric_amt,
+            "electricity_meter": electricity_meter if electric_amt > 0 else None,
             "security_type": sec_type,
             "updated_by": user if user and getattr(user, "is_authenticated", False) else None,
             "last_reason": reason or "",

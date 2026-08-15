@@ -1080,6 +1080,17 @@ def run_monthly_billing_preflight(
         item.tenant = tenant
         item.unit = unit
         item.property = prop
+        if item.status == MonthlyBillingRunItem.STATUS_SENT:
+            item.invoice = _month_invoice_for_lease(lease, billing_month)
+            item.invoice_total = getattr(item.invoice, "amount", None)
+            item.save(update_fields=[
+                "tenant", "unit", "property", "invoice", "invoice_total", "updated_at"
+            ])
+            _preflight_progress(
+                progress_callback, item, index, len(leases), 5,
+                "Already sent; preserving idempotent result",
+            )
+            continue
         item.status = MonthlyBillingRunItem.STATUS_DRAFT
         item.issue_code = ""
         item.issue_message = ""
@@ -1969,6 +1980,100 @@ def run_monthly_billing_full(run, *, created_by=None, progress_callback=None):
     )
     _run_log(run, "run billing completed")
     return run
+
+
+def run_monthly_billing_engine(
+    billing_month: date,
+    *,
+    created_by=None,
+    created_by_label="",
+    dry_run=False,
+    progress_callback=None,
+):
+    """Single entry point used by manual and scheduled monthly billing."""
+    billing_month = first_of_month(billing_month)
+    if dry_run:
+        summary = run_monthly_billing_preflight(billing_month, dry_run=True)
+        summary.update({
+            "created": 0,
+            "already_billed": MonthlyBillingRun.objects.filter(
+                billing_month=billing_month,
+                status__in=[
+                    MonthlyBillingRun.STATUS_SENT,
+                    MonthlyBillingRun.STATUS_COMPLETED,
+                ],
+            ).exists(),
+        })
+        return summary
+
+    run = get_or_create_monthly_billing_run(
+        billing_month,
+        created_by=created_by,
+        created_by_label=created_by_label,
+    )
+    if run.status in {
+        MonthlyBillingRun.STATUS_SENT,
+        MonthlyBillingRun.STATUS_COMPLETED,
+    }:
+        return {
+            "run": run,
+            "billing_month": billing_month.isoformat(),
+            "eligible_leases": run.total_active_leases,
+            "created": 0,
+            "already_billed": run.total_active_leases,
+            "failed": run.failed_count,
+            "processed": False,
+        }
+
+    before_invoice_ids = set(
+        Invoice.objects.filter(issue_date=billing_month).values_list("pk", flat=True)
+    )
+    run_monthly_billing_full(
+        run,
+        created_by=created_by,
+        progress_callback=progress_callback,
+    )
+    run.refresh_from_db()
+    created = Invoice.objects.filter(issue_date=billing_month).exclude(
+        pk__in=before_invoice_ids
+    ).count()
+    return {
+        "run": run,
+        "billing_month": billing_month.isoformat(),
+        "eligible_leases": run.total_active_leases,
+        "created": created,
+        "already_billed": max(0, run.total_active_leases - created),
+        "failed": run.failed_count,
+        "processed": True,
+    }
+
+
+def run_scheduled_monthly_billing(*, today=None, dry_run=False):
+    """Check the configured day daily and catch up the current billing month."""
+    from core.models import GlobalSettings
+
+    today = today or timezone.localdate()
+    settings_obj = GlobalSettings.get_solo()
+    billing_month = date(today.year, today.month, 1)
+    scheduled_date = date(today.year, today.month, settings_obj.monthly_billing_day)
+    base = {
+        "billing_month": billing_month.isoformat(),
+        "scheduled_date": scheduled_date.isoformat(),
+        "automatic_enabled": settings_obj.automatic_monthly_billing,
+        "due": today >= scheduled_date,
+        "dry_run": bool(dry_run),
+    }
+    if not settings_obj.automatic_monthly_billing:
+        return {**base, "processed": False, "reason": "Automatic monthly billing is disabled."}
+    if today < scheduled_date:
+        return {**base, "processed": False, "reason": "Monthly billing is not due yet."}
+
+    result = run_monthly_billing_engine(
+        billing_month,
+        created_by_label="scheduled billing",
+        dry_run=dry_run,
+    )
+    return {**base, **result}
 
 
 def exclude_monthly_billing_item(item, *, reason, user=None):

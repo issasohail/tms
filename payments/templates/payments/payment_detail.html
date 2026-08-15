@@ -149,6 +149,13 @@
                                     <td class="text-end" >{{ payment_detail.lease_amount|money:0 }}</td>
                                  </tr>
                                 {% endif %}
+                                {% if payment_detail.electricity_amount > 0 %}
+                                <tr class="table-info">
+                                    <td>Electricity allocation{% if payment_detail.electricity_meter %} — Meter {{ payment_detail.electricity_meter.meter_number }}{% endif %} <span class="text-muted">(included above)</span></td>
+                                    <td>{{ payment_detail.payment.payment_method.name }}</td>
+                                    <td class="text-end">{{ payment_detail.electricity_amount|money:0 }}</td>
+                                </tr>
+                                {% endif %}
                                 {% if payment_detail.security_amount > 0 %}
                                  <tr>
                                     <td>{% if payment_detail.security_type == "REFUND" %}Security Refund{% else %}Security Portion{% endif %}</td>

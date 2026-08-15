@@ -96,7 +96,13 @@ def _send_late_fee_whatsapp(invoice, reminder_number, user=None):
     return service.send_text(phone, body, tenant=tenant, lease=lease, invoice=invoice)
 
 
-def process_invoice_late_fee_reminder(invoice, sent_via="manual", user=None, force=False):
+def process_invoice_late_fee_reminder(
+    invoice,
+    sent_via="manual",
+    user=None,
+    force=False,
+    today=None,
+):
     from core.models import GlobalSettings
     from leases.models_late_fee import get_effective_late_fee_settings
     from whatsapp.models import WhatsAppMessageLog
@@ -110,7 +116,7 @@ def process_invoice_late_fee_reminder(invoice, sent_via="manual", user=None, for
     if not cfg["enabled"]:
         return {"ok": False, "reason": "Late fees are disabled for this lease."}
 
-    today = timezone.localdate()
+    today = today or timezone.localdate()
     days_overdue = (today - invoice.due_date).days
     if days_overdue < cfg["grace_days"]:
         return {"ok": False, "reason": "Grace period has not elapsed yet."}
@@ -133,6 +139,18 @@ def process_invoice_late_fee_reminder(invoice, sent_via="manual", user=None, for
                 return {"ok": False, "reason": "Maximum reminders already reached."}
             reminder_number = sent_count + 1
 
+        reminder, created = InvoiceLateFeeReminder.objects.get_or_create(
+            invoice=invoice,
+            reminder_number=reminder_number,
+            defaults={
+                "sent_via": sent_via,
+                "status": InvoiceLateFeeReminder.STATUS_FAILED,
+                "created_by": user,
+            },
+        )
+        if not created and reminder.status != InvoiceLateFeeReminder.STATUS_FAILED:
+            return {"ok": False, "reason": "This reminder was already processed."}
+
         send_result = _send_late_fee_whatsapp(invoice, reminder_number, user=user)
         send_result = send_result if isinstance(send_result, dict) else {"ok": False, "error": str(send_result)}
 
@@ -141,19 +159,18 @@ def process_invoice_late_fee_reminder(invoice, sent_via="manual", user=None, for
         if log_id:
             whatsapp_log = WhatsAppMessageLog.objects.filter(pk=log_id).first()
 
-        reminder = InvoiceLateFeeReminder.objects.create(
-            invoice=invoice,
-            reminder_number=reminder_number,
-            sent_via=sent_via,
-            status=InvoiceLateFeeReminder.STATUS_SENT,
-            whatsapp_message=whatsapp_log,
-            created_by=user,
-        )
+        reminder.sent_via = sent_via
+        reminder.status = InvoiceLateFeeReminder.STATUS_SENT
+        reminder.whatsapp_message = whatsapp_log
+        reminder.created_by = user
+        reminder.error_text = ""
 
         if not send_result.get("ok"):
             reminder.status = InvoiceLateFeeReminder.STATUS_FAILED
             reminder.error_text = send_result.get("error", "") or send_result.get("reason", "")
-            reminder.save(update_fields=["status", "error_text"])
+            reminder.save(update_fields=[
+                "sent_via", "status", "whatsapp_message", "created_by", "error_text"
+            ])
             return {"ok": False, "reason": "WhatsApp send failed.", "reminder": reminder}
 
         late_fee_category = get_late_fee_category()
@@ -181,7 +198,10 @@ def process_invoice_late_fee_reminder(invoice, sent_via="manual", user=None, for
         elif fee > 0:
             reminder.status = InvoiceLateFeeReminder.STATUS_FEE_PENDING
 
-        reminder.save(update_fields=["fee_amount", "late_fee_item", "status"])
+        reminder.save(update_fields=[
+            "sent_via", "status", "whatsapp_message", "created_by", "error_text",
+            "fee_amount", "late_fee_item",
+        ])
         return {"ok": True, "reminder": reminder, "fee": fee, "reminder_number": reminder_number}
 
 
@@ -224,7 +244,103 @@ def collect_due_invoices(today=None):
     return (
         Invoice.objects
         .exclude(status__in=["paid", "cancelled"])
-        .filter(due_date__lt=today)
+        .filter(due_date__lte=today)
         .select_related("lease", "lease__tenant")
         .prefetch_related("late_fee_reminders", "items")
     )
+
+
+def run_due_late_fee_reminders(
+    *,
+    source=InvoiceLateFeeReminder.SOURCE_AUTO,
+    user=None,
+    today=None,
+    dry_run=False,
+):
+    """Run every legitimately due reminder through the single invoice service.
+
+    Scheduler runs respect the automatic-reminder switch. Manual batch runs are a
+    fallback for missed due reminders and intentionally ignore only that switch.
+    All grace, interval, maximum, invoice-status and lease override rules remain in
+    force for both sources.
+    """
+    from core.models import GlobalSettings
+    from leases.models_late_fee import get_effective_late_fee_settings
+
+    today = today or timezone.localdate()
+    automatic = source == InvoiceLateFeeReminder.SOURCE_AUTO
+    settings_obj = GlobalSettings.get_solo()
+    summary = {
+        "examined": 0,
+        "due": 0,
+        "processed": 0,
+        "failed": 0,
+        "fees_applied": 0,
+        "fees_pending": 0,
+        "skipped": 0,
+        "dry_run": bool(dry_run),
+        "details": [],
+    }
+    if not settings_obj.late_fee_enabled:
+        summary["reason"] = "Late fees are disabled."
+        return summary
+    if automatic and not settings_obj.late_fee_auto_send_reminders:
+        summary["reason"] = "Automatic late fee reminders are disabled."
+        return summary
+
+    for invoice in collect_due_invoices(today=today):
+        summary["examined"] += 1
+        cfg = get_effective_late_fee_settings(invoice.lease)
+        reminder_number = get_due_reminder_number(invoice, cfg, today=today)
+        if reminder_number is None:
+            summary["skipped"] += 1
+            continue
+
+        summary["due"] += 1
+        if dry_run:
+            summary["processed"] += 1
+            summary["details"].append({
+                "invoice_id": invoice.pk,
+                "invoice_number": invoice.invoice_number,
+                "reminder_number": reminder_number,
+            })
+            continue
+
+        try:
+            result = process_invoice_late_fee_reminder(
+                invoice,
+                sent_via=source,
+                user=user,
+                today=today,
+            )
+        except Exception as exc:
+            summary["failed"] += 1
+            summary["details"].append({
+                "invoice_id": invoice.pk,
+                "invoice_number": invoice.invoice_number,
+                "reminder_number": reminder_number,
+                "error": str(exc),
+            })
+            continue
+
+        if not result.get("ok"):
+            summary["failed"] += 1
+            summary["details"].append({
+                "invoice_id": invoice.pk,
+                "invoice_number": invoice.invoice_number,
+                "reminder_number": reminder_number,
+                "error": result.get("reason") or "Late-fee reminder failed.",
+            })
+            continue
+
+        summary["processed"] += 1
+        reminder = result["reminder"]
+        if reminder.status == InvoiceLateFeeReminder.STATUS_FEE_APPLIED:
+            summary["fees_applied"] += 1
+        elif reminder.status == InvoiceLateFeeReminder.STATUS_FEE_PENDING:
+            summary["fees_pending"] += 1
+
+    summary["skipped"] += max(
+        0, summary["examined"] - summary["due"] - summary["skipped"]
+    )
+    return summary

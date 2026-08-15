@@ -5,6 +5,7 @@ from .views import generate_bill_view, view_bills
 from .views import recharge_balance, meter_status
 from smart_meter.views import meter_settings, refund_balance, toggle_power
 from . import views
+from . import views_credit_control
 from .views_dashboard import energy_dashboard
 from . import views_dashboard
 from django.contrib import admin
@@ -37,6 +38,7 @@ urlpatterns = [
     path('meters/', views.meter_list, name='meter_list'),
     path('meters/add/', views.add_meter, name='add_meter'),
     path('meters/<int:pk>/', views.meter_detail, name='meter_detail'),
+    path('meters/<int:pk>/credit-control/', views_credit_control.credit_control, name='credit_control'),
     path('meters/<int:pk>/edit/', views.meter_edit, name='meter_edit'),
     path('meters/<int:pk>/role/', views.meter_role_update, name='meter_role_update'),
     path('meters/<int:pk>/delete/', views.meter_delete, name='meter_delete'),

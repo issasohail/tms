@@ -1,6 +1,6 @@
 from django.core.cache import cache
 from django.db import models
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from core.model_fields import NormalizedPhoneField
 from core.utils.text import smart_title
 
@@ -77,6 +77,15 @@ class GlobalSettings(models.Model):
         decimal_places=2,
         default=0,
         help_text="Optional invoice cap. Use 0 for no cap.",
+    )
+    automatic_monthly_billing = models.BooleanField(
+        default=False,
+        help_text="Run the shared monthly billing workflow automatically when the configured day is reached.",
+    )
+    monthly_billing_day = models.PositiveSmallIntegerField(
+        default=2,
+        validators=[MinValueValidator(1), MaxValueValidator(28)],
+        help_text="Day of each month when scheduled billing becomes due (1-28).",
     )
     default_lease_months = models.PositiveSmallIntegerField(
         default=11,

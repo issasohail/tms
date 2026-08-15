@@ -540,6 +540,12 @@ class MonthlyBillingRun(models.Model):
 
     class Meta:
         ordering = ["-billing_month", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["billing_month"],
+                name="uniq_monthly_billing_run_month",
+            ),
+        ]
         indexes = [
             models.Index(fields=["billing_month", "status"]),
         ]
@@ -718,6 +724,12 @@ class InvoiceLateFeeReminder(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["invoice", "reminder_number"],
+                name="uniq_invoice_late_fee_reminder_number",
+            ),
+        ]
         indexes = [
             models.Index(fields=["invoice", "reminder_number"]),
             models.Index(fields=["status"]),

@@ -22,6 +22,18 @@
           </div>
 
           <div class="mb-2">
+            <label class="form-label">Electricity Allocation <span class="text-muted">(included in Lease Amount)</span></label>
+            <input type="number" step="0.01" min="0" name="electricity_amount" class="form-control" value="0">
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label">Electricity Meter</label>
+            <select name="electricity_meter" class="form-select">
+              <option value="">Select electricity meter</option>
+            </select>
+          </div>
+
+          <div class="mb-2">
             <label class="form-label">Security Type</label>
             <select name="security_type" class="form-select">
               <option value="PAYMENT" selected>PAYMENT</option>

@@ -1652,6 +1652,17 @@ document.addEventListener("click", async function(e){
 
     form.querySelector("[name=lease_amount]").value = data.lease_amount || "0.00";
     form.querySelector("[name=security_amount]").value = data.security_amount || "0.00";
+    form.querySelector("[name=electricity_amount]").value = data.electricity_amount || "0.00";
+    const meterSelect = form.querySelector("[name=electricity_meter]");
+    meterSelect.innerHTML = '<option value="">Select electricity meter</option>';
+    (data.electricity_meter_options || []).forEach(function(meter){
+      meterSelect.appendChild(new Option(
+        meter.meter_number,
+        meter.id,
+        false,
+        String(meter.id) === String(data.electricity_meter_id || '')
+      ));
+    });
     form.querySelector("[name=security_type]").value = data.security_type || "PAYMENT";
 
     new bootstrap.Modal(modalEl).show();

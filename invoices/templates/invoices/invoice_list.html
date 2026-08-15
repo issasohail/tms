@@ -54,8 +54,8 @@
 
     <form method="post" action="{% url 'invoices:apply_late_fees' %}" class="d-inline">
       {% csrf_token %}
-      <button type="submit" class="btn btn-warning" onclick="return confirm('Apply configured late fees to overdue unpaid invoices? Paid invoices will not be changed.');">
-        <i class="fas fa-clock"></i><span class="btn-label"> Apply Late Fees</span>
+      <button type="submit" class="btn btn-warning" onclick="return confirm('Process only late-fee reminders that are currently due?');">
+        <i class="fas fa-clock"></i><span class="btn-label"> Run Due Late Fees</span>
       </button>
     </form>
 

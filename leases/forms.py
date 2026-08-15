@@ -129,6 +129,7 @@ class LeaseForm(forms.ModelForm):
             'internet_charges': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
             'agreement_charges': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
             'security_deposit': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
+            'electricity_security_deposit': forms.NumberInput(attrs={'class': 'form-control form-control-sm', 'step': '0.01', 'min': '0'}),
             'security_deposit_return_amount': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
             'rent_increase_percent': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
             'late_fee': forms.NumberInput(attrs={'class': 'form-control form-control-sm'}),
@@ -247,6 +248,12 @@ class LeaseForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+        electricity_security = cleaned_data.get("electricity_security_deposit")
+        if electricity_security is not None and electricity_security < 0:
+            self.add_error(
+                "electricity_security_deposit",
+                "Electricity security deposit cannot be negative.",
+            )
         start_date = cleaned_data.get('start_date')
         lease_months = cleaned_data.get('lease_months')
         should_recalculate_term = (

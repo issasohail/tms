@@ -234,6 +234,21 @@
     </div>
   </div>
 
+  <ul class="nav nav-tabs mb-3" aria-label="Meter detail sections">
+    <li class="nav-item">
+      <a class="nav-link active" aria-current="page" href="{% url 'smart_meter:meter_detail' meter.pk %}">
+        <i class="fas fa-tachometer-alt me-1"></i> Meter Overview
+      </a>
+    </li>
+    {% if perms.smart_meter.view_meter_credit_details %}
+      <li class="nav-item">
+        <a class="nav-link" href="{% url 'smart_meter:credit_control' meter.pk %}">
+          <i class="fas fa-bolt me-1"></i> Credit Control
+        </a>
+      </li>
+    {% endif %}
+  </ul>
+
   <div class="meter-summary-grid">
     <div class="meter-panel">
       <h5 class="meter-panel-title">Basic Information</h5>
@@ -252,10 +267,10 @@
       <div class="meter-kv-grid">
         <div class="meter-kv"><span class="meter-kv-label">Status</span><div class="meter-kv-value">{% if meter.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</div></div>
         <div class="meter-kv"><span class="meter-kv-label">Power</span><div class="meter-kv-value">{{ meter.get_power_status_display }}</div></div>
-        <div class="meter-kv"><span class="meter-kv-label">Energy</span><div class="meter-kv-value">{{ latest_live.total_energy|default:latest_reading.total_energy|default:"-" }} kWh</div></div>
-        <div class="meter-kv"><span class="meter-kv-label">Updated</span><div class="meter-kv-value">{{ latest_live.ts|default:latest_reading.ts|date:"M d, H:i"|default:"-" }}</div></div>
-        <div class="meter-kv"><span class="meter-kv-label">Voltage A</span><div class="meter-kv-value">{{ latest_live.voltage_a|default:latest_reading.voltage_a|default:"-" }} V</div></div>
-        <div class="meter-kv"><span class="meter-kv-label">Current A</span><div class="meter-kv-value">{{ latest_live.current_a|default:latest_reading.current_a|default:"-" }} A</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Energy</span><div class="meter-kv-value">{% if latest_live and latest_live.total_energy is not None %}{{ latest_live.total_energy }}{% elif latest_reading and latest_reading.total_energy is not None %}{{ latest_reading.total_energy }}{% else %}-{% endif %} kWh</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Updated</span><div class="meter-kv-value">{% if latest_live and latest_live.ts %}{{ latest_live.ts|date:"M d, H:i" }}{% elif latest_reading and latest_reading.ts %}{{ latest_reading.ts|date:"M d, H:i" }}{% else %}-{% endif %}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Voltage A</span><div class="meter-kv-value">{% if latest_live and latest_live.voltage_a is not None %}{{ latest_live.voltage_a }}{% elif latest_reading and latest_reading.voltage_a is not None %}{{ latest_reading.voltage_a }}{% else %}-{% endif %} V</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Current A</span><div class="meter-kv-value">{% if latest_live and latest_live.current_a is not None %}{{ latest_live.current_a }}{% elif latest_reading and latest_reading.current_a is not None %}{{ latest_reading.current_a }}{% else %}-{% endif %} A</div></div>
       </div>
     </div>
 
@@ -272,7 +287,14 @@
 
   {% if meter.billing_mode == "credit_controlled" or credit_account %}
   <div class="meter-detail-card bg-white p-3 mt-3">
-    <h5 class="meter-panel-title">Credit Control</h5>
+    <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+      <h5 class="meter-panel-title mb-0">Credit Control</h5>
+      {% if perms.smart_meter.view_meter_credit_details %}
+        <a href="{% url 'smart_meter:credit_control' meter.pk %}" class="btn btn-sm btn-outline-warning">
+          <i class="fas fa-bolt me-1"></i>Credit Control
+        </a>
+      {% endif %}
+    </div>
     {% if credit_account %}
       <div class="meter-kv-grid">
         <div class="meter-kv"><span class="meter-kv-label">Enabled</span><div class="meter-kv-value">{% if credit_account.is_enabled %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</div></div>

@@ -138,6 +138,19 @@ class PaymentDetail(models.Model):
 
     lease_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     security_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    electricity_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Part of the lease amount explicitly allocated to electricity.",
+    )
+    electricity_meter = models.ForeignKey(
+        "smart_meter.Meter",
+        on_delete=models.PROTECT,
+        related_name="electricity_payment_details",
+        null=True,
+        blank=True,
+    )
 
     security_type = models.CharField(
         max_length=20,

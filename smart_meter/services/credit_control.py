@@ -12,6 +12,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from invoices.models import Invoice
+from payments.models import PaymentDetail
 from smart_meter.models import (
     LiveReading,
     MeterCreditAccount,
@@ -42,15 +43,14 @@ def bool_setting(name, default=False):
 
 def resolve_effective_limit(account: MeterCreditAccount) -> tuple[Decimal, str]:
     fixed = _money(account.fixed_credit_limit)
-    deposit = _money(getattr(account.lease, "security_deposit", 0))
+    deposit = _money(getattr(account.lease, "electricity_security_deposit", 0))
     deposit_derived = _money(deposit * _decimal(account.deposit_percentage) / Decimal("100"))
     source = account.credit_limit_source
     if source == "deposit_percent":
-        value, explanation = deposit_derived, f"{account.deposit_percentage}% of security deposit {deposit}"
+        value, explanation = deposit_derived, f"{account.deposit_percentage}% of electricity security deposit {deposit}"
     elif source == "lower_of":
-        candidates = [v for v in (fixed, deposit_derived) if v > 0]
-        value = min(candidates) if candidates else Decimal("0.00")
-        explanation = f"lower of fixed {fixed} and deposit-derived {deposit_derived}"
+        value = min(fixed, deposit_derived)
+        explanation = f"lower of fixed {fixed} and electricity-security-derived {deposit_derived}"
     elif source == "lease_override" and account.lease_override_limit is not None:
         value = _money(account.lease_override_limit)
         explanation = f"lease override {value}"
@@ -100,7 +100,25 @@ def electricity_outstanding_and_last_billed_kwh(account: MeterCreditAccount) -> 
         if end_values:
             candidate = max(end_values)
             last_billed = candidate if last_billed is None else max(last_billed, candidate)
-    return _money(outstanding), last_billed
+    explicitly_paid = explicit_electricity_payments(account)
+    return _money(max(outstanding - explicitly_paid, Decimal("0.00"))), last_billed
+
+
+def explicit_electricity_payments(account: MeterCreditAccount) -> Decimal:
+    """Return lease payments explicitly allocated to this meter's electricity.
+
+    Electricity allocation is a subset of PaymentDetail.lease_amount, so it does
+    not change invoice totals. It tells credit control which part of a partial
+    invoice payment should reduce electricity exposure instead of relying on the
+    conservative electricity-last fallback.
+    """
+    amounts = PaymentDetail.objects.filter(
+        payment__lease_id=account.lease_id,
+        electricity_meter_id=account.meter_id,
+        electricity_amount__gt=0,
+        lease_amount__gt=0,
+    ).values_list("electricity_amount", flat=True)
+    return _money(sum(amounts, Decimal("0.00")))
 
 
 def current_rate(account: MeterCreditAccount) -> Decimal | None:
@@ -172,11 +190,18 @@ def activate_credit_account(account: MeterCreditAccount, *, user=None, reason=""
             raise ValueError("Electricity tariff/rate is missing")
         limit, explanation = resolve_effective_limit(account)
         if limit <= 0:
+            if account.credit_limit_source in {"deposit_percent", "lower_of"}:
+                raise ValueError(
+                    "Electricity security deposit is Rs.0.00. Enter an electricity "
+                    "security deposit or select a valid fixed credit limit before activation."
+                )
             raise ValueError("Effective credit limit must be greater than zero")
         outstanding, last_billed = electricity_outstanding_and_last_billed_kwh(account)
         checkpoint = max(_decimal(live.total_energy), last_billed or Decimal("0"))
         now = timezone.now()
-        account.deposit_reference_amount = _money(getattr(account.lease, "security_deposit", 0))
+        account.deposit_reference_amount = _money(
+            getattr(account.lease, "electricity_security_deposit", 0)
+        )
         account.effective_credit_limit = limit
         account.limit_explanation = explanation
         account.activated_at = now
@@ -185,6 +210,7 @@ def activate_credit_account(account: MeterCreditAccount, *, user=None, reason=""
         account.checkpoint_at = now
         account.starting_tariff = rate
         account.previous_unpaid_electricity = outstanding
+        account.payments_applied = explicit_electricity_payments(account)
         account.current_exposure = outstanding
         account.policy_snapshot = {
             "credit_limit_source": account.credit_limit_source,
@@ -274,10 +300,27 @@ def evaluate_credit_account(account_id: int, *, dry_run=False, source="scheduled
         rate = current_rate(account)
         if rate is None:
             return _data_error(account, "tariff_missing", "electricity tariff/rate missing", dry_run, before_state, before_exposure, source)
+        limit, explanation = resolve_effective_limit(account)
+        if limit <= 0:
+            return _data_error(
+                account,
+                "data_review_required",
+                "electricity security deposit produces a zero effective credit limit",
+                dry_run,
+                before_state,
+                before_exposure,
+                source,
+            )
+        account.deposit_reference_amount = _money(
+            getattr(account.lease, "electricity_security_deposit", 0)
+        )
+        account.effective_credit_limit = limit
+        account.limit_explanation = explanation
         unbilled = _money(delta * rate)
         exposure = _money(outstanding + unbilled)
         account.accrued_usage_amount = unbilled
         account.previous_unpaid_electricity = outstanding
+        account.payments_applied = explicit_electricity_payments(account)
         account.current_exposure = exposure
         account.last_evaluated_reading_kwh = current
         account.last_evaluated_at = timezone.now()
@@ -356,6 +399,55 @@ def process_evaluation_request(request_id, *, dry_run=False):
 def _require_credit_permission(user, codename):
     if user is None or not getattr(user, "has_perm", lambda _p: False)(f"smart_meter.{codename}"):
         raise PermissionError(f"Permission smart_meter.{codename} is required")
+
+
+def deactivate_credit_account(account_id, *, user, reason):
+    _require_credit_permission(user, "deactivate_meter_credit")
+    if not reason:
+        raise ValueError("A reason is required")
+    with transaction.atomic():
+        account = (
+            MeterCreditAccount.objects.select_for_update()
+            .select_related("meter", "installation", "lease")
+            .get(pk=account_id)
+        )
+        if not account.is_enabled:
+            return account
+        previous_state = account.enforcement_state
+        account.is_enabled = False
+        account.active_installation_key = None
+        account.enforcement_state = "normal"
+        account.data_quality_reason = ""
+        account.save(update_fields=[
+            "is_enabled", "active_installation_key", "enforcement_state",
+            "data_quality_reason", "updated_at",
+        ])
+        from smart_meter.models import MeterCommand
+        from smart_meter.services.command_lifecycle import ACTIVE
+
+        MeterCommand.objects.filter(
+            meter=account.meter,
+            source__in=("credit_control", "system"),
+            status__in=ACTIVE,
+        ).update(
+            status="cancelled",
+            cancelled_at=timezone.now(),
+            cancelled_reason="credit control deactivated",
+        )
+        MeterCreditAudit.objects.create(
+            action_type="deactivate",
+            meter=account.meter,
+            installation=account.installation,
+            lease=account.lease,
+            tenant=getattr(account.lease, "tenant", None),
+            credit_account=account,
+            previous_state=previous_state,
+            new_state=account.enforcement_state,
+            user=user,
+            source="manual",
+            reason=reason,
+        )
+        return account
 
 
 def set_notification_mute(account_id, *, user, reason, until=None, period=""):

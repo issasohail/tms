@@ -64,7 +64,7 @@
     modal.innerHTML = `
       <div class="tms-img-editor__panel" role="dialog" aria-modal="true" aria-labelledby="tmsImageEditorTitle">
         <div class="tms-img-editor__head">
-          <div class="tms-img-editor__title" id="tmsImageEditorTitle">Crop and rotate image</div>
+          <div class="tms-img-editor__title" id="tmsImageEditorTitle">Crop, rotate and straighten image</div>
           <button type="button" class="tms-img-editor__close" aria-label="Use original image">&times;</button>
         </div>
         <div class="tms-img-editor__stage">
@@ -73,6 +73,10 @@
         <div class="tms-img-editor__tools">
           <button type="button" data-action="left">&#8634; Rotate left</button>
           <button type="button" data-action="right">&#8635; Rotate right</button>
+          <label>Straighten
+            <input data-role="straighten" type="range" min="-15" max="15" step=".1" value="0">
+            <output data-role="straighten-value">0.0&deg;</output>
+          </label>
           <label>Crop
             <select data-role="ratio">
               <option value="free">Free</option>
@@ -93,6 +97,8 @@
     const canvas = modal.querySelector("canvas");
     const ratio = modal.querySelector('[data-role="ratio"]');
     const zoom = modal.querySelector('[data-role="zoom"]');
+    const straighten = modal.querySelector('[data-role="straighten"]');
+    const straightenValue = modal.querySelector('[data-role="straighten-value"]');
     const close = modal.querySelector(".tms-img-editor__close");
 
     modal.addEventListener("click", function (event) {
@@ -121,6 +127,13 @@
     });
     zoom.addEventListener("input", function () {
       state.zoom = Number(zoom.value) || 1;
+      render();
+    });
+    straighten.addEventListener("input", function () {
+      state.straighten = Number(straighten.value) || 0;
+      state.offsetX = 0;
+      state.offsetY = 0;
+      straightenValue.value = `${state.straighten.toFixed(1)}\u00b0`;
       render();
     });
 
@@ -158,6 +171,8 @@
       canvas,
       ratio,
       zoom,
+      straighten,
+      straightenValue,
       title: modal.querySelector(".tms-img-editor__title"),
       hint: modal.querySelector(".tms-img-editor__hint"),
     };
@@ -409,11 +424,22 @@
     const sideways = state.rotation % 180 !== 0;
     const rotatedWidth = sideways ? state.image.naturalHeight : state.image.naturalWidth;
     const rotatedHeight = sideways ? state.image.naturalWidth : state.image.naturalHeight;
-    const scale = Math.max(crop.width / rotatedWidth, crop.height / rotatedHeight) * state.zoom;
+    const radians = Math.abs(state.straighten || 0) * Math.PI / 180;
+    const cosine = Math.abs(Math.cos(radians));
+    const sine = Math.abs(Math.sin(radians));
+    const coverScale = Math.max(
+      crop.width / rotatedWidth,
+      crop.height / rotatedHeight,
+      (crop.width * cosine + crop.height * sine) / rotatedWidth,
+      (crop.width * sine + crop.height * cosine) / rotatedHeight
+    );
+    const scale = coverScale * state.zoom;
     const drawnWidth = rotatedWidth * scale;
     const drawnHeight = rotatedHeight * scale;
-    const maxOffsetX = Math.max(0, (drawnWidth - crop.width) / 2);
-    const maxOffsetY = Math.max(0, (drawnHeight - crop.height) / 2);
+    const isStraightened = Math.abs(state.straighten || 0) > .001;
+    const safePan = Math.max(0, (state.zoom - 1) * Math.min(crop.width, crop.height) / 4);
+    const maxOffsetX = isStraightened ? safePan : Math.max(0, (drawnWidth - crop.width) / 2);
+    const maxOffsetY = isStraightened ? safePan : Math.max(0, (drawnHeight - crop.height) / 2);
     state.offsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, state.offsetX));
     state.offsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, state.offsetY));
     return {crop, scale};
@@ -437,7 +463,7 @@
       crop.x + crop.width / 2 + state.offsetX,
       crop.y + crop.height / 2 + state.offsetY
     );
-    context.rotate(state.rotation * Math.PI / 180);
+    context.rotate((state.rotation + state.straighten) * Math.PI / 180);
     context.scale(metrics.scale, metrics.scale);
     context.drawImage(
       state.image,
@@ -527,6 +553,7 @@
       image,
       ratio,
       rotation: initialRotation,
+      straighten: 0,
       zoom: 1,
       offsetX: 0,
       offsetY: 0,
@@ -534,9 +561,11 @@
     };
     editor.ratio.value = ratio;
     editor.zoom.value = "1";
+    editor.straighten.value = "0";
+    editor.straightenValue.value = "0.0\u00b0";
     editor.title.textContent = initialRotation
-      ? "Crop and rotate image - orientation corrected"
-      : "Crop and rotate image";
+      ? "Crop, rotate and straighten image - orientation corrected"
+      : "Crop, rotate and straighten image";
     editor.hint.textContent = initialRotation
       ? "Auto-rotation is already shown in this preview and is the orientation that will be saved. Rotate again only if it still looks wrong."
       : "This preview is the orientation that will be saved. Drag the image to position it inside the crop frame.";

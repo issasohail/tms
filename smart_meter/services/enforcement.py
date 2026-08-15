@@ -11,6 +11,7 @@ from smart_meter.models import MeterCreditAccount, MeterCreditAudit, MeterComman
 from smart_meter.services.command_lifecycle import (
     automatic_cutoff_enabled,
     automatic_restore_enabled,
+    latest_credit_cutoff_command,
     queue_relay_command,
 )
 from smart_meter.services.credit_control import enforcement_held, evaluate_credit_account
@@ -89,7 +90,12 @@ def automatic_enforcement(account_id):
     account = MeterCreditAccount.objects.select_related("meter", "installation", "lease").get(pk=account_id)
     if not account.is_enabled or not _allowed_meter(account):
         return None
-    if account.enforcement_state == "cutoff_eligible" and account.automatic_cutoff and not account.manual_only_cutoff:
+    if (
+        account.enforcement_state == "cutoff_eligible"
+        and account.automatic_cutoff
+        and account.automatic_restore
+        and not account.manual_only_cutoff
+    ):
         if not automatic_cutoff_enabled() or enforcement_held(account):
             return None
         not_before = next_allowed_time() if in_protected_hours() else None
@@ -102,11 +108,15 @@ def automatic_enforcement(account_id):
         MeterCreditAccount.objects.filter(pk=account.pk).update(enforcement_state="cutoff_pending")
         return cmd
     reconnect_threshold = account.effective_credit_limit * account.reconnect_threshold_percent / Decimal("100")
-    uncertain_off = MeterCommand.objects.filter(
-        meter=account.meter, command_type="relay", desired_state="off",
-        source__in=("credit_control", "system"), status__in=("sent", "acknowledged"),
-    ).exists()
-    if account.current_exposure < reconnect_threshold and account.automatic_restore and (account.meter.power_status == "off" or uncertain_off):
+    cutoff_origin = latest_credit_cutoff_command(account)
+    uncertain_off = bool(cutoff_origin and cutoff_origin.status in {"sent", "acknowledged"})
+    credit_cutoff_off = bool(cutoff_origin and (account.meter.power_status == "off" or uncertain_off))
+    if (
+        account.current_exposure < reconnect_threshold
+        and account.automatic_cutoff
+        and account.automatic_restore
+        and credit_cutoff_off
+    ):
         if not automatic_restore_enabled():
             return None
         cmd = queue_relay_command(

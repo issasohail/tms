@@ -929,6 +929,10 @@
           </div>
         </div>
         <div style="margin-top:4px;">
+          <div class="dep-row" style="margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid #e5e7eb;">
+            <span class="dep-k">Electricity Security</span>
+            <span class="dep-v">{{ lease.electricity_security_deposit|default:0|money:0 }}</span>
+          </div>
           <div class="dep-row"><span class="dep-k">Required</span><span class="dep-v">{{ security_required|default:0|money:0 }}</span></div>
           <div class="dep-row"><span class="dep-k">Paid In</span><span class="dep-v">{{ security_paid_in|default:0|money:0 }}</span></div>
           <div class="dep-row"><span class="dep-k">Refunded</span><span class="dep-v">{{ security_refunded|default:0|money:0 }}</span></div>
@@ -1069,7 +1073,7 @@
             <table class="ld-tbl">
               <thead><tr><th>Meter</th><th>Unit</th><th>Installed</th><th>Removed</th><th class="text-end">Start Reading</th><th class="text-end">End Reading</th></tr></thead>
               <tbody>
-                {% for inst in lease.meter_installations.all %}
+                {% for inst in meter_installations %}
                   <tr>
                     <td data-label="Meter"><a href="{% url 'smart_meter:meter_detail' inst.meter.pk %}">{{ inst.meter.meter_number }}</a></td>
                     <td data-label="Unit">{{ inst.unit }}</td>
@@ -1084,6 +1088,66 @@
               </tbody>
             </table>
           </div>
+        </div>
+
+        <div class="ld-inner-card" style="margin-top:12px;">
+          <div class="ld-inner-head">Smart Meter Credit Control</div>
+          {% if perms.smart_meter.view_meter_credit_details %}
+            <div class="ld-tw ld-mobile-cards">
+              <table class="ld-tbl">
+                <thead>
+                  <tr>
+                    <th>Meter</th>
+                    <th>Billing Mode</th>
+                    <th>Account</th>
+                    <th>State</th>
+                    <th class="text-end">Electricity Security Ref.</th>
+                    <th class="text-end">Credit Limit</th>
+                    <th class="text-end">Exposure</th>
+                    <th class="text-end">Remaining</th>
+                    <th class="text-end">Used</th>
+                    <th>Last Evaluation</th>
+                    <th class="no-print">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for inst in meter_installations %}
+                    {% with account=inst.display_credit_account %}
+                      <tr>
+                        <td data-label="Meter"><a href="{% url 'smart_meter:meter_detail' inst.meter.pk %}">{{ inst.meter.meter_number }}</a></td>
+                        <td data-label="Billing Mode">{{ inst.meter.get_billing_mode_display }}</td>
+                        <td data-label="Account">
+                          {% if account and account.is_enabled %}
+                            <span class="ld-badge ld-badge-green">Active</span>
+                          {% elif account %}
+                            <span class="ld-badge ld-badge-gray">Inactive</span>
+                          {% else %}
+                            <span class="ld-badge ld-badge-amber">Not configured</span>
+                          {% endif %}
+                        </td>
+                        <td data-label="State">{% if account %}{{ account.get_enforcement_state_display }}{% else %}&mdash;{% endif %}</td>
+                        <td data-label="Electricity Security Ref." class="text-end">{% if account %}{{ account.deposit_reference_amount|default:0|money:0 }}{% else %}{{ lease.electricity_security_deposit|default:0|money:0 }}{% endif %}</td>
+                        <td data-label="Credit Limit" class="text-end">{{ account.effective_credit_limit|default:0|money:0 }}</td>
+                        <td data-label="Exposure" class="text-end">{{ account.current_exposure|default:0|money:0 }}</td>
+                        <td data-label="Remaining" class="text-end">{{ account.remaining_credit|default:0|money:0 }}</td>
+                        <td data-label="Used" class="text-end">{{ account.percent_used|default:0 }}%</td>
+                        <td data-label="Last Evaluation">{% if account and account.last_evaluated_at %}{{ account.last_evaluated_at|date:"M d, Y H:i" }}{% else %}&mdash;{% endif %}</td>
+                        <td data-label="Action" class="no-print">
+                          <a href="{% url 'smart_meter:credit_control' inst.meter.pk %}" class="btn btn-sm btn-outline-warning py-0 px-2" style="font-size:11px;">
+                            {% if account %}View / Manage{% else %}Configure{% endif %}
+                          </a>
+                        </td>
+                      </tr>
+                    {% endwith %}
+                  {% empty %}
+                    <tr><td colspan="11" class="ld-empty">No meter installations linked.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="ld-inner-body text-muted">You do not have permission to view meter credit details.</div>
+          {% endif %}
         </div>
       </div>
 
@@ -3152,6 +3216,11 @@ if (leaseDetailFilter) {
     }).on('select2:select', function () {
       const option = this.selectedOptions[0];
       if (option?.dataset.url) window.location.href = option.dataset.url;
+    }).on('select2:open', function () {
+      window.setTimeout(function () {
+        const searchInput = document.querySelector('.select2-container--open .select2-search__field');
+        if (searchInput) searchInput.focus();
+      }, 0);
     });
   } else {
     leaseDetailFilter.addEventListener('change', function () {

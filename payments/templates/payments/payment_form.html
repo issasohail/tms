@@ -125,6 +125,19 @@
                   {{ payment_detail_form.security_amount }}
                 </div>
               </div>
+              <div class="row g-1 align-items-end mt-1">
+                <div class="col-6">
+                  <div class="small fw-semibold mb-1">Electricity Allocation <span class="text-muted">(included in Lease Amount)</span></div>
+                  {{ payment_detail_form.electricity_amount }}
+                  {% for error in payment_detail_form.electricity_amount.errors %}<div class="small text-danger">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-6">
+                  <div class="small fw-semibold mb-1">Electricity Meter</div>
+                  {{ payment_detail_form.electricity_meter }}
+                  {% for error in payment_detail_form.electricity_meter.errors %}<div class="small text-danger">{{ error }}</div>{% endfor %}
+                </div>
+              </div>
+              <div class="small text-muted mt-1">Use this only when part of the lease payment is specifically for electricity. It does not increase the total payment.</div>
               <div id="allocation-derived-label" class="small text-muted mt-1">Transaction type is derived automatically.</div>
 
               <hr class="my-2">
@@ -323,7 +336,7 @@
   }
 
   /* If crispy adds form-control styles to payment detail fields, keep them compact */
-  #id_lease_amount, #id_security_amount, #id_amount{
+  #id_lease_amount, #id_security_amount, #id_electricity_amount, #id_amount{
     text-align: right;
   }
 
@@ -661,6 +674,22 @@
     sb.textContent = (window.TMS_CURRENCY_SYMBOL || "{{ CURRENCY_SYMBOL|escapejs }}") + " " + (leaseData.sec_balance || "0.00");
   }
 
+  function setElectricityMeters(leaseData){
+    const $meter = $('#id_electricity_meter');
+    if (!$meter.length) return;
+    const current = String($meter.val() || '');
+    const meters = leaseData && Array.isArray(leaseData.electricity_meters)
+      ? leaseData.electricity_meters.slice()
+      : [];
+    $meter.empty().append(new Option('Select electricity meter', '', false, false));
+    meters.sort((a, b) => Number(b.active) - Number(a.active)).forEach(function(meter){
+      const label = meter.text + (meter.active ? ' (active)' : '');
+      $meter.append(new Option(label, meter.id, false, String(meter.id) === current));
+    });
+    if (!current && meters.length === 1) $meter.val(String(meters[0].id));
+    $meter.trigger('change');
+  }
+
   function updateLeaseList(){
     const $lease = $('#id_lease');
     const urlLease = getLeaseIdFromURL();
@@ -693,6 +722,7 @@
           'data-end_date': (l.end_date||''),
           'data-status': (l.status||'')
         });
+        $opt.data('electricityMeters', l.electricity_meters || []);
         $opt.appendTo($lease);
       });
 
@@ -710,6 +740,7 @@
         $lease.val(String(target)).trigger('change.select2').trigger('change');
       } else {
         setBalancesUI(null);
+        setElectricityMeters(null);
       }
       $lease.trigger('change.select2');
     });
@@ -743,13 +774,16 @@
     const $opt = $(this).find(':selected');
     if (!$opt.val()){
       setBalancesUI(null);
+      setElectricityMeters(null);
       return;
     }
     const leaseData = {
       balance: $opt.data('balance'),
       sec_balance: $opt.data('sec_balance'),
+      electricity_meters: $opt.data('electricityMeters') || [],
     };
     setBalancesUI(leaseData);
+    setElectricityMeters(leaseData);
   });
 
   /* =========================
@@ -992,6 +1026,8 @@ Thank you!`;
     const $total = $('#id_amount');
     const $lease = $('#id_lease_amount');
     const $sec = $('#id_security_amount');
+    const $electricity = $('#id_electricity_amount');
+    const $electricityMeter = $('#id_electricity_meter');
     const $label = $('#allocation-derived-label');
     if (!$form.length || !$mode.length || !$total.length || !$lease.length || !$sec.length) return;
 
@@ -1000,6 +1036,19 @@ Thank you!`;
     $sec.prop('readonly', false);
     let totalDrivenMode = ($mode.val() || 'LEASE').toUpperCase();
     let allocationLock = false;
+
+    function syncElectricity(formatValue){
+      if (!$electricity.length || !$electricityMeter.length) return;
+      const maximum = Math.max(n($lease.val()), 0);
+      const requested = n($electricity.val());
+      const allocated = clamp(requested, 0, maximum);
+      $electricity.attr('max', f2(maximum));
+      if (formatValue || requested !== allocated) $electricity.val(f2(allocated));
+      const invalid = allocated > 0 && !$electricityMeter.val()
+        ? 'Select the meter receiving this electricity payment.'
+        : '';
+      $electricityMeter[0].setCustomValidity(invalid);
+    }
 
     function syncDerivedType(){
       const leaseAmt = n($lease.val());
@@ -1035,6 +1084,7 @@ Thank you!`;
         .toggleClass('text-danger', !!invalid)
         .toggleClass('text-muted', !invalid)
         .text(invalid || ('Detected automatically: ' + label + '.'));
+      syncElectricity(false);
     }
 
     function syncFromTotal(){
@@ -1093,6 +1143,9 @@ Thank you!`;
     $lease.on('change', function(){ syncFromAllocation('lease', true); });
     $sec.on('input', function(){ syncFromAllocation('security', false); });
     $sec.on('change', function(){ syncFromAllocation('security', true); });
+    $electricity.on('input', function(){ syncElectricity(false); });
+    $electricity.on('change', function(){ syncElectricity(true); });
+    $electricityMeter.on('change', function(){ syncElectricity(false); });
     $total.on('input', syncFromTotal);
     $total.on('change', function(){
       $total.val(f2(n($total.val())));
@@ -1105,7 +1158,11 @@ Thank you!`;
         $sec.val(f2(n($total.val()) - leaseAmt));
       }
       syncDerivedType();
+      syncElectricity(true);
       if (!$lease[0].checkValidity()) $lease[0].reportValidity();
+      if ($electricityMeter.length && !$electricityMeter[0].checkValidity()) {
+        $electricityMeter[0].reportValidity();
+      }
     });
     // Preserve an existing saved split on page load.
     syncDerivedType();

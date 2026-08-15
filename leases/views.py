@@ -127,7 +127,7 @@ from maintenance.public_links import make_public_maintenance_token
 from payments.models import Payment
 from payments.services.payment_detail import sync_security_deposit_paid_flag
 from properties.models import Property, Unit
-from smart_meter.models import MeterInstallation
+from smart_meter.models import MeterCreditAccount, MeterInstallation
 from tenants.models import Tenant, normalize_cnic
 from core.public_urls import build_public_path_url, build_public_url
 from core.utils.identity import (
@@ -4081,9 +4081,14 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 Prefetch(
                     "meter_installations",
                     queryset=MeterInstallation.objects.select_related(
-                        "meter",
-                        "unit",
-                        "unit__property",
+                        "meter", "unit", "unit__property"
+                    ).prefetch_related(
+                        Prefetch(
+                            "credit_accounts",
+                            queryset=MeterCreditAccount.objects.order_by(
+                                "-is_enabled", "-created_at"
+                            ),
+                        )
                     ),
                 ),
                 Prefetch(
@@ -4112,6 +4117,11 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             list(lease.renewals.all()),
             key=lambda renewal: renewal.renewal_number,
         )
+        meter_installations = list(lease.meter_installations.all())
+        for installation in meter_installations:
+            installation.display_credit_account = next(
+                iter(installation.credit_accounts.all()), None
+            )
         ZERO = Decimal("0.00")
         lease_total_payment = (
             (lease.monthly_rent or ZERO)
@@ -4135,6 +4145,7 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                     reverse=True,
                 ),
                 "renewals": renewals,
+                "meter_installations": meter_installations,
                 "balance_due": lease.get_balance,
                 "lease_total_payment": lease_total_payment,
                 "occupancy_count": 1 + lease.family_members.count(),

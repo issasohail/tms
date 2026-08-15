@@ -1,0 +1,10 @@
+[Unit]
+Description=Run TMS late-fee reminder due check daily
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 Asia/Karachi
+Persistent=true
+Unit=tms-late-fee-reminders.service
+
+[Install]
+WantedBy=timers.target

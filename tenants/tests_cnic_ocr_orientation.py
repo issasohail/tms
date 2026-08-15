@@ -348,6 +348,19 @@ class CNICRegistrationTemplateCoverageTests(SimpleTestCase):
     def test_temporary_ocr_service_errors_are_retried(self):
         self.assertIn("[429,502,503,504].includes(response.status)", self.identity_source)
 
+    def test_slow_ocr_can_be_cancelled_for_manual_entry(self):
+        self.assertIn('class="tms-cancel-ocr"', self.identity_source)
+        self.assertIn("controller=new AbortController()", self.identity_source)
+        self.assertIn("activeController?.abort()", self.identity_source)
+        self.assertIn("OCR cancelled. Continue entering the details manually", self.identity_source)
+
+    def test_aborted_ocr_is_not_retried(self):
+        self.assertIn("if(error?.name==='AbortError')throw error", self.identity_source)
+
+    def test_quota_errors_are_distinguished_from_unreadable_images(self):
+        self.assertIn('error_kind == "insufficient_quota"', self.service_source)
+        self.assertIn("OpenAI credit or quota is exhausted", self.service_source)
+
     def test_hidden_ocr_fields_are_optional(self):
         self.assertIn("hidden.type='hidden'", self.identity_source)
         hidden_field_code = self.identity_source.split("function saveHiddenOcrFields", 1)[1].split("function setSubmitPending", 1)[0]
@@ -384,7 +397,13 @@ class CNICRegistrationTemplateCoverageTests(SimpleTestCase):
         self.assertIn("const smartCard =", self.image_editor_source)
         self.assertIn("const olderCard =", self.image_editor_source)
         self.assertIn("function backLayoutScore(canvas)", self.image_editor_source)
-        self.assertIn("tms-image-editor.js' %}?v=20260812-1", self.identity_source)
+        self.assertIn("tms-image-editor.js' %}?v=20260815-1", self.identity_source)
+
+    def test_browser_editor_supports_fine_straightening_before_save(self):
+        self.assertIn('data-role="straighten"', self.image_editor_source)
+        self.assertIn('min="-15" max="15" step=".1"', self.image_editor_source)
+        self.assertIn("state.rotation + state.straighten", self.image_editor_source)
+        self.assertIn("const coverScale = Math.max(", self.image_editor_source)
 
     def test_public_registration_ocr_keeps_all_identity_parties_editable(self):
         self.assertIn("TMS_IDENTITY_LOCK_MAIN = false;", self.public_source)

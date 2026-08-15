@@ -1139,6 +1139,11 @@
                     {{ form.security_deposit|add_class:"form-control form-control-sm money"|attr:"type:text" }}
                   </div>
                   <div class="lf-f">
+                    <label class="form-label">Electricity Security Deposit</label>
+                    {{ form.electricity_security_deposit|add_class:"form-control form-control-sm money"|attr:"type:text" }}
+                    <div class="form-text">Used only for smart-meter electricity credit control.</div>
+                  </div>
+                  <div class="lf-f">
                     <label class="form-label">Agreement Charge</label>
                     {{ form.agreement_charges|add_class:"form-control form-control-sm money"|attr:"type:text" }}
                   </div>

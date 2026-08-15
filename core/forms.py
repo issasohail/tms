@@ -28,7 +28,7 @@ class GlobalSettingsForm(forms.ModelForm):
                   "late_fee_percent", "late_fee_grace_days",
                   "late_fee_reminder_interval_days", "late_fee_max_reminders",
                   "late_fee_auto_send_reminders", "late_fee_auto_apply",
-                  "billing_cap_amount",
+                  "billing_cap_amount", "automatic_monthly_billing", "monthly_billing_day",
                   "default_lease_months",
                   "end_lease_proration_interval_days",
                   "default_parking_enabled", "default_motorcycle_parking_rate",
@@ -77,6 +77,7 @@ class GlobalSettingsForm(forms.ModelForm):
         ("Billing Scale & Locale", "fas fa-coins", [
             "currency_code", "country_code", "time_zone", "unit_rate_per_kwh",
             "service_charge_flat", "billing_cap_amount", "lease_file_share_valid_days",
+            "automatic_monthly_billing", "monthly_billing_day",
             "default_lease_months",
             "end_lease_proration_interval_days",
         ]),
@@ -180,6 +181,8 @@ class GlobalSettingsForm(forms.ModelForm):
         self.fields["late_fee_auto_send_reminders"].help_text = "On = the daily late fee job sends WhatsApp reminders. Off = reminders are sent manually from invoice detail."
         self.fields["late_fee_auto_apply"].label = "Apply fee automatically"
         self.fields["late_fee_auto_apply"].help_text = "Off = reminder is sent, but the late fee waits in the pending approval queue."
+        self.fields["automatic_monthly_billing"].label = "Automatic Monthly Billing"
+        self.fields["monthly_billing_day"].label = "Monthly Billing Day"
         self.fields["currency_code"].help_text = "Used as the currency label throughout TMS, for example PKR, USD, AED."
         self.fields["country_code"].help_text = "Used for WhatsApp phone normalization, for example +92."
         self.fields["lease_file_share_valid_days"].label = "Lease file share validity days"

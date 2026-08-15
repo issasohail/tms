@@ -29,6 +29,7 @@ from leases.models import LeaseUnitOccupancy
 from .models import (
     MeterSettings, Meter, LiveReading, MeterReading, Tariff, Bill, MeterBalance,
     MeterInstallation, MeterCheckGroup, MeterCheckGroupMembership,
+    MeterCreditAccount,
 )
 
 
@@ -446,6 +447,116 @@ class CloseMeterInstallationForm(forms.Form):
         if self.installation and end_date < self.installation.start_date:
             raise forms.ValidationError("End date cannot be before the installation start date.")
         return end_date
+
+
+class MeterCreditAccountForm(forms.ModelForm):
+    automatic_cutoff_and_restore = forms.BooleanField(
+        label="Automatic cutoff & restore",
+        required=False,
+        help_text=(
+            "Treats automatic disconnection and reconnection as one account policy. At the cutoff "
+            "threshold the meter may be switched OFF; after a qualifying payment reduces exposure "
+            "below the reconnect threshold, it may be switched ON again. All server safety gates "
+            "must also pass."
+        ),
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
+    class Meta:
+        model = MeterCreditAccount
+        fields = [
+            "credit_limit_source",
+            "fixed_credit_limit",
+            "deposit_percentage",
+            "lease_override_limit",
+            "warning_threshold_percent",
+            "final_warning_threshold_percent",
+            "cutoff_threshold_percent",
+            "reconnect_threshold_percent",
+            "automatic_cutoff_and_restore",
+            "staff_approval_required",
+        ]
+        widgets = {
+            "credit_limit_source": forms.Select(attrs={"class": "form-select form-select-sm"}),
+            "fixed_credit_limit": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01", "min": "0"}),
+            "deposit_percentage": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01", "min": "0"}),
+            "lease_override_limit": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01", "min": "0"}),
+            "warning_threshold_percent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01", "min": "0"}),
+            "final_warning_threshold_percent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01", "min": "0"}),
+            "cutoff_threshold_percent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01", "min": "0"}),
+            "reconnect_threshold_percent": forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01", "min": "0"}),
+            "staff_approval_required": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        }
+        help_texts = {
+            "credit_limit_source": (
+                "Chooses how the effective credit limit is calculated. To use the Lease "
+                "Override Limit, select Lease-specific manual override from this dropdown."
+            ),
+            "fixed_credit_limit": (
+                "A manually entered rupee limit. It is used when the credit limit source is "
+                "Fixed monetary limit, or as one side of Lower of fixed and deposit-derived."
+            ),
+            "deposit_percentage": (
+                "Percentage of the lease's electricity security deposit used to calculate a "
+                "deposit-derived credit limit. For example, 50% of Rs.20,000 is Rs.10,000."
+            ),
+            "lease_override_limit": (
+                "A special rupee limit for this meter and lease. It only becomes effective when "
+                "Credit limit source is Lease-specific manual override."
+            ),
+            "warning_threshold_percent": (
+                "Sends or records the first warning when exposure reaches this percentage of the "
+                "effective credit limit."
+            ),
+            "final_warning_threshold_percent": (
+                "Sends or records the final warning when exposure reaches this percentage of the "
+                "effective credit limit."
+            ),
+            "cutoff_threshold_percent": (
+                "Makes the account eligible for disconnection at this percentage of the effective "
+                "credit limit. Actual automatic cutoff still requires all safety gates."
+            ),
+            "reconnect_threshold_percent": (
+                "After a cutoff, exposure must fall below this percentage before automatic restore "
+                "can reconnect the meter."
+            ),
+            "staff_approval_required": (
+                "Marks this account as requiring staff approval in approval-based credit-control "
+                "workflows. It does not enable the server safety gates."
+            ),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        warning = cleaned.get("warning_threshold_percent")
+        final = cleaned.get("final_warning_threshold_percent")
+        cutoff = cleaned.get("cutoff_threshold_percent")
+        reconnect = cleaned.get("reconnect_threshold_percent")
+        if warning is not None and final is not None and warning > final:
+            self.add_error("warning_threshold_percent", "Warning must not exceed final warning.")
+        if final is not None and cutoff is not None and final > cutoff:
+            self.add_error("final_warning_threshold_percent", "Final warning must not exceed cutoff.")
+        if reconnect is not None and cutoff is not None and reconnect > cutoff:
+            self.add_error("reconnect_threshold_percent", "Reconnect must not exceed cutoff.")
+        return cleaned
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk and "automatic_cutoff_and_restore" not in self.data:
+            self.initial["automatic_cutoff_and_restore"] = bool(
+                self.instance.automatic_cutoff and self.instance.automatic_restore
+            )
+
+    def save(self, commit=True):
+        account = super().save(commit=False)
+        automatic = bool(self.cleaned_data.get("automatic_cutoff_and_restore"))
+        account.automatic_cutoff = automatic
+        account.automatic_restore = automatic
+        account.manual_only_cutoff = not automatic
+        if commit:
+            account.save()
+            self.save_m2m()
+        return account
 
 
 class MoveLeaseUnitForm(forms.Form):

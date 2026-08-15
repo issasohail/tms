@@ -547,7 +547,9 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
         payment_detail_form = PaymentDetailForm(
             self.request.POST,
             payment_total=form.cleaned_data.get("amount"),
+            lease=self.get_lease() or form.cleaned_data.get("lease"),
         )
+        self.payment_detail_form = payment_detail_form
         if not payment_detail_form.is_valid():
             return self.form_invalid(form)
 
@@ -570,6 +572,8 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
 
         lease_amt = payment_detail_form.cleaned_data.get("lease_amount") or Decimal("0.00")
         sec_amt   = payment_detail_form.cleaned_data.get("security_amount") or Decimal("0.00")
+        electricity_amt = payment_detail_form.cleaned_data.get("electricity_amount") or Decimal("0.00")
+        electricity_meter = payment_detail_form.cleaned_data.get("electricity_meter")
 
         payment_total = payment.amount or Decimal("0.00")
 
@@ -619,6 +623,8 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
             payment=payment,
             lease_amount=lease_amt,
             security_amount=sec_amt,
+            electricity_amount=electricity_amt,
+            electricity_meter=electricity_meter,
             security_type=sec_type,
             user=self.request.user,
             reason="Created via payment form",
@@ -678,12 +684,22 @@ class PaymentCreateView(LoginRequiredMixin, CreateView):
             if selected_lease:
                 lease_amount = str(selected_lease.get_balance or Decimal("0.00"))
 
-        context["payment_detail_form"] = PaymentDetailForm(initial={
-            "payment_type": payment_type,
-            "lease_amount": lease_amount,
-            "security_amount": security_amount,
-            "security_type": security_type,
-        })
+        selected_lease = self.get_lease()
+        context["payment_detail_form"] = getattr(
+            self,
+            "payment_detail_form",
+            PaymentDetailForm(
+                initial={
+                    "payment_type": payment_type,
+                    "lease_amount": lease_amount,
+                    "security_amount": security_amount,
+                    "electricity_amount": self.request.GET.get("electricity_amount") or "0.00",
+                    "electricity_meter": self.request.GET.get("electricity_meter") or None,
+                    "security_type": security_type,
+                },
+                lease=selected_lease,
+            ),
+        )
         include_inactive = self.request.GET.get("include_inactive") == "on"
         if include_inactive:
             tenant_qs = Tenant.objects.all().distinct().order_by("first_name")
@@ -720,7 +736,9 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
         payment_detail_form = PaymentDetailForm(
             self.request.POST,
             payment_total=form.cleaned_data.get("amount"),
+            lease=form.cleaned_data.get("lease") or self.object.lease,
         )
+        self.payment_detail_form = payment_detail_form
         if not payment_detail_form.is_valid():
             return self.form_invalid(form)
 
@@ -735,6 +753,8 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
 
         lease_amt = payment_detail_form.cleaned_data.get("lease_amount") or Decimal("0.00")
         sec_amt   = payment_detail_form.cleaned_data.get("security_amount") or Decimal("0.00")
+        electricity_amt = payment_detail_form.cleaned_data.get("electricity_amount") or Decimal("0.00")
+        electricity_meter = payment_detail_form.cleaned_data.get("electricity_meter")
 
         payment_total = payment.amount or Decimal("0.00")
 
@@ -775,6 +795,8 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
             payment=payment,
             lease_amount=lease_amt,
             security_amount=sec_amt,
+            electricity_amount=electricity_amt,
+            electricity_meter=electricity_meter,
             security_type=sec_type,
             user=self.request.user,
             reason="Updated via payment form",
@@ -792,15 +814,27 @@ class PaymentUpdateView(LoginRequiredMixin, UpdateView):
         payment_detail = getattr(payment, "detail", None)
 
         if payment_detail:
-            context["payment_detail_form"] = PaymentDetailForm(instance=payment_detail)
+            context["payment_detail_form"] = getattr(
+                self,
+                "payment_detail_form",
+                PaymentDetailForm(instance=payment_detail, lease=payment.lease),
+            )
         else:
             # if payment_detail row doesn't exist, still show the UI with defaults
-            context["payment_detail_form"] = PaymentDetailForm(initial={
-                "payment_type": "LEASE",
-                "lease_amount": str(payment.amount or "0.00"),
-                "security_amount": "0.00",
-                "security_type": "PAYMENT",
-            })
+            context["payment_detail_form"] = getattr(
+                self,
+                "payment_detail_form",
+                PaymentDetailForm(
+                    initial={
+                        "payment_type": "LEASE",
+                        "lease_amount": str(payment.amount or "0.00"),
+                        "security_amount": "0.00",
+                        "electricity_amount": "0.00",
+                        "security_type": "PAYMENT",
+                    },
+                    lease=payment.lease,
+                ),
+            )
 
         return context
 
@@ -819,7 +853,9 @@ def get_filtered_leases(request):
         s = (s or "").strip()
         return (s[:n] + "…") if len(s) > n else s
 
-    qs = Lease.objects.all().select_related('tenant', 'unit', 'unit__property')
+    qs = Lease.objects.all().select_related(
+        'tenant', 'unit', 'unit__property'
+    ).prefetch_related('meter_installations__meter')
 
     # If specific lease requested (e.g., from URL), always return it even if inactive
     if lease_id:
@@ -852,6 +888,17 @@ def get_filtered_leases(request):
 
         # What shows in the dropdown (single, compact line)
         text = f"{tenant_short} | {prop_short}-{unit_no} | Bal: {bal_fmt} | Sec. Bal: {sec_bal_fmt}"
+        electricity_meters = []
+        seen_meter_ids = set()
+        for installation in l.meter_installations.all():
+            if installation.meter_id in seen_meter_ids:
+                continue
+            seen_meter_ids.add(installation.meter_id)
+            electricity_meters.append({
+                "id": installation.meter_id,
+                "text": installation.meter.meter_number,
+                "active": bool(installation.is_active and installation.end_date is None),
+            })
 
         leases_data.append({
             "id": l.id,
@@ -870,6 +917,7 @@ def get_filtered_leases(request):
             "sec_balance_raw": float(sec_bal),
 
             "status": getattr(l, "status", ""),
+            "electricity_meters": electricity_meters,
         })
 
     return JsonResponse({"leases": leases_data})

@@ -21,6 +21,7 @@ from smart_meter.services.command_lifecycle import queue_relay_command, still_sh
 from smart_meter.services.credit_control import (
     activate_credit_account,
     enforcement_held,
+    electricity_outstanding_and_last_billed_kwh,
     evaluate_credit_account,
     notification_muted,
     resolve_effective_limit,
@@ -57,6 +58,7 @@ class MeterCreditFixture(TestCase):
             end_date=date(2027, 1, 1),
             monthly_rent=Decimal("25000.00"),
             security_deposit=Decimal("30000.00"),
+            electricity_security_deposit=Decimal("30000.00"),
         )
         self.meter = Meter.objects.create(
             meter_number="250619519998",
@@ -101,6 +103,48 @@ class CreditLimitResolutionTests(MeterCreditFixture):
         self.lease.refresh_from_db()
         self.assertEqual(value, Decimal("15000.00"))
         self.assertEqual(self.lease.security_deposit, before)
+
+    def test_electricity_security_is_independent_from_rental_security(self):
+        self.lease.security_deposit = Decimal("100000.00")
+        self.lease.electricity_security_deposit = Decimal("20000.00")
+        self.lease.save(update_fields=["security_deposit", "electricity_security_deposit"])
+        account = self.account(
+            credit_limit_source="deposit_percent",
+            deposit_percentage=Decimal("75.00"),
+        )
+        value, _ = resolve_effective_limit(account)
+        self.assertEqual(value, Decimal("15000.00"))
+        self.lease.security_deposit = Decimal("200000.00")
+        self.lease.save(update_fields=["security_deposit"])
+        value, _ = resolve_effective_limit(account)
+        self.assertEqual(value, Decimal("15000.00"))
+
+    def test_zero_electricity_security_blocks_deposit_activation(self):
+        self.lease.electricity_security_deposit = Decimal("0.00")
+        self.lease.save(update_fields=["electricity_security_deposit"])
+        account = self.account(credit_limit_source="deposit_percent")
+        with self.assertRaisesMessage(ValueError, "Electricity security deposit is Rs.0.00"):
+            activate_credit_account(account, reason="must fail")
+
+    def test_zero_electricity_security_allows_fixed_limit(self):
+        self.lease.electricity_security_deposit = Decimal("0.00")
+        self.lease.save(update_fields=["electricity_security_deposit"])
+        account = self.account(
+            credit_limit_source="fixed",
+            fixed_credit_limit=Decimal("20000.00"),
+        )
+        activated = activate_credit_account(account, reason="fixed is valid")
+        self.assertEqual(activated.effective_credit_limit, Decimal("20000.00"))
+
+    def test_lower_of_with_zero_electricity_security_is_zero(self):
+        self.lease.electricity_security_deposit = Decimal("0.00")
+        self.lease.save(update_fields=["electricity_security_deposit"])
+        account = self.account(
+            credit_limit_source="lower_of",
+            fixed_credit_limit=Decimal("20000.00"),
+        )
+        value, _ = resolve_effective_limit(account)
+        self.assertEqual(value, Decimal("0.00"))
 
     def test_lower_of_fixed_and_deposit(self):
         account = self.account(credit_limit_source="lower_of", fixed_credit_limit=Decimal("25000"), deposit_percentage=Decimal("100"))
@@ -156,6 +200,42 @@ class ExposureEvaluationTests(MeterCreditFixture):
         self.assertFalse(result.valid)
         self.assertEqual(result.state, "stale_reading")
 
+    def test_explicit_electricity_allocation_reduces_partial_invoice_electricity(self):
+        from invoices.models import Invoice, InvoiceItem, ItemCategory
+
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 1, 1),
+            due_date=date(2026, 1, 10),
+            amount=Decimal("20000.00"),
+        )
+        electric, _ = ItemCategory.objects.get_or_create(name="Electricity")
+        other, _ = ItemCategory.objects.get_or_create(name="Rent")
+        InvoiceItem.objects.create(
+            invoice=invoice,
+            category=electric,
+            description=f"Meter#={self.meter.meter_number}, End Unit=100.000",
+            amount=Decimal("4000.00"),
+        )
+        InvoiceItem.objects.create(
+            invoice=invoice,
+            category=other,
+            description="Rent",
+            amount=Decimal("16000.00"),
+        )
+        account = self.account()
+        payment = Payment.objects.create(lease=self.lease, amount=Decimal("14000.00"))
+        PaymentDetail.objects.create(
+            payment=payment,
+            lease_amount=Decimal("14000.00"),
+            electricity_amount=Decimal("4000.00"),
+            electricity_meter=self.meter,
+        )
+
+        outstanding, _ = electricity_outstanding_and_last_billed_kwh(account)
+
+        self.assertEqual(outstanding, Decimal("0.00"))
+
 
 class MuteHoldTests(MeterCreditFixture):
     def test_notification_mute_and_hold_are_independent(self):
@@ -208,6 +288,7 @@ class MeterCommandLifecycleTests(MeterCreditFixture):
     def test_current_month_hold_blocks_deferred_automatic_off(self):
         account = self.account(
             is_enabled=True, effective_credit_limit=Decimal("1000"), current_exposure=Decimal("1200"),
+            automatic_cutoff=True, automatic_restore=True, manual_only_cutoff=False,
             enforcement_hold_for_period="current_month", enforcement_hold_at=timezone.now(),
         )
         cmd = queue_relay_command(self.meter, "off", source="credit_control", credit_account=account, reason="threshold")
@@ -223,7 +304,11 @@ class MeterCommandLifecycleTests(MeterCreditFixture):
         METER_AUTOMATIC_CUTOFF_PROTECTED_END="00:00",
     )
     def test_stale_reading_blocks_deferred_automatic_off(self):
-        account = self.account(is_enabled=True, effective_credit_limit=Decimal("1000"), current_exposure=Decimal("1200"), stale_after_minutes=1)
+        account = self.account(
+            is_enabled=True, effective_credit_limit=Decimal("1000"), current_exposure=Decimal("1200"),
+            stale_after_minutes=1, automatic_cutoff=True, automatic_restore=True,
+            manual_only_cutoff=False,
+        )
         LiveReading.objects.filter(pk=self.live.pk).update(ts=timezone.now() - timedelta(minutes=5))
         cmd = queue_relay_command(self.meter, "off", source="credit_control", credit_account=account, reason="threshold")
         with self.settings(METER_CREDIT_ALLOWED_METER_IDS=(self.meter.pk,)):
@@ -239,7 +324,10 @@ class MeterCommandLifecycleTests(MeterCreditFixture):
         METER_AUTOMATIC_CUTOFF_PROTECTED_END="00:00",
     )
     def test_non_allowlisted_meter_blocks_deferred_automatic_off(self):
-        account = self.account(is_enabled=True, effective_credit_limit=Decimal("1000"), current_exposure=Decimal("1200"))
+        account = self.account(
+            is_enabled=True, effective_credit_limit=Decimal("1000"), current_exposure=Decimal("1200"),
+            automatic_cutoff=True, automatic_restore=True, manual_only_cutoff=False,
+        )
         cmd = queue_relay_command(self.meter, "off", source="credit_control", credit_account=account, reason="threshold")
         result = still_should_disconnect(cmd)
         self.assertFalse(result.allowed)
@@ -253,7 +341,8 @@ class MeterCommandLifecycleTests(MeterCreditFixture):
     def test_sent_off_with_payment_queues_compensating_on(self):
         account = self.account(
             is_enabled=True, effective_credit_limit=Decimal("1000"), current_exposure=Decimal("100"),
-            automatic_restore=True, enforcement_state="normal",
+            automatic_cutoff=True, automatic_restore=True, manual_only_cutoff=False,
+            enforcement_state="normal",
         )
         off = queue_relay_command(self.meter, "off", source="credit_control", credit_account=account, reason="threshold")
         MeterCommand.objects.filter(pk=off.pk).update(status="sent")
@@ -265,9 +354,33 @@ class MeterCommandLifecycleTests(MeterCreditFixture):
         off.refresh_from_db()
         self.assertEqual(off.status, "cancelled")
 
+    @override_settings(
+        METER_ENABLE_AUTOMATIC_CREDIT_EVALUATION=True,
+        METER_ENABLE_AUTOMATIC_RESTORE=True,
+    )
+    def test_meter_manually_off_without_credit_cutoff_is_not_auto_restored(self):
+        account = self.account(
+            is_enabled=True,
+            effective_credit_limit=Decimal("1000"),
+            current_exposure=Decimal("100"),
+            automatic_cutoff=True,
+            automatic_restore=True,
+            manual_only_cutoff=False,
+            enforcement_state="normal",
+        )
+        self.meter.power_status = "off"
+        self.meter.save(update_fields=["power_status"])
+        with self.settings(METER_CREDIT_ALLOWED_METER_IDS=(self.meter.pk,)):
+            command = automatic_enforcement(account.pk)
+        self.assertIsNone(command)
+        self.assertFalse(MeterCommand.objects.filter(desired_state="on").exists())
+
     @override_settings(METER_ENABLE_AUTOMATIC_CUTOFF=False)
     def test_deferred_automatic_off_revalidates_feature_switch(self):
-        account = self.account(is_enabled=True, effective_credit_limit=Decimal("1000"), current_exposure=Decimal("1200"))
+        account = self.account(
+            is_enabled=True, effective_credit_limit=Decimal("1000"), current_exposure=Decimal("1200"),
+            automatic_cutoff=True, automatic_restore=True, manual_only_cutoff=False,
+        )
         cmd = queue_relay_command(self.meter, "off", source="credit_control", credit_account=account, reason="threshold")
         result = still_should_disconnect(cmd)
         self.assertFalse(result.allowed)

@@ -357,7 +357,7 @@
     <div class="modal fade" id="quickTenantModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered"><form class="modal-content" id="quickTenantForm" enctype="multipart/form-data">
         <div class="modal-header"><h5 class="modal-title">Quick Add Agreement Party</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body"><div id="quickTenantError" class="alert alert-danger py-2 d-none"></div><div class="quick-tenant-grid">
+        <div class="modal-body"><div id="quickTenantError" class="alert alert-danger py-2 d-none" role="alert" aria-live="assertive"></div><div class="quick-tenant-grid">
           <div><label class="form-label small">CNIC *</label><input name="cnic" class="form-control" maxlength="15" required placeholder="00000-0000000-0"></div>
           <div><label class="form-label small">CNIC Front</label><input type="file" name="cnic_front" class="form-control" accept="image/*,.heic,.heif"></div>
           <div><label class="form-label small">CNIC Back</label><input type="file" name="cnic_back" class="form-control" accept="image/*,.heic,.heif"></div>
@@ -1172,6 +1172,13 @@
     }
   });
 
+  document.getElementById('quickTenantForm')?.addEventListener('invalid', function (event) {
+    const errorBox = document.getElementById('quickTenantError');
+    const label = event.target.closest('div')?.querySelector('label')?.textContent?.replace('*', '').trim() || 'Required field';
+    errorBox.textContent = label + ' needs attention before the party can be saved.';
+    errorBox.classList.remove('d-none');
+  }, true);
+
   document.getElementById('btnPdf')?.addEventListener('click', () => saveThenDownload(GEN_PDF_URL));
   document.getElementById('btnDocx')?.addEventListener('click', () => saveThenDownload(GEN_DOCX_URL));
   document.querySelector("#estampDecisionModal .estamp-upload")?.addEventListener("click", () => {
@@ -1327,6 +1334,7 @@
 <script>
   window.TMS_PUBLIC_CNIC_OCR_URL = "{% url 'tenants:cnic_identity_ocr' %}";
   window.TMS_IDENTITY_LOCK_MAIN = false;
+  window.TMS_CNIC_ALLOW_MANUAL_ENTRY = true;
 </script>
 {% include "partials/identity_media_public.html" %}
 

@@ -77,6 +77,9 @@ class Expense(models.Model):
 
     class Meta:
         ordering = ['-date', '-pk']  # avoids UnorderedObjectListWarning
+        indexes = [
+            models.Index(fields=["date", "id"], name="expenses_date_id_idx"),
+        ]
 
 
 class ExpenseDistribution(models.Model):

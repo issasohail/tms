@@ -1,7 +1,10 @@
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -135,3 +138,66 @@ class PublicMaintenanceRequestTests(TestCase):
         self.assertEqual(download["Content-Type"], "text/plain; charset=utf-8")
         self.assertIn("attachment", download["Content-Disposition"])
         self.assertContains(download, "Bathroom Tile")
+
+
+class MaintenanceListPerformanceTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            "maintenance-performance-admin",
+            email="maintenance-performance@example.com",
+            password="test",
+        )
+        self.client.force_login(self.user)
+        self.tenant = Tenant.objects.create(
+            first_name="Maintenance",
+            last_name="Tenant",
+            phone="03007654321",
+            cnic="37405-3434343-1",
+        )
+        self.property = Property.objects.create(
+            property_name="Maintenance Performance Property",
+            owner_name="Owner",
+            owner_cnic="37405-4545454-1",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(
+            property=self.property,
+            unit_number="MP-01",
+        )
+        today = timezone.localdate()
+        self.lease = Lease.objects.create(
+            tenant=self.tenant,
+            unit=self.unit,
+            start_date=today,
+            end_date=today + timezone.timedelta(days=365),
+            monthly_rent=Decimal("25000.00"),
+            status="active",
+        )
+
+    def test_legacy_lease_tenant_access_does_not_grow_queries_per_row(self):
+        MaintenanceRequest.objects.bulk_create(
+            [
+                MaintenanceRequest(
+                    unit=self.unit,
+                    lease=self.lease,
+                    tenant=None,
+                    title=f"Legacy request {index}",
+                    description="Tenant is resolved through the lease.",
+                )
+                for index in range(8)
+            ]
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse("maintenance:request_list"))
+
+        self.assertEqual(response.status_code, 200)
+        tenant_lookup_queries = [
+            query["sql"].lower()
+            for query in queries.captured_queries
+            if "from `tenants_tenant`" in query["sql"].lower()
+            and "where `tenants_tenant`.`id`" in query["sql"].lower()
+        ]
+        self.assertEqual(tenant_lookup_queries, [])

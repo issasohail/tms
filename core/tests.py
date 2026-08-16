@@ -31,7 +31,7 @@ from core.backup_utils import (
 )
 from core.views import _pending_approval_filter_state
 from core.forms import GlobalSettingsForm
-from core.models import GlobalSettings
+from core.models import GlobalSettings, TenantIncomeBracket, TenantOccupationOption
 
 
 class SettingsConsolidationTests(TestCase):
@@ -75,20 +75,46 @@ class SettingsConsolidationTests(TestCase):
         ]
         self.assertEqual(warm_account_queries, [])
 
-    def test_settings_combines_sections_and_loads_embeds_lazily(self):
+    def test_settings_combines_sections_and_opens_whatsapp_tools_in_new_windows(self):
         with CaptureQueriesContext(connection) as queries:
             response = self.client.get(reverse("core:settings"))
 
         self.assertEqual(response.status_code, 200)
         group_titles = [title for title, _icon, _fields in response.context["settings_field_groups"]]
-        self.assertIn("Billing Scale & Locale", group_titles)
+        self.assertIn("General, Billing & Operations", group_titles)
+        self.assertNotIn("Reference Data", group_titles)
+        self.assertNotIn("Parking & Water Penalties", group_titles)
+        self.assertNotIn("Police Verification", group_titles)
+        self.assertNotIn("Tenant Registration", group_titles)
         self.assertIn("WhatsApp / Twilio", group_titles)
         self.assertNotIn("Late Fees", group_titles)
         self.assertNotIn("WhatsApp AI Assistant", group_titles)
-        self.assertContains(response, "Billing &amp; Late Fees")
-        self.assertContains(response, 'id="settings-tool-whatsapp-templates"')
-        self.assertContains(response, 'id="settings-tool-whatsapp-webhook-logs"')
-        self.assertContains(response, 'src="about:blank"')
+        self.assertContains(response, "General &amp; Billing")
+        self.assertContains(response, "Monthly Billing Time")
+        self.assertContains(response, "Late Fee Reminder Time")
+        self.assertContains(response, "Utility Templates")
+        self.assertContains(response, "Webhook Logs")
+        self.assertContains(response, 'target="_blank"')
+        self.assertContains(response, 'data-settings-target="settings-reference-data"')
+        self.assertContains(response, 'id="settings-reference-toolbar"')
+        self.assertContains(response, "settings-help-icon")
+        self.assertContains(response, "grid-template-columns: repeat(10")
+        self.assertContains(response, "settings-reference-grid")
+        self.assertContains(response, "Monthly Income / Salary Brackets")
+        self.assertContains(response, "Occupation Suggestions")
+        self.assertContains(response, "Police document category code")
+        self.assertContains(response, "Tenant cnic ocr enabled")
+        self.assertContains(response, "?embed=1")
+        self.assertContains(response, 'data-settings-target="settings-global-inventory-defaults"')
+        self.assertContains(response, 'data-settings-target="settings-move-out-charges"')
+        self.assertContains(response, 'data-settings-target="settings-invoice-expense-categories"')
+        self.assertContains(response, "Invoice &amp; Expense Categories")
+        self.assertContains(response, "settings-reference-frame")
+        self.assertContains(response, "max-width: 960px")
+        self.assertContains(response, "settings-family-legend")
+        self.assertNotContains(response, 'data-settings-target="settings-tool-suggestions"')
+        self.assertNotContains(response, 'data-settings-target="settings-tool-pending-approvals"')
+        self.assertNotContains(response, 'src="about:blank"')
         self.assertNotContains(
             response,
             'data-settings-target="settings-group-late-fees"',
@@ -98,6 +124,37 @@ class SettingsConsolidationTests(TestCase):
             if "properties_buildingtype" in query["sql"].lower()
         ]
         self.assertEqual(len(building_type_queries), 1)
+
+    def test_tenant_reference_values_support_create_inline_update_and_delete(self):
+        create_response = self.client.post(
+            reverse("core:tenant_reference_create", args=["income"]),
+            {"name": "150,000 and more", "sort_order": "70", "is_active": "1"},
+        )
+        self.assertEqual(create_response.status_code, 200)
+        bracket = TenantIncomeBracket.objects.get(name="150,000 and more")
+
+        update_response = self.client.post(
+            reverse("core:tenant_reference_inline_update", args=["income", bracket.pk]),
+            {"field": "sort_order", "value": "15"},
+        )
+        self.assertEqual(update_response.status_code, 200)
+        bracket.refresh_from_db()
+        self.assertEqual(bracket.sort_order, 15)
+
+        occupation = TenantOccupationOption.objects.create(name="Engineer")
+        active_response = self.client.post(
+            reverse("core:tenant_reference_inline_update", args=["occupation", occupation.pk]),
+            {"field": "is_active", "value": "0"},
+        )
+        self.assertEqual(active_response.status_code, 200)
+        occupation.refresh_from_db()
+        self.assertFalse(occupation.is_active)
+
+        delete_response = self.client.post(
+            reverse("core:tenant_reference_delete", args=["income", bracket.pk])
+        )
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertFalse(TenantIncomeBracket.objects.filter(pk=bracket.pk).exists())
 
 
 class PendingApprovalDetailTemplateTests(SimpleTestCase):

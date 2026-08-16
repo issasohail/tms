@@ -3,7 +3,9 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -154,3 +156,41 @@ class PendingApprovalBadgeTests(TestCase):
             html.count('d-none" data-pending-approval-count>0</span>'),
             4,
         )
+
+    def test_default_page_reuses_each_pending_count_for_navbar_and_sections(self):
+        self._pending_lease()
+        self._pending_media("standalone.jpg")
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse("core:pending_approvals"))
+
+        self.assertEqual(response.status_code, 200)
+        count_sql = [
+            query["sql"].lower()
+            for query in queries.captured_queries
+            if query["sql"].lstrip().lower().startswith("select count")
+        ]
+        pending_tables = (
+            "leases_lease",
+            "leases_pendingagreementapproval",
+            "whatsapp_pendingwhatsapppayment",
+            "whatsapp_pendingwhatsappmedia",
+            "whatsapp_pendingwhatsappmaintenance",
+            "leases_pendingleasefamilymembersubmission",
+            "leases_pendingpoliceverificationsubmission",
+            "tenants_tenantregistrationsubmission",
+        )
+        for table_name in pending_tables:
+            matching = [
+                sql for sql in count_sql if f"from `{table_name}` where" in sql
+            ]
+            self.assertLessEqual(
+                len(matching),
+                1,
+                f"{table_name} pending count was executed more than once",
+            )
+
+        media_count_sql = next(
+            sql for sql in count_sql if "whatsapp_pendingwhatsappmedia" in sql
+        )
+        self.assertNotIn("from (select distinct", media_count_sql)

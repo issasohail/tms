@@ -27,11 +27,12 @@ from django.db.models import Case, DecimalField, F, OuterRef, Subquery, Sum, Val
 from django.db.models.functions import Coalesce, Greatest
 
 from .forms import GlobalSettingsForm
-from .models import GlobalSettings
+from .models import GlobalSettings, TenantIncomeBracket, TenantOccupationOption
 from .public_urls import build_public_path_url, build_public_url
 from .pending_approval_queue import (
     actionable_media_count,
     eligible_pending_media_queryset,
+    pending_approval_actionable_counts,
     pending_approval_count,
     pending_approval_status_filters,
 )
@@ -481,6 +482,18 @@ def pending_approvals(request):
         "approved": models.Q(status=TenantRegistrationSubmission.STATUS_APPROVED),
         "rejected": models.Q(status=TenantRegistrationSubmission.STATUS_REJECTED),
     }
+    use_global_pending_counts = (
+        filters["status"] == "pending"
+        and filters["date_range"] == "all"
+        and filters["property_id"] is None
+        and filters["unit_id"] is None
+        and not filters["search"]
+    )
+    global_pending_counts = (
+        pending_approval_actionable_counts(request)
+        if use_global_pending_counts
+        else {}
+    )
 
     pending_payments = _filter_pending_approval_queryset(
         PendingWhatsAppPayment.objects.select_related("tenant", "lease", "property", "unit"),
@@ -513,7 +526,11 @@ def pending_approvals(request):
             "property__property_name", "unit__unit_number", "purpose", "target_kind", "ai_notes",
         ),
     )
-    pending_media_action_count = actionable_media_count(pending_media_queryset)
+    pending_media_action_count = (
+        global_pending_counts["media"]
+        if use_global_pending_counts
+        else actionable_media_count(pending_media_queryset)
+    )
     pending_media = _group_pending_media(list(pending_media_queryset[:200]))[:50]
     pending_maintenance = _filter_pending_approval_queryset(
         PendingWhatsAppMaintenance.objects.select_related("tenant", "lease", "property", "unit"),
@@ -626,24 +643,25 @@ def pending_approvals(request):
             if count is None:
                 count = len(items)
         else:
-            count = queryset_or_items.count()
+            if count is None:
+                count = queryset_or_items.count()
             items = list(queryset_or_items[:50])
         return {"title": title, "kind": kind, "items": items, "count": count}
 
     sections = [
-        section("Leases", "lease", pending_leases),
-        section("Agreement Edits", "agreement", pending_agreements),
-        section("WhatsApp Payments", "payment", pending_payments),
+        section("Leases", "lease", pending_leases, global_pending_counts.get("lease")),
+        section("Agreement Edits", "agreement", pending_agreements, global_pending_counts.get("agreement")),
+        section("WhatsApp Payments", "payment", pending_payments, global_pending_counts.get("payment")),
         section(
             "WhatsApp Documents / Media",
             "media",
             pending_media,
             count=pending_media_action_count,
         ),
-        section("WhatsApp Maintenance", "maintenance", pending_maintenance),
-        section("Lease Family Members", "family", pending_family),
-        section("Police Verification", "police", pending_police),
-        section("Tenant Registration Submissions", "registration", pending_registrations),
+        section("WhatsApp Maintenance", "maintenance", pending_maintenance, global_pending_counts.get("maintenance")),
+        section("Lease Family Members", "family", pending_family, global_pending_counts.get("family")),
+        section("Police Verification", "police", pending_police, global_pending_counts.get("police")),
+        section("Tenant Registration Submissions", "registration", pending_registrations, global_pending_counts.get("registration")),
     ]
     for section in sections:
         section["items"] = [
@@ -2435,6 +2453,12 @@ class SettingsView(FormView):
         doc_cat_ordering = ("name", "sort_order") if doc_cat_sort == "name" else ("sort_order", "name")
         ctx["lease_document_categories"] = LeaseDocumentCategory.objects.order_by(*doc_cat_ordering)
         ctx["lease_relationship_types"] = LeaseRelationshipType.objects.order_by("name")
+        ctx["tenant_income_brackets"] = TenantIncomeBracket.objects.order_by(
+            "sort_order", "name"
+        )
+        ctx["tenant_occupation_options"] = TenantOccupationOption.objects.order_by(
+            "sort_order", "name"
+        )
         try:
             from whatsapp.services.ai_config import get_whatsapp_ai_config
             from whatsapp.services.whatsapp import WhatsAppService
@@ -2517,6 +2541,86 @@ def building_type_move_out_charge_update(request, pk):
             ]
         )
     return JsonResponse({"ok": True, "name": building_type.name})
+
+
+TENANT_REFERENCE_MODELS = {
+    "income": TenantIncomeBracket,
+    "occupation": TenantOccupationOption,
+}
+
+
+def _tenant_reference_model(kind):
+    model = TENANT_REFERENCE_MODELS.get(kind)
+    if model is None:
+        raise Http404("Unknown tenant reference type")
+    return model
+
+
+def _require_settings_staff(request):
+    return request.user.is_staff or request.user.is_superuser
+
+
+@login_required
+@require_POST
+def tenant_reference_create(request, kind):
+    if not _require_settings_staff(request):
+        return JsonResponse({"ok": False, "error": "Staff access required."}, status=403)
+    model = _tenant_reference_model(kind)
+    name = " ".join((request.POST.get("name") or "").strip().split())
+    try:
+        sort_order = max(int(request.POST.get("sort_order") or 50), 0)
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "Enter a valid sort order."}, status=400)
+    if not name:
+        return JsonResponse({"ok": False, "error": "Name is required."}, status=400)
+    if model.objects.filter(name__iexact=name).exists():
+        return JsonResponse({"ok": False, "error": "That value already exists."}, status=400)
+    item = model.objects.create(
+        name=name,
+        sort_order=sort_order,
+        is_active=request.POST.get("is_active", "1") == "1",
+    )
+    return JsonResponse({"ok": True, "id": item.pk})
+
+
+@login_required
+@require_POST
+def tenant_reference_inline_update(request, kind, pk):
+    if not _require_settings_staff(request):
+        return JsonResponse({"ok": False, "error": "Staff access required."}, status=403)
+    model = _tenant_reference_model(kind)
+    item = get_object_or_404(model, pk=pk)
+    field = request.POST.get("field")
+    value = request.POST.get("value", "")
+    if field == "name":
+        value = " ".join(value.strip().split())
+        if not value:
+            return JsonResponse({"ok": False, "error": "Name is required."}, status=400)
+        if model.objects.filter(name__iexact=value).exclude(pk=item.pk).exists():
+            return JsonResponse({"ok": False, "error": "That value already exists."}, status=400)
+    elif field == "sort_order":
+        try:
+            value = max(int(value), 0)
+        except (TypeError, ValueError):
+            return JsonResponse({"ok": False, "error": "Enter a valid sort order."}, status=400)
+    elif field == "is_active":
+        value = str(value).lower() in {"1", "true", "yes", "on"}
+    else:
+        return JsonResponse({"ok": False, "error": "Unknown field."}, status=400)
+    setattr(item, field, value)
+    item.save(update_fields=[field])
+    return JsonResponse({"ok": True, "value": getattr(item, field)})
+
+
+@login_required
+@require_POST
+def tenant_reference_delete(request, kind, pk):
+    if not _require_settings_staff(request):
+        return JsonResponse({"ok": False, "error": "Staff access required."}, status=403)
+    model = _tenant_reference_model(kind)
+    item = get_object_or_404(model, pk=pk)
+    item.delete()
+    return JsonResponse({"ok": True})
 
 
 @login_required

@@ -60,7 +60,7 @@
           <div class="col-6 col-md-4"><strong>State</strong><br><span class="badge {% if account.enforcement_state == 'normal' %}bg-success{% elif account.enforcement_state == 'warning_1' %}bg-warning text-dark{% elif account.enforcement_state == 'warning_2' or account.enforcement_state == 'cutoff_eligible' %}bg-danger{% else %}bg-secondary{% endif %}">{{ account.get_enforcement_state_display|default:"Not configured" }}</span></div>
           <div class="col-6 col-md-4"><strong>Last Evaluation</strong><br>{{ account.last_evaluated_at|date:"M d, Y H:i"|default:"-" }}</div>
           <div class="col-6 col-md-4"><strong>Last Reading</strong><br>{{ latest_reading.total_energy|default:"-" }} kWh</div>
-          <div class="col-12 col-md-8"><strong>Electricity Security Deposit</strong><button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="The refundable electricity deposit recorded on the lease. It can be used as a reference for calculating a credit limit, but it is not automatically treated as an invoice payment.">?</button><br>Rs. {{ lease.electricity_security_deposit|default:0|money:2 }} {% if lease %}<a class="ms-2" href="{% url 'leases:lease_update' lease.pk %}">Edit lease</a>{% endif %}</div>
+          <div class="col-12 col-md-8"><strong>Electricity Security Deposit</strong><button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="The refundable electricity deposit recorded on the lease. It can be used as a reference for calculating a credit limit, but it is not automatically treated as an invoice payment.">?</button><br>{{ lease.electricity_security_deposit|default:0|money:2 }} {% if lease %}<a class="ms-2" href="{% url 'leases:lease_update' lease.pk %}">Edit lease</a>{% endif %}</div>
         </div>
       </div></div>
 
@@ -77,8 +77,8 @@
           {% endfor %}
         </div>
         <hr><div class="row small g-2">
-          <div class="col-md-4"><strong>Electricity Security Reference</strong><button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="The electricity security amount currently stored on the lease and available to deposit-based limit calculations.">?</button><br>Rs. {{ lease.electricity_security_deposit|default:0|money:2 }}</div>
-          <div class="col-md-4"><strong>Effective Credit Limit</strong><button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="The actual rupee limit produced by the selected Credit limit source. Warnings, cutoff, remaining credit, and percentage used are calculated from this amount.">?</button><br>Rs. {{ computed_limit|default:0|money:2 }}</div>
+          <div class="col-md-4"><strong>Electricity Security Reference</strong><button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="The electricity security amount currently stored on the lease and available to deposit-based limit calculations.">?</button><br>{{ lease.electricity_security_deposit|default:0|money:2 }}</div>
+          <div class="col-md-4"><strong>Effective Credit Limit</strong><button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="The actual credit limit produced by the selected Credit limit source. Warnings, cutoff, remaining credit, and percentage used are calculated from this amount.">?</button><br>{{ computed_limit|default:0|money:2 }}</div>
           <div class="col-md-4"><strong>Limit Explanation</strong><button type="button" class="credit-help" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-custom-class="credit-help-tooltip" title="Shows which configured value produced the current effective credit limit.">?</button><br>{{ computed_explanation }}</div>
         </div>
         {% if perms.smart_meter.change_meter_credit_settings %}<button class="btn btn-primary btn-sm mt-3" type="submit">Save Settings</button>{% endif %}
@@ -89,11 +89,11 @@
       <div class="card shadow-sm mb-3"><div class="card-body">
         <h5 class="card-title">Current Exposure</h5>
         <div class="row g-2 small">
-          <div class="col-6">Accrued / unbilled<br><strong>Rs. {{ account.accrued_usage_amount|default:0|money:2 }}</strong></div>
-          <div class="col-6">Previous unpaid electricity<br><strong>Rs. {{ account.previous_unpaid_electricity|default:0|money:2 }}</strong></div>
-          <div class="col-6">Payments / credits<br><strong>Rs. {{ account.payments_applied|default:0|money:2 }} / {{ account.credits_applied|default:0|money:2 }}</strong></div>
-          <div class="col-6">Current exposure<br><strong>Rs. {{ account.current_exposure|default:0|money:2 }}</strong></div>
-          <div class="col-6">Remaining credit<br><strong>Rs. {{ account.remaining_credit|default:0|money:2 }}</strong></div>
+          <div class="col-6">Accrued / unbilled<br><strong>{{ account.accrued_usage_amount|default:0|money:2 }}</strong></div>
+          <div class="col-6">Previous unpaid electricity<br><strong>{{ account.previous_unpaid_electricity|default:0|money:2 }}</strong></div>
+          <div class="col-6">Payments / credits<br><strong>{{ account.payments_applied|default:0|money:2 }} / {{ account.credits_applied|default:0|money:2 }}</strong></div>
+          <div class="col-6">Current exposure<br><strong>{{ account.current_exposure|default:0|money:2 }}</strong></div>
+          <div class="col-6">Remaining credit<br><strong>{{ account.remaining_credit|default:0|money:2 }}</strong></div>
           <div class="col-6">Percentage used<br><strong>{{ account.percent_used|default:0 }}%</strong></div>
         </div>
       </div></div>

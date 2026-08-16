@@ -37,7 +37,6 @@ def eligible_pending_media_queryset():
             maintenance_submissions__status=PendingWhatsAppMaintenance.STATUS_PENDING
         )
         .exclude(police_verification_submissions__status="pending")
-        .distinct()
     )
 
 
@@ -60,7 +59,11 @@ def actionable_media_count(queryset):
     return counts["standalone_count"] + counts["batch_count"]
 
 
-def pending_approval_actionable_counts():
+def pending_approval_actionable_counts(request=None):
+    request_cache_attr = "_tms_pending_approval_counts"
+    if request is not None and hasattr(request, request_cache_attr):
+        return getattr(request, request_cache_attr)
+
     from leases.models import (
         Lease,
         PendingAgreementApproval,
@@ -73,7 +76,7 @@ def pending_approval_actionable_counts():
     pending = pending_approval_status_filters()
     pending_media = eligible_pending_media_queryset().filter(pending["common"])
 
-    return {
+    counts = {
         "lease": Lease.objects.filter(pending["lease"]).count(),
         "agreement": PendingAgreementApproval.objects.filter(
             pending["common"]
@@ -95,7 +98,11 @@ def pending_approval_actionable_counts():
             pending["registration"]
         ).count(),
     }
+    if request is not None:
+        setattr(request, request_cache_attr, counts)
+        setattr(request, "_tms_pending_approval_count", sum(counts.values()))
+    return counts
 
 
-def pending_approval_count():
-    return sum(pending_approval_actionable_counts().values())
+def pending_approval_count(request=None):
+    return sum(pending_approval_actionable_counts(request).values())

@@ -55,7 +55,7 @@ from datetime import timedelta
 from django_tables2 import SingleTableView
 from django.utils import timezone
 from django.apps import apps
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.utils.dateformat import format as dj_format
 import json
 
@@ -135,7 +135,18 @@ class ExpenseListView(SingleTableView):
     def get_queryset(self):
         qs = (Expense.objects
               .select_related("property", "unit", "category")
-              .prefetch_related("receipts", "distributions__unit"))
+              .prefetch_related(
+                  Prefetch(
+                      "receipts",
+                      queryset=ExpenseReceipt.objects.only("expense_id", "image"),
+                  ),
+                  Prefetch(
+                      "distributions",
+                      queryset=ExpenseDistribution.objects.select_related("unit").only(
+                          "expense_id", "unit_id", "unit__unit_number"
+                      ),
+                  ),
+              ))
 
         r = self.request
         prop = r.GET.get("property") or r.GET.get("property_id")
@@ -176,22 +187,33 @@ class ExpenseListView(SingleTableView):
         Unit = apps.get_model("properties", "Unit")
 
         # Properties → select options
-        props = Property.objects.all().order_by("property_name")
+        props = Property.objects.order_by("property_name").values_list(
+            "id", "property_name"
+        )
         ctx["property_options"] = [
-            {"id": p.id, "name": p.property_name} for p in props]
+            {"id": property_id, "name": property_name}
+            for property_id, property_name in props
+        ]
 
         # Units by property (simple label: Unit Number)
         by_prop = {}
-        for u in Unit.objects.select_related("property").order_by("property__property_name", "unit_number"):
-            by_prop.setdefault(u.property_id, []).append(
-                {"id": u.id, "label": getattr(
-                    u, "unit_number", "") or str(u.id)}
+        unit_rows = Unit.objects.order_by(
+            "property__property_name", "unit_number"
+        ).values_list("id", "property_id", "unit_number")
+        for unit_id, property_id, unit_number in unit_rows:
+            by_prop.setdefault(property_id, []).append(
+                {"id": unit_id, "label": unit_number or str(unit_id)}
             )
         ctx["units_by_property_json"] = json.dumps(by_prop)
 
         # Categories (shared with invoices)
-        cats = ItemCategory.objects.filter(is_active=True).order_by("name")
-        ctx["category_options"] = [{"id": c.id, "name": c.name} for c in cats]
+        cats = ItemCategory.objects.filter(is_active=True).order_by("name").values_list(
+            "id", "name"
+        )
+        ctx["category_options"] = [
+            {"id": category_id, "name": name}
+            for category_id, name in cats
+        ]
 
         return ctx
 

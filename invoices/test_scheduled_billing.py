@@ -1,6 +1,8 @@
 from datetime import date
+from io import StringIO
 from unittest.mock import patch
 
+from django.core.management import call_command
 from django.test import TestCase
 
 from core.models import GlobalSettings
@@ -47,3 +49,18 @@ class ScheduledBillingTests(TestCase):
         result = run_scheduled_monthly_billing(today=date(2026, 9, 2), dry_run=True)
         self.assertTrue(result["dry_run"])
         self.assertTrue(engine.call_args.kwargs["dry_run"])
+
+    @patch(
+        "invoices.management.commands.run_scheduled_billing.scheduler_time_is_due",
+        return_value=False,
+    )
+    @patch(
+        "invoices.management.commands.run_scheduled_billing.run_scheduled_monthly_billing"
+    )
+    def test_systemd_mode_skips_outside_configured_time(self, run_service, _is_due):
+        output = StringIO()
+
+        call_command("run_scheduled_billing", "--scheduled", stdout=output)
+
+        run_service.assert_not_called()
+        self.assertIn("Configured Pakistan time", output.getvalue())

@@ -1453,6 +1453,10 @@ class CategoryCreateView(CreateView):
     template_name = "invoices/category_form.html"
     success_url = reverse_lazy("invoices:category_list")
 
+    def get_success_url(self):
+        url = str(self.success_url)
+        return f"{url}?embed=1" if self.request.GET.get("embed") == "1" else url
+
 
 class CategoryUpdateView(UpdateView):
     model = ItemCategory
@@ -1460,11 +1464,19 @@ class CategoryUpdateView(UpdateView):
     template_name = "invoices/category_form.html"
     success_url = reverse_lazy("invoices:category_list")
 
+    def get_success_url(self):
+        url = str(self.success_url)
+        return f"{url}?embed=1" if self.request.GET.get("embed") == "1" else url
+
 
 class CategoryDeleteView(DeleteView):
     model = ItemCategory
     template_name = "invoices/category_confirm_delete.html"
     success_url = reverse_lazy("invoices:category_list")
+
+    def get_success_url(self):
+        url = str(self.success_url)
+        return f"{url}?embed=1" if self.request.GET.get("embed") == "1" else url
 
     def post(self, request, *args, **kwargs):
         self.object = self.get_object()
@@ -1475,7 +1487,7 @@ class CategoryDeleteView(DeleteView):
                 request,
                 "Cannot delete: this category is used by one or more invoice items.",
             )
-            return redirect("invoices:category_list")
+            return redirect(self.get_success_url())
 
 
 @require_POST

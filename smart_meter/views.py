@@ -59,6 +59,8 @@ from openpyxl import Workbook
 import csv
 from io import BytesIO
 from django.core.paginator import Paginator
+from core.currency import format_money
+from core.models import GlobalSettings
 from properties.models import Property, Unit        # adjust import paths
 from smart_meter.models import Meter, MeterReading  # or LiveReading
 from properties.models import Property, Unit   # adjust paths
@@ -699,7 +701,6 @@ def _meter_chip_q(chip):
     inactive_q = Q(is_active=False)
     billing_issue_q = Q(meter_role=Meter.METER_ROLE_BILLING) & (
         Q(unit__isnull=True)
-        | Q(unit_rate__lte=0)
         | Q(has_active_lease=True, last_ts__isnull=True)
     )
 
@@ -850,6 +851,10 @@ def meter_list(request):
     paginator = Paginator(meters_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
     page_obj.object_list = attach_active_meter_counts(page_obj.object_list)
+    from smart_meter.rates import resolve_electricity_rate
+
+    for meter in page_obj.object_list:
+        meter.display_electricity_rate = resolve_electricity_rate(meter=meter)
     attach_active_tenant_names(
         page_obj.object_list,
         lambda meter: meter.unit_id,
@@ -1187,7 +1192,7 @@ def meter_check_group_detail(request, pk):
     check_kwh = Decimal(str(check_totals["total_kwh"]))
     billing_kwh = Decimal(str(billing_totals["total_kwh"]))
     variance_kwh = check_kwh - billing_kwh
-    variance_rs = variance_kwh * Decimal(str(group.check_meter.unit_rate or 0))
+    variance_rs = variance_kwh * Decimal(str(group.check_meter.effective_unit_rate or 0))
     leakage_percent = (variance_kwh / check_kwh * Decimal("100")) if check_kwh else Decimal("0")
 
     memberships = group.memberships.select_related(
@@ -1471,12 +1476,19 @@ def meter_detail(request, pk):
         "credit_allowlisted": meter.pk in set(getattr(settings, "METER_CREDIT_ALLOWED_METER_IDS", ()) or ()),
         "emergency_stop": bool(getattr(settings, "METER_EMERGENCY_STOP", False)),
     }
+    from smart_meter.rates import resolve_electricity_rate
+
+    electricity_rate = resolve_electricity_rate(
+        meter=meter,
+        lease=current_lease,
+    )
 
     return render(
         request,
         'smart_meter/meter_detail.html',
         {
             'meter': meter,
+            'electricity_rate': electricity_rate,
             'current_installation': current_installation,
             'current_lease': current_lease,
             'current_tenant': current_lease.tenant if current_lease else None,
@@ -2372,7 +2384,7 @@ def energy_dashboard(request):
                         unit=unit).latest("start_date")
                     if getattr(lease, "tenant", None) and lease.tenant.phone:
                         msg = (f"⚠️ Dear {lease.tenant.get_full_name()}, your meter balance is "
-                               f"Rs. {balance_obj.balance}. Please recharge soon to avoid disconnection.")
+                               f"{format_money(balance_obj.balance, GlobalSettings.get_solo())}. Please recharge soon to avoid disconnection.")
                         wa_url = build_whatsapp_url(lease.tenant.phone, msg)
                 except Exception:
                     pass
@@ -2473,10 +2485,15 @@ def energy_dashboard(request):
             # No explicit colors; Chart.js picks defaults. (User asked for values displayed; we do via datalabels plugin.)
         })
 
-    # Totals & cost (use each meter's unit_rate in Rs.)
+    # Totals & cost use the resolved Global -> Property -> Unit -> Meter rate.
     monthly_total = Decimal("0")
     monthly_cost = Decimal("0")
-    rate_map = dict(selected_meters.values_list("id", "unit_rate"))
+    from smart_meter.rates import resolve_electricity_rate
+
+    rate_map = {
+        meter.id: resolve_electricity_rate(meter=meter).rate
+        for meter in selected_meters.select_related("unit", "unit__property")
+    }
     for mid, mm in per_meter_window_minmax.items():
         if mm["min"] is None or mm["max"] is None:
             continue
@@ -2488,12 +2505,10 @@ def energy_dashboard(request):
 
     # “billing_rate” display: single meter => that meter’s rate; all meters => only show if all rates are same
     if per_meter_mode and selected_meter:
-        billing_rate = Decimal(selected_meter.unit_rate or 0)
+        billing_rate = resolve_electricity_rate(meter=selected_meter).rate
     else:
-        distinct_rates = list(selected_meters.values_list(
-            "unit_rate", flat=True).distinct())
-        billing_rate = Decimal(distinct_rates[0]) if len(
-            distinct_rates) == 1 else None
+        distinct_rates = set(rate_map.values())
+        billing_rate = next(iter(distinct_rates)) if len(distinct_rates) == 1 else None
 
     # Fleet online/offline counts
     online_count = offline_count = 0
@@ -2538,7 +2553,7 @@ def energy_dashboard(request):
         # summaries
         "monthly_total": monthly_total,
         "monthly_cost": monthly_cost,
-        "billing_rate": billing_rate,  # Rs./kWh (None if mixed)
+        "billing_rate": billing_rate,  # configured currency/kWh (None if mixed)
         "online_count": online_count,
         "offline_count": offline_count,
         "online_minutes": online_threshold_minutes(),

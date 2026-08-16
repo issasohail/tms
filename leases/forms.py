@@ -168,6 +168,8 @@ class LeaseForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.fields["electric_unit_rate"].label = "Lease rate override"
+
         self.fields['end_date'].required = False
         if not self.instance.pk and not self.is_bound:
             from core.models import GlobalSettings

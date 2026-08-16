@@ -18,7 +18,9 @@ from django.core.cache import cache
 from django.apps import apps as django_apps
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from pypdf import PdfReader, PdfWriter
@@ -3700,6 +3702,41 @@ class WhatsAppControlledAssistantTests(TestCase):
 
         self.assertIn(older_phone, phones)
         self.assertIn(self.phone, phones)
+
+    def test_conversation_summary_does_not_requery_known_missing_conversations(self):
+        from whatsapp.views import _conversation_summary
+
+        missing_conversation_phones = [
+            "+923001230001",
+            "+923001230002",
+            "+923001230003",
+            "+923001230004",
+        ]
+        WhatsAppMessageLog.objects.bulk_create(
+            [
+                WhatsAppMessageLog(
+                    direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+                    phone_number=phone,
+                    wa_message_id=f"wamid.no-conversation.{index}",
+                    message_type="text",
+                    status="received",
+                    payload={"type": "text", "text": {"body": "hello"}},
+                )
+                for index, phone in enumerate(missing_conversation_phones)
+            ]
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            summary = _conversation_summary()
+
+        conversation_queries = [
+            query["sql"]
+            for query in queries.captured_queries
+            if "from `whatsapp_whatsappconversation`" in query["sql"].lower()
+        ]
+        self.assertEqual(len(conversation_queries), 1)
+        summary_phones = {row["phone_number"] for row in summary}
+        self.assertTrue(set(missing_conversation_phones).issubset(summary_phones))
 
     def test_selected_conversation_context_includes_matching_phone_and_active_lease(self):
         from whatsapp.views import _selected_conversation_context

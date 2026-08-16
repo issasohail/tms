@@ -9,6 +9,7 @@ from django.utils import timezone
 from smart_meter.models import MeterReading, Meter, MeterInstallation
 from invoices.models import Invoice, InvoiceItem, ItemCategory
 from leases.models import Lease, LeaseUnitOccupancy
+from smart_meter.rates import resolve_electricity_rate
 
 
 # ---- helpers ---------------------------------------------------------------
@@ -37,14 +38,7 @@ def _trim_desc(s: str, maxlen: int = 490) -> str:
 
 
 def _detect_unit_rate(meter: Meter, lease: Lease) -> Decimal:
-    # Prefer explicit meter.unit_rate, else lease.electric_unit_rate, else 0
-    rate = getattr(meter, "unit_rate", None)
-    if rate is None:
-        rate = getattr(lease, "electric_unit_rate", None)
-    try:
-        return Decimal(str(rate or "0"))
-    except Exception:
-        return Decimal("0")
+    return resolve_electricity_rate(meter=meter, lease=lease).rate
 
 
 def _detect_service_charges(meter: Meter) -> Decimal:

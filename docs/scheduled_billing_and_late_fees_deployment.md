@@ -19,11 +19,18 @@ Monthly scheduling is configured under TMS Settings, in **Billing Scale & Locale
 
 - Automatic Monthly Billing
 - Monthly Billing Day (1-28, default 2)
+- Monthly Billing Time (Pakistan time, default 09:05)
 
 Late-fee automatic scheduling remains controlled by **Send reminders automatically**. The Invoice List **Run Due Late Fees** action is a manual fallback and processes only reminders already due.
+Set **Late Fee Reminder Time** in the same settings panel (Pakistan time, default 09:00).
 Set **Automation start date** before enabling the timer. Batch runs exclude invoices
 due before that date, preventing historical overdue invoices from being messaged or
 charged when automation is first enabled.
+
+The systemd timers wake every five minutes. Their services use ``--scheduled`` and
+only run the billing or late-fee workflow during the corresponding configured
+Pakistan-time window. Changing either time in Settings therefore does not require
+editing or reinstalling the timer files.
 
 ## Production application deployment
 
@@ -57,7 +64,15 @@ Verify the web UI and run both schedulers without side effects before installing
 ```bash
 python manage.py send_late_fee_reminders --dry-run
 python manage.py run_scheduled_billing --dry-run
+python manage.py send_late_fee_reminders --list-excluded
 ```
+
+The invoice list now links to **Late Fee Control & Log**. Use that screen to review
+the exact due invoices before sending, temporarily hold an invoice (which blocks
+both its reminder and reminder-based fee), resume a hold, approve pending fees,
+and inspect the post-send log. Zero-amount invoices are always excluded. The
+General & Billing settings also provide **Skip invoices issued this month** and an
+optional WhatsApp summary to the configured Accounts staff member.
 
 ## Install the late-fee timer
 

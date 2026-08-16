@@ -125,6 +125,11 @@ class PropertyDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        from smart_meter.rates import resolve_electricity_rate
+
+        context["electricity_rate"] = resolve_electricity_rate(
+            property_obj=self.object
+        )
         today = timezone.now().date()
         ending_date = today + timedelta(days=40)
         active_lease = Lease.objects.filter(
@@ -1060,6 +1065,9 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context.update(_unit_detail_context(self.object))
+        from smart_meter.rates import resolve_electricity_rate
+
+        context["electricity_rate"] = resolve_electricity_rate(unit=self.object)
         from leases.services.inventory_parking import (
             effective_inventory,
             effective_parking_policy,
@@ -1081,10 +1089,14 @@ def unit_detail(request, pk):
         Unit.objects.select_related("property", "building_type", "interest_type"),
         pk=pk,
     )
+    from smart_meter.rates import resolve_electricity_rate
+
+    context = _unit_detail_context(unit)
+    context["electricity_rate"] = resolve_electricity_rate(unit=unit)
     return render(
         request,
         "properties/unit_detail.html",
-        _unit_detail_context(unit),
+        context,
     )
 
 

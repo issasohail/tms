@@ -30,7 +30,7 @@
     <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Audit kWh</small><div class="fs-4 fw-bold">{{ check_kwh|floatformat:3 }}</div></div></div></div>
     <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Billing-sum kWh</small><div class="fs-4 fw-bold">{{ billing_kwh|floatformat:3 }}</div></div></div></div>
     <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Variance kWh</small><div class="fs-4 fw-bold {% if variance_kwh > 0 %}text-warning{% endif %}">{{ variance_kwh|floatformat:3 }}</div></div></div></div>
-    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Variance Rs.</small><div class="fs-4 fw-bold">{{ variance_rs|floatformat:2 }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Variance {{ CURRENCY_SYMBOL }}</small><div class="fs-4 fw-bold">{{ variance_rs|floatformat:2 }}</div></div></div></div>
     <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Leakage</small><div class="fs-4 fw-bold">{{ leakage_percent|floatformat:2 }}%</div></div></div></div>
   </div>
 

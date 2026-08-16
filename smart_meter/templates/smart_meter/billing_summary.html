@@ -624,7 +624,8 @@
       const formatted = cleaned.startsWith('0') ? '92' + cleaned.slice(1)
                       : cleaned.startsWith('92') ? cleaned : '92' + cleaned;
       const formattedBalance = parseFloat(balance).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const message = `Dear ${firstName},\n\nPayment Reminder:\nProperty: ${propertyName}\nUnit: ${unitNumber}\nBalance Due: Rs. ${formattedBalance}\n\nPlease pay at your earliest convenience.`;
+      const currencySymbol = window.TMS_CURRENCY_SYMBOL || "";
+      const message = `Dear ${firstName},\n\nPayment Reminder:\nProperty: ${propertyName}\nUnit: ${unitNumber}\nBalance Due: ${currencySymbol} ${formattedBalance}\n\nPlease pay at your earliest convenience.`;
       window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(message)}`, '_blank');
     } catch (error) {
       console.error("WhatsApp error:", error);
@@ -763,7 +764,7 @@ ${(data.trace||'').slice(0,2000)}
             const tenant = (tds[3].textContent.trim() || '').slice(0,10);
             const cat = (tds[5].innerText.trim() || '').slice(0,13);  // innerText keeps 2 lines if any
             const amt = tds[6].textContent.trim();
-            return `${sn}. ${unit} | ${tenant} | ${cat} | Rs. ${amt}`;
+            return `${sn}. ${unit} | ${tenant} | ${cat} | ${(window.TMS_CURRENCY_SYMBOL || "")} ${amt}`;
           }).filter(Boolean);
 
           // Sum by property rows already subtotalled in UI; here we just send the listing

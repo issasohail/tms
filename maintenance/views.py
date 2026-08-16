@@ -451,7 +451,10 @@ class MaintenanceRequestListView(LoginRequiredMixin, ListView):
     def get_queryset(self):
         qs = (
             MaintenanceRequest.objects
-            .select_related("unit", "unit__property", "lease", "tenant", "assigned_to", "category_ref")
+            .select_related(
+                "unit", "unit__property", "lease", "lease__tenant",
+                "tenant", "assigned_to", "category_ref",
+            )
             .annotate(active_media_count=_active_media_count_annotation())
         )
         raw_status = self.request.GET.get("status")

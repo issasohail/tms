@@ -102,6 +102,16 @@ class Property(models.Model):
     type = models.CharField(max_length=50)  # with exactly these names
     property_type = models.CharField(max_length=20, choices=PROPERTY_TYPES)
     total_units = models.PositiveIntegerField()
+    electricity_unit_rate = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text=(
+            "Optional property electricity-rate override. Override order: Global, "
+            "Property, Unit, Meter, then Lease; the last nonblank value wins."
+        ),
+    )
     description = models.CharField(max_length=1000, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -293,6 +303,16 @@ class Unit(models.Model):
         max_length=20, null=True, blank=True, default="0000000000"
     )
     is_smart_meter = models.BooleanField(default=False)
+    electricity_unit_rate = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text=(
+            "Optional unit electricity-rate override. Override order: Global, "
+            "Property, Unit, Meter, then Lease; the last nonblank value wins."
+        ),
+    )
     gas_meter_num = models.CharField(
         max_length=20, null=True, blank=True, default="12345"
     )

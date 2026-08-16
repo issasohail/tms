@@ -43,8 +43,10 @@ class GlobalSettingsForm(forms.ModelForm):
                   "late_fee_percent", "late_fee_grace_days",
                   "late_fee_reminder_interval_days", "late_fee_max_reminders",
                   "late_fee_auto_send_reminders", "late_fee_automation_start_date",
+                  "late_fee_skip_current_month", "late_fee_staff_summary_enabled",
                   "late_fee_auto_apply",
                   "billing_cap_amount", "automatic_monthly_billing", "monthly_billing_day",
+                  "monthly_billing_time", "late_fee_reminder_time",
                   "default_lease_months",
                   "end_lease_proration_interval_days",
                   "default_parking_enabled", "default_motorcycle_parking_rate",
@@ -89,32 +91,28 @@ class GlobalSettingsForm(forms.ModelForm):
                   "enable_debug_toolbar",
                   ]
     FIELD_GROUPS = [
-        ("Branding", "fas fa-building", ["site_name", "logo", "favicon"]),
-        ("Billing Scale & Locale", "fas fa-coins", [
+        ("General, Billing & Operations", "fas fa-sliders-h", [
+            "site_name", "logo", "favicon",
             "currency_code", "country_code", "time_zone", "unit_rate_per_kwh",
             "service_charge_flat", "billing_cap_amount", "lease_file_share_valid_days",
-            "automatic_monthly_billing", "monthly_billing_day",
+            "automatic_monthly_billing", "monthly_billing_day", "monthly_billing_time",
             "default_lease_months",
             "end_lease_proration_interval_days",
             "late_fee_enabled", "late_fee_type", "late_fee_amount",
             "late_fee_percent", "late_fee_grace_days",
             "late_fee_reminder_interval_days", "late_fee_max_reminders",
             "late_fee_auto_send_reminders", "late_fee_automation_start_date",
+            "late_fee_skip_current_month", "late_fee_staff_summary_enabled",
+            "late_fee_reminder_time",
             "late_fee_auto_apply",
-        ]),
-        ("Parking & Water Penalties", "fas fa-motorcycle", [
+            "smtp_host", "smtp_port", "smtp_use_tls", "smtp_user", "smtp_password",
+            "listener_host", "listener_port", "enable_debug_toolbar",
             "default_parking_enabled", "default_motorcycle_parking_rate",
             "default_unauthorized_parking_penalty", "water_abuse_penalty_amount",
-        ]),
-        ("Police Verification", "fas fa-shield-alt", [
             "police_verification_document_category_code",
             "police_verification_link_valid_hours",
             "police_verification_whatsapp_command",
-        ]),
-        ("Tenant Registration", "fas fa-user-check", [
             "tenant_cnic_ocr_enabled",
-            "tenant_income_brackets",
-            "tenant_occupation_options",
         ]),
         ("WhatsApp / Twilio", "fab fa-whatsapp", [
             "whatsapp_number", "twilio_account_sid", "twilio_auth_token",
@@ -140,13 +138,6 @@ class GlobalSettingsForm(forms.ModelForm):
             "whatsapp_return_to_ai_after_close", "whatsapp_default_support_staff",
             "whatsapp_accounts_staff", "whatsapp_maintenance_staff",
             "whatsapp_leasing_staff", "whatsapp_escalation_staff",
-        ]),
-        ("Email / SMTP", "fas fa-envelope", [
-            "smtp_host", "smtp_port", "smtp_use_tls", "smtp_user",
-            "smtp_password",
-        ]),
-        ("Meter Listener", "fas fa-broadcast-tower", [
-            "listener_host", "listener_port",
         ]),
         ("Handyman", "fas fa-tools", [
             "handyman_assignment_default_status",
@@ -207,19 +198,69 @@ class GlobalSettingsForm(forms.ModelForm):
             else:
                 field.widget.attrs.update({"class": "form-control form-control-sm"})
 
+        setting_families = {
+            "branding": {"site_name", "logo", "favicon"},
+            "billing": {
+                "currency_code", "country_code", "time_zone", "unit_rate_per_kwh",
+                "service_charge_flat", "billing_cap_amount", "automatic_monthly_billing",
+                "monthly_billing_day", "monthly_billing_time", "default_lease_months",
+            },
+            "late-fee": {
+                "late_fee_enabled", "late_fee_type", "late_fee_amount", "late_fee_percent",
+                "late_fee_grace_days", "late_fee_reminder_interval_days",
+                "late_fee_max_reminders", "late_fee_auto_send_reminders",
+                "late_fee_automation_start_date", "late_fee_skip_current_month",
+                "late_fee_staff_summary_enabled", "late_fee_reminder_time", "late_fee_auto_apply",
+            },
+            "smtp": {"smtp_host", "smtp_port", "smtp_use_tls", "smtp_user", "smtp_password"},
+            "meter": {"listener_host", "listener_port", "unit_rate_per_kwh", "service_charge_flat"},
+            "parking-water": {
+                "default_parking_enabled", "default_motorcycle_parking_rate",
+                "default_unauthorized_parking_penalty", "water_abuse_penalty_amount",
+            },
+            "police": {
+                "police_verification_document_category_code",
+                "police_verification_link_valid_hours",
+                "police_verification_whatsapp_command", "tenant_cnic_ocr_enabled",
+            },
+        }
+        for family, field_names in setting_families.items():
+            for field_name in field_names:
+                if field_name in self.fields:
+                    existing = self.fields[field_name].widget.attrs.get("data-setting-family", "")
+                    families = [value for value in existing.split() if value]
+                    if family not in families:
+                        families.append(family)
+                    self.fields[field_name].widget.attrs["data-setting-family"] = " ".join(families)
+
         self.fields["late_fee_reminder_interval_days"].label = "Reminder interval days"
         self.fields["late_fee_reminder_interval_days"].help_text = "Days between late fee reminders after the grace period."
         self.fields["late_fee_max_reminders"].label = "Max reminders"
         self.fields["late_fee_max_reminders"].help_text = "Use 0 for unlimited reminder-based fees."
         self.fields["late_fee_auto_send_reminders"].label = "Send reminders automatically"
         self.fields["late_fee_auto_send_reminders"].help_text = "On = the daily late fee job sends WhatsApp reminders. Off = reminders are sent manually from invoice detail."
+        self.fields["late_fee_skip_current_month"].label = "Skip invoices issued this month"
+        self.fields["late_fee_staff_summary_enabled"].label = "WhatsApp summary to accounts staff"
+        self.fields["late_fee_staff_summary_enabled"].help_text = (
+            "After a run, send invoice, property, unit, tenant, and balance details "
+            "to the Accounts staff selected in WhatsApp settings."
+        )
         self.fields["late_fee_automation_start_date"].label = "Automation start date"
         self.fields["late_fee_automation_start_date"].widget.input_type = "date"
         self.fields["late_fee_auto_apply"].label = "Apply fee automatically"
         self.fields["late_fee_auto_apply"].help_text = "Off = reminder is sent, but the late fee waits in the pending approval queue."
         self.fields["automatic_monthly_billing"].label = "Automatic Monthly Billing"
         self.fields["monthly_billing_day"].label = "Monthly Billing Day"
+        self.fields["monthly_billing_time"].label = "Monthly Billing Time"
+        self.fields["monthly_billing_time"].widget.input_type = "time"
+        self.fields["monthly_billing_time"].widget.attrs["step"] = 300
+        self.fields["monthly_billing_time"].help_text = "Pakistan time. The scheduler follows this setting."
+        self.fields["late_fee_reminder_time"].label = "Late Fee Reminder Time"
+        self.fields["late_fee_reminder_time"].widget.input_type = "time"
+        self.fields["late_fee_reminder_time"].widget.attrs["step"] = 300
+        self.fields["late_fee_reminder_time"].help_text = "Pakistan time. The scheduler follows this setting."
         self.fields["currency_code"].help_text = "Used as the currency label throughout TMS, for example PKR, USD, AED."
+        self.fields["unit_rate_per_kwh"].label = "Global electricity rate per kWh"
         self.fields["country_code"].help_text = "Used for WhatsApp phone normalization, for example +92."
         self.fields["lease_file_share_valid_days"].label = "Lease file share validity days"
         self.fields["end_lease_proration_interval_days"].label = "Move-out proration interval"

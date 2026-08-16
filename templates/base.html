@@ -7,10 +7,15 @@
   <title>{% block title %}Tenant Management System{% endblock %}</title>
 
   <!-- Favicons -->
+  {% if GLOBAL_SETTINGS.favicon %}
+  <link rel="icon" href="{{ GLOBAL_SETTINGS.favicon.url }}">
+  <link rel="apple-touch-icon" href="{{ GLOBAL_SETTINGS.favicon.url }}">
+  {% else %}
   <link rel="icon" href="{% static 'images/favicon.ico' %}">
   <link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/favicon-32x32.png' %}">
   <link rel="icon" type="image/png" sizes="16x16" href="{% static 'images/favicon-16x16.png' %}">
   <link rel="apple-touch-icon" href="{% static 'images/apple-touch-icon.png' %}">
+  {% endif %}
 
   <!-- Tabler Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">

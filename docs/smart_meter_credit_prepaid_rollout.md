@@ -83,7 +83,7 @@ There is no bulk prepaid-write option.
 5. Activate the account with an authorized user so TMS snapshots the live cumulative kWh, tariff, unpaid electricity and resolved credit limit.
 6. Keep automatic cutoff/restore/notifications false.
 7. Run `process_meter_credit_evaluations --meter-id <id> --dry-run`, inspect the result, then run without `--dry-run` when satisfied.
-8. To enqueue automatically after future stored live readings, set only `METER_ENABLE_AUTOMATIC_CREDIT_EVALUATION=True` and schedule the processor command. This still does not enable tenant messages or relay switching.
+8. To enqueue automatically after future stored live readings, set only `METER_ENABLE_AUTOMATIC_CREDIT_EVALUATION=True` and schedule `process_meter_credit_evaluations` to run continuously or at a short interval. The meter listener creates queue rows but does not process that queue itself. This still does not enable tenant messages or relay switching.
 
 ## One-meter credit-control pilot
 
@@ -93,8 +93,8 @@ Only after observation results have been reconciled:
 2. Leave `METER_EMERGENCY_STOP=False` only when the pilot is actively approved.
 3. Enable notifications separately if desired: `METER_ENABLE_AUTOMATIC_NOTIFICATIONS=True`.
 4. For manual enforcement, keep `METER_ENABLE_AUTOMATIC_CUTOFF=False` and use the permission-controlled approval path/queue.
-5. For automatic pilot, set the account's `automatic_cutoff=True`, `manual_only_cutoff=False`, then set `METER_ENABLE_AUTOMATIC_CUTOFF=True`.
-6. Enable automatic restoration independently with the account's `automatic_restore=True` and `METER_ENABLE_AUTOMATIC_RESTORE=True`.
+5. For an automatic pilot, enable the account's combined **Automatic cutoff and restore** option and turn off **Manual only cutoff**. Both account flags must remain enabled together.
+6. Enable both server safety gates: `METER_ENABLE_AUTOMATIC_CUTOFF=True` and `METER_ENABLE_AUTOMATIC_RESTORE=True`. Keeping either server gate off safely blocks that relay direction even though the account option is combined.
 7. Protected hours default to 20:00-08:00. Queued OFF commands are revalidated immediately before transport.
 8. Run `process_meter_commands` periodically as a fallback to reconnect-triggered dispatch.
 

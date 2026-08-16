@@ -314,6 +314,17 @@ def meter_reading_date(lease):
     return timezone.localdate().strftime("%b %d, %Y")
 
 
+def effective_lease_electricity_rate(lease):
+    unit = getattr(lease, "unit", None)
+    meter = None
+    meter_manager = getattr(unit, "current_meters", None) if unit else None
+    if meter_manager is not None:
+        meter = meter_manager.filter(is_active=True).order_by("id").first()
+    from smart_meter.rates import resolve_electricity_rate
+
+    return resolve_electricity_rate(lease=lease, meter=meter).rate
+
+
 def smart_meter_electricity_terms(lease):
     unit = getattr(lease, "unit", None)
     if not unit or not getattr(unit, "is_smart_meter", False):
@@ -323,19 +334,20 @@ def smart_meter_electricity_terms(lease):
     meter_manager = getattr(unit, "current_meters", None)
     if meter_manager is not None:
         meter = meter_manager.filter(is_active=True).order_by("id").first()
-    unit_rate = (
-        _decimal_value(getattr(lease, "electric_unit_rate", 0))
-        or _decimal_value(getattr(meter, "unit_rate", 0))
-        or Decimal("50.00")
-    )
+    from smart_meter.rates import resolve_electricity_rate
+    from core.currency import currency_symbol
+    from core.models import GlobalSettings
+
+    unit_rate = resolve_electricity_rate(lease=lease, meter=meter).rate
+    symbol = currency_symbol(GlobalSettings.get_solo())
     fixed_charge = (
         _decimal_value(getattr(meter, "service_charges", 0))
         or Decimal("250.00")
     )
     return (
-        "The electricity bill will be calculated at Rs. "
+        f"The electricity bill will be calculated at {symbol} "
         f"<strong>{_formatted_amount(unit_rate)}</strong>/- per unit with a fixed charge "
-        f"of Rs. <strong>{_formatted_amount(fixed_charge)}</strong>/- per month, billed at "
+        f"of {symbol} <strong>{_formatted_amount(fixed_charge)}</strong>/- per month, billed at "
         "the end of each month and payable with the rent to the Owner. The electricity is "
         "prepaid-programmed, so delay in rental payment may cause electricity service disruption."
     )
@@ -435,7 +447,7 @@ PLACEHOLDER_REGISTRY = {
     "KEY_REPLACEMENT_COST": lambda lease: lease.key_replacement_cost or 0,
 
     # Meter Readings
-    "ELECTRIC_UNIT_RATE": lambda lease: lease.electric_unit_rate or 0,
+    "ELECTRIC_UNIT_RATE": effective_lease_electricity_rate,
     "ELECTRICITY_METER_NUMBER": electricity_meter_number,
     "ELECTRICITY_METER_READING": electricity_meter_reading,
     "GAS_METER_READING": lambda lease: lease.water_meter_reading or "N/A",

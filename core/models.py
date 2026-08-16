@@ -2,6 +2,8 @@ from django.core.cache import cache
 from django.db import models
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.utils import timezone
+from datetime import time as dt_time
+from decimal import Decimal
 from core.model_fields import NormalizedPhoneField
 from core.utils.text import smart_title
 
@@ -45,7 +47,14 @@ class GlobalSettings(models.Model):
     currency_code = models.CharField(max_length=8, default="PKR")
     country_code = models.CharField(max_length=4, default="+92")
     unit_rate_per_kwh = models.DecimalField(
-        max_digits=10, decimal_places=4, default=0)
+        max_digits=10,
+        decimal_places=4,
+        default=Decimal("50.0000"),
+        help_text=(
+            "Global electricity rate. Override order: Global, Property, Unit, "
+            "Meter, then Lease; the last nonblank value wins."
+        ),
+    )
     service_charge_flat = models.DecimalField(
         max_digits=10, decimal_places=2, default=0)
     late_fee_enabled = models.BooleanField(default=False)
@@ -68,6 +77,20 @@ class GlobalSettings(models.Model):
     late_fee_auto_send_reminders = models.BooleanField(
         default=False,
         help_text="If on, the scheduled late fee job sends WhatsApp reminders automatically.",
+    )
+    late_fee_skip_current_month = models.BooleanField(
+        default=False,
+        help_text=(
+            "Do not send reminders or apply reminder-based late fees to invoices "
+            "issued in the current calendar month. They become eligible next month."
+        ),
+    )
+    late_fee_staff_summary_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Send the accounts staff member a WhatsApp summary after a late-fee "
+            "run processes reminders."
+        ),
     )
     late_fee_automation_start_date = models.DateField(
         default=timezone.localdate,
@@ -94,6 +117,14 @@ class GlobalSettings(models.Model):
         default=2,
         validators=[MinValueValidator(1), MaxValueValidator(28)],
         help_text="Day of each month when scheduled billing becomes due (1-28).",
+    )
+    monthly_billing_time = models.TimeField(
+        default=dt_time(9, 5),
+        help_text="Pakistan time when the automatic monthly billing check runs.",
+    )
+    late_fee_reminder_time = models.TimeField(
+        default=dt_time(9, 0),
+        help_text="Pakistan time when automatic late-fee reminders are checked.",
     )
     default_lease_months = models.PositiveSmallIntegerField(
         default=11,
@@ -333,15 +364,54 @@ class GlobalSettings(models.Model):
 
     @property
     def income_bracket_options(self):
-        return self.option_lines(self.tenant_income_brackets)
+        values = list(
+            TenantIncomeBracket.objects.filter(is_active=True)
+            .order_by("sort_order", "name")
+            .values_list("name", flat=True)
+        )
+        return values or self.option_lines(self.tenant_income_brackets)
 
     @property
     def occupation_options(self):
-        return self.option_lines(self.tenant_occupation_options)
+        values = list(
+            TenantOccupationOption.objects.filter(is_active=True)
+            .order_by("sort_order", "name")
+            .values_list("name", flat=True)
+        )
+        return values or self.option_lines(self.tenant_occupation_options)
 
     def delete(self, *args, **kwargs):
         cache.delete("core.global_settings")
         return super().delete(*args, **kwargs)
+
+
+class TenantReferenceOption(models.Model):
+    name = models.CharField(max_length=120, unique=True)
+    sort_order = models.PositiveIntegerField(default=50)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["sort_order", "name"]
+
+    def save(self, *args, **kwargs):
+        self.name = " ".join((self.name or "").strip().split())
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class TenantIncomeBracket(TenantReferenceOption):
+    class Meta(TenantReferenceOption.Meta):
+        verbose_name = "Tenant income bracket"
+        verbose_name_plural = "Tenant income brackets"
+
+
+class TenantOccupationOption(TenantReferenceOption):
+    class Meta(TenantReferenceOption.Meta):
+        verbose_name = "Tenant occupation option"
+        verbose_name_plural = "Tenant occupation options"
 
 
 class PaymentMethod(models.Model):

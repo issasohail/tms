@@ -842,6 +842,10 @@
           <div class="ld-f-value">{{ lease.electricity_meter_reading|default:"&mdash;" }}</div>
         </div>
         <div class="ld-f ld-mobile-full">
+          <div class="ld-f-label">Electricity Rate <i class="fas fa-question-circle" data-bs-toggle="tooltip" title="Override order: Global, Property, Unit, Meter, then Lease. The last nonblank value wins."></i></div>
+          <div class="ld-f-value">{{ CURRENCY_SYMBOL }} {{ electricity_rate.rate|floatformat:4 }}/kWh <small class="text-muted">({{ electricity_rate.source }})</small></div>
+        </div>
+        <div class="ld-f ld-mobile-full">
           <div class="ld-f-label">Rent Due Day / Late Fee</div>
           <div class="ld-f-value">{{ lease.due_date|default:"&mdash;" }} &middot; {{ lease.late_fee|default:0|money:0 }}</div>
         </div>

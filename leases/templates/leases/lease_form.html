@@ -1682,7 +1682,7 @@
                 {{ form.key_replacement_cost|add_class:"form-control form-control-sm money"|attr:"type:text" }}
               </div>
               <div class="lf-f">
-                <label class="form-label">Electric Unit Rate</label>
+                <label class="form-label">{{ form.electric_unit_rate.label }} <button type="button" class="btn btn-link p-0 border-0 align-baseline" data-bs-toggle="tooltip" title="{{ form.electric_unit_rate.help_text }}" aria-label="Electricity rate override help"><i class="fas fa-question-circle"></i></button></label>
                 {{ form.electric_unit_rate|add_class:"form-control form-control-sm" }}
               </div>
               <div class="lf-f" style="grid-column:span 1;">

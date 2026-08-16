@@ -4130,6 +4130,20 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
             installation.display_credit_account = next(
                 iter(installation.credit_accounts.all()), None
             )
+        from smart_meter.rates import resolve_electricity_rate
+
+        active_meter = next(
+            (
+                installation.meter
+                for installation in meter_installations
+                if installation.is_active and installation.end_date is None
+            ),
+            None,
+        )
+        electricity_rate = resolve_electricity_rate(
+            lease=lease,
+            meter=active_meter,
+        )
         ZERO = Decimal("0.00")
         lease_total_payment = (
             (lease.monthly_rent or ZERO)
@@ -4154,6 +4168,7 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 ),
                 "renewals": renewals,
                 "meter_installations": meter_installations,
+                "electricity_rate": electricity_rate,
                 "balance_due": lease.get_balance,
                 "lease_total_payment": lease_total_payment,
                 "occupancy_count": 1 + lease.family_members.count(),

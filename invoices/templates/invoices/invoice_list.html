@@ -52,15 +52,8 @@
       </div>
     </div>
 
-    <form method="post" action="{% url 'invoices:apply_late_fees' %}" class="d-inline">
-      {% csrf_token %}
-      <button type="submit" class="btn btn-warning" onclick="return confirm('Process only late-fee reminders that are currently due?');">
-        <i class="fas fa-clock"></i><span class="btn-label"> Run Due Late Fees</span>
-      </button>
-    </form>
-
     <a href="{% url 'invoices:late_fee_pending_queue' %}" class="btn btn-outline-warning">
-      <i class="fas fa-hourglass-half"></i><span class="btn-label"> Pending Fees</span>
+      <i class="fas fa-clock"></i><span class="btn-label"> Late Fee Control &amp; Log</span>
     </a>
 
     <a href="{% url 'invoices:recurring_wizard' %}" class="btn btn-success">

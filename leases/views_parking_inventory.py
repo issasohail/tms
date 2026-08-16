@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_http_methods, require_POST
+from core.utils.embed import embed_redirect
 
 from leases.forms_parking_inventory import (
     LeaseParkingAllocationForm,
@@ -69,7 +70,7 @@ def global_inventory_manage(request):
         name = (request.POST.get("name") or "").strip()
         if not name:
             messages.error(request, "Enter an inventory item name.")
-            return redirect("leases:global_inventory_manage")
+            return embed_redirect(request, "leases:global_inventory_manage")
 
         try:
             quantity = max(0, int(request.POST.get("quantity") or 0))
@@ -83,7 +84,7 @@ def global_inventory_manage(request):
         if action == "add_definition":
             if InventoryItemDefinition.objects.filter(name__iexact=name).exists():
                 messages.error(request, f'An inventory item named "{name}" already exists.')
-                return redirect("leases:global_inventory_manage")
+                return embed_redirect(request, "leases:global_inventory_manage")
             base_code = slugify(name).replace("-", "_")[:90] or "inventory_item"
             code = base_code
             suffix = 2
@@ -103,14 +104,14 @@ def global_inventory_manage(request):
                 is_active=True,
             )
             messages.success(request, f"Inventory item {name} added.")
-            return redirect("leases:global_inventory_manage")
+            return embed_redirect(request, "leases:global_inventory_manage")
 
         item = get_object_or_404(
             InventoryItemDefinition, pk=request.POST.get("item_id")
         )
         if InventoryItemDefinition.objects.filter(name__iexact=name).exclude(pk=item.pk).exists():
             messages.error(request, f'An inventory item named "{name}" already exists.')
-            return redirect("leases:global_inventory_manage")
+            return embed_redirect(request, "leases:global_inventory_manage")
         item.name = name
         item.unit_label = (request.POST.get("unit_label") or "item").strip() or "item"
         item.default_quantity = quantity
@@ -125,7 +126,7 @@ def global_inventory_manage(request):
             "include_in_clause", "sort_order", "is_active",
         ])
         messages.success(request, f"Inventory item {item.name} updated.")
-        return redirect("leases:global_inventory_manage")
+        return embed_redirect(request, "leases:global_inventory_manage")
     return render(request, "leases/global_inventory_manage.html", {
         "items": InventoryItemDefinition.objects.order_by("sort_order", "name"),
     })

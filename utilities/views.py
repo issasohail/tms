@@ -25,6 +25,7 @@ from .models import Utility
 from .tables import UtilityTable
 from properties.models import Property
 from django.shortcuts import render, get_object_or_404, redirect
+from django.db.models import Count
 
 
 class UtilityListView(LoginRequiredMixin, ExportMixin, SingleTableView):
@@ -32,10 +33,11 @@ class UtilityListView(LoginRequiredMixin, ExportMixin, SingleTableView):
     table_class = UtilityTable
     template_name = 'utilities/utility_list.html'
     context_object_name = 'utilities'
-    paginate_by = 10
+    paginate_by = None
+    table_pagination = {"per_page": 10}
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        queryset = super().get_queryset().select_related("property")
         property_id = self.request.GET.get('property')
         if property_id:
             queryset = queryset.filter(property_id=property_id)
@@ -43,14 +45,17 @@ class UtilityListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
     def get(self, request, *args, **kwargs):
         # Handle export requests
-        export_response = self.handle_export(request)
-        if export_response:
-            return export_response
+        if request.GET.get("_export"):
+            export_response = self.handle_export(request)
+            if export_response:
+                return export_response
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['all_properties'] = Property.objects.all()
+        context['all_properties'] = Property.objects.annotate(
+            unit_count=Count("units")
+        )
 
         # Add current filter value to context
         context['current_property'] = self.request.GET.get('property', '')

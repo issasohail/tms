@@ -1,8 +1,8 @@
 [Unit]
-Description=Run TMS late-fee reminder due check daily
+Description=Check the configurable TMS late-fee reminder time
 
 [Timer]
-OnCalendar=*-*-* 09:00:00 Asia/Karachi
+OnCalendar=*-*-* *:00/5:00 Asia/Karachi
 Persistent=true
 Unit=tms-late-fee-reminders.service
 

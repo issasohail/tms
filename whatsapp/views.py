@@ -863,8 +863,13 @@ def _conversation_needs_reply(phone_number):
     return bool(latest and latest.direction == WhatsAppMessageLog.DIRECTION_INBOUND)
 
 
-def _conversation_context_for_phone(phone_number, latest_log=None, conversation=None):
-    if conversation is None:
+_CONVERSATION_NOT_PROVIDED = object()
+
+
+def _conversation_context_for_phone(
+    phone_number, latest_log=None, conversation=_CONVERSATION_NOT_PROVIDED
+):
+    if conversation is _CONVERSATION_NOT_PROVIDED:
         conversation = (
         WhatsAppConversation.objects.select_related(
             "tenant",

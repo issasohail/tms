@@ -72,7 +72,11 @@ try:
 except Exception:
     Category = None
 
-BILLING_CURRENCY = "Rs."
+def _billing_currency():
+    from core.currency import currency_symbol
+    from core.models import GlobalSettings
+
+    return currency_symbol(GlobalSettings.get_solo())
 def _aware_range(start_d: date, end_d: date):
     tz = timezone.get_current_timezone()
     start_naive = datetime.combine(start_d, time.min)
@@ -377,7 +381,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
             "meterRoleDisplay": m.get_meter_role_display(),
         })
 
-        rate = Decimal(str(m.unit_rate or "0"))
+        rate = Decimal(str(m.effective_unit_rate or "0"))
         svc = Decimal(str(m.service_charges or "0"))
 
         for k in keys_sorted:
@@ -603,7 +607,7 @@ def energy_dashboard(request):
             "voltage_a": voltage_a,
             "current_a": current_a,
             "total_energy": total_energy,
-            "unit_rate": selected_meter.unit_rate,
+            "unit_rate": selected_meter.effective_unit_rate,
             "balance": getattr(bal_obj, "balance", None),
         }
 
@@ -704,7 +708,7 @@ def energy_dashboard(request):
         "live_panel": live_panel,
         "online_count": online_count,
         "offline_count": offline_count,
-        "currency": BILLING_CURRENCY,
+        "currency": _billing_currency(),
         "month_heading": month_heading,
         "property_name": property_name,
     }
@@ -859,7 +863,7 @@ def energy_export_pdf(request):
     context = {
         "rows_disp": rows_disp,
         "totals_disp": totals_disp,
-        "currency": BILLING_CURRENCY,
+        "currency": _billing_currency(),
         "report_type": report_type,
         "start_date": start_date,
         "end_date": end_date,
@@ -982,7 +986,7 @@ def energy_chart_page(request):
         "rows_disp": rows_disp,
         "totals": totals,
         "totals_disp": totals_disp,
-        "currency": BILLING_CURRENCY,
+        "currency": _billing_currency(),
         "month_heading": month_heading,
         "property_name": property_name,
 
@@ -993,7 +997,6 @@ def energy_chart_page(request):
 # views_dashboard.py
 
 
-BILLING_CURRENCY = "Rs."  # already present in this module in your repo
 
 
 def _month_bounds(yyyy_mm: str | None):
@@ -1074,7 +1077,6 @@ except Exception:
 
 from smart_meter.models import Bill  # electric bills (prev month)  # noqa
 
-BILLING_CURRENCY = "Rs"  # adjust your symbol if needed
 
 
 def _ym_from_qs(request):

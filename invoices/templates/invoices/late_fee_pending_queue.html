@@ -1,63 +1,135 @@
 {% extends "base.html" %}
 {% load money_tags %}
 
-{% block title %}Pending Late Fees{% endblock %}
+{% block title %}Late Fee Control & Log{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3 page-header">
-  <h2 class="h4 mb-0">Pending Late Fee Approvals</h2>
-  <a href="{% url 'invoices:invoice_list' %}" class="btn btn-outline-secondary btn-sm">
-    <i class="fas fa-arrow-left"></i> Back to Invoices
-  </a>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 page-header">
+  <div>
+    <h2 class="h4 mb-0">Late Fee Control &amp; Log</h2>
+    <div class="small text-muted">Review exactly what is due, place temporary holds, then send.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'core:settings' %}#settings-group-general-billing-operations" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-cog"></i> Billing Settings
+    </a>
+    <a href="{% url 'invoices:invoice_list' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-arrow-left"></i> Back to Invoices
+    </a>
+  </div>
 </div>
 
-{% if not pending_reminders %}
-  <div class="alert alert-light border text-muted mb-0">
-    No late fees are waiting for approval.
+<div class="row g-2 mb-3">
+  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-2"><div class="small text-muted">Ready to send</div><strong>{{ preview.due }}</strong></div></div></div>
+  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-2"><div class="small text-muted">Zero amount excluded</div><strong>{{ preview.excluded_zero_amount }}</strong></div></div></div>
+  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-2"><div class="small text-muted">Current month excluded</div><strong>{{ preview.excluded_current_month }}</strong></div></div></div>
+  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-2"><div class="small text-muted">Temporary holds</div><strong>{{ preview.excluded_on_hold }}</strong></div></div></div>
+  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-2"><div class="small text-muted">Before start date</div><strong>{{ preview.excluded_before_start }}</strong></div></div></div>
+  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-2"><div class="small text-muted">Pending approval</div><strong>{{ pending_reminders|length }}</strong></div></div></div>
+</div>
+
+{% if preview.reason %}<div class="alert alert-warning py-2">{{ preview.reason }}</div>{% endif %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <strong>Before sending</strong>
+      <div class="small text-muted">Due date shown below is stored on the invoice and was calculated from the Lease due day when the invoice was created.</div>
+    </div>
+    <form method="post" action="{% url 'invoices:run_late_fee_reminders_now' %}">
+      {% csrf_token %}
+      <button class="btn btn-warning btn-sm" type="submit" {% if not preview.due %}disabled{% endif %}
+              onclick="return confirm('Send the {{ preview.due }} reviewed reminder(s) and process their late fees now?');">
+        <i class="fab fa-whatsapp me-1"></i> Send {{ preview.due }} Due Reminder{{ preview.due|pluralize }}
+      </button>
+    </form>
   </div>
-{% else %}
   <div class="table-responsive">
-    <table class="table table-sm align-middle">
-      <thead>
-        <tr>
-          <th>Invoice</th>
-          <th>Tenant</th>
-          <th>Reminder</th>
-          <th>Sent</th>
-          <th class="text-end">Fee</th>
-          <th class="text-end">Actions</th>
-        </tr>
-      </thead>
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>S.N</th><th>Invoice</th><th>Invoice / Due Date</th><th>Property / Unit</th><th>Tenant</th><th class="text-end">Balance</th><th>Reminder</th><th style="min-width:330px">Hold reminder &amp; fee</th></tr></thead>
       <tbody>
-        {% for reminder in pending_reminders %}
-          <tr>
-            <td>
-              <a href="{% url 'invoices:invoice_detail' reminder.invoice.pk %}">
-                #{{ reminder.invoice.invoice_number }}
-              </a>
-            </td>
-            <td>{{ reminder.invoice.lease.tenant.get_full_name|default:"-" }}</td>
-            <td>#{{ reminder.reminder_number }}</td>
-            <td>{{ reminder.created_at|date:"Y-m-d H:i" }}</td>
-            <td class="text-end">{{ reminder.fee_amount|money:2 }}</td>
-            <td class="text-end">
-              <form method="post" action="{% url 'invoices:approve_late_fee_reminder' reminder.pk %}" class="d-inline">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-success btn-sm">
-                  <i class="fas fa-check"></i> Approve
-                </button>
-              </form>
-              <form method="post" action="{% url 'invoices:reject_late_fee_reminder' reminder.pk %}" class="d-inline">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-outline-danger btn-sm">
-                  <i class="fas fa-times"></i> Dismiss
-                </button>
-              </form>
-            </td>
-          </tr>
-        {% endfor %}
+      {% for item in preview.details %}
+        <tr>
+          <td>{{ forloop.counter }}</td>
+          <td><a href="{% url 'invoices:invoice_detail' item.invoice_id %}">#{{ item.invoice_number }}</a></td>
+          <td>{{ item.invoice_date }}<br><span class="text-danger">Due {{ item.due_date }}</span></td>
+          <td>{{ item.property_name }} / {{ item.unit_name }}</td>
+          <td>{{ item.tenant_name }}</td>
+          <td class="text-end">{{ item.balance|money:2 }}</td>
+          <td>#{{ item.reminder_number }}</td>
+          <td>
+            <form method="post" action="{% url 'invoices:set_invoice_late_fee_hold' item.invoice_id %}" class="d-flex flex-wrap gap-1">
+              {% csrf_token %}
+              <input type="date" name="hold_until" min="{{ today|date:'Y-m-d' }}" class="form-control form-control-sm" style="width:145px" required>
+              <input type="text" name="reason" class="form-control form-control-sm" style="width:145px" maxlength="255" placeholder="Reason / promised date">
+              <button class="btn btn-outline-warning btn-sm" type="submit">Hold</button>
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-3">No reminders are due under the current settings.</td></tr>
+      {% endfor %}
       </tbody>
     </table>
   </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header py-2">
+    <strong>Excluded or waiting invoices</strong>
+    <div class="small text-muted">These invoices are visible for review but will not be sent in the current run. Each row shows why.</div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>S.N</th><th>Invoice</th><th>Invoice / Due Date</th><th>Property / Unit</th><th>Tenant</th><th class="text-end">Invoice Amount</th><th class="text-end">Balance</th><th>Reason</th><th>Action</th></tr></thead>
+      <tbody>
+      {% for row in excluded_invoices %}
+        <tr>
+          <td>{{ forloop.counter }}</td>
+          <td><a href="{% url 'invoices:invoice_detail' row.invoice.pk %}">#{{ row.invoice.invoice_number }}</a></td>
+          <td>{{ row.invoice.issue_date }}<br><span class="text-danger">Due {{ row.invoice.due_date }}</span></td>
+          <td>{{ row.invoice.lease.unit.property.property_name }} / {{ row.invoice.lease.unit.unit_number }}</td>
+          <td>{{ row.invoice.lease.tenant.get_full_name|default:"-" }}</td>
+          <td class="text-end">{{ row.invoice.amount|money:2 }}</td>
+          <td class="text-end">{{ row.balance|money:2 }}</td>
+          <td class="small">{{ row.reason }}</td>
+          <td>{% if row.invoice.late_fee_hold_until %}<form method="post" action="{% url 'invoices:clear_invoice_late_fee_hold' row.invoice.pk %}">{% csrf_token %}<button class="btn btn-primary btn-sm">Resume</button></form>{% else %}<a class="btn btn-light border btn-sm" href="{% url 'invoices:invoice_detail' row.invoice.pk %}">View</a>{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="9" class="text-center text-muted py-3">No excluded or waiting invoices.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if review_limited %}<div class="card-footer small text-muted">Showing the newest 250 overdue invoices.</div>{% endif %}
+</div>
+
+{% if pending_reminders %}
+<div class="card shadow-sm mb-3">
+  <div class="card-header py-2"><strong>Fees pending approval</strong></div>
+  <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+    <thead><tr><th>S.N</th><th>Invoice</th><th>Tenant</th><th>Reminder</th><th>Sent</th><th class="text-end">Fee</th><th class="text-end">Actions</th></tr></thead>
+    <tbody>{% for reminder in pending_reminders %}<tr><td>{{ forloop.counter }}</td>
+      <td><a href="{% url 'invoices:invoice_detail' reminder.invoice.pk %}">#{{ reminder.invoice.invoice_number }}</a></td>
+      <td>{{ reminder.invoice.lease.tenant.get_full_name|default:"-" }}</td><td>#{{ reminder.reminder_number }}</td><td>{{ reminder.created_at|date:"Y-m-d H:i" }}</td>
+      <td class="text-end">{{ reminder.fee_amount|money:2 }}</td><td class="text-end">
+        <form method="post" action="{% url 'invoices:approve_late_fee_reminder' reminder.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-success btn-sm"><i class="fas fa-check"></i> Approve</button></form>
+        <form method="post" action="{% url 'invoices:reject_late_fee_reminder' reminder.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-outline-danger btn-sm"><i class="fas fa-times"></i> Dismiss</button></form>
+      </td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</div>
 {% endif %}
+
+<div class="card shadow-sm">
+  <div class="card-header py-2"><strong>After sending: recent reminder log</strong></div>
+  <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+    <thead><tr><th>S.N</th><th>Time</th><th>Invoice</th><th>Property / Unit</th><th>Tenant</th><th>Source</th><th>Reminder</th><th>Status</th><th class="text-end">Fee</th><th>Error</th></tr></thead>
+    <tbody>{% for reminder in recent_reminders %}<tr><td>{{ forloop.counter }}</td>
+      <td>{{ reminder.created_at|date:"Y-m-d H:i" }}</td><td><a href="{% url 'invoices:invoice_detail' reminder.invoice.pk %}">#{{ reminder.invoice.invoice_number }}</a></td>
+      <td>{{ reminder.invoice.lease.unit.property.property_name }} / {{ reminder.invoice.lease.unit.unit_number }}</td><td>{{ reminder.invoice.lease.tenant.get_full_name|default:"-" }}</td>
+      <td>{{ reminder.get_sent_via_display }}</td><td>#{{ reminder.reminder_number }}</td><td>{{ reminder.get_status_display }}</td><td class="text-end">{{ reminder.fee_amount|money:2 }}</td><td class="text-danger small">{{ reminder.error_text }}</td>
+    </tr>{% empty %}<tr><td colspan="10" class="text-center text-muted py-3">No reminder activity has been recorded yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
 {% endblock %}

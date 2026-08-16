@@ -160,7 +160,17 @@ class Lease(models.Model):
         related_name="leases_witnessed_as_second",
     )
 
-    electric_unit_rate = models.IntegerField(blank=True, null=True, default=50)
+    electric_unit_rate = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        blank=True,
+        null=True,
+        default=None,
+        help_text=(
+            "Optional lease electricity-rate override. Override order: Global, "
+            "Property, Unit, Meter, then Lease; the last nonblank value wins."
+        ),
+    )
     electricity_bill_by_owner = models.BooleanField(
         default=True,
         help_text="Include owner-billed electricity clauses and charge electricity by unit rate.",

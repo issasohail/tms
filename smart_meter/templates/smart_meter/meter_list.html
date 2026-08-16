@@ -229,7 +229,7 @@
                 </div>
               </td>
 
-              <td class="col-setting-narrow">{{ m.unit_rate|floatformat:2 }}</td>
+              <td class="col-setting-narrow">{{ m.display_electricity_rate.rate|floatformat:2 }} <small class="text-muted">{{ m.display_electricity_rate.source }}</small></td>
               <td class="col-setting-narrow">{{ m.min_balance_alert|floatformat:0 }}</td>
               <td class="col-setting-narrow">{{ m.min_balance_cutoff|floatformat:0 }}</td>
               <td class="col-narrow">
@@ -314,7 +314,7 @@
               <span class="badge power-badge {% if m.power_status|lower == 'off' %}bg-danger{% else %}bg-success{% endif %}">{% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}</span>
               <button type="button" class="btn btn-sm power-toggle {% if m.power_status|lower == 'off' %}btn-outline-success{% else %}btn-outline-danger{% endif %}" data-status="{% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}" data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}" aria-label="Toggle power"><i class="fas fa-power-off"></i></button>
             </div>
-            <div class="meter-mobile-mode">{{ m.get_billing_mode_display }} / {{ m.unit_rate|floatformat:2 }}</div>
+            <div class="meter-mobile-mode">{{ m.get_billing_mode_display }} / {{ m.display_electricity_rate.rate|floatformat:2 }} ({{ m.display_electricity_rate.source }})</div>
             <div class="btn-group btn-group-sm meter-mobile-actions">
               <a class="btn btn-outline-primary" href="{% url 'smart_meter:meter_detail' m.id %}" title="View"><i class="fas fa-eye"></i></a>
               <a class="btn btn-outline-secondary" href="{% url 'smart_meter:meter_edit' m.id %}" title="Edit"><i class="fas fa-pen"></i></a>

@@ -27,7 +27,7 @@
                     {% for property in all_properties %}
                         <option value="{{ property.id }}"
                             {% if request.GET.property|stringformat:"s" == property.id|stringformat:"s" %}selected{% endif %}>
-                            {{ property.property_name }} - ({{ property.units.count }} units)
+                            {{ property.property_name }} - ({{ property.unit_count }} units)
                         </option>
                     {% empty %}
                         <option value="">No properties available</option>

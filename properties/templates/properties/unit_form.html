@@ -201,6 +201,10 @@
             <div class="col-12 col-md-6 col-xl-2">{{ form.electric_meter_num|as_crispy_field }}</div>
             <div class="col-6 col-md-3 col-xl-1">{{ form.is_smart_meter|as_crispy_field }}</div>
             <div class="col-6 col-md-3 col-xl-1">{{ form.gas_meter_num|as_crispy_field }}</div>
+            <div class="col-6 col-md-3 col-xl-2">
+              <label for="{{ form.electricity_unit_rate.id_for_label }}">{{ form.electricity_unit_rate.label }} <button type="button" class="btn btn-link p-0 border-0 align-baseline" data-bs-toggle="tooltip" title="{{ form.electricity_unit_rate.help_text }}" aria-label="Electricity rate override help"><i class="fas fa-question-circle"></i></button></label>
+              {{ form.electricity_unit_rate }}{{ form.electricity_unit_rate.errors }}
+            </div>
           </div>
         </div>
 

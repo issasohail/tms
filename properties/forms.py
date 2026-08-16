@@ -233,6 +233,11 @@ class PropertyBankAccountForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["electricity_unit_rate"].label = "Unit rate override"
+        self.fields["electricity_unit_rate"].label = "Property rate override"
+        self.fields["electricity_unit_rate"].widget.attrs.update(
+            {"class": "form-control form-control-sm", "step": "0.0001", "min": "0"}
+        )
         for field in self.fields.values():
             if isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs.setdefault("class", "form-check-input")

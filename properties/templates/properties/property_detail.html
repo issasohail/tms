@@ -123,6 +123,12 @@
                     <div class="fw-bold text-success">{{ occupied_units_count }}</div>
                 </div>
             </div>
+            <div class="col-6 col-md-3">
+                <div class="border rounded p-2 h-100">
+                    <div class="text-muted">Effective electricity rate <i class="fas fa-question-circle" data-bs-toggle="tooltip" title="Override order: Global, Property, Unit, Meter, then Lease. The last nonblank value wins."></i></div>
+                    <div class="fw-bold">{{ CURRENCY_SYMBOL }} {{ electricity_rate.rate|floatformat:4 }}/kWh <small class="text-muted">({{ electricity_rate.source }})</small></div>
+                </div>
+            </div>
             <div class="col-6 col-md-2">
                 <div class="border rounded p-2 h-100">
                     <div class="text-muted">Vacant</div>

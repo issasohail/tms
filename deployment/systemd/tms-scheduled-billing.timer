@@ -1,8 +1,8 @@
 [Unit]
-Description=Check TMS scheduled monthly billing daily
+Description=Check the configurable TMS monthly billing time
 
 [Timer]
-OnCalendar=*-*-* 09:05:00 Asia/Karachi
+OnCalendar=*-*-* *:00/5:00 Asia/Karachi
 Persistent=true
 Unit=tms-scheduled-billing.service
 

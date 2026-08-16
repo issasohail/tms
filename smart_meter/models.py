@@ -79,7 +79,16 @@ class Meter(models.Model):
     power_status = models.CharField(
         max_length=10, choices=[("on", "On"), ("off", "Off")], default="on")
     unit_rate = models.DecimalField(
-        max_digits=6, decimal_places=2, default=50.00)
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        default=None,
+        help_text=(
+            "Optional meter electricity-rate override. Override order: Global, "
+            "Property, Unit, Meter, then Lease; the last nonblank value wins."
+        ),
+    )
     service_charges = models.DecimalField(
         max_digits=8, decimal_places=2, default=Decimal("250.00"))
     min_balance_alert = models.DecimalField(
@@ -113,6 +122,18 @@ class Meter(models.Model):
     @property
     def is_check_meter(self):
         return self.meter_role == self.METER_ROLE_CHECK
+
+    @property
+    def effective_unit_rate(self):
+        from smart_meter.rates import resolve_electricity_rate
+
+        return resolve_electricity_rate(meter=self).rate
+
+    @property
+    def effective_unit_rate_source(self):
+        from smart_meter.rates import resolve_electricity_rate
+
+        return resolve_electricity_rate(meter=self).source
 
     def change_role(self, new_role, *, effective_date, user=None, reason=""):
         valid_roles = {value for value, _label in self.METER_ROLE_CHOICES}

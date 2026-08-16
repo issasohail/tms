@@ -7,6 +7,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_http_methods
+from core.currency import format_money
+from core.models import GlobalSettings
 
 from smart_meter.forms import MeterCreditAccountForm
 from smart_meter.models import LiveReading, Meter, MeterCreditAccount, MeterCreditAudit
@@ -129,8 +131,8 @@ def credit_control(request, pk):
                     messages.success(
                         request,
                         "Evaluation complete. "
-                        f"Exposure: Rs.{result.exposure:.2f}; "
-                        f"Limit: Rs.{account.effective_credit_limit:.2f}; "
+                        f"Exposure: {format_money(result.exposure, GlobalSettings.get_solo())}; "
+                        f"Limit: {format_money(account.effective_credit_limit, GlobalSettings.get_solo())}; "
                         f"Usage: {result.percent_used:.2f}%; State: {result.state}.",
                     )
                 elif action == "mute":

@@ -10,42 +10,35 @@
       <h3 class="mb-0"><i class="fas fa-sliders-h me-2"></i>System Settings</h3>
       <div class="text-muted small">Manage global system preferences, payment methods, and protected maintenance tools.</div>
     </div>
-    <a class="btn btn-sm btn-outline-primary settings-backup-link" href="{% url 'core:backup_center' %}">
-      <i class="bi bi-shield-check me-1"></i> Backup &amp; Restore
-    </a>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-sm btn-secondary" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href='{% url 'core:dashboard' %}'; }">
+        <i class="fas fa-arrow-left me-1"></i> Back
+      </button>
+      <a class="btn btn-sm btn-outline-primary settings-backup-link" href="{% url 'core:backup_center' %}">
+        <i class="bi bi-shield-check me-1"></i> Backup &amp; Restore
+      </a>
+    </div>
   </div>
 
   <div class="settings-card-tabs mb-3" role="tablist" aria-label="Settings sections">
     <div class="settings-card-tab-grid">
-      <a class="settings-tab-card active" href="#settings-group-branding" data-settings-target="settings-group-branding">
-        <span class="settings-tab-icon"><i class="fas fa-building"></i></span><span>Branding</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-group-billing-scale-locale" data-settings-target="settings-group-billing-scale-locale">
-        <span class="settings-tab-icon"><i class="fas fa-coins"></i></span><span>Billing &amp; Late Fees</span>
+      <a class="settings-tab-card active" href="#settings-group-general-billing-operations" data-settings-target="settings-group-general-billing-operations">
+        <span class="settings-tab-icon"><i class="fas fa-sliders-h"></i></span><span>General &amp; Billing</span>
       </a>
       <a class="settings-tab-card" href="#settings-group-whatsapp-twilio" data-settings-target="settings-group-whatsapp-twilio">
         <span class="settings-tab-icon"><i class="fab fa-whatsapp"></i></span><span>WhatsApp</span>
       </a>
-      <a class="settings-tab-card" href="#settings-group-email-smtp" data-settings-target="settings-group-email-smtp">
-        <span class="settings-tab-icon"><i class="fas fa-envelope"></i></span><span>Email / SMTP</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-group-meter-listener" data-settings-target="settings-group-meter-listener">
-        <span class="settings-tab-icon"><i class="fas fa-broadcast-tower"></i></span><span>Meter Listener</span>
-      </a>
       <a class="settings-tab-card" href="#settings-group-handyman" data-settings-target="settings-group-handyman">
         <span class="settings-tab-icon"><i class="fas fa-tools"></i></span><span>Handyman</span>
       </a>
-      <a class="settings-tab-card" href="#settings-tool-handyman-categories" data-settings-target="settings-tool-handyman-categories">
-        <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-tools"></i></span><span>Handyman Categories</span>
+      <a class="settings-tab-card" href="#settings-reference-data" data-settings-target="settings-reference-data">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-list"></i></span><span>Reference Data</span>
       </a>
-      <a class="settings-tab-card" href="#settings-development-tools" data-settings-target="settings-development-tools">
-        <span class="settings-tab-icon"><i class="fas fa-code"></i></span><span>Development Tools</span>
+      <a class="settings-tab-card" href="#settings-global-inventory-defaults" data-settings-target="settings-global-inventory-defaults">
+        <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-boxes"></i></span><span>Inventory Defaults</span>
       </a>
       <a class="settings-tab-card" href="#settings-tool-backup" data-settings-target="settings-tool-backup">
         <span class="settings-tab-icon"><i class="bi bi-database-lock"></i></span><span>Backup</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-tool-suggestions" data-settings-target="settings-tool-suggestions">
-        <span class="settings-tab-icon settings-tab-icon-warning"><i class="bi bi-lightbulb"></i></span><span>Suggestions</span>
       </a>
       <a class="settings-tab-card" href="#settings-tool-clauses" data-settings-target="settings-tool-clauses">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-file-earmark-text"></i></span><span>Lease Clauses</span>
@@ -58,27 +51,6 @@
       </a>
       <a class="settings-tab-card" href="#settings-tool-inspections" data-settings-target="settings-tool-inspections">
         <span class="settings-tab-icon settings-tab-icon-success"><i class="fas fa-clipboard-check"></i></span><span>Inspections</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-building-types" data-settings-target="settings-building-types">
-        <span class="settings-tab-icon"><i class="fas fa-building"></i></span><span>Building Types</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-move-out-charges" data-settings-target="settings-move-out-charges">
-        <span class="settings-tab-icon settings-tab-icon-warning"><i class="fas fa-door-open"></i></span><span>Move-out Charges</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-tool-whatsapp-ai-review" data-settings-target="settings-tool-whatsapp-ai-review">
-        <span class="settings-tab-icon settings-tab-icon-success"><i class="bi bi-inboxes"></i></span><span>AI Review</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-payments" data-settings-target="settings-payments">
-        <span class="settings-tab-icon"><i class="fas fa-money-bill-wave"></i></span><span>Payment Methods</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-doc-categories" data-settings-target="settings-doc-categories">
-        <span class="settings-tab-icon"><i class="fas fa-folder-open"></i></span><span>Lease Document Categories</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-lease-vehicle-types" data-settings-target="settings-lease-vehicle-types">
-        <span class="settings-tab-icon"><i class="fas fa-car"></i></span><span>Lease Vehicle Types</span>
-      </a>
-      <a class="settings-tab-card" href="#settings-relationship-types" data-settings-target="settings-relationship-types">
-        <span class="settings-tab-icon"><i class="fas fa-people-arrows"></i></span><span>Tenant Relationship Types</span>
       </a>
     </div>
   </div>
@@ -101,30 +73,49 @@
               <strong>{{ group_title }}</strong>
             </div>
             <div class="card-body">
-              <div class="row g-2">
+              {% if group_title == "General, Billing & Operations" %}
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                  <a class="btn btn-sm btn-warning" href="{% url 'invoices:late_fee_pending_queue' %}"><i class="fas fa-clock me-1"></i>Late Fee Control &amp; Log</a>
+                </div>
+                <div class="settings-family-legend d-flex flex-wrap gap-2 mb-2 small">
+                  <span class="settings-family-key family-branding">Branding</span>
+                  <span class="settings-family-key family-billing">Billing</span>
+                  <span class="settings-family-key family-late-fee">Late fees</span>
+                  <span class="settings-family-key family-smtp">Email / SMTP</span>
+                  <span class="settings-family-key family-parking-water">Parking / water</span>
+                  <span class="settings-family-key family-police">Police / CNIC</span>
+                </div>
+              {% endif %}
+              {% if group_title == "WhatsApp / Twilio" %}
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                  <a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:utility_template_list' %}" target="_blank" rel="noopener"><i class="fas fa-file-alt me-1"></i>Utility Templates</a>
+                  <a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:webhook_log_list' %}" target="_blank" rel="noopener"><i class="fas fa-list-alt me-1"></i>Webhook Logs</a>
+                </div>
+              {% endif %}
+              <div class="settings-data-grid">
                 {% for field in fields %}
-                  <div class="{% if field.name == 'smtp_password' or field.name == 'twilio_auth_token' or field.name == 'enable_debug_toolbar' %}col-12{% elif field.field.widget.input_type == 'checkbox' %}col-12 col-sm-6{% else %}col-12 col-md-6{% endif %}">
-                    {% if field.field.widget.input_type == 'checkbox' %}
-                      <div class="form-check settings-check">
-                        {{ field }}
-                        <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-                      </div>
-                    {% else %}
-                      <label class="form-label small fw-semibold mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                  {% if field.field.widget.input_type == 'checkbox' %}
+                    <div class="form-check settings-check settings-checkbox-cell">
                       {{ field }}
-                    {% endif %}
-                    {% if field.help_text %}
-                      <div class="form-text">{{ field.help_text }}</div>
-                    {% endif %}
-                    {% for error in field.errors %}
-                      <div class="text-danger small">{{ error }}</div>
-                    {% endfor %}
-                  </div>
+                      <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                      <button type="button" class="settings-help-icon" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" title="{% if field.help_text %}{{ field.help_text|striptags }}{% else %}Controls the {{ field.label }} setting.{% endif %}" aria-label="Help for {{ field.label }}"><i class="fas fa-question-circle"></i></button>
+                      {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                  {% else %}
+                    <div class="settings-data-cell">
+                      <div class="d-flex align-items-center gap-1">
+                        <label class="form-label small fw-semibold mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        <button type="button" class="settings-help-icon mb-1" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" title="{% if field.help_text %}{{ field.help_text|striptags }}{% else %}Controls the {{ field.label }} setting.{% endif %}" aria-label="Help for {{ field.label }}"><i class="fas fa-question-circle"></i></button>
+                      </div>
+                      {{ field }}
+                      {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                  {% endif %}
                 {% endfor %}
               </div>
               {% if group_title == "WhatsApp / Twilio" %}
-                <div class="row g-2 mt-2">
-                  <div class="col-12 col-md-6">
+                <div class="settings-data-grid mt-2">
+                  <div class="settings-data-cell">
                     <div class="border rounded p-2 h-100">
                       <div class="small fw-semibold mb-1">WhatsApp Cloud API</div>
                       {% if whatsapp_ai_status.whatsapp_api_ok %}
@@ -135,13 +126,13 @@
                       {% endif %}
                     </div>
                   </div>
-                  <div class="col-12 col-md-6">
-                    <a class="border rounded p-2 h-100 d-block text-decoration-none text-reset" href="#settings-tool-whatsapp-webhook-logs" data-settings-target="settings-tool-whatsapp-webhook-logs">
+                  <div class="settings-data-cell">
+                    <a class="border rounded p-2 h-100 d-block text-decoration-none text-reset" href="{% url 'whatsapp:webhook_log_list' %}" target="_blank" rel="noopener">
                       <div class="small fw-semibold mb-1">Webhook Logs</div>
                       <span class="badge bg-info text-dark">Open WhatsApp Webhook Logs</span>
                     </a>
                   </div>
-                  <div class="col-12">
+                  <div class="settings-data-cell">
                     <button
                       class="btn btn-sm btn-outline-success"
                       type="submit"
@@ -152,16 +143,9 @@
                   </div>
                 </div>
               {% endif %}
-              {% if group_title == "Parking & Water Penalties" %}
-                <div class="mt-3">
-                  <a class="btn btn-sm btn-outline-primary" href="{% url 'leases:global_inventory_manage' %}">
-                    <i class="fas fa-boxes me-1"></i> Manage Global Inventory Defaults
-                  </a>
-                </div>
-              {% endif %}
               {% if group_title == "WhatsApp / Twilio" %}
-                <div class="row g-2 mt-2">
-                  <div class="col-12 col-md-6">
+                <div class="settings-data-grid mt-2">
+                  <div class="settings-data-cell">
                     <div class="border rounded p-2 h-100">
                       <div class="small fw-semibold mb-1">OpenAI API Key</div>
                       {% if whatsapp_ai_status.openai_key_configured %}
@@ -171,7 +155,7 @@
                       {% endif %}
                     </div>
                   </div>
-                  <div class="col-12 col-md-6">
+                  <div class="settings-data-cell">
                     <div class="border rounded p-2 h-100">
                       <div class="small fw-semibold mb-1">WhatsApp Token</div>
                       {% if whatsapp_ai_status.whatsapp_token_configured %}
@@ -181,7 +165,7 @@
                       {% endif %}
                     </div>
                   </div>
-                  <div class="col-12 col-md-6">
+                  <div class="settings-data-cell">
                     <div class="border rounded p-2 h-100">
                       <div class="small fw-semibold mb-1">WhatsApp Cloud API</div>
                       {% if whatsapp_ai_status.whatsapp_api_ok %}
@@ -192,39 +176,18 @@
                       {% endif %}
                     </div>
                   </div>
-                  <div class="col-12 col-md-6">
+                  <div class="settings-data-cell">
                     <div class="border rounded p-2 h-100">
                       <div class="small fw-semibold mb-1">Worker Mode</div>
                       <span class="badge bg-info text-dark">{{ whatsapp_ai_status.runtime }}</span>
                     </div>
                   </div>
-                  <div class="col-12 col-md-6">
+                  <div class="settings-data-cell">
                     <div class="border rounded p-2 h-100">
                       <div class="small fw-semibold mb-1">Celery Broker</div>
                       <span class="text-muted small">{{ whatsapp_ai_status.celery_broker|default:"Not configured" }}</span>
                     </div>
                   </div>
-                </div>
-                <div class="mt-3 border-top pt-3">
-                  <h5 class="mb-2"><i class="fab fa-whatsapp me-1 text-success"></i>WhatsApp Management</h5>
-                  <details class="border rounded mb-2 settings-whatsapp-embed" id="settings-tool-whatsapp-templates" data-settings-embed>
-                    <summary class="p-2 fw-semibold">WhatsApp Utility Templates</summary>
-                    <div class="border-top p-2">
-                      <div class="text-end mb-2">
-                        <a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:utility_template_list' %}" target="_blank" rel="noopener">Open Full Page</a>
-                      </div>
-                      <iframe class="settings-inline-frame" src="about:blank" data-settings-src="{% url 'whatsapp:utility_template_list' %}?embed=1" title="WhatsApp Utility Templates"></iframe>
-                    </div>
-                  </details>
-                  <details class="border rounded settings-whatsapp-embed" id="settings-tool-whatsapp-webhook-logs" data-settings-embed>
-                    <summary class="p-2 fw-semibold">WhatsApp Webhook Logs</summary>
-                    <div class="border-top p-2">
-                      <div class="text-end mb-2">
-                        <a class="btn btn-sm btn-outline-success" href="{% url 'whatsapp:webhook_log_list' %}" target="_blank" rel="noopener">Open Full Page</a>
-                      </div>
-                      <iframe class="settings-inline-frame settings-inline-frame-tall" src="about:blank" data-settings-src="{% url 'whatsapp:webhook_log_list' %}?embed=1" title="WhatsApp Webhook Logs"></iframe>
-                    </div>
-                  </details>
                 </div>
               {% endif %}
               {% if group_title == "Handyman" %}
@@ -247,39 +210,34 @@
           </section>
         {% endfor %}
 
-        {% if form.enable_debug_toolbar %}
-          <section class="card shadow-sm settings-section settings-tab-panel d-none" id="settings-development-tools">
-            <div class="card-header py-2 d-flex align-items-center gap-2">
-              <i class="fas fa-code text-primary"></i>
-              <strong>Development Tools</strong>
-            </div>
-            <div class="card-body">
-              <div class="form-check settings-check">
-                {{ form.enable_debug_toolbar }}
-                <label class="form-check-label" for="{{ form.enable_debug_toolbar.id_for_label }}">
-                  {{ form.enable_debug_toolbar.label }}
-                </label>
-              </div>
-              {% if form.enable_debug_toolbar.help_text %}
-                <div class="form-text">{{ form.enable_debug_toolbar.help_text }}</div>
-              {% endif %}
-              {% for error in form.enable_debug_toolbar.errors %}
-                <div class="text-danger small">{{ error }}</div>
-              {% endfor %}
-            </div>
-          </section>
-        {% endif %}
-
         <div class="settings-savebar card shadow-sm">
           <div class="card-body py-2 d-flex justify-content-between align-items-center gap-2">
             <div class="small text-muted">Currency display now follows <strong>{{ GLOBAL_SETTINGS.currency_code }}</strong> from settings.</div>
             <div class="d-flex gap-2">
-              <a class="btn btn-outline-secondary btn-sm" href="{% url 'core:dashboard' %}">Cancel</a>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href='{% url 'core:dashboard' %}'; }">Back</button>
               <button class="btn btn-primary btn-sm" type="submit">Save Settings</button>
             </div>
           </div>
         </div>
       </form>
+
+    <div class="card shadow-sm d-none mb-3" id="settings-reference-toolbar">
+        <div class="card-header py-2"><h4 class="mb-0"><i class="fas fa-list me-2"></i>Reference Data</h4></div>
+        <div class="card-body">
+          <div class="settings-reference-grid">
+            <a class="btn btn-light border w-100 h-100 settings-reference-button" href="#settings-income-brackets" data-settings-target="settings-income-brackets"><i class="fas fa-chart-line me-1"></i>Income Brackets</a>
+            <a class="btn btn-light border w-100 h-100 settings-reference-button" href="#settings-occupation-options" data-settings-target="settings-occupation-options"><i class="fas fa-briefcase me-1"></i>Occupations</a>
+            <a class="btn btn-light border w-100 h-100 settings-reference-button" href="#settings-tool-handyman-categories" data-settings-target="settings-tool-handyman-categories"><i class="fas fa-tools me-1"></i>Handyman Categories</a>
+            <a class="btn btn-light border w-100 h-100 settings-reference-button" href="#settings-building-types" data-settings-target="settings-building-types"><i class="fas fa-building me-1"></i>Building Types</a>
+            <a class="btn btn-light border w-100 h-100 settings-reference-button" href="#settings-payments" data-settings-target="settings-payments"><i class="fas fa-money-bill-wave me-1"></i>Payment Methods</a>
+            <a class="btn btn-light border w-100 h-100 settings-reference-button" href="#settings-doc-categories" data-settings-target="settings-doc-categories"><i class="fas fa-folder-open me-1"></i>Document Categories</a>
+            <a class="btn btn-light border w-100 h-100 settings-reference-button" href="#settings-lease-vehicle-types" data-settings-target="settings-lease-vehicle-types"><i class="fas fa-car me-1"></i>Vehicle Categories</a>
+            <a class="btn btn-light border w-100 h-100 settings-reference-button" href="#settings-relationship-types" data-settings-target="settings-relationship-types"><i class="fas fa-people-arrows me-1"></i>Relationships</a>
+            <a class="btn btn-light border w-100 h-100 settings-reference-button" href="#settings-move-out-charges" data-settings-target="settings-move-out-charges"><i class="fas fa-door-open me-1"></i>Move-out Charges</a>
+            <a class="btn btn-light border w-100 h-100 settings-reference-button" href="#settings-invoice-expense-categories" data-settings-target="settings-invoice-expense-categories"><i class="fas fa-tags me-1"></i>Invoice &amp; Expense Categories</a>
+          </div>
+        </div>
+    </div>
 
     <div class="settings-tab-panel d-none" id="settings-tool-backup">
       <div class="card shadow-sm settings-embedded-panel">
@@ -288,16 +246,6 @@
           <a class="btn btn-sm btn-outline-primary" href="{% url 'core:backup_center' %}" target="_blank" rel="noopener">Open Full Page</a>
         </div>
         <iframe class="settings-inline-frame" src="{% url 'core:backup_center' %}?embed=1" title="Backup and Restore"></iframe>
-      </div>
-    </div>
-
-    <div class="settings-tab-panel d-none" id="settings-tool-suggestions">
-      <div class="card shadow-sm settings-embedded-panel">
-        <div class="card-header py-2 d-flex justify-content-between align-items-center">
-          <h4 class="mb-0"><i class="bi bi-lightbulb me-2"></i>Suggestions / Report Errors</h4>
-          <a class="btn btn-sm btn-outline-warning" href="{% url 'core:suggestion_list' %}" target="_blank" rel="noopener">Open Full Page</a>
-        </div>
-        <iframe class="settings-inline-frame" src="{% url 'core:suggestion_list' %}?embed=1" title="Suggestions"></iframe>
       </div>
     </div>
 
@@ -349,13 +297,33 @@
       </div>
     </div>
 
-    <div class="settings-tab-panel d-none" id="settings-tool-whatsapp-ai-review">
-      <div class="card shadow-sm settings-embedded-panel">
-        <div class="card-header py-2 d-flex justify-content-between align-items-center">
-          <h4 class="mb-0"><i class="bi bi-inboxes me-2"></i>Pending Approvals</h4>
-          <a class="btn btn-sm btn-outline-success" href="{% url 'core:pending_approvals' %}" target="_blank" rel="noopener">Open Full Page</a>
-        </div>
-        <iframe class="settings-inline-frame" src="{% url 'core:pending_approvals' %}?embed=1" title="Pending Approvals"></iframe>
+    <div class="card shadow-sm settings-tab-panel d-none" id="settings-income-brackets">
+      <div class="card-header py-2"><h4 class="mb-0"><i class="fas fa-chart-line me-2"></i>Monthly Income / Salary Brackets</h4></div>
+      <div class="card-body">
+        <form class="row g-2 align-items-end mb-3 js-reference-create" data-kind="income" data-url="{% url 'core:tenant_reference_create' 'income' %}">
+          <div class="col-12 col-md-7"><label class="form-label small fw-semibold">Bracket</label><input name="name" class="form-control form-control-sm" required maxlength="120" placeholder="Example: 100,000 to 150,000"></div>
+          <div class="col-6 col-md-2"><label class="form-label small fw-semibold">Sort</label><input name="sort_order" type="number" min="0" value="50" class="form-control form-control-sm"></div>
+          <div class="col-3 col-md-1"><label class="form-label small fw-semibold">Active</label><select name="is_active" class="form-select form-select-sm"><option value="1">Yes</option><option value="0">No</option></select></div>
+          <div class="col-3 col-md-2"><button class="btn btn-primary btn-sm w-100" type="submit">Add</button></div>
+        </form>
+        <div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0"><thead class="table-light"><tr><th style="width:65px">S.N</th><th>Bracket</th><th style="width:110px">Sort</th><th style="width:120px">Active</th><th style="width:90px">Action</th></tr></thead><tbody>
+          {% for item in tenant_income_brackets %}<tr><td>{{ forloop.counter }}</td><td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:tenant_reference_inline_update' 'income' item.pk %}" data-field="name" data-value="{{ item.name }}">{{ item.name }}</span></td><td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:tenant_reference_inline_update' 'income' item.pk %}" data-field="sort_order" data-type="number" data-value="{{ item.sort_order }}">{{ item.sort_order }}</span></td><td><select class="form-select form-select-sm js-reference-inline" data-url="{% url 'core:tenant_reference_inline_update' 'income' item.pk %}" data-field="is_active"><option value="1" {% if item.is_active %}selected{% endif %}>Active</option><option value="0" {% if not item.is_active %}selected{% endif %}>Inactive</option></select></td><td><button class="btn btn-outline-danger btn-sm js-reference-delete" type="button" data-url="{% url 'core:tenant_reference_delete' 'income' item.pk %}" data-name="{{ item.name }}">Delete</button></td></tr>{% empty %}<tr><td colspan="5" class="text-center text-muted py-3">No income brackets configured.</td></tr>{% endfor %}
+        </tbody></table></div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm settings-tab-panel d-none" id="settings-occupation-options">
+      <div class="card-header py-2"><h4 class="mb-0"><i class="fas fa-briefcase me-2"></i>Occupation Suggestions</h4></div>
+      <div class="card-body">
+        <form class="row g-2 align-items-end mb-3 js-reference-create" data-kind="occupation" data-url="{% url 'core:tenant_reference_create' 'occupation' %}">
+          <div class="col-12 col-md-7"><label class="form-label small fw-semibold">Occupation</label><input name="name" class="form-control form-control-sm" required maxlength="120" placeholder="Example: Engineer"></div>
+          <div class="col-6 col-md-2"><label class="form-label small fw-semibold">Sort</label><input name="sort_order" type="number" min="0" value="50" class="form-control form-control-sm"></div>
+          <div class="col-3 col-md-1"><label class="form-label small fw-semibold">Active</label><select name="is_active" class="form-select form-select-sm"><option value="1">Yes</option><option value="0">No</option></select></div>
+          <div class="col-3 col-md-2"><button class="btn btn-primary btn-sm w-100" type="submit">Add</button></div>
+        </form>
+        <div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0"><thead class="table-light"><tr><th style="width:65px">S.N</th><th>Occupation</th><th style="width:110px">Sort</th><th style="width:120px">Active</th><th style="width:90px">Action</th></tr></thead><tbody>
+          {% for item in tenant_occupation_options %}<tr><td>{{ forloop.counter }}</td><td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:tenant_reference_inline_update' 'occupation' item.pk %}" data-field="name" data-value="{{ item.name }}">{{ item.name }}</span></td><td><span class="settings-inline-text js-click-edit" data-url="{% url 'core:tenant_reference_inline_update' 'occupation' item.pk %}" data-field="sort_order" data-type="number" data-value="{{ item.sort_order }}">{{ item.sort_order }}</span></td><td><select class="form-select form-select-sm js-reference-inline" data-url="{% url 'core:tenant_reference_inline_update' 'occupation' item.pk %}" data-field="is_active"><option value="1" {% if item.is_active %}selected{% endif %}>Active</option><option value="0" {% if not item.is_active %}selected{% endif %}>Inactive</option></select></td><td><button class="btn btn-outline-danger btn-sm js-reference-delete" type="button" data-url="{% url 'core:tenant_reference_delete' 'occupation' item.pk %}" data-name="{{ item.name }}">Delete</button></td></tr>{% empty %}<tr><td colspan="5" class="text-center text-muted py-3">No occupation suggestions configured.</td></tr>{% endfor %}
+        </tbody></table></div>
       </div>
     </div>
 
@@ -479,18 +447,25 @@
       {% if move_out_charge_building_types %}
       <div class="row g-2 align-items-end move-out-charge-row">
         <div class="col-12 col-md-4">
-          <label class="form-label small fw-semibold">Building Type</label>
+          <label class="form-label small fw-semibold">Building Type <button type="button" class="settings-help-icon" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" title="Choose which building type these default move-out charges apply to." aria-label="Help for Building Type"><i class="fas fa-question-circle"></i></button></label>
           <select class="form-select form-select-sm" id="move-out-building-type">
             {% for building_type in move_out_charge_building_types %}
             <option value="{{ building_type.pk }}" data-url="{% url 'core:building_type_move_out_charge_update' building_type.pk %}" data-inspection="{{ building_type.inspection_incomplete_charge }}" data-key="{{ building_type.key_card_not_returned_charge }}">{{ building_type.name }}</option>
             {% endfor %}
           </select>
         </div>
-        <div class="col-6 col-md-3"><label class="form-label small fw-semibold">Inspection not completed</label><input type="number" min="0" step="0.01" class="form-control form-control-sm inspection-charge"></div>
-        <div class="col-6 col-md-3"><label class="form-label small fw-semibold">Keys not returned</label><input type="number" min="0" step="0.01" class="form-control form-control-sm key-charge"></div>
+        <div class="col-6 col-md-3"><label class="form-label small fw-semibold">Inspection not completed <button type="button" class="settings-help-icon" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" title="Default charge when the required move-out inspection is not completed." aria-label="Help for inspection charge"><i class="fas fa-question-circle"></i></button></label><input type="number" min="0" step="0.01" class="form-control form-control-sm inspection-charge"></div>
+        <div class="col-6 col-md-3"><label class="form-label small fw-semibold">Keys not returned <button type="button" class="settings-help-icon" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" title="Default charge when keys or access cards are not returned at move-out." aria-label="Help for keys charge"><i class="fas fa-question-circle"></i></button></label><input type="number" min="0" step="0.01" class="form-control form-control-sm key-charge"></div>
         <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-primary save-move-out-charge">Save Defaults</button> <span class="small move-out-save-status"></span></div>
       </div>
       {% else %}<div class="text-center text-muted py-3">Add and activate a Building Type first.</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="settings-tab-panel d-none" id="settings-global-inventory-defaults">
+    <div class="card shadow-sm settings-embedded-panel">
+      <div class="card-header py-2"><h4 class="mb-0"><i class="fas fa-boxes me-2"></i>Global Inventory Defaults</h4></div>
+      <iframe class="settings-inline-frame" src="{% url 'leases:global_inventory_manage' %}?embed=1" title="Global Inventory Defaults"></iframe>
     </div>
   </div>
 
@@ -560,6 +535,19 @@
     </div>
   </div>
 
+  <div class="settings-tab-panel d-none" id="settings-invoice-expense-categories">
+    <div class="card shadow-sm settings-embedded-panel">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <div>
+          <h4 class="mb-0"><i class="fas fa-tags me-2"></i>Invoice &amp; Expense Categories</h4>
+          <div class="small text-muted">One shared category list is used by both invoice items and expenses.</div>
+        </div>
+        <a class="btn btn-sm btn-outline-success" href="{% url 'invoices:category_list' %}" target="_blank" rel="noopener">Open Full Page</a>
+      </div>
+      <iframe class="settings-inline-frame settings-reference-frame" src="{% url 'invoices:category_list' %}?embed=1" title="Invoice and Expense Categories"></iframe>
+    </div>
+  </div>
+
   <div class="card shadow-sm settings-tab-panel d-none" id="settings-relationship-types">
     <div class="card-header py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <h4 class="mb-0"><i class="fas fa-people-arrows me-2"></i>Tenant Relationship Types</h4>
@@ -614,8 +602,62 @@
 
 <style>
 .settings-page {
-  max-width: 1600px;
+  max-width: 1800px;
   margin: 0 auto;
+}
+.settings-data-grid,
+.settings-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: .45rem;
+}
+.settings-data-cell {
+  min-width: 0;
+  border-radius: .35rem;
+  padding: .28rem;
+}
+.settings-data-cell:has([data-setting-family~="branding"]),
+.settings-checkbox-cell:has([data-setting-family~="branding"]) { background: #f3e8ff; }
+.settings-data-cell:has([data-setting-family~="billing"]),
+.settings-checkbox-cell:has([data-setting-family~="billing"]) { background: #e0f2fe; }
+.settings-data-cell:has([data-setting-family~="late-fee"]),
+.settings-checkbox-cell:has([data-setting-family~="late-fee"]) { background: #fef3c7; }
+.settings-data-cell:has([data-setting-family~="smtp"]),
+.settings-checkbox-cell:has([data-setting-family~="smtp"]) { background: #dcfce7; }
+.settings-data-cell:has([data-setting-family~="meter"]),
+.settings-checkbox-cell:has([data-setting-family~="meter"]) { box-shadow: inset 0 0 0 1px #7dd3fc; }
+.settings-data-cell:has([data-setting-family~="parking-water"]),
+.settings-checkbox-cell:has([data-setting-family~="parking-water"]) { background: #ecfccb; }
+.settings-data-cell:has([data-setting-family~="police"]),
+.settings-checkbox-cell:has([data-setting-family~="police"]) { background: #fce7f3; }
+.settings-family-key { border-radius: 999px; padding: .15rem .5rem; }
+.family-branding { background: #f3e8ff; }
+.family-billing { background: #e0f2fe; }
+.family-late-fee { background: #fef3c7; }
+.family-smtp { background: #dcfce7; }
+.family-parking-water { background: #ecfccb; }
+.family-police { background: #fce7f3; }
+.settings-data-cell > .d-flex {
+  min-height: 2.15rem;
+  align-items: flex-start !important;
+}
+.settings-data-cell .form-label,
+.settings-checkbox-cell .form-check-label {
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.05rem;
+}
+.settings-checkbox-cell {
+  min-width: 0;
+  min-height: 3rem !important;
+  padding: .38rem .3rem .38rem 1.7rem !important;
+  gap: .22rem !important;
+  font-size: .72rem;
+  align-items: flex-start !important;
 }
 .settings-header h3 {
   font-size: 1.35rem;
@@ -639,6 +681,63 @@
   border: 1px solid rgba(33, 37, 41, .1);
   border-radius: .35rem;
   background: #fff;
+}
+.settings-help-icon {
+  border: 0;
+  background: transparent;
+  color: #6c757d;
+  padding: 0 .1rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+.settings-help-icon:hover,
+.settings-help-icon:focus {
+  color: #0d6efd;
+  outline: none;
+}
+.settings-reference-button {
+  white-space: normal;
+  font-size: .75rem;
+  padding: .45rem .25rem;
+}
+.settings-reference-button.active {
+  color: #fff;
+  background: #0d6efd;
+  border-color: #0d6efd !important;
+}
+.settings-reference-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: .45rem;
+}
+#settings-income-brackets > .card-body,
+#settings-occupation-options > .card-body,
+#settings-payments > .card-body,
+#settings-building-types > .card-body,
+#settings-move-out-charges > .card-body,
+#settings-doc-categories > .card-body,
+#settings-relationship-types > .card-body,
+.settings-reference-frame {
+  display: block;
+  width: 100%;
+  max-width: 960px;
+  margin-right: auto;
+  margin-left: auto;
+}
+@media (max-width: 1399.98px) {
+  .settings-data-grid,
+  .settings-checkbox-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .settings-reference-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+@media (max-width: 991.98px) {
+  .settings-data-grid,
+  .settings-checkbox-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .settings-reference-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 575.98px) {
+  .settings-data-grid,
+  .settings-checkbox-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-reference-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .settings-savebar {
   position: sticky;
@@ -974,10 +1073,28 @@ document.addEventListener("DOMContentLoaded", function () {
   const settingsSavebar = document.querySelector(".settings-savebar");
   const autosaveStatus = document.getElementById("settings-autosave-status");
   const settingsTargetAliases = {
-    "settings-group-late-fees": "settings-group-billing-scale-locale",
+    "settings-reference-data": "settings-income-brackets",
+    "settings-group-branding": "settings-group-general-billing-operations",
+    "settings-group-billing-scale-locale": "settings-group-general-billing-operations",
+    "settings-group-email-smtp": "settings-group-general-billing-operations",
+    "settings-group-meter-listener": "settings-group-general-billing-operations",
+    "settings-development-tools": "settings-group-general-billing-operations",
+    "settings-group-late-fees": "settings-group-general-billing-operations",
     "settings-group-whatsapp-ai-assistant": "settings-group-whatsapp-twilio",
     "settings-tool-whatsapp-templates": "settings-group-whatsapp-twilio",
     "settings-tool-whatsapp-webhook-logs": "settings-group-whatsapp-twilio",
+  };
+  const settingsParentTargets = {
+    "settings-move-out-charges": "settings-reference-data",
+    "settings-income-brackets": "settings-reference-data",
+    "settings-occupation-options": "settings-reference-data",
+    "settings-tool-handyman-categories": "settings-reference-data",
+    "settings-building-types": "settings-reference-data",
+    "settings-payments": "settings-reference-data",
+    "settings-doc-categories": "settings-reference-data",
+    "settings-lease-vehicle-types": "settings-reference-data",
+    "settings-relationship-types": "settings-reference-data",
+    "settings-invoice-expense-categories": "settings-reference-data",
   };
 
   function loadSettingsEmbed(container) {
@@ -996,11 +1113,33 @@ document.addEventListener("DOMContentLoaded", function () {
     settingsPanels.forEach(panel => panel.classList.add("d-none"));
     targetPanel.classList.remove("d-none");
 
+    const referenceToolbar = document.getElementById("settings-reference-toolbar");
+    const referenceTarget = settingsParentTargets[targetId] === "settings-reference-data";
+    if (referenceToolbar) {
+      referenceToolbar.classList.toggle("d-none", !referenceTarget);
+    }
+    document.querySelectorAll(".settings-reference-button").forEach(button => {
+      button.classList.toggle("active", button.dataset.settingsTarget === targetId);
+    });
+    if (referenceTarget) {
+      const referenceFields = document.getElementById("settings-group-reference-data");
+      if (referenceFields) referenceFields.classList.remove("d-none");
+    }
+
+    const isGeneralArea = [
+      "settings-group-general-billing-operations",
+    ].includes(targetId);
+    if (isGeneralArea) {
+      const generalPanel = document.getElementById("settings-group-general-billing-operations");
+      if (generalPanel) generalPanel.classList.remove("d-none");
+    }
+
+    const activeTabTarget = settingsParentTargets[targetId] || targetId;
     settingsTabs.forEach(tab => {
-      tab.classList.toggle("active", tab.dataset.settingsTarget === targetId);
+      tab.classList.toggle("active", tab.dataset.settingsTarget === activeTabTarget);
     });
 
-    const isGlobalSettingsPanel = targetId.indexOf("settings-group-") === 0 || targetId === "settings-development-tools";
+    const isGlobalSettingsPanel = targetId.indexOf("settings-group-") === 0 || isGeneralArea;
     if (settingsSavebar) {
       settingsSavebar.classList.toggle("d-none", !isGlobalSettingsPanel);
     }
@@ -1025,6 +1164,12 @@ document.addEventListener("DOMContentLoaded", function () {
       if (this.open) loadSettingsEmbed(this);
     });
   });
+
+  if (window.bootstrap && bootstrap.Tooltip) {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(element => {
+      new bootstrap.Tooltip(element);
+    });
+  }
 
   settingsTabs.forEach(tab => {
     tab.addEventListener("click", function (event) {
@@ -1176,6 +1321,48 @@ document.addEventListener("DOMContentLoaded", function () {
     .then(() => done && done())
     .catch(err => alert("Could not update: " + err.message));
   }
+
+  document.querySelectorAll(".js-reference-inline").forEach(field => {
+    field.addEventListener("change", function () {
+      this.classList.add("opacity-50");
+      postInlineUpdate(this.dataset.url, this.dataset.field, this.value, () => {
+        this.classList.remove("opacity-50");
+      });
+    });
+  });
+
+  document.querySelectorAll(".js-reference-create").forEach(form => {
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      fetch(this.dataset.url, {
+        method: "POST",
+        headers: {"X-CSRFToken": csrftoken, "X-Requested-With": "XMLHttpRequest"},
+        body: new FormData(this),
+      })
+      .then(r => r.json().then(data => ({ok: r.ok, data: data})))
+      .then(result => {
+        if (!result.ok || !result.data.ok) throw new Error(result.data.error || "Add failed");
+        window.location.reload();
+      })
+      .catch(err => alert("Could not add reference value: " + err.message));
+    });
+  });
+
+  document.querySelectorAll(".js-reference-delete").forEach(button => {
+    button.addEventListener("click", function () {
+      if (!confirm(`Delete “${this.dataset.name}”? Existing tenant text will not be changed.`)) return;
+      fetch(this.dataset.url, {
+        method: "POST",
+        headers: {"X-CSRFToken": csrftoken, "X-Requested-With": "XMLHttpRequest"},
+      })
+      .then(r => r.json().then(data => ({ok: r.ok, data: data})))
+      .then(result => {
+        if (!result.ok || !result.data.ok) throw new Error(result.data.error || "Delete failed");
+        window.location.reload();
+      })
+      .catch(err => alert("Could not delete reference value: " + err.message));
+    });
+  });
 
   document.querySelectorAll(".js-click-edit").forEach(cell => {
     cell.addEventListener("click", function () {

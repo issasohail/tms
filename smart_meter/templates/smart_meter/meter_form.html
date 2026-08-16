@@ -208,7 +208,7 @@
             </div>
           </div>
           <div class="meter-field meter-span-1">{{ form.power_status.label_tag }}{{ form.power_status }}{{ form.power_status.errors }}</div>
-          <div class="meter-field meter-span-1">{{ form.unit_rate.label_tag }}{{ form.unit_rate }}{{ form.unit_rate.errors }}</div>
+          <div class="meter-field meter-span-1"><label for="{{ form.unit_rate.id_for_label }}">{{ form.unit_rate.label }} <button type="button" class="btn btn-link p-0 border-0 align-baseline" data-bs-toggle="tooltip" title="{{ form.unit_rate.help_text }}" aria-label="Electricity rate override help"><i class="fas fa-question-circle"></i></button></label>{{ form.unit_rate }}{{ form.unit_rate.errors }}</div>
           <div class="meter-field meter-span-1">{{ form.service_charges.label_tag }}{{ form.service_charges }}{{ form.service_charges.errors }}</div>
           <div class="meter-field meter-span-1">{{ form.installed_at.label_tag }}{{ form.installed_at }}{{ form.installed_at.errors }}</div>
           <div class="meter-field meter-span-1">{{ form.min_balance_alert.label_tag }}{{ form.min_balance_alert }}{{ form.min_balance_alert.errors }}</div>

@@ -9,8 +9,8 @@
       <!-- Brand + viewport toggle -->
       <div class="mobile-brand-stack">
         <a class="tms-brand" href="{% url 'dashboard:home' %}">
-          <img src="{% static 'images/logo.png' %}" alt="Kirayas.com" width="18" height="18">
-          <span>kirayas.com</span>
+          <img src="{% if GLOBAL_SETTINGS.logo %}{{ GLOBAL_SETTINGS.logo.url }}{% else %}{% static 'images/logo.png' %}{% endif %}" alt="{{ GLOBAL_SETTINGS.site_name|default:'Kirayas.com' }}" width="18" height="18">
+          <span>{{ GLOBAL_SETTINGS.site_name|default:"kirayas.com" }}</span>
         </a>
         {% if user.is_authenticated %}
           <label class="vp-toggle vp-toggle--mobile" title="Toggle viewport bar">
@@ -131,8 +131,8 @@
 
       <!-- Brand -->
       <a class="tms-brand tms-brand--lg" href="{% url 'dashboard:home' %}">
-        <img src="{% static 'images/logo.png' %}" alt="" width="26" height="26">
-        <span>kirayas.com</span>
+        <img src="{% if GLOBAL_SETTINGS.logo %}{{ GLOBAL_SETTINGS.logo.url }}{% else %}{% static 'images/logo.png' %}{% endif %}" alt="{{ GLOBAL_SETTINGS.site_name|default:'Kirayas.com' }}" width="26" height="26">
+        <span>{{ GLOBAL_SETTINGS.site_name|default:"kirayas.com" }}</span>
       </a>
 
       <!-- Primary links -->

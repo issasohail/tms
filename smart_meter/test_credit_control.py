@@ -123,7 +123,7 @@ class CreditLimitResolutionTests(MeterCreditFixture):
         self.lease.electricity_security_deposit = Decimal("0.00")
         self.lease.save(update_fields=["electricity_security_deposit"])
         account = self.account(credit_limit_source="deposit_percent")
-        with self.assertRaisesMessage(ValueError, "Electricity security deposit is Rs.0.00"):
+        with self.assertRaisesMessage(ValueError, "Electricity security deposit is zero"):
             activate_credit_account(account, reason="must fail")
 
     def test_zero_electricity_security_allows_fixed_limit(self):

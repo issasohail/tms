@@ -77,6 +77,8 @@ class MeterForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["unit_rate"].label = "Meter rate override"
+        self.fields["unit_rate"].widget.attrs.update({"step": "0.0001", "min": "0"})
         self.fields["unit"].queryset = _ordered_units()
         self.fields["unit"].label_from_instance = _unit_choice_label
 
@@ -493,15 +495,15 @@ class MeterCreditAccountForm(forms.ModelForm):
                 "Override Limit, select Lease-specific manual override from this dropdown."
             ),
             "fixed_credit_limit": (
-                "A manually entered rupee limit. It is used when the credit limit source is "
+                "A manually entered currency limit. It is used when the credit limit source is "
                 "Fixed monetary limit, or as one side of Lower of fixed and deposit-derived."
             ),
             "deposit_percentage": (
                 "Percentage of the lease's electricity security deposit used to calculate a "
-                "deposit-derived credit limit. For example, 50% of Rs.20,000 is Rs.10,000."
+                "deposit-derived credit limit. For example, 50% of 20,000 is 10,000."
             ),
             "lease_override_limit": (
-                "A special rupee limit for this meter and lease. It only becomes effective when "
+                "A special currency limit for this meter and lease. It only becomes effective when "
                 "Credit limit source is Lease-specific manual override."
             ),
             "warning_threshold_percent": (

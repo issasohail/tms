@@ -341,6 +341,10 @@
                             <span class="unit-info-label">Gas Meter</span>
                             <div class="unit-info-value">{{ unit.gas_meter_num|default:"-" }}</div>
                         </div>
+                        <div class="unit-info-item">
+                            <span class="unit-info-label">Electricity Rate <i class="fas fa-question-circle" data-bs-toggle="tooltip" title="Override order: Global, Property, Unit, Meter, then Lease. The last nonblank value wins."></i></span>
+                            <div class="unit-info-value">{{ CURRENCY_SYMBOL }} {{ electricity_rate.rate|floatformat:4 }}/kWh <small class="text-muted">({{ electricity_rate.source }})</small></div>
+                        </div>
                     </div>
                 </div>
             </div>

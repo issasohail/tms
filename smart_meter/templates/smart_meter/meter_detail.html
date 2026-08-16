@@ -277,10 +277,10 @@
     <div class="meter-panel">
       <h5 class="meter-panel-title">Billing Settings</h5>
       <div class="meter-kv-grid">
-        <div class="meter-kv"><span class="meter-kv-label">Unit Rate</span><div class="meter-kv-value">Rs. {{ meter.unit_rate }}</div></div>
-        <div class="meter-kv"><span class="meter-kv-label">Service</span><div class="meter-kv-value">Rs. {{ meter.service_charges }}</div></div>
-        <div class="meter-kv"><span class="meter-kv-label">Alert</span><div class="meter-kv-value">Rs. {{ meter.min_balance_alert }}</div></div>
-        <div class="meter-kv"><span class="meter-kv-label">Cutoff</span><div class="meter-kv-value">Rs. {{ meter.min_balance_cutoff }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Unit Rate <i class="fas fa-question-circle" data-bs-toggle="tooltip" title="Override order: Global, Property, Unit, Meter, then Lease. The last nonblank value wins."></i></span><div class="meter-kv-value">{{ CURRENCY_SYMBOL }} {{ electricity_rate.rate|floatformat:4 }} <small class="text-muted">({{ electricity_rate.source }})</small></div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Service</span><div class="meter-kv-value">{{ CURRENCY_SYMBOL }} {{ meter.service_charges }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Alert</span><div class="meter-kv-value">{{ CURRENCY_SYMBOL }} {{ meter.min_balance_alert }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Cutoff</span><div class="meter-kv-value">{{ CURRENCY_SYMBOL }} {{ meter.min_balance_cutoff }}</div></div>
       </div>
     </div>
   </div>
@@ -299,10 +299,10 @@
       <div class="meter-kv-grid">
         <div class="meter-kv"><span class="meter-kv-label">Enabled</span><div class="meter-kv-value">{% if credit_account.is_enabled %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</div></div>
         <div class="meter-kv"><span class="meter-kv-label">State</span><div class="meter-kv-value">{{ credit_account.get_enforcement_state_display }}</div></div>
-        <div class="meter-kv"><span class="meter-kv-label">Exposure</span><div class="meter-kv-value">Rs. {{ credit_account.current_exposure }}</div></div>
-        <div class="meter-kv"><span class="meter-kv-label">Credit Limit</span><div class="meter-kv-value">Rs. {{ credit_account.effective_credit_limit }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Exposure</span><div class="meter-kv-value">{{ CURRENCY_SYMBOL }} {{ credit_account.current_exposure }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Credit Limit</span><div class="meter-kv-value">{{ CURRENCY_SYMBOL }} {{ credit_account.effective_credit_limit }}</div></div>
         <div class="meter-kv"><span class="meter-kv-label">Used</span><div class="meter-kv-value">{{ credit_account.percent_used }}%</div></div>
-        <div class="meter-kv"><span class="meter-kv-label">Remaining</span><div class="meter-kv-value">Rs. {{ credit_account.remaining_credit }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Remaining</span><div class="meter-kv-value">{{ CURRENCY_SYMBOL }} {{ credit_account.remaining_credit }}</div></div>
         <div class="meter-kv"><span class="meter-kv-label">Thresholds</span><div class="meter-kv-value">{{ credit_account.warning_threshold_percent }} / {{ credit_account.final_warning_threshold_percent }} / {{ credit_account.cutoff_threshold_percent }} / {{ credit_account.reconnect_threshold_percent }}%</div></div>
         <div class="meter-kv"><span class="meter-kv-label">Last Evaluation</span><div class="meter-kv-value">{{ credit_account.last_evaluated_at|date:"M d, Y H:i"|default:"-" }}</div></div>
         <div class="meter-kv"><span class="meter-kv-label">Data Quality</span><div class="meter-kv-value">{{ credit_account.data_quality_reason|default:"OK" }}</div></div>

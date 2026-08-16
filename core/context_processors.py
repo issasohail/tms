@@ -35,7 +35,7 @@ def global_settings(request):
         if hasattr(request, request_cache_attr):
             approval_count = getattr(request, request_cache_attr)
         else:
-            approval_count = pending_approval_count()
+            approval_count = pending_approval_count(request)
             setattr(request, request_cache_attr, approval_count)
 
     embedded = _is_settings_embedded_request(request)

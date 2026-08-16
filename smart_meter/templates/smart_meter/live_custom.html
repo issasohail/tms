@@ -1757,7 +1757,7 @@
               <span class="d-none d-sm-inline"> ±{{ online_minutes }}m</span>
             </td>
 
-            <td class="text-center" data-col="balance">Rs. {{ r.balance|default:"0.00" }}</td>
+            <td class="text-center" data-col="balance">{{ CURRENCY_SYMBOL }} {{ r.balance|default:"0.00" }}</td>
 
             <!-- Total Energy stays visible; add Voltage/Current beneath on small -->
             <td class="text-right" data-col="total_energy" data-energy-url="{% url 'smart_meter:energy_dashboard' %}?meter={{ m.id }}&start={{ energy_start_date|date:'Y-m-d' }}&end={{ energy_end_date|date:'Y-m-d' }}">

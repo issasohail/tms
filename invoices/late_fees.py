@@ -1,7 +1,8 @@
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Case, DecimalField, F, Q, Sum, Value, When
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from invoices.models import Invoice, InvoiceItem, InvoiceLateFeeReminder, ItemCategory
@@ -37,6 +38,14 @@ def calculate_late_fee(invoice, cfg, late_fee_category=None):
 
 
 def sent_reminder_count(invoice):
+    prefetched = getattr(invoice, "_prefetched_objects_cache", {}).get(
+        "late_fee_reminders"
+    )
+    if prefetched is not None:
+        return sum(
+            reminder.status != InvoiceLateFeeReminder.STATUS_FAILED
+            for reminder in prefetched
+        )
     return invoice.late_fee_reminders.exclude(
         status=InvoiceLateFeeReminder.STATUS_FAILED
     ).count()
@@ -109,14 +118,28 @@ def process_invoice_late_fee_reminder(
 
     if invoice.status in ("paid", "cancelled"):
         return {"ok": False, "reason": "Invoice is paid or cancelled."}
+    if (invoice.amount or Decimal("0.00")) <= 0:
+        return {"ok": False, "reason": "Zero-amount invoices do not receive reminders or late fees."}
     if not invoice.due_date:
         return {"ok": False, "reason": "Invoice has no due date."}
+
+    today = today or timezone.localdate()
+    settings_obj = GlobalSettings.get_solo()
+    if settings_obj.late_fee_skip_current_month and (
+        invoice.issue_date.year,
+        invoice.issue_date.month,
+    ) == (today.year, today.month):
+        return {"ok": False, "reason": "Current-month reminders are disabled in Settings."}
+    if invoice.late_fee_hold_is_active(today):
+        return {
+            "ok": False,
+            "reason": f"Reminder and late fee are on hold through {invoice.late_fee_hold_until}.",
+        }
 
     cfg = get_effective_late_fee_settings(invoice.lease)
     if not cfg["enabled"]:
         return {"ok": False, "reason": "Late fees are disabled for this lease."}
 
-    today = today or timezone.localdate()
     days_overdue = (today - invoice.due_date).days
     if days_overdue < cfg["grace_days"]:
         return {"ok": False, "reason": "Grace period has not elapsed yet."}
@@ -128,6 +151,18 @@ def process_invoice_late_fee_reminder(
             .select_related("lease", "lease__tenant")
             .get(pk=invoice.pk)
         )
+        if (invoice.amount or Decimal("0.00")) <= 0:
+            return {"ok": False, "reason": "Zero-amount invoices do not receive reminders or late fees."}
+        if settings_obj.late_fee_skip_current_month and (
+            invoice.issue_date.year,
+            invoice.issue_date.month,
+        ) == (today.year, today.month):
+            return {"ok": False, "reason": "Current-month reminders are disabled in Settings."}
+        if invoice.late_fee_hold_is_active(today):
+            return {
+                "ok": False,
+                "reason": f"Reminder and late fee are on hold through {invoice.late_fee_hold_until}.",
+            }
         cfg = get_effective_late_fee_settings(invoice.lease)
         reminder_number = get_due_reminder_number(invoice, cfg, today=today)
         if reminder_number is None:
@@ -210,6 +245,20 @@ def approve_pending_late_fee(reminder, user=None):
         return {"ok": False, "reason": "This reminder has no pending fee."}
     if reminder.fee_amount <= 0:
         return {"ok": False, "reason": "Fee amount is zero."}
+    invoice = reminder.invoice
+    today = timezone.localdate()
+    if invoice.late_fee_hold_is_active(today):
+        return {
+            "ok": False,
+            "reason": f"Reminder and late fee are on hold through {invoice.late_fee_hold_until}.",
+        }
+    from core.models import GlobalSettings
+    settings_obj = GlobalSettings.get_solo()
+    if settings_obj.late_fee_skip_current_month and (
+        invoice.issue_date.year,
+        invoice.issue_date.month,
+    ) == (today.year, today.month):
+        return {"ok": False, "reason": "Current-month reminders are disabled in Settings."}
 
     with transaction.atomic():
         reminder = InvoiceLateFeeReminder.objects.select_for_update().get(pk=reminder.pk)
@@ -239,17 +288,23 @@ def reject_pending_late_fee(reminder):
     return {"ok": True, "reminder": reminder}
 
 
-def collect_due_invoices(today=None, start_date=None):
+def collect_due_invoices(today=None, start_date=None, skip_current_month=False):
     today = today or timezone.localdate()
     invoices = (
         Invoice.objects
         .exclude(status__in=["paid", "cancelled"])
-        .filter(due_date__lte=today)
+        .filter(amount__gt=0, due_date__lte=today)
+        .filter(Q(late_fee_hold_until__isnull=True) | Q(late_fee_hold_until__lt=today))
         .select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property")
         .prefetch_related("late_fee_reminders", "items")
     )
     if start_date:
         invoices = invoices.filter(due_date__gte=start_date)
+    if skip_current_month:
+        invoices = invoices.exclude(
+            issue_date__year=today.year,
+            issue_date__month=today.month,
+        )
     return invoices
 
 
@@ -262,11 +317,120 @@ def _invoice_summary_detail(invoice, reminder_number, error=None):
         "reminder_number": reminder_number,
         "property_name": getattr(property_obj, "property_name", "") or "—",
         "unit_name": getattr(unit, "unit_number", "") or "—",
+        "tenant_name": invoice.lease.tenant.get_full_name() or "—",
+        "invoice_date": invoice.issue_date.isoformat() if invoice.issue_date else "",
         "due_date": invoice.due_date.isoformat() if invoice.due_date else "",
+        "balance": str(invoice.outstanding_balance),
     }
     if error:
         detail["error"] = str(error)
     return detail
+
+
+def _attach_outstanding_balances(invoices):
+    """Prime Invoice.accounting_allocation without per-invoice payment queries."""
+    from payments.models import Payment
+
+    lease_ids = {invoice.lease_id for invoice in invoices}
+    if not lease_ids:
+        return
+    zero = Decimal("0.00")
+    money_field = DecimalField(max_digits=12, decimal_places=2)
+    payment_totals = {
+        row["lease_id"]: row["total"] or zero
+        for row in (
+            Payment.objects.filter(lease_id__in=lease_ids)
+            .values("lease_id")
+            .annotate(total=Coalesce(
+                Sum(Case(
+                    When(detail__isnull=False, then=F("detail__lease_amount")),
+                    default=F("amount"),
+                    output_field=money_field,
+                )),
+                Value(zero),
+                output_field=money_field,
+            ))
+        )
+    }
+    available_by_lease = dict(payment_totals)
+    allocations = {}
+    rows = list(
+        Invoice.objects.filter(lease_id__in=lease_ids)
+        .order_by("lease_id", "issue_date", "id")
+        .values("id", "lease_id", "amount", "due_date", "lifecycle_status", "status")
+    )
+    eligible_rows = [
+        row for row in rows
+        if row["lifecycle_status"] not in {"cancelled", "void"}
+        and row["status"] != "cancelled"
+    ]
+    last_by_lease = {row["lease_id"]: row["id"] for row in eligible_rows}
+    today = timezone.localdate()
+    for row in eligible_rows:
+        amount = row["amount"] or zero
+        available = available_by_lease.get(row["lease_id"], zero)
+        allocated = min(max(available, zero), amount)
+        available -= allocated
+        available_by_lease[row["lease_id"]] = available
+        outstanding = max(amount - allocated, zero)
+        if amount <= 0 or allocated >= amount:
+            status = "overpaid" if (
+                row["id"] == last_by_lease.get(row["lease_id"]) and available > 0
+            ) else "paid"
+        elif allocated > 0:
+            status = "partially_paid"
+        elif row["due_date"] and row["due_date"] < today:
+            status = "overdue"
+        else:
+            status = "unpaid"
+        allocations[row["id"]] = (allocated, outstanding, status)
+    for invoice in invoices:
+        invoice._accounting_allocation_cache = allocations.get(
+            invoice.pk,
+            (zero, invoice.amount or zero, "unpaid"),
+        )
+
+
+def _send_staff_late_fee_summary(settings_obj, details, user=None):
+    staff = getattr(settings_obj, "whatsapp_accounts_staff", None)
+    phone = getattr(staff, "whatsapp_number", "") if staff else ""
+    if not phone:
+        return {"ok": False, "error": "No WhatsApp number is configured for Accounts staff."}
+
+    from whatsapp.services.whatsapp import WhatsAppService
+
+    header = [
+        f"Late-fee reminder run: {timezone.localdate():%Y-%m-%d}",
+        f"Processed: {len(details)}",
+        "",
+    ]
+    lines = []
+    for detail in details:
+        lines.append(
+            f"#{detail['invoice_number']} | {detail['property_name']} / {detail['unit_name']} | "
+            f"{detail['tenant_name']} | Balance Rs. {detail['balance']}"
+        )
+    chunks = []
+    current = list(header)
+    current_length = len("\n".join(current))
+    for line in lines:
+        if current_length + len(line) + 1 > 3000 and len(current) > len(header):
+            chunks.append("\n".join(current))
+            current = [f"Late-fee reminder run (continued): {timezone.localdate():%Y-%m-%d}", ""]
+            current_length = len("\n".join(current))
+        current.append(line)
+        current_length += len(line) + 1
+    chunks.append("\n".join(current))
+
+    service = WhatsAppService(created_by=user)
+    try:
+        for chunk in chunks:
+            result = service.send_text(phone, chunk)
+            if not isinstance(result, dict) or not result.get("ok"):
+                return result if isinstance(result, dict) else {"ok": False, "error": str(result)}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "messages_sent": len(chunks)}
 
 
 def run_due_late_fee_reminders(
@@ -298,6 +462,11 @@ def run_due_late_fee_reminders(
         "fees_pending": 0,
         "skipped": 0,
         "excluded_before_start": 0,
+        "excluded_zero_amount": 0,
+        "excluded_current_month": 0,
+        "excluded_on_hold": 0,
+        "staff_summary_sent": False,
+        "staff_summary_error": "",
         "automation_start_date": settings_obj.late_fee_automation_start_date,
         "dry_run": bool(dry_run),
         "details": [],
@@ -309,13 +478,40 @@ def run_due_late_fee_reminders(
         summary["reason"] = "Automatic late fee reminders are disabled."
         return summary
 
-    all_due_invoices = collect_due_invoices(today=today)
+    base_due = Invoice.objects.exclude(status__in=["paid", "cancelled"]).filter(
+        due_date__lte=today
+    )
+    summary["excluded_zero_amount"] = base_due.filter(
+        Q(amount__lte=0) | Q(amount__isnull=True)
+    ).count()
+    positive_due = base_due.filter(amount__gt=0)
+    summary["excluded_on_hold"] = positive_due.filter(
+        late_fee_hold_until__gte=today
+    ).count()
+    if settings_obj.late_fee_skip_current_month:
+        summary["excluded_current_month"] = positive_due.filter(
+            issue_date__year=today.year,
+            issue_date__month=today.month,
+        ).filter(
+            Q(late_fee_hold_until__isnull=True) | Q(late_fee_hold_until__lt=today)
+        ).count()
+
+    all_due_invoices = collect_due_invoices(
+        today=today,
+        skip_current_month=settings_obj.late_fee_skip_current_month,
+    )
     start_date = settings_obj.late_fee_automation_start_date
     if start_date:
         summary["excluded_before_start"] = all_due_invoices.filter(
             due_date__lt=start_date
         ).count()
-    for invoice in collect_due_invoices(today=today, start_date=start_date):
+    eligible_invoices = list(collect_due_invoices(
+        today=today,
+        start_date=start_date,
+        skip_current_month=settings_obj.late_fee_skip_current_month,
+    ))
+    _attach_outstanding_balances(eligible_invoices)
+    for invoice in eligible_invoices:
         summary["examined"] += 1
         cfg = get_effective_late_fee_settings(invoice.lease)
         reminder_number = get_due_reminder_number(invoice, cfg, today=today)
@@ -367,4 +563,19 @@ def run_due_late_fee_reminders(
     summary["skipped"] += max(
         0, summary["examined"] - summary["due"] - summary["skipped"]
     )
+    if (
+        not dry_run
+        and summary["processed"]
+        and settings_obj.late_fee_staff_summary_enabled
+    ):
+        staff_result = _send_staff_late_fee_summary(
+            settings_obj,
+            [detail for detail in summary["details"] if not detail.get("error")],
+            user=user,
+        )
+        summary["staff_summary_sent"] = bool(staff_result.get("ok"))
+        if not staff_result.get("ok"):
+            summary["staff_summary_error"] = (
+                staff_result.get("error") or staff_result.get("reason") or "Staff summary failed."
+            )
     return summary

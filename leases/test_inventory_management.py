@@ -133,6 +133,33 @@ class InventoryDefinitionManagementTests(TestCase):
         self.assertContains(definition_response, "Order")
         self.assertContains(definition_response, "existing lease inventory snapshots")
 
+    def test_global_inventory_can_render_and_redirect_inside_settings(self):
+        inventory_url = reverse("leases:global_inventory_manage")
+        response = self.client.get(f"{inventory_url}?embed=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["tms_embedded"])
+        self.assertNotContains(response, "Back to Settings")
+
+        response = self.client.post(
+            f"{inventory_url}?embed=1",
+            {
+                "action": "add_definition",
+                "name": "Embedded Inventory Item",
+                "sort_order": "40",
+                "unit_label": "item",
+                "quantity": "1",
+                "condition": "Good",
+                "include_in_clause": "on",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            f"{inventory_url}?embed=1",
+            fetch_redirect_response=False,
+        )
+
     def test_lease_detail_shows_add_and_unit_import_controls(self):
         response = self.client.get(reverse("leases:lease_detail", args=[self.lease.pk]))
 

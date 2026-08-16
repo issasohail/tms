@@ -44,6 +44,13 @@ class Invoice(models.Model):
     invoice_number = models.CharField(max_length=20, unique=True, blank=True)
     issue_date = models.DateField()
     due_date = models.DateField()
+    late_fee_hold_until = models.DateField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Do not send reminders or apply reminder-based late fees through this date.",
+    )
+    late_fee_hold_reason = models.CharField(max_length=255, blank=True, default='')
     amount = models.DecimalField(
         max_digits=10, decimal_places=2, validators=[MinValueValidator(0)], blank=True, null=True, default=Decimal('0.00'))
     status = models.CharField(
@@ -74,6 +81,10 @@ class Invoice(models.Model):
 
     def __str__(self):
         return f"Invoice #{self.invoice_number} - {self.lease.id}"
+
+    def late_fee_hold_is_active(self, today=None):
+        today = today or timezone.localdate()
+        return bool(self.late_fee_hold_until and self.late_fee_hold_until >= today)
 
     @property
     def total_amount(self):

@@ -122,10 +122,12 @@ def explicit_electricity_payments(account: MeterCreditAccount) -> Decimal:
 
 
 def current_rate(account: MeterCreditAccount) -> Decimal | None:
-    rate = getattr(account.meter, "unit_rate", None)
-    if rate is None:
-        rate = getattr(account.lease, "electric_unit_rate", None)
-    rate = _decimal(rate)
+    from smart_meter.rates import resolve_electricity_rate
+
+    rate = resolve_electricity_rate(
+        meter=account.meter,
+        lease=account.lease,
+    ).rate
     return rate if rate > 0 else None
 
 
@@ -192,7 +194,7 @@ def activate_credit_account(account: MeterCreditAccount, *, user=None, reason=""
         if limit <= 0:
             if account.credit_limit_source in {"deposit_percent", "lower_of"}:
                 raise ValueError(
-                    "Electricity security deposit is Rs.0.00. Enter an electricity "
+                    "Electricity security deposit is zero. Enter an electricity "
                     "security deposit or select a valid fixed credit limit before activation."
                 )
             raise ValueError("Effective credit limit must be greater than zero")

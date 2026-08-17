@@ -1,10 +1,12 @@
-import socket
 from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError
 from django.test import SimpleTestCase, TestCase
 
-from smart_meter.management.commands.meter_listener import ClientHandler, DbCommandPoller
+from smart_meter.management.commands.meter_listener import (
+    ClientHandler,
+    DbCommandPoller,
+)
 from smart_meter.models import LiveReading, Meter, MeterReading
 
 
@@ -20,7 +22,11 @@ class FakeSocket:
         pass
 
     def recv(self, _size):
-        result = self.recv_result.pop(0) if isinstance(self.recv_result, list) else self.recv_result
+        result = (
+            self.recv_result.pop(0)
+            if isinstance(self.recv_result, list)
+            else self.recv_result
+        )
         if isinstance(result, Exception):
             raise result
         return result
@@ -53,7 +59,9 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
 
     @patch("smart_meter.management.commands.meter_listener.threading.Thread.start")
     @patch("smart_meter.management.commands.meter_listener.close_old_connections")
-    def test_client_handler_cleans_up_when_receive_raises(self, close_connections, _start):
+    def test_client_handler_cleans_up_when_receive_raises(
+        self, close_connections, _start
+    ):
         self.make_handler(OSError("simulated disconnect")).run()
 
         self.assertGreaterEqual(close_connections.call_count, 2)
@@ -64,13 +72,16 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
     def test_quiet_live_handler_rechecks_age_and_force_closes_on_exit(
         self, close_connections, close_connection, _start
     ):
-        self.make_handler([socket.timeout(), b""]).run()
+        self.make_handler([TimeoutError(), b""]).run()
 
         self.assertGreaterEqual(close_connections.call_count, 3)
         close_connection.assert_called_once_with()
 
     @patch("smart_meter.management.commands.meter_listener.parse_frame")
-    @patch("smart_meter.management.commands.meter_listener.verify_checksum", return_value=(True, "standard"))
+    @patch(
+        "smart_meter.management.commands.meter_listener.verify_checksum",
+        return_value=(True, "standard"),
+    )
     @patch("smart_meter.management.commands.meter_listener.close_old_connections")
     def test_repeated_frame_units_keep_cleanup_bounded(
         self, close_connections, _verify_checksum, parse_frame
@@ -84,9 +95,14 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         self.assertEqual(close_connections.call_count, 250)
         self.assertEqual(parse_frame.call_count, 125)
 
-    @patch("smart_meter.management.commands.meter_listener.verify_checksum", side_effect=RuntimeError("parse failure"))
+    @patch(
+        "smart_meter.management.commands.meter_listener.verify_checksum",
+        side_effect=RuntimeError("parse failure"),
+    )
     @patch("smart_meter.management.commands.meter_listener.close_old_connections")
-    def test_frame_exception_cannot_bypass_cleanup(self, close_connections, _verify_checksum):
+    def test_frame_exception_cannot_bypass_cleanup(
+        self, close_connections, _verify_checksum
+    ):
         handler = self.make_handler()
 
         with self.assertRaisesRegex(RuntimeError, "parse failure"):
@@ -102,13 +118,14 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         handler = self.make_handler()
         frame = b"\x68\x01\x02\x03"
 
-        with patch.object(
-            handler,
-            "_process_frame",
-            side_effect=[DatabaseError("temporary MySQL failure"), None],
-        ) as process_frame, self.assertLogs(
-            "smart_meter.listener", level="ERROR"
-        ) as captured:
+        with (
+            patch.object(
+                handler,
+                "_process_frame",
+                side_effect=[DatabaseError("temporary MySQL failure"), None],
+            ) as process_frame,
+            self.assertLogs("smart_meter.listener", level="ERROR") as captured,
+        ):
             handler.process_frame(frame)
             handler.process_frame(frame)
 
@@ -123,16 +140,21 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
     def test_non_database_error_is_not_swallowed(self, _close_connections):
         handler = self.make_handler()
 
-        with patch.object(
-            handler, "_process_frame", side_effect=ValueError("programming failure")
-        ), self.assertRaisesRegex(ValueError, "programming failure"):
+        with (
+            patch.object(
+                handler, "_process_frame", side_effect=ValueError("programming failure")
+            ),
+            self.assertRaisesRegex(ValueError, "programming failure"),
+        ):
             handler.process_frame(b"\x68")
 
         self.assertTrue(handler.alive)
         self.assertEqual(handler.conn.close_calls, 0)
 
     @patch("smart_meter.management.commands.meter_listener.close_old_connections")
-    def test_cleanup_wrapper_preserves_existing_frame_pipeline(self, _close_connections):
+    def test_cleanup_wrapper_preserves_existing_frame_pipeline(
+        self, _close_connections
+    ):
         handler = self.make_handler()
         frame = b"\x68\x01\x02\x03"
 
@@ -144,7 +166,9 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
 
 class DbCommandPollerConnectionLifecycleTests(SimpleTestCase):
     @patch("smart_meter.management.commands.meter_listener.close_old_connections")
-    def test_background_poller_closes_connections_after_loop_error(self, close_connections):
+    def test_background_poller_closes_connections_after_loop_error(
+        self, close_connections
+    ):
         poller = DbCommandPoller(interval=0)
         poller._stop = MagicMock()
         poller._stop.is_set.side_effect = [False, True]

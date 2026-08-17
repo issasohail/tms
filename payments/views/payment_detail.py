@@ -71,7 +71,7 @@ class PaymentDetailView(LoginRequiredMixin, DetailView):
 
         ctx["payment_detail"] = payment_detail
         ctx["lease"] = lease
-        ctx["GLOBAL_SETTINGS"] = GlobalSettings.objects.first()
+        ctx["GLOBAL_SETTINGS"] = GlobalSettings.get_solo()
         can_view_ledger = bool(
             lease
             and (self.request.user.is_superuser or self.request.user.has_perm("leases.view_lease"))

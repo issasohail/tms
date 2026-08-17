@@ -74,6 +74,14 @@ def _definition_defaults():
     }
 
 
+def _inventory_rows(obj):
+    if obj is None:
+        return []
+    prefetched = getattr(obj, "_prefetched_objects_cache", {}).get("inventory_items")
+    if prefetched is not None:
+        return prefetched
+    return list(obj.inventory_items.select_related("item").all())
+
 def effective_inventory(property_obj=None, unit=None, lease=None):
     if lease is not None:
         unit = lease.unit
@@ -88,13 +96,13 @@ def effective_inventory(property_obj=None, unit=None, lease=None):
         property_obj = unit.property
     values = _definition_defaults()
     if property_obj is not None:
-        for row in property_obj.inventory_items.select_related("item").all():
+        for row in _inventory_rows(property_obj):
             values[row.item_id].update({
                 "quantity": row.quantity, "condition": row.condition,
                 "is_included": row.is_included, "source": "Property", "override": row,
             })
     if unit is not None:
-        for row in unit.inventory_items.select_related("item").all():
+        for row in _inventory_rows(unit):
             values[row.item_id].update({
                 "quantity": row.quantity, "condition": row.condition,
                 "is_included": row.is_included, "source": "Unit", "override": row,

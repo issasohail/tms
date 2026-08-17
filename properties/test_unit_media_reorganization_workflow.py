@@ -30,7 +30,8 @@ class UnitMediaReorganizationWorkflowTests(TransactionTestCase):
 
     def tearDown(self):
         executor = MigrationExecutor(connection)
-        executor.migrate([self.migrate_to])
+        executor.migrate([("properties", "0031_seed_two_room_flat_move_out_charges")])
+
         self._media_override.disable()
         self._media_directory.cleanup()
         super().tearDown()
@@ -114,14 +115,10 @@ class UnitMediaReorganizationWorkflowTests(TransactionTestCase):
         )
         duplicated = self.UnitMedia.objects.create(
             unit=unit88,
-            stamped_file=(
-                "properties/F35-F35-FLAT-03/stamped/duplicate-stamped.jpg"
-            ),
+            stamped_file=("properties/F35-F35-FLAT-03/stamped/duplicate-stamped.jpg"),
             description="Duplicated path fixture",
         )
-        canonical_name = (
-            "properties/F35/units/F35-FLAT-03/original/canonical.jpg"
-        )
+        canonical_name = "properties/F35/units/F35-FLAT-03/original/canonical.jpg"
         canonical = self.UnitMedia.objects.create(
             unit=unit88,
             file=canonical_name,
@@ -166,7 +163,13 @@ class UnitMediaReorganizationWorkflowTests(TransactionTestCase):
 
         # Phase A: every non-empty source exists and the DB contains legacy paths.
         before_paths = self._db_paths(self.UnitMedia)
-        expected_records = {media17.pk, media86.pk, media88.pk, duplicated.pk, canonical.pk}
+        expected_records = {
+            media17.pk,
+            media86.pk,
+            media88.pk,
+            duplicated.pk,
+            canonical.pk,
+        }
         self.assertEqual(set(before_paths), expected_records)
         for paths in before_paths.values():
             for stored_name in paths.values():

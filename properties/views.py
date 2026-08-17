@@ -628,22 +628,34 @@ def _unit_detail_context(unit):
 
 
 def _unit_meter_rows(unit):
-    from smart_meter.models import Meter, MeterInstallation, MeterReading
+    from smart_meter.models import (
+        LiveReading,
+        Meter,
+        MeterAssignmentHistory,
+        MeterInstallation,
+        MeterReading,
+    )
 
+    latest_reading = MeterReading.objects.filter(
+        meter_id=OuterRef("meter_id")
+    ).order_by("-ts", "-id")
     installation_rows = list(
         MeterInstallation.objects.filter(unit=unit)
         .select_related("meter")
+        .annotate(
+            latest_reading_ts=Subquery(latest_reading.values("ts")[:1]),
+            latest_reading_energy=Subquery(
+                latest_reading.values("total_energy")[:1]
+            ),
+        )
         .order_by("-is_active", "-start_date", "-id")
     )
     history_rows = []
     seen_meter_ids = set()
 
     for installation in installation_rows:
-        last_reading = (
-            MeterReading.objects.filter(meter=installation.meter)
-            .order_by("-ts")
-            .first()
-        )
+        last_ts = installation.latest_reading_ts
+        last_energy = installation.latest_reading_energy
         display_is_active = (
             installation.is_active
             and installation.end_date is None
@@ -651,11 +663,11 @@ def _unit_meter_rows(unit):
             and installation.meter.unit_id == unit.id
         )
         display_end_date = installation.end_date
-        if not display_is_active and display_end_date is None and last_reading:
-            display_end_date = timezone.localtime(last_reading.ts).date()
+        if not display_is_active and display_end_date is None and last_ts:
+            display_end_date = timezone.localtime(last_ts).date()
         display_end_reading = installation.end_reading
-        if display_end_reading is None and last_reading:
-            display_end_reading = last_reading.total_energy
+        if display_end_reading is None:
+            display_end_reading = last_energy
         seen_meter_ids.add(installation.meter_id)
         history_rows.append(
             {
@@ -669,30 +681,46 @@ def _unit_meter_rows(unit):
             }
         )
 
-    cached_unit_meters = (
+    latest_assignment = MeterAssignmentHistory.objects.filter(
+        meter_id=OuterRef("pk"), new_unit=unit
+    ).order_by("-change_date", "-id")
+    latest_meter_reading = MeterReading.objects.filter(
+        meter_id=OuterRef("pk")
+    ).order_by("-ts", "-id")
+    latest_live_energy = LiveReading.objects.filter(
+        meter_id=OuterRef("pk")
+    ).values("total_energy")[:1]
+
+    assignment_start_reading = MeterReading.objects.filter(
+        meter_id=OuterRef("pk"),
+        ts__lte=OuterRef("latest_assignment_date"),
+    ).order_by("-ts", "-id")
+    cached_unit_meters = list(
         Meter.objects.filter(unit=unit)
         .select_related("unit")
+        .annotate(
+            latest_assignment_date=Subquery(
+                latest_assignment.values("change_date")[:1]
+            ),
+            assignment_start_reading=Subquery(
+                assignment_start_reading.values("total_energy")[:1]
+            ),
+            latest_reading_ts=Subquery(latest_meter_reading.values("ts")[:1]),
+            latest_reading_energy=Subquery(
+                latest_meter_reading.values("total_energy")[:1]
+            ),
+            latest_live_energy=Subquery(latest_live_energy),
+        )
         .order_by("-is_active", "-installed_at", "meter_number")
     )
+
     for meter in cached_unit_meters:
         if meter.pk in seen_meter_ids:
             continue
-        assignment = (
-            meter.assignment_history.filter(new_unit=unit)
-            .order_by("-change_date", "-id")
-            .first()
-        )
-        if assignment:
-            start_dt = timezone.localtime(assignment.change_date)
-            start_date = start_dt.date()
-            start_reading_obj = (
-                MeterReading.objects.filter(meter=meter, ts__lte=assignment.change_date)
-                .order_by("-ts")
-                .first()
-            )
-            start_reading = (
-                start_reading_obj.total_energy if start_reading_obj else None
-            )
+        assignment_date = meter.latest_assignment_date
+        if assignment_date:
+            start_date = timezone.localtime(assignment_date).date()
+            start_reading = meter.assignment_start_reading
             reason = "assignment"
         else:
             start_date = (
@@ -704,7 +732,6 @@ def _unit_meter_rows(unit):
             reason = "cached unit"
 
         display_is_active = bool(meter.is_active and meter.unit_id == unit.id)
-        last_reading = MeterReading.objects.filter(meter=meter).order_by("-ts").first()
         history_rows.append(
             {
                 "meter": meter,
@@ -712,11 +739,14 @@ def _unit_meter_rows(unit):
                 "end_date": None
                 if display_is_active
                 else (
-                    timezone.localtime(last_reading.ts).date() if last_reading else None
+                    timezone.localtime(meter.latest_reading_ts).date()
+                    if meter.latest_reading_ts
+                    else None
                 ),
                 "start_reading": start_reading,
-                "end_reading": getattr(meter.latest_live, "total_energy", None)
-                or (last_reading.total_energy if last_reading else None),
+                "end_reading": meter.latest_live_energy
+                if meter.latest_live_energy is not None
+                else meter.latest_reading_energy,
                 "reason": reason,
                 "is_active": display_is_active,
             }
@@ -1060,6 +1090,16 @@ class UnitDetailView(LoginRequiredMixin, DetailView):
             super()
             .get_queryset()
             .select_related("property", "building_type", "interest_type")
+            .prefetch_related(
+                Prefetch(
+                    "property__inventory_items",
+                    queryset=PropertyInventoryItem.objects.select_related("item"),
+                ),
+                Prefetch(
+                    "inventory_items",
+                    queryset=UnitInventoryItem.objects.select_related("item"),
+                ),
+            )
         )
 
     def get_context_data(self, **kwargs):

@@ -790,7 +790,9 @@ def meter_list(request):
         "unit_rate", "min_balance_alert", "min_balance_cutoff", "is_active",
         "installed_at", "power_status", "unit_id",
         "unit__id", "unit__property_id", "unit__unit_number",
+        "unit__electricity_unit_rate",
         "unit__property__id", "unit__property__property_name",
+        "unit__property__electricity_unit_rate",
     )
 
     # (Optional) ensure each row has a balance value for scripts like "auto-select negative"
@@ -1121,10 +1123,32 @@ def meter_role_update(request, pk):
 
 @login_required
 def meter_check_group_list(request):
+    from django.db.models import Count
+
+    today = timezone.localdate()
     groups = (
         MeterCheckGroup.objects
-        .select_related("property", "check_meter", "check_meter__unit")
-        .prefetch_related("memberships")
+        .select_related(
+            "property",
+            "check_meter",
+            "check_meter__unit",
+            "check_meter__unit__property",
+        )
+        .annotate(
+            active_billing_meter_count=Count(
+                "memberships",
+                filter=(
+                    Q(memberships__is_active=True)
+                    & Q(memberships__start_date__lte=today)
+                    & (
+                        Q(memberships__end_date__isnull=True)
+                        | Q(memberships__end_date__gte=today)
+                    )
+                    & Q(memberships__meter__meter_role=Meter.METER_ROLE_BILLING)
+                ),
+                distinct=True,
+            )
+        )
         .order_by("property__property_name", "name")
     )
     return render(request, "smart_meter/check_group_list.html", {"groups": groups})
@@ -2861,18 +2885,21 @@ def reading_list(request):
     qs = request.GET.copy()
     qs.pop("page", None)
 
+    meter_options = Meter.objects.only(
+        "id", "meter_number", "meter_role", "unit_id"
+    )
     filtered_meters_ctx = (
-        Meter.objects.filter(unit_id=unit_id) if unit_id else
-        Meter.objects.filter(unit__property_id=prop_id) if prop_id else
-        Meter.objects.all()
+        meter_options.filter(unit_id=unit_id) if unit_id else
+        meter_options.filter(unit__property_id=prop_id) if prop_id else
+        meter_options
     )
     if role in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
         filtered_meters_ctx = filtered_meters_ctx.filter(meter_role=role)
 
     ctx = dict(
-        all_properties=Property.objects.order_by("property_name"),
-        filtered_units=(Unit.objects.filter(property_id=prop_id)
-                        if prop_id else Unit.objects.all()).order_by("unit_number"),
+        all_properties=Property.objects.only("id", "property_name").order_by("property_name"),
+        filtered_units=(Unit.objects.only("id", "property_id", "unit_number").filter(property_id=prop_id)
+                        if prop_id else Unit.objects.only("id", "property_id", "unit_number")).order_by("unit_number"),
         filtered_meters=filtered_meters_ctx.order_by("meter_number"),
         current_property=prop_id,
         current_unit=unit_id,

@@ -1,5 +1,3 @@
-from datetime import date, timedelta
-from decimal import Decimal
 import base64
 import hashlib
 import hmac
@@ -8,14 +6,16 @@ import json
 import re
 import tempfile
 import uuid
+from datetime import date, timedelta
+from decimal import Decimal
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.cache import cache
-from django.apps import apps as django_apps
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
@@ -25,25 +25,12 @@ from django.urls import reverse
 from django.utils import timezone
 from pypdf import PdfReader, PdfWriter
 
-from whatsapp.services.estamp_processor import match_properties, match_unit
-from whatsapp.services.payment_matching import extract_payment_text_fields
-from whatsapp.services.openai_ocr import (
-    _normalize as normalize_openai_receipt,
-    extract_receipt_with_openai,
-    validate_payment_receipt,
-)
-from whatsapp.services.whatsapp_ai import (
-    WhatsAppAIAssistant,
-    _ocr_looks_like_payment,
-    detect_intent,
-    process_inbound_whatsapp_message,
-)
 from core.models import GlobalSettings
 from core.utils.identity import format_phone
-from leases.models import Lease, LeaseFamilyMember
 from invoices.models import Invoice
-from payments.models import Payment, PaymentDetail
+from leases.models import Lease, LeaseFamilyMember
 from leases.models_lease_photos import LeaseMedia
+from payments.models import Payment, PaymentDetail
 from properties.models import Property, Unit
 from tenants.models import Tenant
 from whatsapp.models import (
@@ -60,6 +47,7 @@ from whatsapp.services.ai.orchestrator import WhatsAppAIOrchestrator, fallback_d
 from whatsapp.services.ai.safety import mask_sensitive_text
 from whatsapp.services.ai.tool_registry import ToolContext, execute_tool
 from whatsapp.services.ai_config import WhatsAppAIConfig
+from whatsapp.services.estamp_processor import match_properties, match_unit
 from whatsapp.services.handover.lifecycle import (
     accept_handover,
     close_handover,
@@ -70,11 +58,28 @@ from whatsapp.services.handover.lifecycle import (
 from whatsapp.services.handover.notifications import notify_new_handover
 from whatsapp.services.handover.relay import relay_staff_reply
 from whatsapp.services.handover.routing import eligible_staff, staff_can_access_handover
-from whatsapp.services.handover.workflow import handle_active_tenant_message, handle_staff_handover_message
+from whatsapp.services.handover.workflow import (
+    handle_active_tenant_message,
+    handle_staff_handover_message,
+)
 from whatsapp.services.identity.mode_resolver import infer_mode
 from whatsapp.services.identity.sender_resolver import resolve_sender
+from whatsapp.services.openai_ocr import (
+    _normalize as normalize_openai_receipt,
+)
+from whatsapp.services.openai_ocr import (
+    extract_receipt_with_openai,
+    validate_payment_receipt,
+)
+from whatsapp.services.payment_matching import extract_payment_text_fields
 from whatsapp.services.role_mode import resolve_mode, staff_menu_text
 from whatsapp.services.tenant_context import resolve_tenant_and_last_lease
+from whatsapp.services.whatsapp_ai import (
+    WhatsAppAIAssistant,
+    _ocr_looks_like_payment,
+    detect_intent,
+    process_inbound_whatsapp_message,
+)
 from whatsapp.views import _log_webhook_payload
 
 
@@ -175,10 +180,20 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         cls._media_directory.cleanup()
 
     def setUp(self):
-        self.user = get_user_model().objects.create_user("media-approver", password="test")
+        self.user = get_user_model().objects.create_user(
+            "media-approver",
+            password="test",
+        )
         self.user.user_permissions.add(
             *Permission.objects.filter(
-                codename__in=["change_globalsettings", "view_globalsettings", "view_maintenancerequest"]
+                codename__in=[
+                    "change_globalsettings",
+                    "view_globalsettings",
+                    "change_pendingwhatsappmedia",
+                    "change_pendingwhatsapppayment",
+                    "change_pendingwhatsappmaintenance",
+                    "view_maintenancerequest",
+                ]
             )
         )
         self.client.force_login(self.user)
@@ -206,7 +221,7 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
             unit=self.unit,
             start_date=timezone.localdate() - timedelta(days=30),
             end_date=timezone.localdate() + timedelta(days=335),
-            monthly_rent=Decimal("25000"),
+            monthly_rent=Decimal(25000),
             status="active",
         )
 
@@ -372,7 +387,12 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
 
         response = self.client.post(
             reverse("core:save_pending_video_frames", args=[video.pk]),
-            {"frames": [self._jpeg_upload("first.jpg"), self._jpeg_upload("second.jpg", "red")]},
+            {
+                "frames": [
+                    self._jpeg_upload("first.jpg"),
+                    self._jpeg_upload("second.jpg", "red"),
+                ]
+            },
         )
 
         self.assertEqual(response.status_code, 200)
@@ -384,8 +404,12 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
             media_type="image",
         ).order_by("pk")
         self.assertEqual(frames.count(), 2)
-        self.assertTrue(all("[Extracted video frame]" in frame.ai_notes for frame in frames))
-        self.assertTrue(all(frame.file.storage.exists(frame.file.name) for frame in frames))
+        self.assertTrue(
+            all("[Extracted video frame]" in frame.ai_notes for frame in frames)
+        )
+        self.assertTrue(
+            all(frame.file.storage.exists(frame.file.name) for frame in frames)
+        )
 
         detail = self.client.get(
             reverse("core:pending_approval_detail", args=["media", video.pk])
@@ -426,7 +450,9 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
 
     @override_settings(WHATSAPP_MAX_INBOUND_VIDEO_BYTES=32 * 1024 * 1024)
     @patch("whatsapp.services.whatsapp.WhatsAppService.download_media_to_file")
-    def test_background_video_download_uses_large_streaming_limit(self, download_to_file):
+    def test_background_video_download_uses_large_streaming_limit(
+        self, download_to_file
+    ):
         from whatsapp.tasks import download_pending_media
 
         video = PendingWhatsAppMedia.objects.create(
@@ -460,56 +486,79 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
             media_rows.append(
                 PendingWhatsAppMedia.objects.create(
                     phone=self.tenant.phone,
-                    file=ContentFile(b"video-bytes-" + str(index).encode(), name=f"clip-{index}.mp4"),
+                    file=ContentFile(
+                        b"video-bytes-" + str(index).encode(), name=f"clip-{index}.mp4"
+                    ),
                     original_filename=f"clip-{index}.mp4",
                     media_type="video/mp4",
                     whatsapp_media_id=f"provider-video-{index}",
                     purpose=PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
-                    tenant=self.tenant, lease=self.lease, property=self.property, unit=self.unit,
+                    tenant=self.tenant,
+                    lease=self.lease,
+                    property=self.property,
+                    unit=self.unit,
                 )
             )
         pending = PendingWhatsAppMaintenance.objects.create(
-            phone=self.tenant.phone, tenant=self.tenant, lease=self.lease,
-            property=self.property, unit=self.unit, issue_type="Other",
+            phone=self.tenant.phone,
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            issue_type="Other",
             description="Three maintenance videos.",
         )
         pending.media.add(*media_rows)
 
         response = self.client.post(
             reverse("core:pending_approval_approve", args=["maintenance", pending.pk]),
-            HTTP_X_REQUESTED_WITH="XMLHttpRequest", HTTP_ACCEPT="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
         )
         self.assertEqual(response.status_code, 200)
         pending.refresh_from_db()
         final_media = list(pending.created_request.media.order_by("source_order", "id"))
         self.assertEqual(len(final_media), 3)
         self.assertEqual([m.source_order for m in final_media], [1, 2, 3])
-        self.assertEqual([m.source_provider_media_id for m in final_media], [
-            "provider-video-0", "provider-video-1", "provider-video-2"
-        ])
-        detail = self.client.get(reverse("maintenance:request_detail", args=[pending.created_request_id]))
+        self.assertEqual(
+            [m.source_provider_media_id for m in final_media],
+            ["provider-video-0", "provider-video-1", "provider-video-2"],
+        )
+        detail = self.client.get(
+            reverse("maintenance:request_detail", args=[pending.created_request_id])
+        )
         self.assertContains(detail, "<video", count=3)
         self.assertContains(detail, "3 attachments")
 
     def test_duplicate_provider_media_id_is_not_copied_twice(self):
         first = self._pending(
-            filename="same-name.mp4", file=ContentFile(b"video-one", name="same-name.mp4"),
-            media_type="video/mp4", purpose=PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+            filename="same-name.mp4",
+            file=ContentFile(b"video-one", name="same-name.mp4"),
+            media_type="video/mp4",
+            purpose=PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
             whatsapp_media_id="same-provider-id",
         )
         second = self._pending(
-            filename="same-name-duplicate.mp4", file=ContentFile(b"video-two", name="same-name-duplicate.mp4"),
-            media_type="video/mp4", purpose=PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
+            filename="same-name-duplicate.mp4",
+            file=ContentFile(b"video-two", name="same-name-duplicate.mp4"),
+            media_type="video/mp4",
+            purpose=PendingWhatsAppMedia.PURPOSE_MAINTENANCE,
             whatsapp_media_id="same-provider-id",
         )
         pending = PendingWhatsAppMaintenance.objects.create(
-            phone=self.tenant.phone, tenant=self.tenant, lease=self.lease,
-            property=self.property, unit=self.unit, issue_type="Other", description="Duplicate provider media.",
+            phone=self.tenant.phone,
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            issue_type="Other",
+            description="Duplicate provider media.",
         )
         pending.media.add(first, second)
         response = self.client.post(
             reverse("core:pending_approval_approve", args=["maintenance", pending.pk]),
-            HTTP_X_REQUESTED_WITH="XMLHttpRequest", HTTP_ACCEPT="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            HTTP_ACCEPT="application/json",
         )
         self.assertEqual(response.status_code, 200)
         pending.refresh_from_db()
@@ -641,7 +690,10 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
 
         pending.refresh_from_db()
         self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_PENDING)
-        self.assertContains(response, "Choose Lease Gallery, Lease Document, Property Photo, or Unit Photo before approval.")
+        self.assertContains(
+            response,
+            "Choose Lease Gallery, Lease Document, Property Photo, or Unit Photo before approval.",
+        )
 
     def test_successful_lease_gallery_approval_creates_lease_media(self):
         pending = self._pending(
@@ -740,7 +792,9 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         pending.refresh_from_db()
         self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_PENDING)
         self.assertFalse(PropertyMedia.objects.filter(property=self.property).exists())
-        self.assertContains(response, "The media could not be saved to the selected destination.")
+        self.assertContains(
+            response, "The media could not be saved to the selected destination."
+        )
 
     def test_other_media_can_be_reclassified_to_pending_payment(self):
         pending = self._pending(filename="payment-receipt.jpg", media_type="image")
@@ -752,7 +806,9 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
             "bank_information": {"channel": "Bank Transfer"},
         }
 
-        with patch("whatsapp.services.media_processor.run_payment_ocr", return_value=ocr_result):
+        with patch(
+            "whatsapp.services.media_processor.run_payment_ocr", return_value=ocr_result
+        ):
             response = self._approve(pending, "payment_receipt")
 
         pending.refresh_from_db()
@@ -812,7 +868,9 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
             reference="718126681061",
         )
 
-        with patch("whatsapp.services.whatsapp.WhatsAppService.send_payment_confirmation") as send_confirmation:
+        with patch(
+            "whatsapp.services.whatsapp.WhatsAppService.send_payment_confirmation"
+        ) as send_confirmation:
             response = self.client.post(
                 reverse("core:pending_approval_approve", args=["payment", pending.pk]),
             )
@@ -822,7 +880,9 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         self.assertTrue(pending.approved)
         self.assertIsNotNone(pending.created_payment)
         send_confirmation.assert_called_once()
-        self.assertEqual(send_confirmation.call_args.kwargs["phone_number"], self.tenant.phone)
+        self.assertEqual(
+            send_confirmation.call_args.kwargs["phone_number"], self.tenant.phone
+        )
         self.assertIn("Rs. 63,580.00", send_confirmation.call_args.kwargs["message"])
 
     def test_pending_payment_detail_shows_ocr_and_tenant_confirmed_values(self):
@@ -879,7 +939,7 @@ class WhatsAppAssistantIntentTests(SimpleTestCase):
 
     def test_payment_text_parser_understands_yesterday(self):
         parsed = extract_payment_text_fields("paid Rs 12000 yesterday ref ABCD12345")
-        self.assertEqual(parsed["amount"], Decimal("12000"))
+        self.assertEqual(parsed["amount"], Decimal(12000))
         self.assertEqual(parsed["date"], timezone.localdate() - timedelta(days=1))
         self.assertEqual(parsed["reference"], "ABCD12345")
 
@@ -911,17 +971,25 @@ class WhatsAppAssistantIntentTests(SimpleTestCase):
         )
 
     def test_multiple_requests_produce_multiple_tool_calls(self):
-        decision = fallback_decision("Mera balance aur last payment bata dein aur bathroom mein pani leak ho raha hai")
+        decision = fallback_decision(
+            "Mera balance aur last payment bata dein aur bathroom mein pani leak ho raha hai"
+        )
         self.assertEqual(
             [item.name for item in decision.tool_calls],
             ["get_tenant_balance", "get_last_payment", "create_maintenance_draft"],
         )
 
     def test_provider_failure_uses_rules(self):
-        config = WhatsAppAIConfig(True, "openai", "test-model", "basic", False, True, routing_enabled=True)
+        config = WhatsAppAIConfig(
+            True, "openai", "test-model", "basic", False, True, routing_enabled=True
+        )
         orchestrator = WhatsAppAIOrchestrator(config)
-        with patch.object(orchestrator, "_openai_decision", side_effect=RuntimeError("offline")):
-            decision, fallback_used, error, _usage = orchestrator._decision("my balance", {})
+        with patch.object(
+            orchestrator, "_openai_decision", side_effect=RuntimeError("offline")
+        ):
+            decision, fallback_used, error, _usage = orchestrator._decision(
+                "my balance", {}
+            )
         self.assertTrue(fallback_used)
         self.assertIn("offline", error)
         self.assertEqual(decision.tool_calls[0].name, "get_tenant_balance")
@@ -932,12 +1000,18 @@ class WhatsAppAssistantIntentTests(SimpleTestCase):
         self.assertNotIn("12345678901234", masked)
 
     def test_ai_cannot_override_server_identity_ids(self):
-        context = ToolContext(sender=None, conversation=None, message_log=None, lease=None)
-        result = execute_tool("get_tenant_balance", {"tenant_id": 999, "lease_id": 999}, context)
+        context = ToolContext(
+            sender=None, conversation=None, message_log=None, lease=None
+        )
+        result = execute_tool(
+            "get_tenant_balance", {"tenant_id": 999, "lease_id": 999}, context
+        )
         self.assertFalse(result["ok"])
 
     def test_unknown_ai_tool_is_rejected(self):
-        context = ToolContext(sender=None, conversation=None, message_log=None, lease=None)
+        context = ToolContext(
+            sender=None, conversation=None, message_log=None, lease=None
+        )
         self.assertFalse(execute_tool("django_orm_query", {}, context)["ok"])
 
     def test_exact_menu_commands_remain_supported(self):
@@ -1033,7 +1107,10 @@ class OpenAIReceiptOCRTests(SimpleTestCase):
 
         with self.assertLogs("whatsapp.services.openai_ocr", level="INFO") as logs:
             result = extract_receipt_with_openai(
-                self._file(), "gpt-4o-mini", message_id="wamid.low", receipt_expected=True
+                self._file(),
+                "gpt-4o-mini",
+                message_id="wamid.low",
+                receipt_expected=True,
             )
 
         self.assertTrue(result["validation"]["is_valid"])
@@ -1056,7 +1133,10 @@ class OpenAIReceiptOCRTests(SimpleTestCase):
         ]
 
         result = extract_receipt_with_openai(
-            self._file(), "gpt-4o-mini", message_id="wamid.fallback", receipt_expected=True
+            self._file(),
+            "gpt-4o-mini",
+            message_id="wamid.fallback",
+            receipt_expected=True,
         )
 
         calls = openai.return_value.responses.create.call_args_list
@@ -1071,7 +1151,10 @@ class OpenAIReceiptOCRTests(SimpleTestCase):
         openai.return_value.responses.create.return_value = self._result(bank_name=None)
 
         result = extract_receipt_with_openai(
-            self._file(), "gpt-4o-mini", message_id="wamid.optional", receipt_expected=True
+            self._file(),
+            "gpt-4o-mini",
+            message_id="wamid.optional",
+            receipt_expected=True,
         )
 
         self.assertTrue(result["validation"]["is_valid"])
@@ -1099,7 +1182,10 @@ class OpenAIReceiptOCRTests(SimpleTestCase):
         ]
 
         result = extract_receipt_with_openai(
-            self._file(), "gpt-4o-mini", message_id="wamid.reference", receipt_expected=True
+            self._file(),
+            "gpt-4o-mini",
+            message_id="wamid.reference",
+            receipt_expected=True,
         )
 
         self.assertEqual(openai.return_value.responses.create.call_count, 2)
@@ -1120,7 +1206,9 @@ class OpenAIReceiptOCRTests(SimpleTestCase):
 
     @patch("whatsapp.services.openai_ocr._openai_client")
     def test_quota_error_is_safe_and_does_not_retry_uncontrollably(self, openai):
-        openai.return_value.responses.create.side_effect = RuntimeError("insufficient_quota")
+        openai.return_value.responses.create.side_effect = RuntimeError(
+            "insufficient_quota"
+        )
 
         result = extract_receipt_with_openai(
             self._file(), "gpt-4o-mini", message_id="wamid.quota", receipt_expected=True
@@ -1148,42 +1236,87 @@ class WhatsAppControlledAssistantTests(TestCase):
     def setUp(self):
         cache.clear()
         self.phone = "+923001112233"
-        self.tenant = Tenant.objects.create(first_name="Ahmed", last_name="Khan", phone=self.phone, cnic="37405-1111111-1")
-        self.property = Property.objects.create(
-            property_name="Test Residency", owner_name="Owner", owner_cnic="37405-2222222-2",
-            type="Residential", property_type="apartment", total_units=2,
+        self.tenant = Tenant.objects.create(
+            first_name="Ahmed",
+            last_name="Khan",
+            phone=self.phone,
+            cnic="37405-1111111-1",
         )
-        self.unit = Unit.objects.create(property=self.property, unit_number="A-04", status="occupied")
+        self.property = Property.objects.create(
+            property_name="Test Residency",
+            owner_name="Owner",
+            owner_cnic="37405-2222222-2",
+            type="Residential",
+            property_type="apartment",
+            total_units=2,
+        )
+        self.unit = Unit.objects.create(
+            property=self.property, unit_number="A-04", status="occupied"
+        )
         self.lease = Lease.objects.create(
-            tenant=self.tenant, unit=self.unit, start_date=timezone.localdate() - timedelta(days=30),
-            end_date=timezone.localdate() + timedelta(days=335), monthly_rent=Decimal("25000"), status="active",
+            tenant=self.tenant,
+            unit=self.unit,
+            start_date=timezone.localdate() - timedelta(days=30),
+            end_date=timezone.localdate() + timedelta(days=335),
+            monthly_rent=Decimal(25000),
+            status="active",
         )
         User = get_user_model()
         self.staff1 = User.objects.create_user(
-            "accounts1", email="accounts1@example.com", whatsapp_number="+923009990001", is_staff=True
+            "accounts1",
+            email="accounts1@example.com",
+            whatsapp_number="+923009990001",
+            is_staff=True,
         )
         self.staff2 = User.objects.create_user(
-            "accounts2", email="accounts2@example.com", whatsapp_number="+923009990002", is_staff=True
+            "accounts2",
+            email="accounts2@example.com",
+            whatsapp_number="+923009990002",
+            is_staff=True,
         )
         self.unauthorized = User.objects.create_user(
-            "outsider", email="outsider@example.com", whatsapp_number="+923009990003", is_staff=True
+            "outsider",
+            email="outsider@example.com",
+            whatsapp_number="+923009990003",
+            is_staff=True,
         )
-        WhatsAppStaffRoutingRule.objects.create(property=self.property, department="general", staff_user=self.staff1, priority=1)
-        WhatsAppStaffRoutingRule.objects.create(property=self.property, department="general", staff_user=self.staff2, priority=2)
+        WhatsAppStaffRoutingRule.objects.create(
+            property=self.property,
+            department="general",
+            staff_user=self.staff1,
+            priority=1,
+        )
+        WhatsAppStaffRoutingRule.objects.create(
+            property=self.property,
+            department="general",
+            staff_user=self.staff2,
+            priority=2,
+        )
         self.conversation = WhatsAppConversation.objects.create(
-            phone_number=self.phone, tenant=self.tenant, selected_lease=self.lease,
+            phone_number=self.phone,
+            tenant=self.tenant,
+            selected_lease=self.lease,
             selected_mode=WhatsAppConversation.MODE_TENANT,
             mode_expires_at=timezone.now() + timedelta(hours=1),
         )
         self.message = WhatsAppMessageLog.objects.create(
-            direction=WhatsAppMessageLog.DIRECTION_INBOUND, phone_number=self.phone,
-            wa_message_id="wamid.base", message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
-            status=WhatsAppMessageLog.STATUS_RECEIVED, payload={"type": "text", "text": {"body": "Human please"}},
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.phone,
+            wa_message_id="wamid.base",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": "Human please"}},
         )
         self.handover = WhatsAppHandover.objects.create(
-            conversation=self.conversation, tenant=self.tenant, lease=self.lease,
-            property=self.property, unit=self.unit, tenant_phone=self.phone,
-            reason="Requested staff", tenant_message="Human please", department="general",
+            conversation=self.conversation,
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+            tenant_phone=self.phone,
+            reason="Requested staff",
+            tenant_message="Human please",
+            department="general",
         )
 
     def test_tenant_only_sender_resolves_active_lease(self):
@@ -1192,9 +1325,14 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertFalse(sender.has_staff)
         self.assertEqual(sender.active_leases, [self.lease])
 
-    def test_duplicate_tenant_rows_for_same_active_lease_do_not_repeat_account_choice(self):
+    def test_duplicate_tenant_rows_for_same_active_lease_do_not_repeat_account_choice(
+        self,
+    ):
         family = Tenant.objects.create(
-            first_name="Family", last_name="Member", phone=self.phone, cnic="37405-4444444-4"
+            first_name="Family",
+            last_name="Member",
+            phone=self.phone,
+            cnic="37405-4444444-4",
         )
         LeaseFamilyMember.objects.create(
             lease=self.lease,
@@ -1228,7 +1366,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             status=WhatsAppMessageLog.STATUS_RECEIVED,
             payload={"type": "text", "text": {"body": "Please give invoice detail"}},
         )
-        detail_response, detail_intent, _ = assistant._handle(detail_log, self.conversation)
+        detail_response, detail_intent, _ = assistant._handle(
+            detail_log, self.conversation
+        )
 
         self.assertEqual(detail_intent, "latest_invoice")
         self.assertIn(invoice.invoice_number, detail_response)
@@ -1242,7 +1382,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             status=WhatsAppMessageLog.STATUS_RECEIVED,
             payload={"type": "text", "text": {"body": "View invoice have issue"}},
         )
-        issue_response, issue_intent, _ = assistant._handle(issue_log, self.conversation)
+        issue_response, issue_intent, _ = assistant._handle(
+            issue_log, self.conversation
+        )
 
         self.assertEqual(issue_intent, "invoice_issue")
         self.assertIn(invoice.invoice_number, issue_response)
@@ -1260,9 +1402,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         }
         self.message.save(update_fields=["payload", "updated_at"])
 
-        response, intent, metadata = WhatsAppAIAssistant(
-            service=MagicMock()
-        )._handle(self.message, self.conversation)
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            self.message, self.conversation
+        )
 
         self.assertEqual(intent, "unit_photo_upload_link")
         self.assertIn("No login is required", response)
@@ -1308,7 +1450,9 @@ class WhatsAppControlledAssistantTests(TestCase):
 
         conversation.refresh_from_db()
         self.assertIn("Confirm upload target", response)
-        response = WhatsAppAIAssistant(service=MagicMock())._confirm_staff_upload_target(
+        response = WhatsAppAIAssistant(
+            service=MagicMock()
+        )._confirm_staff_upload_target(
             self.message,
             conversation,
             self.staff1,
@@ -1414,12 +1558,8 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual(intent, "staff_estamp_lease_confirm")
         self.assertIn("Test Residency", response)
         self.assertIn("Current tenant: Ahmed Khan", response)
-        self.assertEqual(
-            conversation.pending_state, "staff_estamp_lease_confirm"
-        )
-        self.assertEqual(
-            staged.target_kind, PendingWhatsAppMedia.TARGET_LEASE_ESTAMP
-        )
+        self.assertEqual(conversation.pending_state, "staff_estamp_lease_confirm")
+        self.assertEqual(staged.target_kind, PendingWhatsAppMedia.TARGET_LEASE_ESTAMP)
         self.assertEqual(staged.status, PendingWhatsAppMedia.STATUS_PENDING)
         self.assertIsNone(staged.lease)
 
@@ -1431,9 +1571,7 @@ class WhatsAppControlledAssistantTests(TestCase):
             status=WhatsAppMessageLog.STATUS_RECEIVED,
             payload={"type": "text", "text": {"body": "YES"}},
         )
-        response, intent, _metadata = assistant._handle(
-            lease_confirm, conversation
-        )
+        response, intent, _metadata = assistant._handle(lease_confirm, conversation)
 
         staged.refresh_from_db()
         conversation.refresh_from_db()
@@ -1464,7 +1602,7 @@ class WhatsAppControlledAssistantTests(TestCase):
             unit=self.unit,
             start_date=timezone.localdate() - timedelta(days=5),
             end_date=timezone.localdate() + timedelta(days=360),
-            monthly_rent=Decimal("27000"),
+            monthly_rent=Decimal(27000),
             status="active",
         )
         conversation = WhatsAppConversation.objects.create(
@@ -1486,9 +1624,7 @@ class WhatsAppControlledAssistantTests(TestCase):
 
         conversation.refresh_from_db()
         self.assertEqual(intent, "staff_estamp_lease_selection")
-        self.assertEqual(
-            conversation.pending_state, "staff_estamp_lease_selection"
-        )
+        self.assertEqual(conversation.pending_state, "staff_estamp_lease_selection")
         self.assertIn("Property: Test Residency", response)
         self.assertIn("Current tenant: Ahmed Khan", response)
         self.assertIn("Current tenant: Sara Ali", response)
@@ -1534,9 +1670,7 @@ class WhatsAppControlledAssistantTests(TestCase):
             conversation=conversation,
             original_whatsapp_message=document_log,
             phone=self.staff1.whatsapp_number,
-            file=ContentFile(
-                encrypted.getvalue(), name="protected-estamp.pdf"
-            ),
+            file=ContentFile(encrypted.getvalue(), name="protected-estamp.pdf"),
             original_filename="protected-estamp.pdf",
             media_type="document",
         )
@@ -1576,9 +1710,7 @@ class WhatsAppControlledAssistantTests(TestCase):
                 "text": {"body": "correct-secret"},
             },
         )
-        response, intent, _metadata = assistant._handle(
-            password_log, conversation
-        )
+        response, intent, _metadata = assistant._handle(password_log, conversation)
 
         password_log.refresh_from_db()
         conversation.refresh_from_db()
@@ -1685,7 +1817,10 @@ class WhatsAppControlledAssistantTests(TestCase):
             wa_message_id="wamid.payment.receipt.ocr",
             message_type=WhatsAppMessageLog.MESSAGE_TYPE_IMAGE,
             status=WhatsAppMessageLog.STATUS_RECEIVED,
-            payload={"type": "image", "image": {"caption": "", "filename": "receipt.jpg"}},
+            payload={
+                "type": "image",
+                "image": {"caption": "", "filename": "receipt.jpg"},
+            },
         )
         staged = PendingWhatsAppMedia.objects.create(
             conversation=self.conversation,
@@ -1709,8 +1844,12 @@ class WhatsAppControlledAssistantTests(TestCase):
             "bank_information": {"channel": "Bank Transfer"},
         }
 
-        with patch("whatsapp.services.whatsapp_ai.run_payment_ocr", return_value=ocr_result):
-            response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle_media_message(
+        with patch(
+            "whatsapp.services.whatsapp_ai.run_payment_ocr", return_value=ocr_result
+        ):
+            response, intent, metadata = WhatsAppAIAssistant(
+                service=MagicMock()
+            )._handle_media_message(
                 image_log,
                 self.conversation,
                 "",
@@ -1726,7 +1865,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn("Reply YES", response)
         self.assertEqual(staged.purpose, PendingWhatsAppMedia.PURPOSE_PAYMENT)
         self.assertFalse(PendingWhatsAppPayment.objects.exists())
-        self.assertEqual(self.conversation.pending_state, "payment_receipt_confirmation")
+        self.assertEqual(
+            self.conversation.pending_state, "payment_receipt_confirmation"
+        )
 
         confirm_log = WhatsAppMessageLog.objects.create(
             direction=WhatsAppMessageLog.DIRECTION_INBOUND,
@@ -1746,14 +1887,19 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.conversation.refresh_from_db()
         self.assertEqual(confirmed_intent, "payment_confirmed")
         self.assertIn("Amount: Rs. 63,580.00", confirmed_response)
-        self.assertIn("confirmation shortly after bank verification", confirmed_response)
+        self.assertIn(
+            "confirmation shortly after bank verification", confirmed_response
+        )
         self.assertEqual(payment.amount, Decimal("63580.00"))
         self.assertEqual(payment.status, PendingWhatsAppPayment.STATUS_CONFIRMED)
         self.assertTrue(payment.confirmed_by_tenant)
         self.assertEqual(payment.ocr_json["ocr_amount"], "63580.00")
         self.assertEqual(payment.ocr_json["tenant_amount"], "63580.00")
         self.assertEqual(self.conversation.pending_state, "")
-        self.assertIn("6. Upload Payment Receipt", WhatsAppAIAssistant()._tenant_welcome_menu(self.lease))
+        self.assertIn(
+            "6. Upload Payment Receipt",
+            WhatsAppAIAssistant()._tenant_welcome_menu(self.lease),
+        )
 
     def test_tenant_can_correct_wrong_ocr_amount_before_pending_payment(self):
         staged = PendingWhatsAppMedia.objects.create(
@@ -1854,8 +2000,13 @@ class WhatsAppControlledAssistantTests(TestCase):
 
     def test_staff_only_sender_opens_staff_inbox(self):
         sender = resolve_sender(self.staff1.whatsapp_number)
-        conversation = WhatsAppConversation.objects.create(phone_number=self.staff1.whatsapp_number)
-        self.assertEqual(resolve_mode(conversation, "staff inbox", sender), WhatsAppConversation.MODE_STAFF)
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number
+        )
+        self.assertEqual(
+            resolve_mode(conversation, "staff inbox", sender),
+            WhatsAppConversation.MODE_STAFF,
+        )
 
     def test_dual_role_can_choose_tenant_mode(self):
         self.staff1.whatsapp_number = self.phone
@@ -1865,7 +2016,10 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.conversation.mode_expires_at = None
         self.conversation.pending_state = "mode_selection"
         self.conversation.save()
-        self.assertEqual(resolve_mode(self.conversation, "tenant", sender), WhatsAppConversation.MODE_TENANT)
+        self.assertEqual(
+            resolve_mode(self.conversation, "tenant", sender),
+            WhatsAppConversation.MODE_TENANT,
+        )
 
     def test_dual_role_can_choose_staff_mode(self):
         self.staff1.whatsapp_number = self.phone
@@ -1875,7 +2029,10 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.conversation.mode_expires_at = None
         self.conversation.pending_state = "mode_selection"
         self.conversation.save()
-        self.assertEqual(resolve_mode(self.conversation, "staff", sender), WhatsAppConversation.MODE_STAFF)
+        self.assertEqual(
+            resolve_mode(self.conversation, "staff", sender),
+            WhatsAppConversation.MODE_STAFF,
+        )
 
     def test_role_option_two_opens_staff_main_menu(self):
         self.staff1.whatsapp_number = self.phone
@@ -1887,9 +2044,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.message.payload = {"type": "text", "text": {"body": "2"}}
         self.message.save(update_fields=["payload", "updated_at"])
 
-        response, intent, _metadata = WhatsAppAIAssistant(
-            service=MagicMock()
-        )._handle(self.message, self.conversation)
+        response, intent, _metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            self.message, self.conversation
+        )
 
         self.conversation.refresh_from_db()
         self.assertEqual(intent, "staff")
@@ -1917,9 +2074,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             payload={"type": "text", "text": {"body": "2"}},
         )
 
-        response, intent, _metadata = WhatsAppAIAssistant(
-            service=MagicMock()
-        )._handle(message, conversation)
+        response, intent, _metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            message, conversation
+        )
 
         conversation.refresh_from_db()
         self.assertEqual(intent, "staff")
@@ -1937,9 +2094,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.message.payload = {"type": "text", "text": {"body": "4"}}
         self.message.save(update_fields=["payload", "updated_at"])
 
-        response, intent, _metadata = WhatsAppAIAssistant(
-            service=MagicMock()
-        )._handle(self.message, self.conversation)
+        response, intent, _metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            self.message, self.conversation
+        )
 
         self.conversation.refresh_from_db()
         self.assertEqual(intent, "guest")
@@ -1952,7 +2109,10 @@ class WhatsAppControlledAssistantTests(TestCase):
 
     def test_staff_mode_is_available_when_same_phone_matches_stale_tenant(self):
         Tenant.objects.create(
-            first_name="Second", last_name="Tenant", phone=self.phone, cnic="37405-4444444-4"
+            first_name="Second",
+            last_name="Tenant",
+            phone=self.phone,
+            cnic="37405-4444444-4",
         )
         self.staff1.whatsapp_number = self.phone
         self.staff1.save(update_fields=["whatsapp_number"])
@@ -1964,18 +2124,28 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertFalse(sender.ambiguous)
         self.assertEqual(resolve_mode(self.conversation, "hi", sender), "choose_mode")
         sender = resolve_sender(self.phone, conversation=self.conversation)
-        self.assertEqual(resolve_mode(self.conversation, "staff", sender), WhatsAppConversation.MODE_STAFF)
+        self.assertEqual(
+            resolve_mode(self.conversation, "staff", sender),
+            WhatsAppConversation.MODE_STAFF,
+        )
 
     def test_multiple_tenant_matches_start_verified_tenant_selection(self):
         second_tenant = Tenant.objects.create(
-            first_name="Second", last_name="Tenant", phone=self.phone, cnic="37405-5555555-5"
+            first_name="Second",
+            last_name="Tenant",
+            phone=self.phone,
+            cnic="37405-5555555-5",
         )
-        second_unit = Unit.objects.create(property=self.property, unit_number="B-05", status="occupied")
+        second_unit = Unit.objects.create(
+            property=self.property, unit_number="B-05", status="occupied"
+        )
         Lease.objects.create(
-            tenant=second_tenant, unit=second_unit,
+            tenant=second_tenant,
+            unit=second_unit,
             start_date=timezone.localdate() - timedelta(days=10),
             end_date=timezone.localdate() + timedelta(days=100),
-            monthly_rent=Decimal("20000"), status="active",
+            monthly_rent=Decimal(20000),
+            status="active",
         )
         self.staff1.whatsapp_number = self.phone
         self.staff1.save(update_fields=["whatsapp_number"])
@@ -1984,14 +2154,19 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.conversation.pending_state = "mode_selection"
         self.conversation.save()
         sender = resolve_sender(self.phone, conversation=self.conversation)
-        self.assertEqual(resolve_mode(self.conversation, "tenant", sender), "choose_tenant_identity")
+        self.assertEqual(
+            resolve_mode(self.conversation, "tenant", sender), "choose_tenant_identity"
+        )
         self.conversation.refresh_from_db()
         self.assertEqual(self.conversation.pending_state, "tenant_identity_selection")
         self.assertEqual(len(self.conversation.context["tenant_identity_options"]), 2)
 
     def test_stale_tenant_phone_record_is_not_shown_as_an_account(self):
         Tenant.objects.create(
-            first_name="Old", last_name="Account", phone=self.phone, cnic="37405-9999999-9"
+            first_name="Old",
+            last_name="Account",
+            phone=self.phone,
+            cnic="37405-9999999-9",
         )
 
         sender = resolve_sender(self.phone)
@@ -2024,17 +2199,27 @@ class WhatsAppControlledAssistantTests(TestCase):
 
     def test_staff_lease_action_accepts_property_unit_shortcut(self):
         basement = Property.objects.create(
-            property_name="F56 Basement", owner_name="Owner", owner_cnic="37405-7777777-7",
-            type="Residential", property_type="apartment", total_units=1,
+            property_name="F56 Basement",
+            owner_name="Owner",
+            owner_cnic="37405-7777777-7",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
         )
-        room = Unit.objects.create(property=basement, unit_number="F56-ROOM# 02", status="occupied")
+        room = Unit.objects.create(
+            property=basement, unit_number="F56-ROOM# 02", status="occupied"
+        )
         room_lease = Lease.objects.create(
-            tenant=self.tenant, unit=room,
+            tenant=self.tenant,
+            unit=room,
             start_date=timezone.localdate() - timedelta(days=10),
             end_date=timezone.localdate() + timedelta(days=100),
-            monthly_rent=Decimal("18000"), status="active",
+            monthly_rent=Decimal(18000),
+            status="active",
         )
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=basement)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=basement
+        )
         assistant = WhatsAppAIAssistant(service=MagicMock())
         staff_conversation = WhatsAppConversation.objects.create(
             phone_number=self.staff1.whatsapp_number,
@@ -2043,7 +2228,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             mode_expires_at=timezone.now() + timedelta(hours=1),
         )
 
-        prompt = assistant._start_staff_lease_target(staff_conversation, self.staff1, "lease_balance")
+        prompt = assistant._start_staff_lease_target(
+            staff_conversation, self.staff1, "lease_balance"
+        )
         response = assistant._consume_staff_lease_target(
             self.message, staff_conversation, "f56-room2", self.staff1
         )
@@ -2066,7 +2253,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn("Selected: F56 Basement", follow_up)
 
     def test_unit_only_staff_shortcut_asks_for_property(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         assistant = WhatsAppAIAssistant(service=MagicMock())
         staff_conversation = WhatsAppConversation.objects.create(
             phone_number=self.staff1.whatsapp_number,
@@ -2074,7 +2263,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             selected_mode=WhatsAppConversation.MODE_STAFF,
             mode_expires_at=timezone.now() + timedelta(hours=1),
         )
-        assistant._start_staff_lease_target(staff_conversation, self.staff1, "lease_view")
+        assistant._start_staff_lease_target(
+            staff_conversation, self.staff1, "lease_view"
+        )
 
         response = assistant._consume_staff_lease_target(
             self.message, staff_conversation, "flat 7", self.staff1
@@ -2082,37 +2273,59 @@ class WhatsAppControlledAssistantTests(TestCase):
 
         self.assertIn("Which property contains unit 7?", response)
         staff_conversation.refresh_from_db()
-        self.assertEqual(staff_conversation.pending_state, "staff_lease_target_property")
+        self.assertEqual(
+            staff_conversation.pending_state, "staff_lease_target_property"
+        )
 
     def test_room_number_search_does_not_treat_one_digit_as_phone(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
-        room_tenant = Tenant.objects.create(
-            first_name="Room", last_name="Seven", phone="+923008888888", cnic="37405-8888888-8"
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
         )
-        room_unit = Unit.objects.create(property=self.property, unit_number="ROOM# 07", status="occupied")
+        room_tenant = Tenant.objects.create(
+            first_name="Room",
+            last_name="Seven",
+            phone="+923008888888",
+            cnic="37405-8888888-8",
+        )
+        room_unit = Unit.objects.create(
+            property=self.property, unit_number="ROOM# 07", status="occupied"
+        )
         room_lease = Lease.objects.create(
-            tenant=room_tenant, unit=room_unit,
+            tenant=room_tenant,
+            unit=room_unit,
             start_date=timezone.localdate() - timedelta(days=5),
             end_date=timezone.localdate() + timedelta(days=100),
-            monthly_rent=Decimal("17000"), status="active",
+            monthly_rent=Decimal(17000),
+            status="active",
         )
         unrelated_tenant = Tenant.objects.create(
-            first_name="Phone", last_name="Contains Seven", phone="+923007777777", cnic="37405-7777777-7"
+            first_name="Phone",
+            last_name="Contains Seven",
+            phone="+923007777777",
+            cnic="37405-7777777-7",
         )
-        unrelated_unit = Unit.objects.create(property=self.property, unit_number="C-01", status="occupied")
+        unrelated_unit = Unit.objects.create(
+            property=self.property, unit_number="C-01", status="occupied"
+        )
         Lease.objects.create(
-            tenant=unrelated_tenant, unit=unrelated_unit,
+            tenant=unrelated_tenant,
+            unit=unrelated_unit,
             start_date=timezone.localdate() - timedelta(days=5),
             end_date=timezone.localdate() + timedelta(days=100),
-            monthly_rent=Decimal("16000"), status="active",
+            monthly_rent=Decimal(16000),
+            status="active",
         )
 
-        matches = WhatsAppAIAssistant(service=MagicMock())._staff_search_leases(self.staff1, "room7")
+        matches = WhatsAppAIAssistant(service=MagicMock())._staff_search_leases(
+            self.staff1, "room7"
+        )
 
         self.assertEqual(matches, [room_lease])
 
     def test_staff_result_list_accepts_a_revised_text_search(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         assistant = WhatsAppAIAssistant(service=MagicMock())
         conversation = WhatsAppConversation.objects.create(
             phone_number=self.staff1.whatsapp_number,
@@ -2123,18 +2336,26 @@ class WhatsAppControlledAssistantTests(TestCase):
             },
         )
 
-        with patch.object(assistant, "_consume_staff_search_query", return_value="revised results") as consume:
+        with patch.object(
+            assistant, "_consume_staff_search_query", return_value="revised results"
+        ) as consume:
             response = assistant._consume_staff_search_selection(
                 self.message, conversation, "I want to view room7", self.staff1
             )
 
         self.assertEqual(response, "revised results")
-        consume.assert_called_once_with(self.message, conversation, "I want view room7", self.staff1)
+        consume.assert_called_once_with(
+            self.message, conversation, "I want view room7", self.staff1
+        )
 
     def test_guided_lease_action_accepts_tenant_phone(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         assistant = WhatsAppAIAssistant(service=MagicMock())
-        conversation = WhatsAppConversation.objects.create(phone_number=self.staff1.whatsapp_number)
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number
+        )
         assistant._start_staff_lease_target(conversation, self.staff1, "lease_balance")
 
         response = assistant._consume_staff_lease_target(
@@ -2145,7 +2366,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn(self.unit.unit_number, response)
 
     def test_selected_staff_can_act_as_tenant_with_live_actions_and_exit(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
         self.staff1.groups.add(simulator_group)
         assistant = WhatsAppAIAssistant(service=MagicMock())
@@ -2169,8 +2392,12 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual(start_intent, "staff")
         self.assertIn("ACTING AS TENANT (LIVE)", response)
         conversation.refresh_from_db()
-        self.assertEqual(conversation.context["staff_tenant_simulation"]["tenant_id"], self.tenant.pk)
-        simulated_identity = resolve_sender(self.staff1.whatsapp_number, conversation=conversation)
+        self.assertEqual(
+            conversation.context["staff_tenant_simulation"]["tenant_id"], self.tenant.pk
+        )
+        simulated_identity = resolve_sender(
+            self.staff1.whatsapp_number, conversation=conversation
+        )
         self.assertTrue(simulated_identity.has_staff)
         self.assertTrue(simulated_identity.has_active_tenant)
 
@@ -2182,7 +2409,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             status=WhatsAppMessageLog.STATUS_RECEIVED,
             payload={"type": "text", "text": {"body": "maintenance request"}},
         )
-        live_response, live_intent, _metadata = assistant._handle(maintenance_log, conversation)
+        live_response, live_intent, _metadata = assistant._handle(
+            maintenance_log, conversation
+        )
         self.assertNotEqual(live_intent, "staff_tenant_simulation_read_only")
         self.assertNotIn("read-only", live_response.lower())
 
@@ -2194,14 +2423,18 @@ class WhatsAppControlledAssistantTests(TestCase):
             status=WhatsAppMessageLog.STATUS_RECEIVED,
             payload={"type": "text", "text": {"body": "to staff"}},
         )
-        exit_response, exit_intent, _metadata = assistant._handle(exit_log, conversation)
+        exit_response, exit_intent, _metadata = assistant._handle(
+            exit_log, conversation
+        )
         self.assertEqual(exit_intent, "staff_tenant_simulation_ended")
         self.assertIn("Staff Inbox / Menu", exit_response)
         conversation.refresh_from_db()
         self.assertNotIn("staff_tenant_simulation", conversation.context)
 
     def test_selected_staff_can_open_tenant_testing_by_tenant_number(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
         self.staff1.groups.add(simulator_group)
         conversation = WhatsAppConversation.objects.create(
@@ -2227,7 +2460,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn(self.tenant.get_full_name(), response)
 
     def test_entering_tenant_testing_clears_previous_upload_and_receipt_state(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
         self.staff1.groups.add(simulator_group)
         conversation = WhatsAppConversation.objects.create(
@@ -2276,7 +2511,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             self.assertNotIn(key, conversation.context)
 
     def test_tenant_assist_replies_to_staff_number_with_selected_location(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
         self.staff1.groups.add(simulator_group)
         service = MagicMock()
@@ -2313,11 +2550,15 @@ class WhatsAppControlledAssistantTests(TestCase):
         sent_phone, sent_text = service.send_text.call_args.args[:2]
         self.assertEqual(sent_phone, self.staff1.whatsapp_number)
         self.assertIn("ACTING AS TENANT (LIVE)", sent_text)
-        self.assertIn(f"{self.property.property_name} / {self.unit.unit_number}", sent_text)
+        self.assertIn(
+            f"{self.property.property_name} / {self.unit.unit_number}", sent_text
+        )
         self.assertIn("Type EXIT", sent_text)
 
     def test_tenant_assist_never_switches_to_a_different_tenant_implicitly(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         simulator_group, _created = Group.objects.get_or_create(name="Tenant Simulator")
         self.staff1.groups.add(simulator_group)
         service = MagicMock()
@@ -2337,10 +2578,15 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
         assistant._handle(start_log, conversation)
         conversation.refresh_from_db()
-        self.assertEqual(conversation.context["staff_tenant_simulation"]["tenant_id"], self.tenant.pk)
+        self.assertEqual(
+            conversation.context["staff_tenant_simulation"]["tenant_id"], self.tenant.pk
+        )
 
         other_tenant = Tenant.objects.create(
-            first_name="Different", last_name="Tenant", phone="+923001234567", cnic="37405-5555555-5"
+            first_name="Different",
+            last_name="Tenant",
+            phone="+923001234567",
+            cnic="37405-5555555-5",
         )
         conversation.tenant = other_tenant
         conversation.save(update_fields=["tenant", "updated_at"])
@@ -2366,7 +2612,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIsNone(conversation.selected_lease)
 
     def test_staff_lease_menu_exposes_and_selects_lease_photo_upload(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         conversation = WhatsAppConversation.objects.create(
             phone_number=self.staff1.whatsapp_number,
             staff_user=self.staff1,
@@ -2388,14 +2636,22 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
         conversation.refresh_from_db()
         self.assertIn(self.property.property_name, property_menu)
-        self.assertEqual(conversation.context["staff_lease_target"]["action"], "lease_photo")
+        self.assertEqual(
+            conversation.context["staff_lease_target"]["action"], "lease_photo"
+        )
 
-        assistant._consume_staff_menu_state(self.message, conversation, "1", self.staff1)
+        assistant._consume_staff_menu_state(
+            self.message, conversation, "1", self.staff1
+        )
         conversation.refresh_from_db()
-        assistant._consume_staff_menu_state(self.message, conversation, "1", self.staff1)
+        assistant._consume_staff_menu_state(
+            self.message, conversation, "1", self.staff1
+        )
         conversation.refresh_from_db()
         self.assertEqual(conversation.pending_state, "staff_upload_target_confirmation")
-        assistant._consume_staff_menu_state(self.message, conversation, "YES", self.staff1)
+        assistant._consume_staff_menu_state(
+            self.message, conversation, "YES", self.staff1
+        )
         conversation.refresh_from_db()
         self.assertEqual(conversation.pending_state, "staff_waiting_upload")
         self.assertEqual(
@@ -2406,17 +2662,27 @@ class WhatsAppControlledAssistantTests(TestCase):
 
     def test_staff_media_lease_photos_use_property_then_unit_steps(self):
         property_obj = Property.objects.create(
-            property_name="F35 Building", owner_name="Owner", owner_cnic="37405-7777777-7",
-            type="Residential", property_type="apartment", total_units=1,
+            property_name="F35 Building",
+            owner_name="Owner",
+            owner_cnic="37405-7777777-7",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
         )
-        unit = Unit.objects.create(property=property_obj, unit_number="F35-FLAT# 01", status="occupied")
+        unit = Unit.objects.create(
+            property=property_obj, unit_number="F35-FLAT# 01", status="occupied"
+        )
         lease = Lease.objects.create(
-            tenant=self.tenant, unit=unit,
+            tenant=self.tenant,
+            unit=unit,
             start_date=timezone.localdate() - timedelta(days=10),
             end_date=timezone.localdate() + timedelta(days=100),
-            monthly_rent=Decimal("18000"), status="active",
+            monthly_rent=Decimal(18000),
+            status="active",
         )
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=property_obj)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=property_obj
+        )
         conversation = WhatsAppConversation.objects.create(
             phone_number=self.staff1.whatsapp_number,
             staff_user=self.staff1,
@@ -2512,18 +2778,30 @@ class WhatsAppControlledAssistantTests(TestCase):
 
     def test_staff_media_lease_photo_shortcut_skips_property_and_unit_menus(self):
         property_obj = Property.objects.create(
-            property_name="F35 Building", owner_name="Owner", owner_cnic="37405-7777777-7",
-            type="Residential", property_type="apartment", total_units=1,
+            property_name="F35 Building",
+            owner_name="Owner",
+            owner_cnic="37405-7777777-7",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
         )
-        unit = Unit.objects.create(property=property_obj, unit_number="F35-FLAT# 01", status="occupied")
+        unit = Unit.objects.create(
+            property=property_obj, unit_number="F35-FLAT# 01", status="occupied"
+        )
         lease = Lease.objects.create(
-            tenant=self.tenant, unit=unit,
+            tenant=self.tenant,
+            unit=unit,
             start_date=timezone.localdate() - timedelta(days=10),
             end_date=timezone.localdate() + timedelta(days=100),
-            monthly_rent=Decimal("18000"), status="active",
+            monthly_rent=Decimal(18000),
+            status="active",
         )
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=property_obj)
-        conversation = WhatsAppConversation.objects.create(phone_number=self.staff1.whatsapp_number)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=property_obj
+        )
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number
+        )
         assistant = WhatsAppAIAssistant(service=MagicMock())
         assistant._start_staff_upload_target_search(
             conversation,
@@ -2546,39 +2824,63 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual(conversation.pending_state, "staff_waiting_upload")
         self.assertEqual(conversation.context["staff_upload_lease_id"], lease.pk)
 
-    def test_staff_media_sentence_resolves_structured_target_without_name_false_positive(self):
+    def test_staff_media_sentence_resolves_structured_target_without_name_false_positive(
+        self,
+    ):
         property_obj = Property.objects.create(
-            property_name="F35 Building", owner_name="Owner", owner_cnic="37405-7777777-7",
-            type="Residential", property_type="apartment", total_units=1,
+            property_name="F35 Building",
+            owner_name="Owner",
+            owner_cnic="37405-7777777-7",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
         )
-        unit = Unit.objects.create(property=property_obj, unit_number="F35-FLAT# 01", status="occupied")
+        unit = Unit.objects.create(
+            property=property_obj, unit_number="F35-FLAT# 01", status="occupied"
+        )
         lease = Lease.objects.create(
-            tenant=self.tenant, unit=unit,
+            tenant=self.tenant,
+            unit=unit,
             start_date=timezone.localdate() - timedelta(days=10),
             end_date=timezone.localdate() + timedelta(days=100),
-            monthly_rent=Decimal("18000"), status="active",
+            monthly_rent=Decimal(18000),
+            status="active",
         )
         unrelated_property = Property.objects.create(
-            property_name="Other Place", owner_name="Owner", owner_cnic="37405-8888888-8",
-            type="Residential", property_type="apartment", total_units=2,
+            property_name="Other Place",
+            owner_name="Owner",
+            owner_cnic="37405-8888888-8",
+            type="Residential",
+            property_type="apartment",
+            total_units=2,
         )
         for index, first_name in enumerate(("Danish", "Nisar"), start=1):
             tenant = Tenant.objects.create(
-                first_name=first_name, last_name="Example", phone=f"+92300888888{index}",
+                first_name=first_name,
+                last_name="Example",
+                phone=f"+92300888888{index}",
                 cnic=f"37405-888888{index}-{index}",
             )
             other_unit = Unit.objects.create(
                 property=unrelated_property, unit_number=f"B-{index}", status="occupied"
             )
             Lease.objects.create(
-                tenant=tenant, unit=other_unit,
+                tenant=tenant,
+                unit=other_unit,
                 start_date=timezone.localdate() - timedelta(days=10),
                 end_date=timezone.localdate() + timedelta(days=100),
-                monthly_rent=Decimal("17000"), status="active",
+                monthly_rent=Decimal(17000),
+                status="active",
             )
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=property_obj)
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=unrelated_property)
-        conversation = WhatsAppConversation.objects.create(phone_number=self.staff1.whatsapp_number)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=property_obj
+        )
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=unrelated_property
+        )
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number
+        )
         assistant = WhatsAppAIAssistant(service=MagicMock())
         assistant._start_staff_upload_target_search(
             conversation,
@@ -2588,7 +2890,10 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
 
         response = assistant._consume_staff_upload_target_query(
-            self.message, conversation, "this is for f35 flat 1 lease photos", self.staff1
+            self.message,
+            conversation,
+            "this is for f35 flat 1 lease photos",
+            self.staff1,
         )
 
         conversation.refresh_from_db()
@@ -2608,8 +2913,12 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
 
     def test_staff_media_upload_can_resolve_by_tenant_name(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
-        conversation = WhatsAppConversation.objects.create(phone_number=self.staff1.whatsapp_number)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.staff1.whatsapp_number
+        )
         assistant = WhatsAppAIAssistant(service=MagicMock())
         assistant._start_staff_upload_target_search(
             conversation,
@@ -2634,23 +2943,36 @@ class WhatsAppControlledAssistantTests(TestCase):
 
     def test_tenant_account_selection_shows_property_and_opens_without_cnic_step(self):
         second_tenant = Tenant.objects.create(
-            first_name="Second", last_name="Tenant", phone=self.phone, cnic="37405-5555555-5"
+            first_name="Second",
+            last_name="Tenant",
+            phone=self.phone,
+            cnic="37405-5555555-5",
         )
         second_property = Property.objects.create(
-            property_name="City Heights", owner_name="Owner", owner_cnic="37405-3333333-3",
-            type="Residential", property_type="apartment", total_units=1,
+            property_name="City Heights",
+            owner_name="Owner",
+            owner_cnic="37405-3333333-3",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
         )
-        second_unit = Unit.objects.create(property=second_property, unit_number="B-02", status="occupied")
+        second_unit = Unit.objects.create(
+            property=second_property, unit_number="B-02", status="occupied"
+        )
         Lease.objects.create(
-            tenant=second_tenant, unit=second_unit,
+            tenant=second_tenant,
+            unit=second_unit,
             start_date=timezone.localdate() - timedelta(days=30),
             end_date=timezone.localdate() + timedelta(days=335),
-            monthly_rent=Decimal("30000"), status="active",
+            monthly_rent=Decimal(30000),
+            status="active",
         )
         self.conversation.selected_mode = ""
         self.conversation.mode_expires_at = None
         self.conversation.pending_state = "tenant_identity_selection"
-        self.conversation.context = {"tenant_identity_options": [self.tenant.pk, second_tenant.pk]}
+        self.conversation.context = {
+            "tenant_identity_options": [self.tenant.pk, second_tenant.pk]
+        }
         self.conversation.save()
 
         assistant = WhatsAppAIAssistant(service=MagicMock())
@@ -2712,7 +3034,10 @@ class WhatsAppControlledAssistantTests(TestCase):
             wa_message_id="wamid.maintenance.photo2",
             message_type="image",
             status="received",
-            payload={"type": "image", "image": {"caption": "another angle", "filename": "angle.jpg"}},
+            payload={
+                "type": "image",
+                "image": {"caption": "another angle", "filename": "angle.jpg"},
+            },
         )
         staged_media = PendingWhatsAppMedia.objects.create(
             conversation=self.conversation,
@@ -2734,7 +3059,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         pending.refresh_from_db()
         self.assertEqual(intent, "maintenance_media_attached")
         self.assertIn("same maintenance request", response)
-        self.assertEqual(list(pending.media.values_list("pk", flat=True)), [staged_media.pk])
+        self.assertEqual(
+            list(pending.media.values_list("pk", flat=True)), [staged_media.pk]
+        )
 
     def test_maintenance_media_recovers_from_stale_generic_upload_state(self):
         pending = PendingWhatsAppMaintenance.objects.create(
@@ -2886,10 +3213,14 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual(intent, "maintenance_unsupported_ignored")
         self.assertEqual(metadata["pending_maintenance_id"], pending.pk)
         self.assertEqual(self.conversation.pending_state, "pending_maintenance")
-        self.assertEqual(self.conversation.context["pending_maintenance_id"], pending.pk)
+        self.assertEqual(
+            self.conversation.context["pending_maintenance_id"], pending.pk
+        )
 
     def test_unsupported_album_event_does_not_break_staff_lease_photo_batch(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         batch_key = uuid.uuid4()
         staff_conversation = WhatsAppConversation.objects.create(
             phone_number=self.staff1.whatsapp_number,
@@ -2924,7 +3255,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual(intent, "staff_upload_unsupported_ignored")
         self.assertEqual(metadata["staff_user"], self.staff1)
         self.assertEqual(staff_conversation.pending_state, "staff_waiting_upload")
-        self.assertEqual(staff_conversation.context["staff_upload_batch_key"], str(batch_key))
+        self.assertEqual(
+            staff_conversation.context["staff_upload_batch_key"], str(batch_key)
+        )
         self.assertEqual(
             staff_conversation.context["staff_upload_kind"],
             PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
@@ -2954,7 +3287,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual(self.conversation.pending_state, "")
 
     def test_staff_building_photo_is_batched_for_selected_accessible_property(self):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         staff_conversation = WhatsAppConversation.objects.create(
             phone_number=self.staff1.whatsapp_number,
             staff_user=self.staff1,
@@ -2964,28 +3299,48 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
         assistant = WhatsAppAIAssistant(service=MagicMock())
         message = WhatsAppMessageLog.objects.create(
-            direction="inbound", phone_number=self.staff1.whatsapp_number,
-            wa_message_id="wamid.staff.photo.menu", message_type="text", status="received",
+            direction="inbound",
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.staff.photo.menu",
+            message_type="text",
+            status="received",
             payload={"type": "text", "text": {"body": "1"}},
         )
-        assistant._consume_staff_menu_state(message, staff_conversation, "1", self.staff1)
+        assistant._consume_staff_menu_state(
+            message, staff_conversation, "1", self.staff1
+        )
         staff_conversation.refresh_from_db()
         self.assertEqual(staff_conversation.pending_state, "staff_upload_target_query")
-        assistant._consume_staff_menu_state(message, staff_conversation, "Test Residency#1", self.staff1)
+        assistant._consume_staff_menu_state(
+            message, staff_conversation, "Test Residency#1", self.staff1
+        )
         staff_conversation.refresh_from_db()
-        self.assertEqual(staff_conversation.pending_state, "staff_upload_target_confirmation")
-        assistant._consume_staff_menu_state(message, staff_conversation, "YES", self.staff1)
+        self.assertEqual(
+            staff_conversation.pending_state, "staff_upload_target_confirmation"
+        )
+        assistant._consume_staff_menu_state(
+            message, staff_conversation, "YES", self.staff1
+        )
         staff_conversation.refresh_from_db()
         self.assertEqual(staff_conversation.pending_state, "staff_waiting_upload")
 
         media_log = WhatsAppMessageLog.objects.create(
-            direction="inbound", phone_number=self.staff1.whatsapp_number,
-            wa_message_id="wamid.staff.photo.file", message_type="image", status="received",
-            payload={"type": "image", "image": {"caption": "front", "filename": "front.jpg"}},
+            direction="inbound",
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.staff.photo.file",
+            message_type="image",
+            status="received",
+            payload={
+                "type": "image",
+                "image": {"caption": "front", "filename": "front.jpg"},
+            },
         )
         staged = PendingWhatsAppMedia.objects.create(
-            conversation=staff_conversation, phone=self.staff1.whatsapp_number,
-            file=ContentFile(b"jpg", name="front.jpg"), original_filename="front.jpg", media_type="image",
+            conversation=staff_conversation,
+            phone=self.staff1.whatsapp_number,
+            file=ContentFile(b"jpg", name="front.jpg"),
+            original_filename="front.jpg",
+            media_type="image",
         )
         media_log.api_response = {"simulator_pending_media_id": staged.pk}
         media_log.save(update_fields=["api_response"])
@@ -2994,7 +3349,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             staff_conversation,
             "front",
             "image",
-            resolve_sender(self.staff1.whatsapp_number, conversation=staff_conversation),
+            resolve_sender(
+                self.staff1.whatsapp_number, conversation=staff_conversation
+            ),
         )
         staged.refresh_from_db()
         self.assertEqual(intent, "staff_upload_batched")
@@ -3064,9 +3421,7 @@ class WhatsAppControlledAssistantTests(TestCase):
             },
         )
         conversation.refresh_from_db()
-        self.assertEqual(
-            conversation.pending_state, "staff_upload_target_confirmation"
-        )
+        self.assertEqual(conversation.pending_state, "staff_upload_target_confirmation")
 
         media_log = WhatsAppMessageLog.objects.create(
             direction="inbound",
@@ -3159,9 +3514,7 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIsNone(staged.unit)
 
     @patch("whatsapp.services.whatsapp_ai.notify_staff_pending_request")
-    def test_staff_unit_photos_share_one_batch_and_exact_target(
-        self, notify_pending
-    ):
+    def test_staff_unit_photos_share_one_batch_and_exact_target(self, notify_pending):
         self.staff1.whatsapp_number = self.phone
         self.staff1.save(update_fields=["whatsapp_number"])
         f35 = Property.objects.create(
@@ -3182,7 +3535,7 @@ class WhatsAppControlledAssistantTests(TestCase):
             unit=f35_unit,
             start_date=timezone.localdate() - timedelta(days=10),
             end_date=timezone.localdate() + timedelta(days=100),
-            monthly_rent=Decimal("18000"),
+            monthly_rent=Decimal(18000),
             status="active",
         )
         f54 = Property.objects.create(
@@ -3256,9 +3609,7 @@ class WhatsAppControlledAssistantTests(TestCase):
             self.message, conversation, "YES", self.staff1
         )
         conversation.refresh_from_db()
-        expected_batch_key = uuid.UUID(
-            conversation.context["staff_upload_batch_key"]
-        )
+        expected_batch_key = uuid.UUID(conversation.context["staff_upload_batch_key"])
 
         for index in range(4):
             media_log = WhatsAppMessageLog.objects.create(
@@ -3295,8 +3646,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             self.assertEqual(intent, "staff_upload_batched")
 
         rows = list(
-            PendingWhatsAppMedia.objects.filter(batch_key=expected_batch_key)
-            .order_by("pk")
+            PendingWhatsAppMedia.objects.filter(batch_key=expected_batch_key).order_by(
+                "pk"
+            )
         )
         self.assertEqual(len(rows), 4)
         self.assertEqual({row.batch_key for row in rows}, {expected_batch_key})
@@ -3320,7 +3672,9 @@ class WhatsAppControlledAssistantTests(TestCase):
 
     @patch("whatsapp.services.whatsapp_ai.notify_staff_pending_request")
     def test_done_submits_once_and_returns_staff_menu(self, notify_pending):
-        WhatsAppStaffPropertyAccess.objects.create(staff_user=self.staff1, property=self.property)
+        WhatsAppStaffPropertyAccess.objects.create(
+            staff_user=self.staff1, property=self.property
+        )
         batch_key = uuid.uuid4()
         conversation = WhatsAppConversation.objects.create(
             phone_number=self.staff1.whatsapp_number,
@@ -3409,9 +3763,7 @@ class WhatsAppControlledAssistantTests(TestCase):
             },
         )
 
-        response = WhatsAppAIAssistant(
-            service=MagicMock()
-        )._consume_staff_menu_state(
+        response = WhatsAppAIAssistant(service=MagicMock())._consume_staff_menu_state(
             self.message, conversation, "DONE", self.staff1
         )
 
@@ -3449,12 +3801,8 @@ class WhatsAppControlledAssistantTests(TestCase):
             property_type="apartment",
             total_units=1,
         )
-        Unit.objects.create(
-            property=f35, unit_number="F35-FLAT# 05", status="vacant"
-        )
-        Unit.objects.create(
-            property=f54, unit_number="F54-FLAT# 05", status="vacant"
-        )
+        Unit.objects.create(property=f35, unit_number="F35-FLAT# 05", status="vacant")
+        Unit.objects.create(property=f54, unit_number="F54-FLAT# 05", status="vacant")
         f56_unit = Unit.objects.create(
             property=f56, unit_number="F56-FLAT# 05", status="vacant"
         )
@@ -3529,7 +3877,9 @@ class WhatsAppControlledAssistantTests(TestCase):
             property=self.property,
             unit=self.unit,
         )
-        with patch("leases.models_lease_photos.LeaseMedia.objects.create") as create_gallery_photo:
+        with patch(
+            "leases.models_lease_photos.LeaseMedia.objects.create"
+        ) as create_gallery_photo:
             _attach_pending_media_from_core(pending, self.staff1)
         create_gallery_photo.assert_called_once()
         self.assertEqual(create_gallery_photo.call_args.kwargs["lease"], self.lease)
@@ -3545,7 +3895,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.staff1.whatsapp_number = self.phone
         self.staff1.save(update_fields=["whatsapp_number"])
         sender = resolve_sender(self.phone)
-        self.assertEqual(infer_mode("Show pending tenant handovers", sender)[0], "staff")
+        self.assertEqual(
+            infer_mode("Show pending tenant handovers", sender)[0], "staff"
+        )
 
     def test_staff_notification_contains_tenant_number(self):
         service = MagicMock()
@@ -3566,7 +3918,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         accept_handover(self.handover, self.staff1)
         service = MagicMock()
         service.send_text.return_value = {"ok": True}
-        relay_staff_reply(self.handover, self.staff1, "Receipt sent to accounts.", service=service)
+        relay_staff_reply(
+            self.handover, self.staff1, "Receipt sent to accounts.", service=service
+        )
         self.assertEqual(service.send_text.call_args.args[0], self.phone)
         self.assertIn("Management:", service.send_text.call_args.args[1])
 
@@ -3575,14 +3929,22 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.conversation.handover_active = True
         self.conversation.save(update_fields=["handover_active"])
         update = WhatsAppMessageLog.objects.create(
-            direction="inbound", phone_number=self.phone, wa_message_id="wamid.update",
-            message_type="text", status="received", payload={"type": "text", "text": {"body": "Any update?"}},
+            direction="inbound",
+            phone_number=self.phone,
+            wa_message_id="wamid.update",
+            message_type="text",
+            status="received",
+            payload={"type": "text", "text": {"body": "Any update?"}},
         )
         service = MagicMock()
         service.send_text.return_value = {"ok": True}
-        reply = handle_active_tenant_message(update, self.conversation, "Any update?", service=service)
+        reply = handle_active_tenant_message(
+            update, self.conversation, "Any update?", service=service
+        )
         self.assertIn("awaiting staff response", reply)
-        self.assertEqual(service.send_text.call_args.args[0], self.staff1.whatsapp_number)
+        self.assertEqual(
+            service.send_text.call_args.args[0], self.staff1.whatsapp_number
+        )
 
     def test_staff_marks_tenant_called(self):
         accept_handover(self.handover, self.staff1)
@@ -3592,7 +3954,12 @@ class WhatsAppControlledAssistantTests(TestCase):
 
     def test_call_action_shows_number_without_call_preference(self):
         accept_handover(self.handover, self.staff1)
-        text = handle_staff_handover_message(self.message, self.conversation, f"CALL {self.handover.reference}", self.staff1)
+        text = handle_staff_handover_message(
+            self.message,
+            self.conversation,
+            f"CALL {self.handover.reference}",
+            self.staff1,
+        )
         self.assertIn(format_phone(self.phone), text)
         self.assertNotIn("prefer", text.lower())
 
@@ -3608,7 +3975,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         returned = return_handover_to_ai(self.handover, self.staff1)
         self.assertEqual(returned.status, WhatsAppHandover.STATUS_RETURNED_TO_AI)
         returned.conversation.refresh_from_db()
-        self.assertEqual(returned.conversation.selected_mode, WhatsAppConversation.MODE_TENANT)
+        self.assertEqual(
+            returned.conversation.selected_mode, WhatsAppConversation.MODE_TENANT
+        )
 
     def test_unauthorized_staff_cannot_access_handover(self):
         self.assertFalse(staff_can_access_handover(self.unauthorized, self.handover))
@@ -3638,20 +4007,34 @@ class WhatsAppControlledAssistantTests(TestCase):
     def test_media_reply_is_relayed(self):
         accept_handover(self.handover, self.staff1)
         media = PendingWhatsAppMedia.objects.create(
-            conversation=self.conversation, phone=self.staff1.whatsapp_number,
-            original_filename="photo.jpg", media_type="image", file=ContentFile(b"jpg", name="photo.jpg"),
+            conversation=self.conversation,
+            phone=self.staff1.whatsapp_number,
+            original_filename="photo.jpg",
+            media_type="image",
+            file=ContentFile(b"jpg", name="photo.jpg"),
         )
         service = MagicMock()
         service.send_text.return_value = {"ok": True}
         service.send_image_bytes.return_value = {"ok": True}
-        relay_staff_reply(self.handover, self.staff1, "See attached", media=media, service=service)
+        relay_staff_reply(
+            self.handover, self.staff1, "See attached", media=media, service=service
+        )
         service.send_image_bytes.assert_called_once()
 
     def test_ambiguous_tenant_phone_is_blocked(self):
-        other = Tenant.objects.create(first_name="Other", last_name="Tenant", phone=self.phone, cnic="37405-3333333-3")
+        other = Tenant.objects.create(
+            first_name="Other",
+            last_name="Tenant",
+            phone=self.phone,
+            cnic="37405-3333333-3",
+        )
         Lease.objects.create(
-            tenant=other, unit=self.unit, start_date=timezone.localdate(),
-            end_date=timezone.localdate() + timedelta(days=30), monthly_rent=10000, status="active",
+            tenant=other,
+            unit=self.unit,
+            start_date=timezone.localdate(),
+            end_date=timezone.localdate() + timedelta(days=30),
+            monthly_rent=10000,
+            status="active",
         )
         sender = resolve_sender(self.phone)
         self.assertTrue(sender.ambiguous)
@@ -3667,12 +4050,21 @@ class WhatsAppControlledAssistantTests(TestCase):
 
     def test_conversation_history_does_not_cross_phone_numbers(self):
         from whatsapp.services.ai.context_builder import build_safe_context
-        other_conversation = WhatsAppConversation.objects.create(phone_number="+923007777777")
-        WhatsAppMessageLog.objects.create(
-            direction="inbound", phone_number=other_conversation.phone_number, wa_message_id="wamid.secret",
-            message_type="text", status="received", payload={"type": "text", "text": {"body": "OTHER TENANT SECRET"}},
+
+        other_conversation = WhatsAppConversation.objects.create(
+            phone_number="+923007777777"
         )
-        context = build_safe_context(resolve_sender(self.phone), self.conversation, lease=self.lease)
+        WhatsAppMessageLog.objects.create(
+            direction="inbound",
+            phone_number=other_conversation.phone_number,
+            wa_message_id="wamid.secret",
+            message_type="text",
+            status="received",
+            payload={"type": "text", "text": {"body": "OTHER TENANT SECRET"}},
+        )
+        context = build_safe_context(
+            resolve_sender(self.phone), self.conversation, lease=self.lease
+        )
         self.assertNotIn("OTHER TENANT SECRET", str(context))
 
     def test_conversation_summary_keeps_older_phone_after_many_newer_status_rows(self):
@@ -3687,16 +4079,18 @@ class WhatsAppControlledAssistantTests(TestCase):
             status="received",
             payload={"type": "text", "text": {"body": "older conversation"}},
         )
-        WhatsAppMessageLog.objects.bulk_create([
-            WhatsAppMessageLog(
-                direction=WhatsAppMessageLog.DIRECTION_STATUS,
-                phone_number=self.phone,
-                wa_message_id=f"wamid.status.{index}",
-                message_type="status",
-                status="delivered",
-            )
-            for index in range(305)
-        ])
+        WhatsAppMessageLog.objects.bulk_create(
+            [
+                WhatsAppMessageLog(
+                    direction=WhatsAppMessageLog.DIRECTION_STATUS,
+                    phone_number=self.phone,
+                    wa_message_id=f"wamid.status.{index}",
+                    message_type="status",
+                    status="delivered",
+                )
+                for index in range(305)
+            ]
+        )
 
         phones = {row["phone_number"] for row in _conversation_summary()}
 
@@ -3738,7 +4132,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         summary_phones = {row["phone_number"] for row in summary}
         self.assertTrue(set(missing_conversation_phones).issubset(summary_phones))
 
-    def test_selected_conversation_context_includes_matching_phone_and_active_lease(self):
+    def test_selected_conversation_context_includes_matching_phone_and_active_lease(
+        self,
+    ):
         from whatsapp.views import _selected_conversation_context
 
         context = _selected_conversation_context("+92-300-111-2233")
@@ -3770,9 +4166,7 @@ class WhatsAppControlledAssistantTests(TestCase):
         message_result = _filter_conversation_summary(
             summary, search_query="kitchen tap"
         )
-        tenant_result = _filter_conversation_summary(
-            summary, tenant_id=self.tenant.pk
-        )
+        tenant_result = _filter_conversation_summary(summary, tenant_id=self.tenant.pk)
         property_result = _filter_conversation_summary(
             summary, location=f"property:{self.property.pk}"
         )
@@ -3799,7 +4193,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertEqual([row["phone_number"] for row in result], [self.phone])
         self.assertIsInstance(result[0]["last_message"], str)
 
-    def test_whatsapp_filter_options_use_short_property_names_and_tenant_name_only(self):
+    def test_whatsapp_filter_options_use_short_property_names_and_tenant_name_only(
+        self,
+    ):
         self.staff1.is_superuser = True
         self.staff1.save(update_fields=["is_superuser"])
         self.client.force_login(self.staff1)
@@ -3827,13 +4223,35 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertNotIn(self.tenant.phone, tenant_select)
 
     def test_duplicate_webhook_message_is_ignored(self):
-        payload = {"entry": [{"id": "entry", "changes": [{"field": "messages", "value": {"messages": [{
-            "from": self.phone, "id": "wamid.duplicate", "type": "text", "text": {"body": "hello"}
-        }]}}]}]}
+        payload = {
+            "entry": [
+                {
+                    "id": "entry",
+                    "changes": [
+                        {
+                            "field": "messages",
+                            "value": {
+                                "messages": [
+                                    {
+                                        "from": self.phone,
+                                        "id": "wamid.duplicate",
+                                        "type": "text",
+                                        "text": {"body": "hello"},
+                                    }
+                                ]
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
         with patch("whatsapp.views._queue_ai_message"):
             _log_webhook_payload(payload)
             _log_webhook_payload(payload)
-        self.assertEqual(WhatsAppMessageLog.objects.filter(wa_message_id="wamid.duplicate").count(), 1)
+        self.assertEqual(
+            WhatsAppMessageLog.objects.filter(wa_message_id="wamid.duplicate").count(),
+            1,
+        )
 
     def test_database_processing_state_allows_only_one_worker(self):
         message = WhatsAppMessageLog.objects.create(
@@ -3858,11 +4276,15 @@ class WhatsAppControlledAssistantTests(TestCase):
         body = json.dumps({"object": "whatsapp_business_account"}).encode()
         signature = hmac.new(b"test-secret", body, hashlib.sha256).hexdigest()
         response = self.client.post(
-            reverse("whatsapp:webhook"), data=body, content_type="application/json",
+            reverse("whatsapp:webhook"),
+            data=body,
+            content_type="application/json",
             HTTP_X_HUB_SIGNATURE_256=f"sha256={signature}",
         )
         self.assertEqual(response.status_code, 200)
-        denied = self.client.post(reverse("whatsapp:webhook"), data=body, content_type="application/json")
+        denied = self.client.post(
+            reverse("whatsapp:webhook"), data=body, content_type="application/json"
+        )
         self.assertEqual(denied.status_code, 403)
 
 
@@ -3873,7 +4295,10 @@ class SettingsEmbeddedLayoutTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.staff = User.objects.create_user(
-            username="staff_embed", password="pass1234", is_staff=True, is_superuser=True
+            username="staff_embed",
+            password="pass1234",
+            is_staff=True,
+            is_superuser=True,
         )
         self.client.force_login(self.staff)
 
@@ -3925,7 +4350,8 @@ class SettingsEmbeddedLayoutTests(TestCase):
         from whatsapp.models import WhatsAppUtilityTemplate
 
         template, _ = WhatsAppUtilityTemplate.objects.get_or_create(
-            key="invoice_notice", defaults={"template_name": "invoice_notice", "language_code": "en"}
+            key="invoice_notice",
+            defaults={"template_name": "invoice_notice", "language_code": "en"},
         )
         response = self.client.post(
             reverse("whatsapp:utility_template_edit", args=[template.pk]) + "?embed=1",
@@ -3947,8 +4373,12 @@ class SettingsEmbeddedLayoutTests(TestCase):
 class TenantLatestLeaseResolutionTests(TestCase):
     def setUp(self):
         self.property = Property.objects.create(
-            property_name="Context Property", owner_name="Owner", owner_cnic="37405-5656565-6",
-            type="Residential", property_type="apartment", total_units=3,
+            property_name="Context Property",
+            owner_name="Owner",
+            owner_cnic="37405-5656565-6",
+            type="Residential",
+            property_type="apartment",
+            total_units=3,
         )
         self.unit1 = Unit.objects.create(property=self.property, unit_number="C-1")
         self.unit2 = Unit.objects.create(property=self.property, unit_number="C-2")
@@ -3956,7 +4386,10 @@ class TenantLatestLeaseResolutionTests(TestCase):
 
     def _tenant(self, **kwargs):
         defaults = dict(
-            first_name="Latest", last_name="Tenant", cnic="61101-1212121-1", phone=self.phone,
+            first_name="Latest",
+            last_name="Tenant",
+            cnic="61101-1212121-1",
+            phone=self.phone,
         )
         defaults.update(kwargs)
         return Tenant.objects.create(**defaults)
@@ -3964,12 +4397,20 @@ class TenantLatestLeaseResolutionTests(TestCase):
     def test_active_lease_is_preferred(self):
         tenant = self._tenant()
         Lease.objects.create(
-            tenant=tenant, unit=self.unit1, start_date=date.today() - timedelta(days=400),
-            end_date=date.today() - timedelta(days=30), monthly_rent=10000, status="ended",
+            tenant=tenant,
+            unit=self.unit1,
+            start_date=date.today() - timedelta(days=400),
+            end_date=date.today() - timedelta(days=30),
+            monthly_rent=10000,
+            status="ended",
         )
         active = Lease.objects.create(
-            tenant=tenant, unit=self.unit2, start_date=date.today() - timedelta(days=10),
-            end_date=date.today() + timedelta(days=300), monthly_rent=12000, status="active",
+            tenant=tenant,
+            unit=self.unit2,
+            start_date=date.today() - timedelta(days=10),
+            end_date=date.today() + timedelta(days=300),
+            monthly_rent=12000,
+            status="active",
         )
         resolution = resolve_tenant_and_last_lease("+92-300-1234567")
         self.assertEqual(resolution.tenant, tenant)
@@ -3979,12 +4420,20 @@ class TenantLatestLeaseResolutionTests(TestCase):
     def test_latest_ended_lease_is_returned(self):
         tenant = self._tenant()
         older = Lease.objects.create(
-            tenant=tenant, unit=self.unit1, start_date=date.today() - timedelta(days=700),
-            end_date=date.today() - timedelta(days=400), monthly_rent=9000, status="ended",
+            tenant=tenant,
+            unit=self.unit1,
+            start_date=date.today() - timedelta(days=700),
+            end_date=date.today() - timedelta(days=400),
+            monthly_rent=9000,
+            status="ended",
         )
         latest = Lease.objects.create(
-            tenant=tenant, unit=self.unit2, start_date=date.today() - timedelta(days=300),
-            end_date=date.today() - timedelta(days=20), monthly_rent=11000, status="terminated",
+            tenant=tenant,
+            unit=self.unit2,
+            start_date=date.today() - timedelta(days=300),
+            end_date=date.today() - timedelta(days=20),
+            monthly_rent=11000,
+            status="terminated",
         )
         resolution = resolve_tenant_and_last_lease(self.phone)
         self.assertNotEqual(resolution.lease, older)
@@ -3994,12 +4443,20 @@ class TenantLatestLeaseResolutionTests(TestCase):
     def test_pending_draft_is_not_used_as_latest_real_tenancy(self):
         tenant = self._tenant()
         ended = Lease.objects.create(
-            tenant=tenant, unit=self.unit1, start_date=date.today() - timedelta(days=200),
-            end_date=date.today() - timedelta(days=5), monthly_rent=10000, status="ended",
+            tenant=tenant,
+            unit=self.unit1,
+            start_date=date.today() - timedelta(days=200),
+            end_date=date.today() - timedelta(days=5),
+            monthly_rent=10000,
+            status="ended",
         )
         Lease.objects.create(
-            tenant=tenant, unit=self.unit2, start_date=date.today() + timedelta(days=10),
-            end_date=date.today() + timedelta(days=300), monthly_rent=12000, status="pending_approval",
+            tenant=tenant,
+            unit=self.unit2,
+            start_date=date.today() + timedelta(days=10),
+            end_date=date.today() + timedelta(days=300),
+            monthly_rent=12000,
+            status="pending_approval",
         )
         resolution = resolve_tenant_and_last_lease(self.phone)
         self.assertEqual(resolution.lease, ended)
@@ -4022,32 +4479,60 @@ class PaymentClaimTests(TestCase):
     def setUp(self):
         self.phone = "+923001234567"
         self.property = Property.objects.create(
-            property_name="Test Plaza", owner_name="Owner", owner_cnic="12345-1234567-8",
-            type="residential", property_type="apartment", total_units=2,
+            property_name="Test Plaza",
+            owner_name="Owner",
+            owner_cnic="12345-1234567-8",
+            type="residential",
+            property_type="apartment",
+            total_units=2,
         )
         self.unit = Unit.objects.create(property=self.property, unit_number="U-1")
 
     def _inbound(self, text, wa_id="wamid.claim"):
         return WhatsAppMessageLog.objects.create(
-            direction=WhatsAppMessageLog.DIRECTION_INBOUND, phone_number=self.phone,
-            wa_message_id=wa_id, message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
-            status=WhatsAppMessageLog.STATUS_RECEIVED, payload={"type": "text", "text": {"body": text}},
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.phone,
+            wa_message_id=wa_id,
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_TEXT,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={"type": "text", "text": {"body": text}},
         )
 
     def test_active_tenant_payment_claim_returns_balance_and_latest_payment(self):
-        tenant = Tenant.objects.create(first_name="Amina", last_name="Raza", cnic="61101-1111111-1", phone=self.phone)
+        tenant = Tenant.objects.create(
+            first_name="Amina",
+            last_name="Raza",
+            cnic="61101-1111111-1",
+            phone=self.phone,
+        )
         lease = Lease.objects.create(
-            tenant=tenant, unit=self.unit, start_date=date.today() - timedelta(days=30),
-            end_date=date.today() + timedelta(days=335), monthly_rent=15000, status="active",
+            tenant=tenant,
+            unit=self.unit,
+            start_date=date.today() - timedelta(days=30),
+            end_date=date.today() + timedelta(days=335),
+            monthly_rent=15000,
+            status="active",
         )
         from core.models import PaymentMethod
-        method, _ = PaymentMethod.objects.get_or_create(code="bank_transfer", defaults={"name": "Bank Transfer"})
-        Payment.objects.create(lease=lease, amount=15000, payment_date=date.today() - timedelta(days=2), payment_method=method)
 
-        conversation = WhatsAppConversation.objects.create(phone_number=self.phone, tenant=tenant, selected_lease=lease)
+        method, _ = PaymentMethod.objects.get_or_create(
+            code="bank_transfer", defaults={"name": "Bank Transfer"}
+        )
+        Payment.objects.create(
+            lease=lease,
+            amount=15000,
+            payment_date=date.today() - timedelta(days=2),
+            payment_method=method,
+        )
+
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.phone, tenant=tenant, selected_lease=lease
+        )
         message = self._inbound("I already paid")
 
-        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            message, conversation
+        )
 
         self.assertEqual(intent, "payment_claim")
         self.assertIn("Amina", response)
@@ -4060,30 +4545,54 @@ class PaymentClaimTests(TestCase):
         """This is the core Phase 3 bug: a tenant whose only lease has ended
         was previously indistinguishable from a stranger and got no
         recognition at all."""
-        tenant = Tenant.objects.create(first_name="Bilal", last_name="Sheikh", cnic="61101-2222222-2", phone=self.phone)
+        tenant = Tenant.objects.create(
+            first_name="Bilal",
+            last_name="Sheikh",
+            cnic="61101-2222222-2",
+            phone=self.phone,
+        )
         Lease.objects.create(
-            tenant=tenant, unit=self.unit, start_date=date.today() - timedelta(days=400),
-            end_date=date.today() - timedelta(days=30), monthly_rent=12000, status="ended",
+            tenant=tenant,
+            unit=self.unit,
+            start_date=date.today() - timedelta(days=400),
+            end_date=date.today() - timedelta(days=30),
+            monthly_rent=12000,
+            status="ended",
         )
         conversation = WhatsAppConversation.objects.create(phone_number=self.phone)
         message = self._inbound("Already paid")
 
-        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            message, conversation
+        )
 
         self.assertEqual(intent, "payment_claim")
         self.assertIn("Bilal", response)
         self.assertNotIn("guest", intent)
 
     def test_no_recent_payment_response_branch(self):
-        tenant = Tenant.objects.create(first_name="Chaudhry", last_name="Amir", cnic="61101-3333333-3", phone=self.phone)
-        lease = Lease.objects.create(
-            tenant=tenant, unit=self.unit, start_date=date.today() - timedelta(days=30),
-            end_date=date.today() + timedelta(days=335), monthly_rent=10000, status="active",
+        tenant = Tenant.objects.create(
+            first_name="Chaudhry",
+            last_name="Amir",
+            cnic="61101-3333333-3",
+            phone=self.phone,
         )
-        conversation = WhatsAppConversation.objects.create(phone_number=self.phone, tenant=tenant, selected_lease=lease)
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=self.unit,
+            start_date=date.today() - timedelta(days=30),
+            end_date=date.today() + timedelta(days=335),
+            monthly_rent=10000,
+            status="active",
+        )
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.phone, tenant=tenant, selected_lease=lease
+        )
         message = self._inbound("payment done")
 
-        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            message, conversation
+        )
 
         self.assertEqual(intent, "payment_claim")
         self.assertIn("have not yet found", response.lower())
@@ -4092,18 +4601,31 @@ class PaymentClaimTests(TestCase):
         conversation = WhatsAppConversation.objects.create(phone_number=self.phone)
         message = self._inbound("I sent the money")
 
-        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            message, conversation
+        )
 
         self.assertEqual(intent, "payment_claim")
         self.assertIn("property, unit, or invoice number", response)
 
     def test_one_inbound_message_produces_one_reply(self):
-        tenant = Tenant.objects.create(first_name="Dawood", last_name="Iqbal", cnic="61101-4444444-4", phone=self.phone)
-        lease = Lease.objects.create(
-            tenant=tenant, unit=self.unit, start_date=date.today() - timedelta(days=30),
-            end_date=date.today() + timedelta(days=335), monthly_rent=10000, status="active",
+        tenant = Tenant.objects.create(
+            first_name="Dawood",
+            last_name="Iqbal",
+            cnic="61101-4444444-4",
+            phone=self.phone,
         )
-        conversation = WhatsAppConversation.objects.create(phone_number=self.phone, tenant=tenant, selected_lease=lease)
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=self.unit,
+            start_date=date.today() - timedelta(days=30),
+            end_date=date.today() + timedelta(days=335),
+            monthly_rent=10000,
+            status="active",
+        )
+        conversation = WhatsAppConversation.objects.create(
+            phone_number=self.phone, tenant=tenant, selected_lease=lease
+        )
         message = self._inbound("bill paid")
 
         result = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
@@ -4112,17 +4634,31 @@ class PaymentClaimTests(TestCase):
         self.assertIsInstance(result[0], str)
 
     def test_does_not_hijack_message_with_other_pending_state_in_progress(self):
-        tenant = Tenant.objects.create(first_name="Erum", last_name="Wali", cnic="61101-5555555-5", phone=self.phone)
+        tenant = Tenant.objects.create(
+            first_name="Erum",
+            last_name="Wali",
+            cnic="61101-5555555-5",
+            phone=self.phone,
+        )
         lease = Lease.objects.create(
-            tenant=tenant, unit=self.unit, start_date=date.today() - timedelta(days=30),
-            end_date=date.today() + timedelta(days=335), monthly_rent=10000, status="active",
+            tenant=tenant,
+            unit=self.unit,
+            start_date=date.today() - timedelta(days=30),
+            end_date=date.today() + timedelta(days=335),
+            monthly_rent=10000,
+            status="active",
         )
         conversation = WhatsAppConversation.objects.create(
-            phone_number=self.phone, tenant=tenant, selected_lease=lease, pending_state="suggestion_capture",
+            phone_number=self.phone,
+            tenant=tenant,
+            selected_lease=lease,
+            pending_state="suggestion_capture",
         )
         message = self._inbound("already paid for the suggestion program")
 
-        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(message, conversation)
+        response, intent, metadata = WhatsAppAIAssistant(service=MagicMock())._handle(
+            message, conversation
+        )
 
         self.assertNotEqual(intent, "payment_claim")
 
@@ -4130,83 +4666,146 @@ class PaymentClaimTests(TestCase):
 class ChatExportTests(TestCase):
     def setUp(self):
         self.property = Property.objects.create(
-            property_name="Export Plaza", owner_name="Owner", owner_cnic="12345-1234567-9",
-            type="residential", property_type="apartment", total_units=2,
+            property_name="Export Plaza",
+            owner_name="Owner",
+            owner_cnic="12345-1234567-9",
+            type="residential",
+            property_type="apartment",
+            total_units=2,
         )
         self.unit = Unit.objects.create(property=self.property, unit_number="E-1")
         self.tenant = Tenant.objects.create(
-            first_name="Zara", last_name="Malik", cnic="61101-9999999-9", phone="03009998888",
+            first_name="Zara",
+            last_name="Malik",
+            cnic="61101-9999999-9",
+            phone="03009998888",
         )
         self.lease = Lease.objects.create(
-            tenant=self.tenant, unit=self.unit, start_date=date.today(),
-            end_date=date.today() + timedelta(days=300), monthly_rent=20000, status="active",
+            tenant=self.tenant,
+            unit=self.unit,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=300),
+            monthly_rent=20000,
+            status="active",
         )
         WhatsAppConversation.objects.create(
-            phone_number="03009998888", tenant=self.tenant, selected_lease=self.lease, selected_mode="tenant",
+            phone_number="03009998888",
+            tenant=self.tenant,
+            selected_lease=self.lease,
+            selected_mode="tenant",
         )
         self.msg_in = WhatsAppMessageLog.objects.create(
-            direction="inbound", phone_number="03009998888", tenant=self.tenant, lease=self.lease,
-            wa_message_id="wamid.export.in", message_type="text", status="received",
+            direction="inbound",
+            phone_number="03009998888",
+            tenant=self.tenant,
+            lease=self.lease,
+            wa_message_id="wamid.export.in",
+            message_type="text",
+            status="received",
             payload={"type": "text", "text": {"body": "What is my balance?"}},
         )
         from whatsapp.models import WhatsAppAIInteractionLog
+
         WhatsAppAIInteractionLog.objects.create(
-            message_log=self.msg_in, phone_number="03009998888", intent="balance", provider="openai",
-            model="gpt-4o-mini", confidence=95, ai_prompt="system prompt api_key=sk-shouldnotleak123456",
-            ai_response="Your balance is Rs 5000", prompt_tokens=100, completion_tokens=20,
+            message_log=self.msg_in,
+            phone_number="03009998888",
+            intent="balance",
+            provider="openai",
+            model="gpt-4o-mini",
+            confidence=95,
+            ai_prompt="system prompt api_key=sk-shouldnotleak123456",
+            ai_response="Your balance is Rs 5000",
+            prompt_tokens=100,
+            completion_tokens=20,
         )
         self.msg_out = WhatsAppMessageLog.objects.create(
-            direction="outbound", phone_number="03009998888", tenant=self.tenant, lease=self.lease,
-            wa_message_id="wamid.export.out", message_type="text", status="sent",
-            payload={"type": "text", "text": {"body": "Your outstanding balance is Rs. 5,000.00."}},
+            direction="outbound",
+            phone_number="03009998888",
+            tenant=self.tenant,
+            lease=self.lease,
+            wa_message_id="wamid.export.out",
+            message_type="text",
+            status="sent",
+            payload={
+                "type": "text",
+                "text": {"body": "Your outstanding balance is Rs. 5,000.00."},
+            },
         )
         # A second, unrelated conversation to check isolation / all-chats aggregation.
         self.other_tenant = Tenant.objects.create(
-            first_name="Omar", last_name="Sheikh", cnic="61101-8888888-8", phone="03007776666",
+            first_name="Omar",
+            last_name="Sheikh",
+            cnic="61101-8888888-8",
+            phone="03007776666",
         )
         WhatsAppMessageLog.objects.create(
-            direction="inbound", phone_number="03007776666", tenant=self.other_tenant,
-            wa_message_id="wamid.other.in", message_type="text", status="received",
+            direction="inbound",
+            phone_number="03007776666",
+            tenant=self.other_tenant,
+            wa_message_id="wamid.other.in",
+            message_type="text",
+            status="received",
             payload={"type": "text", "text": {"body": "Hello"}},
         )
         from whatsapp.models import WhatsAppWebhookLog
+
         WhatsAppWebhookLog.objects.create(payload={"raw": "meta webhook status event"})
 
         User = get_user_model()
         self.staff = User.objects.create_user(
-            username="export_staff", password="pass1234", is_staff=True, is_superuser=True,
+            username="export_staff",
+            password="pass1234",
+            is_staff=True,
+            is_superuser=True,
         )
 
     def test_unauthenticated_user_cannot_export(self):
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888"
+        )
         self.assertNotEqual(response.status_code, 200)
 
     def test_unauthorized_user_cannot_export(self):
         User = get_user_model()
-        User.objects.create_user(username="nobody", password="pass1234", is_staff=False, email="nobody@example.com")
+        User.objects.create_user(
+            username="nobody",
+            password="pass1234",
+            is_staff=False,
+            email="nobody@example.com",
+        )
         self.client.login(username="nobody", password="pass1234")
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888"
+        )
         self.assertNotEqual(response.status_code, 200)
 
     def test_authorized_user_can_export_selected_conversation(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888"
+        )
         self.assertEqual(response.status_code, 200)
 
     def test_content_type_is_json(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888"
+        )
         self.assertEqual(response["Content-Type"], "application/json")
 
     def test_content_disposition_has_attachment_filename(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888"
+        )
         self.assertIn("attachment", response["Content-Disposition"])
         self.assertIn(".json", response["Content-Disposition"])
 
     def test_inbound_and_outbound_messages_included(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full"
+        )
         data = json.loads(response.content)
         directions = [m["direction"] for m in data["messages"]]
         self.assertIn("inbound", directions)
@@ -4217,14 +4816,18 @@ class ChatExportTests(TestCase):
 
     def test_messages_ordered_chronologically(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888"
+        )
         data = json.loads(response.content)
         timestamps = [m["timestamp"] for m in data["messages"]]
         self.assertEqual(timestamps, sorted(timestamps))
 
     def test_ai_interaction_included_with_tokens_and_response(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full"
+        )
         data = json.loads(response.content)
         inbound = next(m for m in data["messages"] if m["direction"] == "inbound")
         self.assertEqual(len(inbound["ai_interactions"]), 1)
@@ -4236,34 +4839,46 @@ class ChatExportTests(TestCase):
 
     def test_secrets_recursively_redacted(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full"
+        )
         self.assertNotIn("sk-shouldnotleak123456", response.content.decode())
         self.assertIn("[REDACTED]", response.content.decode())
 
     def test_masked_export_masks_phone_and_cnic(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=masked")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=masked"
+        )
         data = json.loads(response.content)
         self.assertNotEqual(data["conversation"]["phone_number"], "03009998888")
 
     def test_full_data_preserves_ordinary_fields(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full"
+        )
         data = json.loads(response.content)
         self.assertEqual(data["conversation"]["phone_number"], "03009998888")
-        self.assertEqual(data["conversation"]["tenant"]["name"], self.tenant.get_full_name())
+        self.assertEqual(
+            data["conversation"]["tenant"]["name"], self.tenant.get_full_name()
+        )
         self.assertEqual(data["conversation"]["lease"]["property"], "Export Plaza")
         self.assertEqual(data["conversation"]["lease"]["unit"], "E-1")
 
     def test_single_conversation_does_not_leak_other_phone(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full"
+        )
         self.assertNotIn("Hello", response.content.decode())
         self.assertNotIn("03007776666", response.content.decode())
 
     def test_export_all_includes_multiple_conversations(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_all_chats") + "?privacy=full")
+        response = self.client.get(
+            reverse("whatsapp:export_all_chats") + "?privacy=full"
+        )
         data = json.loads(response.content)
         self.assertGreaterEqual(data["export"]["conversation_count"], 2)
         phones = [c["conversation"]["phone_number"] for c in data["conversations"]]
@@ -4272,31 +4887,48 @@ class ChatExportTests(TestCase):
 
     def test_raw_webhook_logs_not_included(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_all_chats") + "?privacy=full")
+        response = self.client.get(
+            reverse("whatsapp:export_all_chats") + "?privacy=full"
+        )
         self.assertNotIn("meta webhook status event", response.content.decode())
 
     def test_no_media_binary_or_base64_exported(self):
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888"
+        )
         content = response.content.decode()
         # A crude but effective check: no long base64-looking blob present.
         self.assertNotRegex(content, r"[A-Za-z0-9+/]{200,}={0,2}")
 
     def test_media_metadata_included_when_present(self):
         from whatsapp.models import PendingWhatsAppMedia
+
         media_msg = WhatsAppMessageLog.objects.create(
-            direction="inbound", phone_number="03009998888", tenant=self.tenant,
-            wa_message_id="wamid.export.media", message_type="image", status="received",
+            direction="inbound",
+            phone_number="03009998888",
+            tenant=self.tenant,
+            wa_message_id="wamid.export.media",
+            message_type="image",
+            status="received",
             payload={"type": "image"},
         )
         PendingWhatsAppMedia.objects.create(
-            original_whatsapp_message=media_msg, media_type="image", purpose="payment",
-            original_filename="receipt.jpg", whatsapp_media_id="media123", status="pending",
+            original_whatsapp_message=media_msg,
+            media_type="image",
+            purpose="payment",
+            original_filename="receipt.jpg",
+            whatsapp_media_id="media123",
+            status="pending",
         )
         self.client.force_login(self.staff)
-        response = self.client.get(reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full")
+        response = self.client.get(
+            reverse("whatsapp:export_chat") + "?phone=03009998888&privacy=full"
+        )
         data = json.loads(response.content)
-        media_row = next(m for m in data["messages"] if m["wa_message_id"] == "wamid.export.media")
+        media_row = next(
+            m for m in data["messages"] if m["wa_message_id"] == "wamid.export.media"
+        )
         self.assertIsNotNone(media_row["media"])
         self.assertEqual(media_row["media"]["purpose"], "payment")
         self.assertEqual(media_row["media"]["filename"], "receipt.jpg")
@@ -4316,7 +4948,9 @@ class WhatsAppProductionChatRegressionTests(TestCase):
         )
         self.unit = Unit.objects.create(property=self.property, unit_number="WA-1")
         self.tenant = Tenant.objects.create(
-            first_name="WhatsApp", last_name="Tenant", cnic="61101-7777777-7",
+            first_name="WhatsApp",
+            last_name="Tenant",
+            cnic="61101-7777777-7",
             phone="03001234567",
         )
         self.lease = Lease.objects.create(
@@ -4337,16 +4971,27 @@ class WhatsAppProductionChatRegressionTests(TestCase):
         electric, _ = ItemCategory.objects.get_or_create(name="Electricity")
         rent, _ = ItemCategory.objects.get_or_create(name="Rent")
         InvoiceItem.objects.create(
-            invoice=self.invoice, category=electric, description="Electric meter bill", amount=Decimal("3000.00")
+            invoice=self.invoice,
+            category=electric,
+            description="Electric meter bill",
+            amount=Decimal("3000.00"),
         )
         InvoiceItem.objects.create(
-            invoice=self.invoice, category=rent, description="Monthly Rent", amount=Decimal("20000.00")
+            invoice=self.invoice,
+            category=rent,
+            description="Monthly Rent",
+            amount=Decimal("20000.00"),
         )
 
     def test_electric_bill_phrases_are_not_meter_reading_intent(self):
         self.assertEqual(detect_intent("Send me electric bill"), "electric_bill")
-        self.assertEqual(detect_intent("what's my current electricity bill"), "electric_bill")
-        self.assertEqual(detect_intent("what's my current election bill just electric bill"), "electric_bill")
+        self.assertEqual(
+            detect_intent("what's my current electricity bill"), "electric_bill"
+        )
+        self.assertEqual(
+            detect_intent("what's my current election bill just electric bill"),
+            "electric_bill",
+        )
         self.assertEqual(detect_intent("meter reading"), "meter")
 
     def test_electric_bill_reply_returns_invoice_electricity_component(self):
@@ -4369,5 +5014,7 @@ class WhatsAppProductionChatRegressionTests(TestCase):
         menu = _tenant_media_confirmation_text(media)
         self.assertIn("1 Unit Photo", menu)
         self.assertNotIn("Property Photo", menu)
-        self.assertEqual(_tenant_upload_purpose_from_text("4"), PendingWhatsAppMedia.PURPOSE_PAYMENT)
+        self.assertEqual(
+            _tenant_upload_purpose_from_text("4"), PendingWhatsAppMedia.PURPOSE_PAYMENT
+        )
         self.assertEqual(_tenant_upload_purpose_from_text("7"), "cancel")

@@ -131,14 +131,39 @@ class InspectionTemplate(models.Model):
         super().save(*args, **kwargs)
 
     def ordered_items(self):
-        queryset = self.items.filter(active=True, category__active=True).select_related("category")
-        order = [int(item_id) for item_id in (self.item_order or []) if str(item_id).isdigit()]
-        if order:
-            item_map = {item.pk: item for item in queryset}
-            ordered = [item_map[item_id] for item_id in order if item_id in item_map]
-            remaining = [item for item in queryset.order_by("category__display_order", "display_order", "item_name") if item.pk not in order]
-            return ordered + remaining
-        return list(queryset.order_by("category__display_order", "display_order", "item_name"))
+        prefetched = getattr(self, "_prefetched_objects_cache", {}).get("items")
+        if prefetched is not None:
+            items = [
+                item
+                for item in prefetched
+                if item.active and getattr(item.category, "active", False)
+            ]
+            items.sort(
+                key=lambda item: (
+                    item.category.display_order,
+                    item.display_order,
+                    item.item_name,
+                )
+            )
+        else:
+            items = list(
+                self.items.filter(active=True, category__active=True)
+                .select_related("category")
+                .order_by("category__display_order", "display_order", "item_name")
+            )
+
+        order = [
+            int(item_id)
+            for item_id in (self.item_order or [])
+            if str(item_id).isdigit()
+        ]
+        if not order:
+            return items
+
+        item_map = {item.pk: item for item in items}
+        ordered = [item_map[item_id] for item_id in order if item_id in item_map]
+        ordered_ids = set(order)
+        return ordered + [item for item in items if item.pk not in ordered_ids]
 
 
 class LeaseInspection(models.Model):

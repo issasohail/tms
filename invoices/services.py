@@ -492,18 +492,10 @@ def security_deposit_totals(lease):
 
 def security_deposit_totals(lease):
     """
-    Return a dict with all security deposit summary numbers for a lease.
-    Uses SecurityDepositTransaction rows + lease.security_deposit.
+    Return the canonical security-deposit summary for a lease.
 
-    Definitions:
-
-    required           = lease.security_deposit
-    paid_in            = sum of PAYMENT
-    refunded           = sum of REFUND
-    damages            = sum of DAMAGE
-    adjust             = sum of ADJUST (signed)
-    balance_to_collect = max(required - paid_in, 0)
-    currently_held     = max(paid_in - refunded - damages, 0)
+    Reuse prefetched security transactions when available. Otherwise calculate
+    every bucket in one conditional aggregate query instead of one query per total.
     """
     ZERO = Decimal("0.00")
 
@@ -522,28 +514,56 @@ def security_deposit_totals(lease):
         }
 
     required = lease.security_deposit or ZERO
+    prefetched = getattr(lease, "_prefetched_objects_cache", {}).get(
+        "security_transactions"
+    )
 
-    qs = SecurityDepositTransaction.objects.filter(lease=lease)
-
-    paid_in = qs.filter(type="PAYMENT").aggregate(total=Sum("amount"))["total"] or ZERO
-    paid_refunds = qs.filter(type="REFUND", refund_status="PAID")
-    refunded = paid_refunds.aggregate(total=Sum("amount"))["total"] or ZERO
-    refund_deductions = (
-        paid_refunds.aggregate(total=Sum("deduction_amount"))["total"]
-        or ZERO
-    )
-    transferred_to_ledger = (
-        qs.filter(type="REFUND", refund_status="TRANSFERRED")
-        .aggregate(total=Sum("deduction_amount"))["total"]
-        or ZERO
-    )
-    pending_refund = (
-        qs.filter(type="REFUND", refund_status__in=["PENDING", "APPROVED"])
-        .aggregate(total=Sum("amount"))["total"]
-        or ZERO
-    )
-    damages = qs.filter(type="DAMAGE").aggregate(total=Sum("amount"))["total"] or ZERO
-    adjust = qs.filter(type="ADJUST").aggregate(total=Sum("amount"))["total"] or ZERO
+    if prefetched is not None:
+        paid_in = refunded = pending_refund = ZERO
+        refund_deductions = transferred_to_ledger = damages = adjust = ZERO
+        for tx in prefetched:
+            amount = tx.amount or ZERO
+            deduction = getattr(tx, "deduction_amount", None) or ZERO
+            if tx.type == "PAYMENT":
+                paid_in += amount
+            elif tx.type == "REFUND":
+                if tx.refund_status == "PAID":
+                    refunded += amount
+                    refund_deductions += deduction
+                elif tx.refund_status == "TRANSFERRED":
+                    transferred_to_ledger += deduction
+                elif tx.refund_status in {"PENDING", "APPROVED"}:
+                    pending_refund += amount
+            elif tx.type == "DAMAGE":
+                damages += amount
+            elif tx.type == "ADJUST":
+                adjust += amount
+    else:
+        qs = SecurityDepositTransaction.objects.filter(lease=lease)
+        totals = qs.aggregate(
+            paid_in=Sum("amount", filter=Q(type="PAYMENT")),
+            refunded=Sum("amount", filter=Q(type="REFUND", refund_status="PAID")),
+            refund_deductions=Sum(
+                "deduction_amount", filter=Q(type="REFUND", refund_status="PAID")
+            ),
+            transferred_to_ledger=Sum(
+                "deduction_amount",
+                filter=Q(type="REFUND", refund_status="TRANSFERRED"),
+            ),
+            pending_refund=Sum(
+                "amount",
+                filter=Q(type="REFUND", refund_status__in=["PENDING", "APPROVED"]),
+            ),
+            damages=Sum("amount", filter=Q(type="DAMAGE")),
+            adjust=Sum("amount", filter=Q(type="ADJUST")),
+        )
+        paid_in = totals["paid_in"] or ZERO
+        refunded = totals["refunded"] or ZERO
+        refund_deductions = totals["refund_deductions"] or ZERO
+        transferred_to_ledger = totals["transferred_to_ledger"] or ZERO
+        pending_refund = totals["pending_refund"] or ZERO
+        damages = totals["damages"] or ZERO
+        adjust = totals["adjust"] or ZERO
 
     balance_to_collect = max(required - paid_in, ZERO)
     currently_held = max(
@@ -562,7 +582,6 @@ def security_deposit_totals(lease):
         "balance_to_collect": balance_to_collect,
         "currently_held": currently_held,
     }
-
 
 def security_deposit_balance(lease):
     """

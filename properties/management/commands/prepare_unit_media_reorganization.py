@@ -9,7 +9,6 @@ from django.core.management.base import BaseCommand, CommandError
 
 from properties.models import UnitMedia
 
-
 COPY_REQUIRED = "COPY_REQUIRED"
 DUPLICATE_MAPPING = "DUPLICATE_MAPPING"
 ALREADY_PREPARED = "ALREADY_PREPARED"
@@ -241,16 +240,12 @@ class Command(BaseCommand):
         self.stdout.write(f"New DB-relative path: {value(item.new_name)}")
         self.stdout.write(f"Old physical path: {value(item.old_path)}")
         self.stdout.write(f"New physical path: {value(item.new_path)}")
-        self.stdout.write(
-            f"Source exists: {'YES' if item.source_exists else 'NO'}"
-        )
+        self.stdout.write(f"Source exists: {'YES' if item.source_exists else 'NO'}")
         self.stdout.write(
             f"Destination exists: {'YES' if item.destination_exists else 'NO'}"
         )
         self.stdout.write(f"Source SHA256: {value(item.source_sha256)}")
-        self.stdout.write(
-            f"Destination SHA256: {value(item.destination_sha256)}"
-        )
+        self.stdout.write(f"Destination SHA256: {value(item.destination_sha256)}")
         self.stdout.write(f"Proposed action: {item.action}")
         if item.note:
             self.stdout.write(f"Plan note: {item.note}")
@@ -290,7 +285,22 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         apply = options["apply"]
-        queryset = UnitMedia.objects.select_related("unit__property").order_by("pk")
+        queryset = (
+            UnitMedia.objects.select_related("unit__property")
+            .only(
+                "pk",
+                "unit_id",
+                "file",
+                "stamped_file",
+                "thumbnail",
+                "unit__id",
+                "unit__unit_number",
+                "unit__property_id",
+                "unit__property__id",
+                "unit__property__property_name",
+            )
+            .order_by("pk")
+        )
         records_examined = queryset.count()
         items = []
 
@@ -314,9 +324,7 @@ class Command(BaseCommand):
             return
 
         blockers = {
-            MISSING_SOURCE: sum(
-                1 for item in items if item.action == MISSING_SOURCE
-            ),
+            MISSING_SOURCE: sum(1 for item in items if item.action == MISSING_SOURCE),
             COLLISION: sum(1 for item in items if item.action == COLLISION),
             ERROR: sum(1 for item in items if item.action == ERROR),
         }
@@ -341,7 +349,9 @@ class Command(BaseCommand):
             self._write_summary(records_examined, items, bytes_copied)
             self.stdout.write("DATABASE CHANGED: NO")
             self.stdout.write("SOURCE FILES DELETED: NO")
-            raise CommandError("Apply stopped after a copy or verification error.") from exc
+            raise CommandError(
+                "Apply stopped after a copy or verification error."
+            ) from exc
 
         self._write_summary(records_examined, items, bytes_copied)
         self.stdout.write(self.style.SUCCESS("DATABASE CHANGED: NO"))

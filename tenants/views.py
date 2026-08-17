@@ -3073,43 +3073,12 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         invoices = Invoice.objects.none()
         payments = Payment.objects.none()
 
-        money_field = DecimalField(max_digits=12, decimal_places=2)
         zero = Decimal("0.00")
-        invoice_totals = {}
-        payment_totals = {}
         security_totals = {}
         if lease_ids:
-            invoice_totals = {
-                row["lease_id"]: row["total"] or zero
-                for row in (
-                    Invoice.objects.filter(lease_id__in=lease_ids)
-                    .exclude(status="cancelled")
-                    .values("lease_id")
-                    .annotate(total=Coalesce(Sum("amount"), zero))
-                )
-            }
-            payment_totals = {
-                row["lease_id"]: row["total"] or zero
-                for row in (
-                    Payment.objects.filter(lease_id__in=lease_ids)
-                    .values("lease_id")
-                    .annotate(
-                        total=Coalesce(
-                            Sum(
-                                Case(
-                                    When(
-                                        detail__isnull=False,
-                                        then=F("detail__lease_amount"),
-                                    ),
-                                    default=F("amount"),
-                                    output_field=money_field,
-                                )
-                            ),
-                            zero,
-                        )
-                    )
-                )
-            }
+            # Invoice/payment totals are already available from the prefetched
+            # Lease.financial_summary used below.  Do not run duplicate aggregate
+            # queries just to recompute values that are never consumed here.
             for row in (
                 SecurityDepositTransaction.objects.filter(lease_id__in=lease_ids)
                 .values("lease_id", "type")

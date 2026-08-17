@@ -13,7 +13,7 @@ from tenants.models import Tenant
 
 class ElectricityRateResolutionTests(TestCase):
     def setUp(self):
-        settings_obj = GlobalSettings.get_solo()
+        settings_obj, _ = GlobalSettings.objects.get_or_create(pk=1)
         settings_obj.unit_rate_per_kwh = Decimal("50.0000")
         settings_obj.save(update_fields=["unit_rate_per_kwh"])
         self.property = Property.objects.create(
@@ -49,7 +49,9 @@ class ElectricityRateResolutionTests(TestCase):
 
     def test_last_nonblank_level_wins(self):
         resolution = resolve_electricity_rate(lease=self.lease, meter=self.meter)
-        self.assertEqual((resolution.rate, resolution.source), (Decimal("50.0000"), "Global"))
+        self.assertEqual(
+            (resolution.rate, resolution.source), (Decimal("50.0000"), "Global")
+        )
 
         self.property.electricity_unit_rate = Decimal("51.0000")
         self.property.save(update_fields=["electricity_unit_rate"])
@@ -65,10 +67,14 @@ class ElectricityRateResolutionTests(TestCase):
         self.lease.electric_unit_rate = Decimal("54.0000")
         self.lease.save(update_fields=["electric_unit_rate"])
         resolution = resolve_electricity_rate(lease=self.lease, meter=self.meter)
-        self.assertEqual((resolution.rate, resolution.source), (Decimal("54.0000"), "Lease"))
+        self.assertEqual(
+            (resolution.rate, resolution.source), (Decimal("54.0000"), "Lease")
+        )
 
     def test_zero_is_an_explicit_override(self):
         self.lease.electric_unit_rate = Decimal("0.0000")
         self.lease.save(update_fields=["electric_unit_rate"])
         resolution = resolve_electricity_rate(lease=self.lease, meter=self.meter)
-        self.assertEqual((resolution.rate, resolution.source), (Decimal("0.0000"), "Lease"))
+        self.assertEqual(
+            (resolution.rate, resolution.source), (Decimal("0.0000"), "Lease")
+        )

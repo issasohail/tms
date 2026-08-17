@@ -45,7 +45,7 @@
                 <span class="badge bg-info text-dark">{{ group.check_meter.meter_number }}</span>
                 {% if group.check_meter.unit %}<small class="text-muted ms-1">{{ group.check_meter.display_location_name }}</small>{% endif %}
               </td>
-              <td>{{ group.active_billing_meters.count }}</td>
+              <td>{{ group.active_billing_meter_count }}</td>
               <td>
                 {% if group.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
               </td>

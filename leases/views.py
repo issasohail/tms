@@ -4121,6 +4121,11 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         lease = self.object
+        pending_vehicle_submissions = [
+            submission
+            for submission in lease.pending_vehicle_submissions.all()
+            if submission.status == PendingLeaseVehicleSubmission.STATUS_PENDING
+        ]
         renewals = sorted(
             list(lease.renewals.all()),
             key=lambda renewal: renewal.renewal_number,
@@ -4173,12 +4178,8 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 "lease_total_payment": lease_total_payment,
                 "occupancy_count": 1 + lease.family_members.count(),
                 "lease_vehicles": lease.vehicles.all(),
-                "pending_vehicle_submissions": lease.pending_vehicle_submissions.filter(
-                    status=PendingLeaseVehicleSubmission.STATUS_PENDING
-                ),
-                "pending_vehicle_count": lease.pending_vehicle_submissions.filter(
-                    status=PendingLeaseVehicleSubmission.STATUS_PENDING
-                ).count(),
+                "pending_vehicle_submissions": pending_vehicle_submissions,
+                "pending_vehicle_count": len(pending_vehicle_submissions),
                 "vehicle_types": LeaseVehicleType.objects.filter(is_active=True).order_by(
                     "sort_order", "name"
                 ),
@@ -4193,6 +4194,8 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                     .only(
                         "id",
                         "status",
+                        "start_date",
+                        "end_date",
                         "tenant__first_name",
                         "tenant__last_name",
                         "unit__unit_number",
@@ -5110,7 +5113,12 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
             units_qs = units_qs.filter(property_id=property_id)
 
         # Build lease candidate list based on property/unit & show_inactive
-        leases_qs = Lease.objects.select_related("tenant", "unit", "unit__property")
+        leases_qs = Lease.objects.select_related("tenant", "unit", "unit__property").only(
+        "id", "status", "start_date", "end_date",
+        "tenant__id", "tenant__first_name", "tenant__last_name",
+        "unit__id", "unit__unit_number", "unit__property__id",
+        "unit__property__property_name",
+    )
 
         if property_id:
             leases_qs = leases_qs.filter(unit__property_id=property_id)
@@ -6106,7 +6114,9 @@ def _edit_clause_filter_context(request, current_lease):
     lease_status = request.GET.get("lease_status") or "active"
     today = timezone.localdate()
 
-    units_qs = Unit.objects.select_related("property").order_by(
+    units_qs = Unit.objects.select_related("property").only(
+        "id", "property_id", "unit_number", "property__id", "property__property_name"
+    ).order_by(
         "property__property_name", "unit_number"
     )
     if property_id:
@@ -6147,9 +6157,9 @@ def _edit_clause_filter_context(request, current_lease):
         )
 
     return {
-        "filter_properties": Property.objects.order_by("property_name"),
+        "filter_properties": Property.objects.only("id", "property_name").order_by("property_name"),
         "filter_units": units_qs,
-        "filter_tenants": Tenant.objects.order_by("first_name", "last_name"),
+        "filter_tenants": Tenant.objects.only("id", "first_name", "last_name").order_by("first_name", "last_name"),
         "filter_lease_choices": lease_choices,
         "filter_property": property_id,
         "filter_unit": unit_id,
@@ -6715,7 +6725,9 @@ def edit_clauses(request, pk):
             "clauses": clauses,
             "agreement_date": history.agreement_date or history.start_date,
             "placeholders": _active_agreement_placeholders(),
-            "role_tenants": Tenant.objects.filter(is_active=True).order_by("first_name", "last_name"),
+            "role_tenants": Tenant.objects.filter(is_active=True).only(
+                "id", "first_name", "last_name", "phone"
+            ).order_by("first_name", "last_name"),
             "relationship_types": LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name"),
             "estamp_status": current_estamp_status,
             "agreement_photo_settings": {
@@ -7106,8 +7118,8 @@ def _active_agreement_placeholders():
 @login_required
 @permission_required("leases.change_defaultclause", raise_exception=True)
 def default_clause_list(request):
-    clauses = DefaultClause.objects.order_by("clause_number")
-    active_count = clauses.filter(is_active=True).count()
+    clauses = list(DefaultClause.objects.order_by("clause_number"))
+    active_count = sum(1 for clause in clauses if clause.is_active)
     return render(
         request,
         "leases/default_clause_list.html",
@@ -7167,10 +7179,10 @@ def default_clause_edit(request, pk):
 @login_required
 @permission_required("leases.change_agreementplaceholder", raise_exception=True)
 def agreement_placeholder_list(request):
-    placeholders = AgreementPlaceholder.objects.order_by(
-        "category", "sort_order", "key"
+    placeholders = list(
+        AgreementPlaceholder.objects.order_by("category", "sort_order", "key")
     )
-    active_count = placeholders.filter(is_active=True).count()
+    active_count = sum(1 for placeholder in placeholders if placeholder.is_active)
     return render(
         request,
         "leases/agreement_placeholder_list.html",

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import json
 import logging
 import os
 import queue
@@ -13,7 +12,6 @@ import threading
 import time
 from datetime import datetime as dt
 from pathlib import Path
-from typing import Optional, Tuple
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -22,27 +20,28 @@ from django.db.models import Q
 from django.utils import timezone
 
 from smart_meter.dlt645 import parse_frame, verify_checksum
-from smart_meter.models import LiveReading, Meter, MeterReading, UnknownMeter
-from smart_meter.services.command_lifecycle import revalidate_command
 
 # ==== WINDOWS-SAFE LOGGING (same as before) ====
-import logging
-from pathlib import Path
-from django.conf import settings
-import os
-from smart_meter.models import MeterCommand, Meter  # already importing Meter
-from django.db import transaction
-
+from smart_meter.models import (
+    LiveReading,
+    Meter,
+    MeterCommand,  # already importing Meter
+    MeterReading,
+    UnknownMeter,
+)
+from smart_meter.services.command_lifecycle import revalidate_command
 
 try:
     from concurrent_log_handler import ConcurrentRotatingFileHandler as _SafeHandler
-    _SAFE_HANDLER_KW = dict(maxBytes=10_000_000,
-                            backupCount=5, encoding="utf-8")
+
+    _SAFE_HANDLER_KW = dict(maxBytes=10_000_000, backupCount=5, encoding="utf-8")
     _ROTATION_ENABLED = True
 except ImportError:
+
     class _SafeHandler(logging.FileHandler):  # fallback (no rotation)
         def __init__(self, filename, **_):
             super().__init__(filename, encoding="utf-8")
+
     _SAFE_HANDLER_KW = {}
     _ROTATION_ENABLED = False
 
@@ -57,28 +56,34 @@ logger.propagate = False
 
 def _has_file_handler_for(path: str) -> bool:
     for h in logger.handlers:
-        if getattr(h, "baseFilename", None) and os.path.normcase(getattr(h, "baseFilename")) == os.path.normcase(path):
+        if getattr(h, "baseFilename", None) and os.path.normcase(
+            h.baseFilename
+        ) == os.path.normcase(path):
             return True
     return False
 
 
 if not _has_file_handler_for(LOG_PATH):
     fh = _SafeHandler(LOG_PATH, **_SAFE_HANDLER_KW)
-    fh.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s [%(name)s] %(message)s"))
+    fh.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    )
     logger.addHandler(fh)
     if not _ROTATION_ENABLED:
         logger.warning(
-            "concurrent-log-handler not installed; using non-rotating FileHandler.")
+            "concurrent-log-handler not installed; using non-rotating FileHandler."
+        )
 
 if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
     ch = logging.StreamHandler()
-    ch.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s [%(name)s] %(message)s"))
+    ch.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    )
     logger.addHandler(ch)
 
 # Diagnostic inventory (kept)
 try:
+
     def _describe_handler(h):
         name = getattr(h, "__class__", type(h)).__name__
         fn = getattr(h, "baseFilename", None)
@@ -101,10 +106,10 @@ except Exception as _e:
 CTRL_SHARED_SECRET = os.getenv("METER_CTRL_SECRET")
 
 
-def _decode_switch_action_from_hex(frame_hex: str) -> Optional[str]:
+def _decode_switch_action_from_hex(frame_hex: str) -> str | None:
     try:
         b = bytes.fromhex(frame_hex)
-        i = b.find(b'\x68')
+        i = b.find(b"\x68")
         if i < 0 or i + 10 >= len(b):
             return None
         ctrl = b[i + 8]
@@ -123,7 +128,7 @@ def _decode_switch_action_from_hex(frame_hex: str) -> Optional[str]:
 def append_line(path, line):
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    text = (line.rstrip("\r\n") + "\n")
+    text = line.rstrip("\r\n") + "\n"
     with p.open("a", encoding="utf-8", errors="replace", newline="") as f:
         f.write(text)
         f.flush()
@@ -140,17 +145,15 @@ LOG_FILE_FRAMES = Path(LOG_DIR) / "meter_raw_frames.log"
 IDLE_TIMEOUT = 0  # seconds; 0/False => never close just because idle
 
 # TCP keepalive tuning (helps survive NATs)
-KA_IDLE = 600      # start keepalive probes after 600s idle
-KA_INT = 10       # send a probe every 10s
-KA_CNT = 3        # drop after 3 failed probes
+KA_IDLE = 600  # start keepalive probes after 600s idle
+KA_INT = 10  # send a probe every 10s
+KA_CNT = 3  # drop after 3 failed probes
 
 # UPDATED: lightweight application-level heartbeat to tick NATs
 # Can be overridden via Django settings if you like.
-HEARTBEAT_INTERVAL = getattr(
-    settings, "METER_HEARTBEAT_INTERVAL", 300)  # seconds
+HEARTBEAT_INTERVAL = getattr(settings, "METER_HEARTBEAT_INTERVAL", 300)  # seconds
 # A benign DLT645 "read" DI is ideal here; adjust to your meters if needed.
-HEARTBEAT_FRAME_HEX = getattr(
-    settings, "METER_HEARTBEAT_FRAME_HEX", "028011FF")
+HEARTBEAT_FRAME_HEX = getattr(settings, "METER_HEARTBEAT_FRAME_HEX", "028011FF")
 
 MAX_BUFFER_BYTES = 1024 * 1024  # 1 MB (unchanged)
 
@@ -165,14 +168,14 @@ SNAPSHOT_MINUTES = 15  # unchanged
 # =========================
 # Connection registry & waiter management
 # =========================
-ACTIVE_HANDLERS: dict[str, "ClientHandler"] = {}
+ACTIVE_HANDLERS: dict[str, ClientHandler] = {}
 ACTIVE_LOCK = threading.Lock()
 
 REPLY_WAITERS: dict[str, list[dict]] = {}
 REPLY_LOCK = threading.Lock()
 
 
-def _register_handler(meter_number: str, handler: "ClientHandler"):
+def _register_handler(meter_number: str, handler: ClientHandler):
     if not meter_number:
         return
     # UPDATED: ensure a single live connection per meter. Replace atomically.
@@ -180,8 +183,12 @@ def _register_handler(meter_number: str, handler: "ClientHandler"):
         old = ACTIVE_HANDLERS.get(meter_number)
         if old and old is not handler:
             try:
-                logger.info("🔁 Meter %s reconnected from %s; closing old peer %s",
-                            meter_number, handler.peer, getattr(old, "peer", "?"))
+                logger.info(
+                    "🔁 Meter %s reconnected from %s; closing old peer %s",
+                    meter_number,
+                    handler.peer,
+                    getattr(old, "peer", "?"),
+                )
                 old.close(reason="replaced")  # politely stop the old thread/socket
             except Exception:
                 pass
@@ -190,13 +197,21 @@ def _register_handler(meter_number: str, handler: "ClientHandler"):
     # fail-open for the reading path; the periodic poller remains the fallback.
     try:
         MeterCommand.objects.filter(
-            meter_number=meter_number, status="waiting_online"
-        ).update(status="pending", next_attempt_at=None)
+            meter_number=meter_number,
+            status="waiting_online",
+        ).update(
+            status="pending",
+            next_attempt_at=None,
+        )
     except Exception as exc:
-        logger.debug("Unable to wake deferred commands for %s: %s", meter_number, exc)
+        logger.debug(
+            "Unable to wake deferred commands for %s: %s",
+            meter_number,
+            exc,
+        )
 
 
-def _unregister_handler(meter_number: Optional[str], handler: "ClientHandler"):
+def _unregister_handler(meter_number: str | None, handler: ClientHandler):
     if not meter_number:
         return
     with ACTIVE_LOCK:
@@ -205,12 +220,12 @@ def _unregister_handler(meter_number: Optional[str], handler: "ClientHandler"):
             ACTIVE_HANDLERS.pop(meter_number, None)
 
 
-def _get_handler(meter_number: str) -> Optional["ClientHandler"]:
+def _get_handler(meter_number: str) -> ClientHandler | None:
     with ACTIVE_LOCK:
         return ACTIVE_HANDLERS.get(meter_number)
 
 
-def _push_waiter(meter_number: str, q: "queue.Queue", expect_di: Optional[str]):
+def _push_waiter(meter_number: str, q: queue.Queue, expect_di: str | None):
     with REPLY_LOCK:
         REPLY_WAITERS.setdefault(meter_number, []).append(
             {"q": q, "expect_di": (expect_di or "").upper()}
@@ -238,6 +253,7 @@ def handle_frame(addr, raw_bytes, status):
     )
     logger.info("Saved %d bytes from %s", len(raw_bytes), addr)
 
+
 # -------------------------
 # TCP keepalive helper
 # -------------------------
@@ -256,10 +272,13 @@ def _enable_tcp_keepalive(conn: socket.socket):
             onoff = 1
             keepalivetime = KA_IDLE * 1000
             keepaliveinterval = KA_INT * 1000
-            conn.ioctl(SIO_KEEPALIVE_VALS, struct.pack(
-                "III", onoff, keepalivetime, keepaliveinterval))
+            conn.ioctl(
+                SIO_KEEPALIVE_VALS,
+                struct.pack("III", onoff, keepalivetime, keepaliveinterval),
+            )
     except Exception as e:
         logger.debug(f"keepalive setup failed: {e}")
+
 
 # =========================
 # ClientHandler per TCP connection
@@ -267,7 +286,9 @@ def _enable_tcp_keepalive(conn: socket.socket):
 
 
 class ClientHandler(threading.Thread):
-    def __init__(self, conn: socket.socket, addr, debug=False, dump_raw=None, accept_bad=False):
+    def __init__(
+        self, conn: socket.socket, addr, debug=False, dump_raw=None, accept_bad=False
+    ):
         super().__init__(daemon=True)
         self.conn = conn
         self.addr = addr
@@ -284,7 +305,7 @@ class ClientHandler(threading.Thread):
         _enable_tcp_keepalive(self.conn)
 
         # Learned from parsed frames
-        self.meter_number: Optional[str] = None
+        self.meter_number: str | None = None
         self.last_seen = time.time()
         self.peer = f"{addr[0]}:{addr[1]}"
         self.disconnect_reason = "shutdown"
@@ -313,8 +334,7 @@ class ClientHandler(threading.Thread):
     def _heartbeat_loop(self):
         if HEARTBEAT_INTERVAL <= 0:
             return
-        hb = bytes.fromhex(
-            HEARTBEAT_FRAME_HEX) if HEARTBEAT_FRAME_HEX else None
+        hb = bytes.fromhex(HEARTBEAT_FRAME_HEX) if HEARTBEAT_FRAME_HEX else None
         if not hb:
             return
         while self.alive and not self._hb_stop.wait(HEARTBEAT_INTERVAL):
@@ -322,8 +342,7 @@ class ClientHandler(threading.Thread):
             if time.time() - self.last_seen >= HEARTBEAT_INTERVAL * 0.5:
                 logger.debug("💓 HB → %s", self.meter_number or self.peer)
                 try:
-                    self.enqueue_send(
-                        hb, expire_at=time.time() + HEARTBEAT_INTERVAL)
+                    self.enqueue_send(hb, expire_at=time.time() + HEARTBEAT_INTERVAL)
                 except Exception:
                     # if we cannot enqueue, loop will likely exit soon anyway
                     pass
@@ -334,8 +353,11 @@ class ClientHandler(threading.Thread):
         # behind a thread-local database connection.
         close_old_connections()
         logger.info("TCP_CONNECTED peer=%s", self.peer)
-        threading.Thread(target=self._heartbeat_loop,
-                         name=f"hb@{self.addr[0]}:{self.addr[1]}", daemon=True).start()
+        threading.Thread(
+            target=self._heartbeat_loop,
+            name=f"hb@{self.addr[0]}:{self.addr[1]}",
+            daemon=True,
+        ).start()
         try:
             while self.alive:
                 # ---- Receive ----
@@ -344,7 +366,7 @@ class ClientHandler(threading.Thread):
                     if chunk == b"":  # peer closed (EOF)
                         self.disconnect_reason = "eof"
                         break
-                except socket.timeout:
+                except TimeoutError:
                     chunk = None
                 except Exception as e:
                     if self.alive:
@@ -355,14 +377,16 @@ class ClientHandler(threading.Thread):
                 if chunk:
                     if self.debug:
                         logger.debug(
-                            f"⬇️ RAW CHUNK {self.addr} ({len(chunk)}B): {chunk.hex().upper()}")
+                            f"⬇️ RAW CHUNK {self.addr} ({len(chunk)}B): {chunk.hex().upper()}"
+                        )
                     self.buffer += chunk
 
                     # Guard against memory abuse
                     if len(self.buffer) > MAX_BUFFER_BYTES:
                         self.disconnect_reason = "buffer_cap"
                         logger.warning(
-                            f"Buffer cap exceeded from {self.addr}; dropping connection")
+                            f"Buffer cap exceeded from {self.addr}; dropping connection"
+                        )
                         break
 
                     # Frame slicer by L field
@@ -372,7 +396,7 @@ class ClientHandler(threading.Thread):
                         if not self.buffer:
                             break
 
-                        start = self.buffer.find(b'\x68')
+                        start = self.buffer.find(b"\x68")
                         if start == -1:
                             self.buffer = b""
                             break
@@ -397,15 +421,15 @@ class ClientHandler(threading.Thread):
 
                         if self.debug:
                             logger.debug(
-                                f"🧱 FRAME {self.addr} ({len(frame)}B): {frame.hex().upper()}")
+                                f"🧱 FRAME {self.addr} ({len(frame)}B): {frame.hex().upper()}"
+                            )
 
                         if self.dump_raw:
                             try:
                                 with open(self.dump_raw, "a", encoding="utf-8") as f:
                                     f.write(frame.hex().upper() + "\n")
                             except Exception as e:
-                                logger.warning(
-                                    f"Failed to write raw frame: {e}")
+                                logger.warning(f"Failed to write raw frame: {e}")
 
                         self.process_frame(frame)
 
@@ -422,15 +446,19 @@ class ClientHandler(threading.Thread):
                         if expire_at and now > expire_at:
                             logger.warning(
                                 "DROP_STALE_TX peer=%s meter=%s age=%.1fs frame=%s",
-                                self.peer, getattr(self, "meter_number", None),
-                                now - expire_at, frame.hex().upper()
+                                self.peer,
+                                getattr(self, "meter_number", None),
+                                now - expire_at,
+                                frame.hex().upper(),
                             )
                             continue
 
                         logger.info(
                             "TX_TO_METER peer=%s meter=%s len=%s frame=%s",
-                            self.peer, getattr(self, "meter_number", None),
-                            len(frame), frame.hex().upper()
+                            self.peer,
+                            getattr(self, "meter_number", None),
+                            len(frame),
+                            frame.hex().upper(),
                         )
                         self.conn.sendall(frame)
                         self.last_seen = now
@@ -477,9 +505,16 @@ class ClientHandler(threading.Thread):
         # A persistent meter socket can outlive CONN_MAX_AGE by hours or days.
         # Treat each frame as one unit of DB work, including early returns and
         # exceptions, so the handler's thread-local connection stays bounded.
-        close_old_connections()
+        #
+        # Never retire/close a Django DB connection while it is inside an atomic
+        # transaction. Django TestCase uses an outer atomic block, and closing the
+        # connection there marks the transaction as needing rollback.
+        if not connection.in_atomic_block:
+            close_old_connections()
+
         try:
             self._process_frame(frame)
+
         except DatabaseError as exc:
             logger.exception(
                 "DB_ERROR meter=%s peer=%s operation=frame_persistence error=%s",
@@ -487,15 +522,20 @@ class ClientHandler(threading.Thread):
                 self.peer,
                 exc,
             )
-            # The meter TCP session is independent of MySQL. Retire only this
-            # thread's failed DB connection and allow the next frame to retry.
-            connection.close()
+
+            # A failed DB connection must not kill the persistent meter TCP session.
+            # Retire the failed connection so the next frame can open a clean one.
+            # Do not forcibly close a connection owned by an outer atomic block.
+            if not connection.in_atomic_block:
+                connection.close()
+
         finally:
-            close_old_connections()
+            if not connection.in_atomic_block:
+                close_old_connections()
 
     def _process_frame(self, frame: bytes):
 
-        start = frame.find(b'\x68')
+        start = frame.find(b"\x68")
         ok, cs_style = verify_checksum(frame, start)
 
         if not ok and not self.accept_bad:
@@ -503,10 +543,11 @@ class ClientHandler(threading.Thread):
                 ctrl_idx = start + 8
                 L = frame[start + 9]
                 data_end = (start + 10) + L
-                calc_c = (sum(frame[ctrl_idx:data_end]) & 0xFF)
+                calc_c = sum(frame[ctrl_idx:data_end]) & 0xFF
                 found = frame[data_end]
                 logger.warning(
-                    f"Checksum failed (calc=0x{calc_c:02X}, found=0x{found:02X}, L={L}, frame_len={len(frame)})")
+                    f"Checksum failed (calc=0x{calc_c:02X}, found=0x{found:02X}, L={L}, frame_len={len(frame)})"
+                )
             except Exception:
                 logger.warning("Checksum failed (unable to compute details)")
             return
@@ -533,15 +574,13 @@ class ClientHandler(threading.Thread):
         msg += "(data parsed)" if data else "(no data)"
         if parsed.get("cs_style"):
             msg += f" [cs:{parsed.get('cs_style')}]"
-        logger.info(
-            "%s - %s", timezone.localtime().isoformat(timespec="seconds"), msg)
+        logger.info("%s - %s", timezone.localtime().isoformat(timespec="seconds"), msg)
 
         # Deliver to a waiting "send-and-wait" caller (but skip keepalives)
         if di != "80808080" and ctrl_code in (0x91, 0x83, 0x9C, 0xDC) and meter_number:
             delivered = _deliver_if_match(meter_number, di, frame)
             if delivered and self.debug:
-                logger.debug(
-                    f"📤 Delivered reply to waiter for meter {meter_number}")
+                logger.debug(f"📤 Delivered reply to waiter for meter {meter_number}")
 
         if not data:
             return
@@ -556,95 +595,107 @@ class ClientHandler(threading.Thread):
         except Meter.DoesNotExist:
             with transaction.atomic():
                 um, created = UnknownMeter.objects.get_or_create(
-                    meter_number=meter_number, defaults={
-                        "last_raw_hex": frame.hex().upper()}
+                    meter_number=meter_number,
+                    defaults={"last_raw_hex": frame.hex().upper()},
                 )
                 if not created:
                     um.seen_count += 1
                     um.last_raw_hex = frame.hex().upper()
                     um.status = "new"
                     um.last_seen = timezone.now()
-                    um.save(update_fields=[
-                            "seen_count", "last_raw_hex", "status", "last_seen"])
+                    um.save(
+                        update_fields=[
+                            "seen_count",
+                            "last_raw_hex",
+                            "status",
+                            "last_seen",
+                        ]
+                    )
             logger.info(
-                f"🆕 Unknown meter discovered: {meter_number} (seen {um.seen_count}x)")
+                f"🆕 Unknown meter discovered: {meter_number} (seen {um.seen_count}x)"
+            )
             return
 
         # Live upsert
         live_defaults = {
-            'balance': data.get('balance'),
-            'overdraft': data.get('overdraft'),
-            'voltage_a': data.get('voltage_a'),
-            'voltage_b': data.get('voltage_b'),
-            'voltage_c': data.get('voltage_c'),
-            'current_a': data.get('current_a'),
-            'current_b': data.get('current_b'),
-            'current_c': data.get('current_c'),
-            'total_power': data.get('total_power'),
-            'power_a': data.get('power_a'),
-            'power_b': data.get('power_b'),
-            'power_c': data.get('power_c'),
-            'pf_total': data.get('pf_total'),
-            'pf_a': data.get('pf_a'),
-            'pf_b': data.get('pf_b'),
-            'pf_c': data.get('pf_c'),
-            'total_energy': data.get('total_energy'),
-            'peak_total_energy': data.get('peak_total_energy'),
-            'valley_total_consumption': data.get('valley_total_consumption'),
-            'flat_total_consumption': data.get('flat_total_consumption'),
-            'status_word': data.get('status_word'),
-            'source_ip':   self.addr[0],
-            'source_port': self.addr[1],
-
-            'prev1_day_energy':         data.get('prev1_day_energy'),
-            'prev1_day_peak_energy':    data.get('prev1_day_peak_energy'),
-            'prev1_day_valley_energy':  data.get('prev1_day_valley_energy'),
-            'prev1_day_flat_energy':    data.get('prev1_day_flat_energy'),
-
-            'last2_days_energy':        data.get('last2_days_energy'),
-            'last2_days_peak_energy':   data.get('last2_days_peak_energy'),
-            'last2_days_valley_energy': data.get('last2_days_valley_energy'),
-            'last2_days_flat_energy':   data.get('last2_days_flat_energy'),
-
-            'last3_days_energy':        data.get('last3_days_energy'),
-            'last3_days_peak_energy':   data.get('last3_days_peak_energy'),
-            'last3_days_valley_energy': data.get('last3_days_valley_energy'),
-            'last3_days_flat_energy':   data.get('last3_days_flat_energy'),
+            "balance": data.get("balance"),
+            "overdraft": data.get("overdraft"),
+            "voltage_a": data.get("voltage_a"),
+            "voltage_b": data.get("voltage_b"),
+            "voltage_c": data.get("voltage_c"),
+            "current_a": data.get("current_a"),
+            "current_b": data.get("current_b"),
+            "current_c": data.get("current_c"),
+            "total_power": data.get("total_power"),
+            "power_a": data.get("power_a"),
+            "power_b": data.get("power_b"),
+            "power_c": data.get("power_c"),
+            "pf_total": data.get("pf_total"),
+            "pf_a": data.get("pf_a"),
+            "pf_b": data.get("pf_b"),
+            "pf_c": data.get("pf_c"),
+            "total_energy": data.get("total_energy"),
+            "peak_total_energy": data.get("peak_total_energy"),
+            "valley_total_consumption": data.get("valley_total_consumption"),
+            "flat_total_consumption": data.get("flat_total_consumption"),
+            "status_word": data.get("status_word"),
+            "source_ip": self.addr[0],
+            "source_port": self.addr[1],
+            "prev1_day_energy": data.get("prev1_day_energy"),
+            "prev1_day_peak_energy": data.get("prev1_day_peak_energy"),
+            "prev1_day_valley_energy": data.get("prev1_day_valley_energy"),
+            "prev1_day_flat_energy": data.get("prev1_day_flat_energy"),
+            "last2_days_energy": data.get("last2_days_energy"),
+            "last2_days_peak_energy": data.get("last2_days_peak_energy"),
+            "last2_days_valley_energy": data.get("last2_days_valley_energy"),
+            "last2_days_flat_energy": data.get("last2_days_flat_energy"),
+            "last3_days_energy": data.get("last3_days_energy"),
+            "last3_days_peak_energy": data.get("last3_days_peak_energy"),
+            "last3_days_valley_energy": data.get("last3_days_valley_energy"),
+            "last3_days_flat_energy": data.get("last3_days_flat_energy"),
         }
         with transaction.atomic():
             live_reading, _live_created = LiveReading.objects.update_or_create(
-                meter=meter, defaults=live_defaults)
+                meter=meter, defaults=live_defaults
+            )
 
         # Historical snapshot on cadence
         now = timezone.now()
-        last = meter.readings.order_by('-ts').first()
+        last = meter.readings.order_by("-ts").first()
         take_snapshot = (not last) or (
-            (now - last.ts).total_seconds() >= SNAPSHOT_MINUTES * 60)
+            (now - last.ts).total_seconds() >= SNAPSHOT_MINUTES * 60
+        )
         if take_snapshot:
             with transaction.atomic():
                 MeterReading.objects.create(
-                    meter=meter, ts=now,
-                    total_energy=data.get('total_energy'),
-                    peak_total_energy=data.get('peak_total_energy'),
-                    valley_total_consumption=data.get(
-                        'valley_total_consumption'),
-                    flat_total_consumption=data.get('flat_total_consumption'),
-                    total_power=data.get('total_power'),
-                    pf_total=data.get('pf_total'),
-                    voltage_a=data.get('voltage_a'),
-                    voltage_b=data.get('voltage_b'),
-                    voltage_c=data.get('voltage_c'),
-                    current_a=data.get('current_a'),
-                    current_b=data.get('current_b'),
-                    current_c=data.get('current_c'),
+                    meter=meter,
+                    ts=now,
+                    total_energy=data.get("total_energy"),
+                    peak_total_energy=data.get("peak_total_energy"),
+                    valley_total_consumption=data.get("valley_total_consumption"),
+                    flat_total_consumption=data.get("flat_total_consumption"),
+                    total_power=data.get("total_power"),
+                    pf_total=data.get("pf_total"),
+                    voltage_a=data.get("voltage_a"),
+                    voltage_b=data.get("voltage_b"),
+                    voltage_c=data.get("voltage_c"),
+                    current_a=data.get("current_a"),
+                    current_b=data.get("current_b"),
+                    current_c=data.get("current_c"),
                     source_ip=self.addr[0],
                     source_port=self.addr[1],
                 )
-            logger.info("%s ✅ Stored live reading for meter %s",
-                        timezone.localtime().isoformat(timespec="seconds"), meter_number)
+            logger.info(
+                "%s ✅ Stored live reading for meter %s",
+                timezone.localtime().isoformat(timespec="seconds"),
+                meter_number,
+            )
         else:
-            logger.info("%s ✅ Stored live reading for meter %s",
-                        timezone.localtime().isoformat(timespec="seconds"), meter_number)
+            logger.info(
+                "%s ✅ Stored live reading for meter %s",
+                timezone.localtime().isoformat(timespec="seconds"),
+                meter_number,
+            )
 
         # Credit-control observation is intentionally fail-open and occurs only
         # after normal live/history persistence has completed.  It only debounces
@@ -652,9 +703,16 @@ class ClientHandler(threading.Thread):
         # in the parser/listener path.
         try:
             from smart_meter.services.credit_control import request_credit_evaluation
+
             request_credit_evaluation(meter, live_reading)
+
         except Exception as exc:
-            logger.warning("credit_evaluation_enqueue_failed meter=%s error=%s", meter_number, exc)
+            logger.warning(
+                "credit_evaluation_enqueue_failed meter=%s error=%s",
+                meter_number,
+                exc,
+            )
+
 
 # =========================
 # Django management command
@@ -667,6 +725,7 @@ class DbCommandPoller(threading.Thread):
     Offline meters remain queued. Automatic relay commands are revalidated
     immediately before transmission. Reading storage does not depend on this worker.
     """
+
     daemon = True
 
     def __init__(self, interval=0.3, debug=False):
@@ -685,12 +744,18 @@ class DbCommandPoller(threading.Thread):
                 close_old_connections()
                 now = timezone.now()
                 with transaction.atomic():
-                    qs = (MeterCommand.objects
-                          .select_for_update(skip_locked=True)
-                          .filter(status__in=("new", "pending", "retry", "waiting_online"))
-                          .filter(Q(not_before__isnull=True) | Q(not_before__lte=now))
-                          .filter(Q(next_attempt_at__isnull=True) | Q(next_attempt_at__lte=now))
-                          .order_by("priority", "created_at")[:5])
+                    qs = (
+                        MeterCommand.objects.select_for_update(skip_locked=True)
+                        .filter(
+                            status__in=("new", "pending", "retry", "waiting_online")
+                        )
+                        .filter(Q(not_before__isnull=True) | Q(not_before__lte=now))
+                        .filter(
+                            Q(next_attempt_at__isnull=True)
+                            | Q(next_attempt_at__lte=now)
+                        )
+                        .order_by("priority", "created_at")[:5]
+                    )
                     cmds = list(qs)
                     for cmd in cmds:
                         if cmd.expires_at and cmd.expires_at <= now:
@@ -726,7 +791,7 @@ class DbCommandPoller(threading.Thread):
                 self._wait_online(cmd, f"meter {meter_no} not connected")
                 return
 
-            waiter: "queue.Queue" = queue.Queue()
+            waiter: queue.Queue = queue.Queue()
             _push_waiter(meter_no, waiter, cmd.expect_di or None)
             try:
                 frame = bytes.fromhex(cmd.frame_hex.strip())
@@ -766,7 +831,16 @@ class DbCommandPoller(threading.Thread):
             cmd.raw_ack_hex = reply_hex or ""
             cmd.acknowledged_at = timezone.now()
             cmd.error = ""
-            cmd.save(update_fields=["status", "reply_hex", "raw_ack_hex", "acknowledged_at", "error", "updated_at"])
+            cmd.save(
+                update_fields=[
+                    "status",
+                    "reply_hex",
+                    "raw_ack_hex",
+                    "acknowledged_at",
+                    "error",
+                    "updated_at",
+                ]
+            )
 
     def _wait_online(self, cmd, msg):
         with transaction.atomic():
@@ -797,7 +871,15 @@ class DbCommandPoller(threading.Thread):
             cmd.cancelled_at = timezone.now()
             cmd.cancelled_reason = msg[:255]
             cmd.error = ""
-            cmd.save(update_fields=["status", "cancelled_at", "cancelled_reason", "error", "updated_at"])
+            cmd.save(
+                update_fields=[
+                    "status",
+                    "cancelled_at",
+                    "cancelled_reason",
+                    "error",
+                    "updated_at",
+                ]
+            )
 
     def _fail(self, cmd, msg):
         with transaction.atomic():
@@ -810,14 +892,26 @@ class Command(BaseCommand):
     help = "Start DL/T 645 listener; store live readings; provide a local control port to send commands."
 
     def add_arguments(self, parser):
-        parser.add_argument("--host", default=HOST,
-                            help="Bind address for incoming meter connections")
-        parser.add_argument("--port", type=int, default=PORT,
-                            help="TCP port for incoming meter connections")
-        parser.add_argument("--debug", action="store_true",
-                            help="Enable verbose hex logging of chunks and frames.")
-        parser.add_argument("--dump-raw", dest="dump_raw",
-                            default=None, help="Path to append raw frames as hex.")
+        parser.add_argument(
+            "--host", default=HOST, help="Bind address for incoming meter connections"
+        )
+        parser.add_argument(
+            "--port",
+            type=int,
+            default=PORT,
+            help="TCP port for incoming meter connections",
+        )
+        parser.add_argument(
+            "--debug",
+            action="store_true",
+            help="Enable verbose hex logging of chunks and frames.",
+        )
+        parser.add_argument(
+            "--dump-raw",
+            dest="dump_raw",
+            default=None,
+            help="Path to append raw frames as hex.",
+        )
         parser.add_argument(
             "--accept-bad-checksum",
             dest="accept_bad_checksum",
@@ -850,8 +944,5 @@ class Command(BaseCommand):
                 # keepalives at accept-time too (belt + suspenders)
                 _enable_tcp_keepalive(conn)
                 ClientHandler(
-                    conn, addr,
-                    debug=debug,
-                    dump_raw=dump_raw,
-                    accept_bad=accept_bad
+                    conn, addr, debug=debug, dump_raw=dump_raw, accept_bad=accept_bad
                 ).start()

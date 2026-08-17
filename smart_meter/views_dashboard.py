@@ -27,7 +27,7 @@ from collections import defaultdict
 from invoices.models import Invoice, InvoiceItem, ItemCategory
 from properties.models import Unit
 from django.shortcuts import render
-from django.db.models import Sum, Q, OuterRef, Subquery
+from django.db.models import Sum, Q, OuterRef, Subquery, F, Window
 from datetime import date
 from leases.models import Lease
 # adjust app label if needed
@@ -47,6 +47,7 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.decorators import permission_required
 
 from django.db.models import Min, Max
+from django.db.models.functions import RowNumber
 from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404
 from django.template.loader import render_to_string
@@ -275,21 +276,28 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
 
     prev_end_by_meter = {}
     if meter_ids:
-        prev_total = (
-            MeterReading.objects
-            .filter(meter_id=OuterRef("pk"), ts__lt=start_dt)
-            .order_by("-ts")
-            .values("total_energy")[:1]
-        )
+        # Avoid MySQL's slow correlated ORDER BY/LIMIT subquery per meter.
+        # MeterReading already has a composite (meter, ts) index; rank the
+        # selected meters' prior readings once and keep only the latest row.
         prev_qs = (
-            Meter.objects
-            .filter(id__in=meter_ids)
-            .annotate(prev_total=Subquery(prev_total))
-            .values("id", "prev_total")
+            MeterReading.objects
+            .filter(meter_id__in=meter_ids, ts__lt=start_dt)
+            .order_by()
+            .annotate(
+                _prev_rank=Window(
+                    expression=RowNumber(),
+                    partition_by=[F("meter_id")],
+                    order_by=[F("ts").desc(), F("id").desc()],
+                )
+            )
+            .filter(_prev_rank=1)
+            .values("meter_id", "total_energy")
         )
         for snap in prev_qs:
-            if snap["prev_total"] is not None:
-                prev_end_by_meter[snap["id"]] = Decimal(str(snap["prev_total"]))
+            if snap["total_energy"] is not None:
+                prev_end_by_meter[snap["meter_id"]] = Decimal(
+                    str(snap["total_energy"])
+                )
 
     for m in meters:
         prev_end = prev_end_by_meter.get(m.id)
@@ -545,9 +553,9 @@ def energy_dashboard(request):
     meter_id = (request.GET.get("meter") or "").strip()
     meter_role = (request.GET.get("role") or "").strip().lower()
 
-    all_properties = Property.objects.all().order_by("property_name")
+    all_properties = Property.objects.only("id", "property_name").order_by("property_name")
 
-    units_qs = Unit.objects.all()
+    units_qs = Unit.objects.only("id", "property_id", "unit_number")
     if prop_id:
         units_qs = units_qs.filter(property_id=prop_id)
     filtered_units = units_qs.order_by("unit_number")
@@ -611,14 +619,31 @@ def energy_dashboard(request):
             "balance": getattr(bal_obj, "balance", None),
         }
 
-    billing_meters = selected_meters.filter(meter_role=Meter.METER_ROLE_BILLING)
     if meter_role == "all":
+        # Build the selected-meter series once. Billing-only totals are derived
+        # from those already-built rows instead of repeating all reading queries.
         labels, datasets, table_rows, _display_totals = _per_meter_series(
             selected_meters, start_date, end_date, report_type
         )
-        _billing_labels, _billing_datasets, _billing_rows, totals = _per_meter_series(
-            billing_meters, start_date, end_date, report_type
+        billing_rows = [
+            row for row in table_rows
+            if row["meter_role"] == Meter.METER_ROLE_BILLING
+        ]
+        total_kwh = sum((row["usage"] for row in billing_rows), Decimal("0"))
+        usage_charges = sum(
+            (row["usage_amount"] for row in billing_rows), Decimal("0")
         )
+        service_charges = sum(
+            (row["service_charges"] for row in billing_rows), Decimal("0")
+        )
+        totals = {
+            "total_kwh": total_kwh,
+            "usage_charges": usage_charges,
+            "service_charges": service_charges,
+            "grand_total": (usage_charges + service_charges).quantize(
+                Decimal("0.01")
+            ),
+        }
         display_meters = selected_meters
     else:
         labels, datasets, table_rows, totals = _per_meter_series(
@@ -1306,20 +1331,27 @@ def build_billing_summary_context(request):
         .select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property")
         .order_by("lease__unit__property__property_name", "lease__unit__unit_number", "id")
     )
-    inv_ids = list(inv_qs.values_list("id", flat=True))
+    invoices = list(
+        inv_qs.only(
+            "id", "lease_id", "issue_date",
+            "lease__id", "lease__tenant__id",
+            "lease__unit__id", "lease__unit__unit_number",
+            "lease__unit__property__id", "lease__unit__property__property_name",
+        )
+    )
+    inv_ids = [invoice.id for invoice in invoices]
 
     items_by_inv = defaultdict(list)
     if inv_ids:
         for it in (
             InvoiceItem.objects
             .filter(invoice_id__in=inv_ids)
-            .select_related("category")
-            .only("invoice_id", "category_id", "amount", "description")
+            .only("invoice_id", "category_id", "amount")
         ):
             items_by_inv[it.invoice_id].append(it)
 
     inv_by_lease = defaultdict(list)
-    for inv in inv_qs:
+    for inv in invoices:
         inv_by_lease[inv.lease_id].append(inv)
 
     # Rows are based on the selected billing month, not the current lease status.

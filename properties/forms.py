@@ -5,6 +5,7 @@ from crispy_forms.layout import Div, Layout
 from django import forms
 
 from core.utils.text import add_auto_titlecase_class
+
 from .models import BuildingType, Property, PropertyBankAccount, Unit
 
 
@@ -15,12 +16,17 @@ def default_building_type_for_property(property_obj):
         if "f56" in property_name and "basement" in property_name
         else ("two_room_flat",)
     )
-    building_type = BuildingType.objects.filter(
-        code__in=preferred_codes, is_active=True
-    ).order_by("sort_order", "name").first()
-    return building_type or BuildingType.objects.filter(is_active=True).order_by(
-        "sort_order", "name"
-    ).first()
+    building_type = (
+        BuildingType.objects.filter(code__in=preferred_codes, is_active=True)
+        .order_by("sort_order", "name")
+        .first()
+    )
+    return (
+        building_type
+        or BuildingType.objects.filter(is_active=True)
+        .order_by("sort_order", "name")
+        .first()
+    )
 
 
 class PropertyForm(forms.ModelForm):
@@ -36,9 +42,22 @@ class PropertyForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["bank_account_details"].label = "Legacy Bank Account Fallback"
-        self.fields["bank_account_details"].help_text = (
-            "Kept for compatibility. Manage multiple structured accounts on the property detail page."
-        )
+        self.fields[
+            "bank_account_details"
+        ].help_text = "Kept for compatibility. Manage multiple structured accounts on the property detail page."
+        if "electricity_unit_rate" in self.fields:
+            self.fields["electricity_unit_rate"].label = "Property rate override"
+            self.fields["electricity_unit_rate"].help_text = (
+                "Optional property-level electricity rate override. "
+                "Leave blank to use the global electricity rate."
+            )
+            self.fields["electricity_unit_rate"].widget.attrs.update(
+                {
+                    "class": "form-control form-control-sm",
+                    "step": "0.0001",
+                    "min": "0",
+                }
+            )
         add_auto_titlecase_class(
             self.fields,
             {
@@ -93,6 +112,19 @@ class UnitForm(forms.ModelForm):
         self.fields["building_type"].label = "Building Type"
         self.fields["security_requires"].label = "Security Requirement Text"
         self.fields["security_deposit_amount"].label = "Security Deposit Amount"
+        if "electricity_unit_rate" in self.fields:
+            self.fields["electricity_unit_rate"].label = "Unit rate override"
+            self.fields["electricity_unit_rate"].help_text = (
+                "Optional unit-level electricity rate override. "
+                "Leave blank to use the property/global electricity rate."
+            )
+            self.fields["electricity_unit_rate"].widget.attrs.update(
+                {
+                    "class": "form-control form-control-sm",
+                    "step": "0.0001",
+                    "min": "0",
+                }
+            )
         self.fields["building_type"].queryset = BuildingType.objects.filter(
             is_active=True
         ).order_by("sort_order", "name")
@@ -102,7 +134,9 @@ class UnitForm(forms.ModelForm):
         ].help_text = "Occupancy is calculated from current lease history dates."
         if "show_publicly" in self.fields:
             self.fields["show_publicly"].label = "Show Publicly"
-            self.fields["show_publicly"].help_text = "Show this unit in WhatsApp/public vacant unit list."
+            self.fields[
+                "show_publicly"
+            ].help_text = "Show this unit in WhatsApp/public vacant unit list."
         add_auto_titlecase_class(self.fields)
         if (
             not self.is_bound
@@ -222,8 +256,15 @@ class PropertyBankAccountForm(forms.ModelForm):
     class Meta:
         model = PropertyBankAccount
         fields = [
-            "account_label", "bank_name", "account_title", "account_number",
-            "iban", "branch", "additional_details", "is_default", "is_active",
+            "account_label",
+            "bank_name",
+            "account_title",
+            "account_number",
+            "iban",
+            "branch",
+            "additional_details",
+            "is_default",
+            "is_active",
             "sort_order",
         ]
         widgets = {
@@ -233,11 +274,6 @@ class PropertyBankAccountForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["electricity_unit_rate"].label = "Unit rate override"
-        self.fields["electricity_unit_rate"].label = "Property rate override"
-        self.fields["electricity_unit_rate"].widget.attrs.update(
-            {"class": "form-control form-control-sm", "step": "0.0001", "min": "0"}
-        )
         for field in self.fields.values():
             if isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs.setdefault("class", "form-check-input")

@@ -509,9 +509,27 @@ class MaintenanceRequestListView(LoginRequiredMixin, ListView):
         ctx["status_choices"] = MaintenanceRequest.STATUS_CHOICES
         ctx["priority_choices"] = MaintenanceRequest.PRIORITY_CHOICES
         ctx["buildings"] = Property.objects.order_by("property_name")
-        ctx["units"] = Unit.objects.select_related("property").order_by("property__property_name", "unit_number")
-        ctx["unit_options"] = _unit_options()
-        ctx["leases"] = _current_leases_qs().order_by("tenant__first_name", "tenant__last_name", "unit__unit_number")[:300]
+        units = list(
+            Unit.objects.select_related("property")
+            .order_by("property__property_name", "unit_number")
+        )
+        leases = list(
+            _current_leases_qs()
+            .order_by("tenant__first_name", "tenant__last_name", "unit__unit_number")[:300]
+        )
+        active_by_unit = {}
+        for lease in leases:
+            active_by_unit.setdefault(lease.unit_id, lease)
+        ctx["unit_options"] = [
+            {
+                "id": unit.pk,
+                "text": _unit_label(unit, active_by_unit.get(unit.pk)),
+                "property_id": unit.property_id,
+                "property_name": str(unit.property or ""),
+            }
+            for unit in units
+        ]
+        ctx["leases"] = leases
         ctx["categories"] = _active_categories()
         from handyman.forms import MaintenanceHandymanAssignmentForm
 

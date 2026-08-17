@@ -702,6 +702,10 @@ class InvoiceDetailView(DetailView):
                 "lease__invoices",
                 "late_fee_reminders",
                 Prefetch(
+                    "status_history",
+                    queryset=InvoiceStatusHistory.objects.select_related("changed_by"),
+                ),
+                Prefetch(
                     "lease__payments",
                     queryset=Payment.objects.select_related("detail"),
                 ),
@@ -752,7 +756,7 @@ class InvoiceDetailView(DetailView):
         ctx["invoice_payment_status"] = payment_status
         ctx["invoice_payment_status_display"] = inv.payment_status_display
         if self.request.user.has_perm("invoices.view_invoice_status_history") or self.request.user.is_superuser:
-            ctx["invoice_status_history"] = inv.status_history.select_related("changed_by").all()
+            ctx["invoice_status_history"] = inv.status_history.all()
         else:
             ctx["invoice_status_history"] = []
 

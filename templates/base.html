@@ -223,6 +223,27 @@
     .btn { letter-spacing: .01em; }
     .btn-sm { font-size: .78rem; }
 
+    /* TMS buttons use solid fills instead of Bootstrap outline styling.
+       Keep the normal focus ring for keyboard accessibility. */
+    .btn[class*="btn-outline-"] {
+      background-color: var(--bs-btn-color);
+      border-color: var(--bs-btn-color);
+      color: #fff;
+    }
+    .btn[class*="btn-outline-"]:hover,
+    .btn[class*="btn-outline-"]:active,
+    .btn[class*="btn-outline-"].active {
+      background-color: var(--bs-btn-hover-bg);
+      border-color: var(--bs-btn-hover-border-color);
+      color: var(--bs-btn-hover-color);
+    }
+    .btn.btn-outline-warning,
+    .btn.btn-outline-light { color: #212529; }
+    .btn.btn-outline-warning:hover,
+    .btn.btn-outline-warning:active,
+    .btn.btn-outline-light:hover,
+    .btn.btn-outline-light:active { color: #212529; }
+
     /* ============================================================
        ACTION BUTTONS (table row actions)
        ============================================================ */

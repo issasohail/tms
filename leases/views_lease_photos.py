@@ -3,9 +3,12 @@ from .services.export_lease_photos_pdf import export_lease_photos_pdf
 from .services.export_lease_photos_docx import export_lease_photos_docx
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core import signing
 from django.core.files.storage import default_storage
-from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse, FileResponse
+from django.core import signing
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse, FileResponse, Http404
 from django.shortcuts import get_object_or_404, render, redirect
+from core.public_urls import build_public_url
 from django.template.loader import render_to_string
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_POST
@@ -21,6 +24,36 @@ from .models_renewal import LeaseRenewal
 from .models_lease_photos import LeaseMedia, _folder_name_for_lease
 import logging
 logger = logging.getLogger(__name__)
+
+LEASE_MEDIA_SHARE_SALT = "leases.lease-media-share"
+LEASE_MEDIA_SHARE_MAX_AGE = 48 * 60 * 60
+
+
+def _sign_lease_media_token(lease_id, history_id=None):
+    history_part = str(history_id or 0)
+    return signing.TimestampSigner(salt=LEASE_MEDIA_SHARE_SALT).sign(
+        f"{lease_id}:{history_part}"
+    )
+
+
+def _lease_media_from_share_token(token):
+    try:
+        raw = signing.TimestampSigner(salt=LEASE_MEDIA_SHARE_SALT).unsign(
+            token, max_age=LEASE_MEDIA_SHARE_MAX_AGE
+        )
+    except signing.SignatureExpired:
+        raise Http404("This lease photo link has expired.")
+    except signing.BadSignature:
+        raise Http404("Invalid lease photo link.")
+    try:
+        lease_id, history_id = raw.split(":", 1)
+    except ValueError:
+        raise Http404("Invalid lease photo link.")
+    lease = get_object_or_404(Lease.objects.select_related("tenant", "unit__property"), pk=lease_id)
+    history = None
+    if str(history_id) not in {"", "0", "None"}:
+        history = get_object_or_404(LeaseRenewal, pk=history_id, lease=lease)
+    return lease, history
 
 
 def _ensure_db_connection():
@@ -239,15 +272,53 @@ def history_media_grid(request, lease_id, renewal_id):
 
 @login_required
 def photos_page(request, lease_id):
-    lease = get_object_or_404(Lease, pk=lease_id)
-    return render(request, "leases/photos_page.html", {"lease": lease})
+    lease = get_object_or_404(Lease.objects.select_related("tenant", "unit__property"), pk=lease_id)
+    token = _sign_lease_media_token(lease.pk)
+    share_url = build_public_url("leases:photos_public_share", args=[token])
+    return render(
+        request,
+        "leases/photos_page.html",
+        {"lease": lease, "photo_share_url": share_url},
+    )
 
 
 @login_required
 def history_media_page(request, lease_id, renewal_id):
-    lease = get_object_or_404(Lease, pk=lease_id)
+    lease = get_object_or_404(Lease.objects.select_related("tenant", "unit__property"), pk=lease_id)
     history = get_object_or_404(LeaseRenewal, pk=renewal_id, lease=lease)
-    return render(request, "leases/photos_page.html", {"lease": lease, "history": history})
+    token = _sign_lease_media_token(lease.pk, history.pk)
+    share_url = build_public_url("leases:photos_public_share", args=[token])
+    return render(
+        request,
+        "leases/photos_page.html",
+        {"lease": lease, "history": history, "photo_share_url": share_url},
+    )
+
+
+def photos_public_share(request, token):
+    lease, history = _lease_media_from_share_token(token)
+    media = _media_queryset(lease, history)
+    return render(
+        request,
+        "leases/photos_public_share.html",
+        {
+            "lease": lease,
+            "history": history,
+            "media": media,
+            "token": token,
+        },
+    )
+
+
+def photos_public_file(request, token, photo_id):
+    lease, history = _lease_media_from_share_token(token)
+    qs = _media_queryset(lease, history)
+    photo = get_object_or_404(qs, pk=photo_id)
+    if not photo.file or not photo.file_exists:
+        raise Http404("Photo file not found.")
+    photo.file.open("rb")
+    content_type = mimetypes.guess_type(photo.original_filename or photo.file.name)[0] or "application/octet-stream"
+    return FileResponse(photo.file, content_type=content_type)
 
 
 

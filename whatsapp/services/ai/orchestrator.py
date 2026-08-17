@@ -42,12 +42,9 @@ class WhatsAppAIOrchestrator:
         conversation.save(update_fields=["preferred_language", "last_ai_confidence", "updated_at"])
 
         if decision.handover or decision.confidence < self.config.min_confidence:
-            if not self.config.handover_enabled:
-                return AIOrchestrationResult(
-                    handled=False,
-                    intent=decision.intents[0] if decision.intents else "general",
-                    metadata=self._metadata(decision, [], fallback_used, provider_error, usage),
-                )
+            # Tenant-facing safety rule: when the assistant cannot understand a
+            # message confidently, do not guess or show an unrelated menu. Route
+            # it to staff with the original message/context instead.
             reason = decision.handover_reason or "AI confidence below configured threshold"
             handover, _created = create_handover(
                 conversation,
@@ -60,7 +57,7 @@ class WhatsAppAIOrchestrator:
             notify_new_handover(handover, service=self.service)
             return AIOrchestrationResult(
                 handled=True,
-                reply=f"Your message has been sent to management. Reference: {handover.reference}. Staff will decide whether to reply or call you.",
+                reply=f"Your message has been forwarded to the landlord/staff. You will be contacted shortly. Reference: {handover.reference}.",
                 intent="handover",
                 metadata=self._metadata(decision, [], fallback_used, provider_error, usage, handover),
             )

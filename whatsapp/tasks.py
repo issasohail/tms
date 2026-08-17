@@ -99,6 +99,31 @@ def download_pending_media(pending_media_id):
                     pass
         pending.processing = False
         pending.save(update_fields=["file", "processing", "ai_notes", "updated_at"])
+
+        # Voice/video media can be attached to a tenant handover before the
+        # deferred WhatsApp CDN download finishes. Once bytes are available,
+        # relay the original media to the appropriate staff automatically.
+        relay_marker = "Relayed original media to handover staff."
+        if relay_marker not in (pending.ai_notes or ""):
+            try:
+                from whatsapp.models import WhatsAppHandoverMessage
+                from whatsapp.services.handover.relay import relay_tenant_media_to_staff
+
+                handover_message = (
+                    WhatsAppHandoverMessage.objects
+                    .select_related("handover", "handover__tenant", "handover__property", "handover__unit", "handover__assigned_staff")
+                    .filter(media=pending, sender_type=WhatsAppHandoverMessage.SENDER_TENANT)
+                    .order_by("-created_at")
+                    .first()
+                )
+                if handover_message:
+                    sent = relay_tenant_media_to_staff(handover_message.handover, pending)
+                    if sent:
+                        pending.ai_notes = f"{pending.ai_notes} {relay_marker}".strip()
+                        pending.save(update_fields=["ai_notes", "updated_at"])
+            except Exception:
+                logger.exception("Could not relay downloaded handover media %s to staff", pending_media_id)
+
         logger.info("Downloaded deferred WhatsApp media for pending media %s", pending_media_id)
     except Exception:
         logger.exception(

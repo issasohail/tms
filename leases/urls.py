@@ -592,6 +592,8 @@ urlpatterns = [
         history_media_grid,
         name="history_media_grid",
     ),
+    path("public/photos/<path:token>/", lpv.photos_public_share, name="photos_public_share"),
+    path("public/photos/<path:token>/<int:photo_id>/", lpv.photos_public_file, name="photos_public_file"),
     path("lease/<int:lease_id>/photos/add/", photo_add, name="photo_add"),
     path(
         "lease/<int:lease_id>/photos/reorder/", lpv.photo_reorder, name="photo_reorder"

@@ -1722,6 +1722,10 @@ def unit_media_page(request, pk):
     media_files = unit.media_files.filter(is_active=True).order_by(
         "sort_order", "uploaded_at", "pk"
     )
+    share_token = _sign_unit_media_token(unit.pk)
+    share_url = build_public_url(
+        "properties:unit_media_public_share", args=[share_token]
+    )
     return render(
         request,
         "properties/media_page.html",
@@ -1746,6 +1750,7 @@ def unit_media_page(request, pk):
             "share_link_url": reverse(
                 "properties:unit_media_share_link", args=[unit.pk]
             ),
+            "share_url": share_url,
         },
     )
 
@@ -1759,6 +1764,8 @@ def property_media_page(request, pk):
     media_files = property_obj.media_files.filter(is_active=True).order_by(
         "sort_order", "uploaded_at", "pk"
     )
+    share_token = _sign_media_token("property", property_obj.pk)
+    share_url = build_public_url("properties:media_public_share", args=[share_token])
     return render(
         request,
         "properties/media_page.html",
@@ -1785,6 +1792,7 @@ def property_media_page(request, pk):
             "share_link_url": reverse(
                 "properties:property_media_share_link", args=[property_obj.pk]
             ),
+            "share_url": share_url,
         },
     )
 

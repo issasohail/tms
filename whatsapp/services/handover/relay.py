@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from core.models import GlobalSettings
 from whatsapp.models import WhatsAppHandover, WhatsAppHandoverMessage
-from whatsapp.services.handover.routing import staff_can_access_handover
+from whatsapp.services.handover.routing import eligible_staff, staff_can_access_handover
 from whatsapp.services.whatsapp import WhatsAppService
 from core.utils.identity import format_phone
 
@@ -45,17 +45,37 @@ def relay_staff_reply(handover, staff_user, text, source_message=None, media=Non
 
 
 def relay_tenant_media_to_staff(handover, media, service=None):
-    if not handover.assigned_staff_id or not handover.assigned_staff.whatsapp_number:
-        return None
+    if getattr(media, "processing", False):
+        return []
+    try:
+        if not media.file or not media.file.name or not media.file.storage.exists(media.file.name):
+            return []
+    except Exception:
+        return []
     service = service or WhatsAppService()
-    return _relay_media(
-        service,
-        handover.assigned_staff.whatsapp_number,
-        media,
-        caption=f"Tenant media for {handover.reference}\nPhone: {format_phone(handover.tenant_phone)}",
-        tenant=handover.tenant,
-        lease=handover.lease,
+    recipients = [handover.assigned_staff] if handover.assigned_staff_id else eligible_staff(handover)
+    location = ""
+    if handover.property_id:
+        location = f"\nProperty: {handover.property}\nUnit: {handover.unit or '-'}"
+    caption = (
+        f"Tenant media for {handover.reference}\n"
+        f"Tenant: {handover.tenant.get_full_name() if handover.tenant else 'Tenant'}\n"
+        f"Phone: {format_phone(handover.tenant_phone)}{location}"
     )
+    sent = []
+    seen = set()
+    for user in recipients:
+        number = getattr(user, "whatsapp_number", "") if user else ""
+        normalized = WhatsAppService.normalize_phone_number(number)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        result = _relay_media(
+            service, normalized, media, caption=caption, tenant=handover.tenant, lease=handover.lease
+        )
+        if result:
+            sent.append(result)
+    return sent
 
 
 def _relay_media(service, phone, media, caption="", **context):

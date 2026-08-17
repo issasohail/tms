@@ -82,8 +82,18 @@
         {% if docx_export_url %}
             <a href="{{ docx_export_url }}" class="btn btn-outline-success btn-sm">Word</a>
         {% endif %}
-        {% if share_link_url %}
-            <a href="{{ share_link_url }}" class="btn btn-outline-primary btn-sm">48h Share Link</a>
+        {% if share_url %}
+            <div class="btn-group btn-group-sm" role="group" aria-label="48-hour photo sharing">
+                <a href="{{ share_url }}" target="_blank" rel="noopener" class="btn btn-primary" title="Open the 48-hour public gallery">48h Share Link</a>
+                <button type="button" class="btn btn-primary js-copy-share-link" data-share-url="{{ share_url }}" title="Copy public gallery link" aria-label="Copy 48-hour public gallery link">
+                    <i class="fas fa-copy"></i>
+                </button>
+                <a href="https://wa.me/?text={{ share_url|urlencode }}" target="_blank" rel="noopener" class="btn btn-success" title="Share public gallery on WhatsApp" aria-label="Share 48-hour public gallery on WhatsApp">
+                    <i class="fab fa-whatsapp"></i>
+                </a>
+            </div>
+        {% elif share_link_url %}
+            <a href="{{ share_link_url }}" class="btn btn-primary btn-sm">48h Share Link</a>
         {% endif %}
         <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">Back</a>
     </div>
@@ -188,6 +198,20 @@
 (() => {
   document.title = '{{ media_page_title|default:owner_label|escapejs }}';
   const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+  document.querySelectorAll('.js-copy-share-link').forEach(button => {
+    button.addEventListener('click', async () => {
+      const url = button.dataset.shareUrl || '';
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        const original = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i> Copied';
+        setTimeout(() => { button.innerHTML = original; }, 1400);
+      } catch (error) {
+        window.prompt('Copy this 48-hour share link:', url);
+      }
+    });
+  });
   const grid = document.getElementById('media-grid');
   const sortUrl = grid?.dataset.sortUrl;
 

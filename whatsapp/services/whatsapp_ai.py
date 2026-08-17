@@ -45,6 +45,7 @@ from whatsapp.services.ai.orchestrator import WhatsAppAIOrchestrator
 from whatsapp.services.ai.safety import safe_summary
 from whatsapp.services.handover.lifecycle import create_handover
 from whatsapp.services.handover.notifications import notify_new_handover
+from whatsapp.services.handover.relay import relay_tenant_media_to_staff
 from whatsapp.services.handover.workflow import (
     detect_handover_request,
     handle_active_tenant_message,
@@ -525,7 +526,7 @@ class WhatsAppAIAssistant:
             )
             notify_new_handover(handover, service=self.service)
             return (
-                f"Your message has been sent to management. Reference: {handover.reference}. Staff will decide whether to reply or call you.",
+                f"Your message has been forwarded to the landlord/staff. You will be contacted shortly. Reference: {handover.reference}.",
                 "handover",
                 {
                     "tenant": identity.tenant,
@@ -969,6 +970,42 @@ class WhatsAppAIAssistant:
         )
         if police_response:
             return police_response
+
+        # A normal tenant voice note is a conversational message, not a request
+        # to classify a Unit Photo / Tenant Document / Payment Receipt. Until a
+        # reliable transcription is available, preserve the audio and hand it to
+        # staff instead of showing the generic upload-type menu.
+        pending_maintenance_id = conversation.context.get("pending_maintenance_id")
+        if (
+            message_type == "audio"
+            and not is_staff_mode
+            and identity.has_active_tenant
+            and not expects_payment_receipt
+            and conversation.pending_state not in {"tenant_maintenance_details", "pending_maintenance"}
+            and not pending_maintenance_id
+        ):
+            media = create_pending_media(message_log, conversation, selected_lease)
+            media.purpose = PendingWhatsAppMedia.PURPOSE_OTHER
+            media.ai_notes = (
+                f"{media.ai_notes} Tenant voice note forwarded to staff for human review."
+            ).strip()
+            media.save(update_fields=["purpose", "ai_notes", "updated_at"])
+            handover, _created = create_handover(
+                conversation,
+                message_log,
+                reason="Tenant sent a voice/audio message that requires staff review",
+                department="general",
+                priority="normal",
+                ai_summary="Voice/audio message received; original audio forwarded to staff.",
+                media=media,
+            )
+            notify_new_handover(handover, service=self.service)
+            relay_tenant_media_to_staff(handover, media, service=self.service)
+            return (
+                f"Your message has been forwarded to the landlord/staff. You will be contacted shortly. Reference: {handover.reference}.",
+                "handover_audio",
+                {"tenant": identity.tenant, "lease": selected_lease, "handover_id": handover.pk, "pending_media_id": media.pk},
+            )
 
         media = create_pending_media(message_log, conversation, selected_lease)
         if is_staff_mode:
@@ -5690,14 +5727,25 @@ def _pending_request_staff_message(request_type, pending):
     target = _pending_target(pending)
     tenant = getattr(pending, "tenant", None)
     tenant_name = tenant.get_full_name() if tenant and hasattr(tenant, "get_full_name") else str(tenant or "Unmatched")
+    conversation = getattr(pending, "conversation", None)
+    phone = getattr(pending, "phone", "") or getattr(conversation, "phone_number", "")
+    source = getattr(pending, "original_whatsapp_message", None)
+    source_text = ""
+    if source:
+        source_text = (getattr(source, "message", "") or "").strip()
+        if not source_text:
+            source_text = _payload_text(getattr(source, "payload", {}) or {}).strip()
     lines = [
         "New pending WhatsApp request",
         "",
         f"Type: {request_type.title()}",
         f"Reference: #{getattr(pending, 'pk', '-')}",
         f"Tenant: {tenant_name or 'Unmatched'}",
+        f"Phone: {format_phone(phone) if phone else '-'}",
         f"Property/Unit: {target}",
     ]
+    if source_text:
+        lines.extend(["", "Tenant message:", source_text[:1200]])
     amount = getattr(pending, "amount", None)
     if amount:
         lines.append(f"Amount: Rs. {amount}")

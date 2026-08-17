@@ -305,6 +305,19 @@
         <a id="btn-top-export-docx" href="{% url 'leases:photos_export_docx_stream' lease.id %}?layout=4up{% if history %}&history={{ history.pk }}{% endif %}" class="btn btn-sm btn-outline-primary">
           <i class="ti ti-file-type-doc"></i> Export Word
         </a>
+        {% if photo_share_url %}
+        <div class="btn-group btn-group-sm" role="group" aria-label="48-hour photo sharing">
+          <a href="{{ photo_share_url }}" target="_blank" rel="noopener" class="btn btn-primary" title="Open the 48-hour public photo gallery">
+            <i class="ti ti-link"></i> 48h Share Link
+          </a>
+          <button type="button" class="btn btn-primary" id="lease-photo-copy-link" data-share-url="{{ photo_share_url }}" title="Copy the 48-hour public link" aria-label="Copy 48-hour public photo link">
+            <i class="ti ti-copy"></i>
+          </button>
+          <a href="https://wa.me/?text={{ photo_share_url|urlencode }}" target="_blank" rel="noopener" class="btn btn-success" title="Share the photo gallery on WhatsApp" aria-label="Share 48-hour public photo gallery on WhatsApp">
+            <i class="ti ti-brand-whatsapp"></i>
+          </a>
+        </div>
+        {% endif %}
         <a href="{% url 'leases:lease_update' lease.id %}" class="btn btn-sm btn-secondary">
           <i class="ti ti-arrow-left"></i> Back to Lease
         </a>
@@ -436,6 +449,25 @@
     </div>
   </div>
 </div>
+
+<script>
+(function(){
+  const copyButton = document.getElementById('lease-photo-copy-link');
+  if (!copyButton) return;
+  copyButton.addEventListener('click', async function(){
+    const url = copyButton.dataset.shareUrl || '';
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      const original = copyButton.innerHTML;
+      copyButton.innerHTML = '<i class="ti ti-check"></i> Copied';
+      setTimeout(function(){ copyButton.innerHTML = original; }, 1400);
+    } catch (error) {
+      window.prompt('Copy this 48-hour share link:', url);
+    }
+  });
+})();
+</script>
 
 <script>
 /* PDF layout links sync */

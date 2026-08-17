@@ -276,28 +276,44 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
 
     prev_end_by_meter = {}
     if meter_ids:
-        # Avoid MySQL's slow correlated ORDER BY/LIMIT subquery per meter.
-        # MeterReading already has a composite (meter, ts) index; rank the
-        # selected meters' prior readings once and keep only the latest row.
-        prev_qs = (
+        # Fetch the latest timestamp before the report window per meter using
+        # GROUP BY + MAX(ts). This avoids ranking/sorting the entire historical
+        # MeterReading set, which is expensive on MySQL for long-running meters.
+        previous_points = list(
             MeterReading.objects
             .filter(meter_id__in=meter_ids, ts__lt=start_dt)
             .order_by()
-            .annotate(
-                _prev_rank=Window(
-                    expression=RowNumber(),
-                    partition_by=[F("meter_id")],
-                    order_by=[F("ts").desc(), F("id").desc()],
-                )
-            )
-            .filter(_prev_rank=1)
-            .values("meter_id", "total_energy")
+            .values("meter_id")
+            .annotate(last_ts=Max("ts"))
         )
-        for snap in prev_qs:
-            if snap["total_energy"] is not None:
-                prev_end_by_meter[snap["meter_id"]] = Decimal(
-                    str(snap["total_energy"])
+        latest_ts_by_meter = {
+            row["meter_id"]: row["last_ts"]
+            for row in previous_points
+            if row.get("last_ts") is not None
+        }
+        if latest_ts_by_meter:
+            # Restrict the second query to the small set of candidate timestamps.
+            # Duplicate timestamps are resolved deterministically by highest id.
+            candidate_rows = (
+                MeterReading.objects
+                .filter(
+                    meter_id__in=latest_ts_by_meter.keys(),
+                    ts__in=set(latest_ts_by_meter.values()),
                 )
+                .order_by("meter_id", "ts", "id")
+                .values("id", "meter_id", "ts", "total_energy")
+            )
+            latest_row_by_meter = {}
+            for row in candidate_rows:
+                meter_id = row["meter_id"]
+                if row["ts"] != latest_ts_by_meter.get(meter_id):
+                    continue
+                current = latest_row_by_meter.get(meter_id)
+                if current is None or row["id"] > current["id"]:
+                    latest_row_by_meter[meter_id] = row
+            for meter_id, row in latest_row_by_meter.items():
+                if row["total_energy"] is not None:
+                    prev_end_by_meter[meter_id] = Decimal(str(row["total_energy"]))
 
     for m in meters:
         prev_end = prev_end_by_meter.get(m.id)

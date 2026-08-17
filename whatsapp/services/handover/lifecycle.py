@@ -7,7 +7,7 @@ from whatsapp.services.role_mode import log_staff_action
 
 
 @transaction.atomic
-def create_handover(conversation, message_log, reason, department="general", priority="normal", ai_summary=""):
+def create_handover(conversation, message_log, reason, department="general", priority="normal", ai_summary="", media=None):
     locked_conversation = WhatsAppConversation.objects.select_for_update().get(pk=conversation.pk)
     existing = (
         WhatsAppHandover.objects.select_for_update()
@@ -17,7 +17,7 @@ def create_handover(conversation, message_log, reason, department="general", pri
     )
     text = _message_text(message_log)
     if existing:
-        attach_tenant_message(existing, message_log, text)
+        attach_tenant_message(existing, message_log, text, media=media)
         return existing, False
 
     lease = locked_conversation.selected_lease
@@ -40,6 +40,7 @@ def create_handover(conversation, message_log, reason, department="general", pri
         source_message=message_log,
         sender_type=WhatsAppHandoverMessage.SENDER_TENANT,
         original_text=text,
+        media=media,
         direction=WhatsAppHandoverMessage.DIRECTION_INBOUND,
     )
     locked_conversation.handover_active = True
@@ -192,4 +193,12 @@ def _message_text(message_log):
         item = payload.get(key) or {}
         if isinstance(item, dict) and (item.get("caption") or item.get("filename")):
             return item.get("caption") or item.get("filename")
+        if payload.get("type") == key or key in payload:
+            labels = {
+                "image": "Image message",
+                "document": "Document message",
+                "audio": "Voice/audio message",
+                "video": "Video message",
+            }
+            return labels[key]
     return ""

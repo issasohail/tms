@@ -26,7 +26,7 @@
         <div class="col-md-3">{{ form.last_name.label_tag }}{{ form.last_name }}{{ form.last_name.errors }}</div>
         <div class="col-md-3">{{ form.email.label_tag }}{{ form.email }}{{ form.email.errors }}</div>
         <div class="col-md-3">{{ form.whatsapp_number.label_tag }}{{ form.whatsapp_number }}{{ form.whatsapp_number.errors }}</div>
-        <div class="col-md-6">{{ form.groups.label_tag }}{{ form.groups }}{{ form.groups.errors }}</div>
+        {% if form.groups %}<div class="col-md-6">{{ form.groups.label_tag }}{{ form.groups }}{{ form.groups.errors }}</div>{% endif %}
         <div class="col-md-3">
           {{ form.password1.label_tag }}
           <div class="input-group input-group-sm">
@@ -45,14 +45,35 @@
         </div>
         <div class="col-md-3 d-flex align-items-end gap-3">
           <label class="form-check mb-1">{{ form.is_active }} Active</label>
-          <label class="form-check mb-1">{{ form.is_staff }} Staff</label>
+          {% if form.is_staff %}<label class="form-check mb-1">{{ form.is_staff }} Staff</label>{% endif %}
         </div>
       </div>
+
+
+      {% if can_manage_property_access and form.properties %}
+      <div class="border rounded p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0">Property Access</h6>
+          <span class="small text-muted">Where this user can work</span>
+        </div>
+        <div class="form-check mb-2">
+          {{ form.all_properties }} {{ form.all_properties.label_tag }}
+          {% if form.all_properties.help_text %}<div class="form-text">{{ form.all_properties.help_text }}</div>{% endif %}
+        </div>
+        <div class="js-property-selection">
+          {{ form.properties.label_tag }}
+          {{ form.properties }}
+          {{ form.properties.errors }}
+          <div class="form-text">When “Access all properties” is off, select one or more assigned properties.</div>
+        </div>
+      </div>
+      {% endif %}
 
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h6 class="mb-0">Permissions</h6>
         {% if not is_create %}<span class="small text-muted js-permission-save-status">Auto-save enabled</span>{% else %}<span class="small text-muted">View / Add / Update / Delete by app table</span>{% endif %}
       </div>
+      {% if can_grant_permissions %}
       <div class="d-flex flex-wrap gap-2 mb-2 permission-toolbar">
         <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="view">Select All View</button>
         <button type="button" class="btn btn-outline-secondary btn-sm js-select-action" data-action="add">Select All Add</button>
@@ -102,6 +123,9 @@
           </tbody>
         </table>
       </div>
+      {% else %}
+        <div class="alert alert-secondary py-2 mb-0">You can edit this user, but you do not have permission to grant or revoke model permissions.</div>
+      {% endif %}
     </div>
     <div class="card-footer d-flex justify-content-end gap-2">
       <a href="{% url 'accounts:user_access_list' %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
@@ -145,7 +169,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
   if (window.$?.fn?.select2) {
     $('#id_groups').select2({theme: 'bootstrap-5', width: '100%', placeholder: 'Groups'});
+    $('#id_properties').select2({theme: 'bootstrap-5', width: '100%', placeholder: 'Assigned properties'});
   }
+
+  const allProperties = document.getElementById('id_all_properties');
+  const propertySelection = document.querySelector('.js-property-selection');
+  const syncPropertySelection = () => {
+    if (!allProperties || !propertySelection) return;
+    propertySelection.style.opacity = allProperties.checked ? '.55' : '1';
+    const select = document.getElementById('id_properties');
+    if (select) select.disabled = allProperties.checked;
+  };
+  allProperties?.addEventListener('change', syncPropertySelection);
+  syncPropertySelection();
 
   const table = document.querySelector('.permission-table');
   const checks = () => Array.from(document.querySelectorAll('input[name="permissions"]'));
@@ -214,8 +250,10 @@ document.addEventListener('DOMContentLoaded', function () {
       const preset = button.dataset.preset;
       if (preset === 'admin') {
         checks().forEach(input => { input.checked = true; });
-        document.getElementById('id_is_staff').checked = true;
-        document.getElementById('id_is_active').checked = true;
+        const staff = document.getElementById('id_is_staff');
+        const active = document.getElementById('id_is_active');
+        if (staff) staff.checked = true;
+        if (active) active.checked = true;
       } else if (preset === 'manager') {
         setActions(['view', 'add', 'change']);
       } else if (preset === 'data-entry') {

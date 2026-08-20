@@ -1,3 +1,4 @@
+from accounts.access import restrict_queryset_to_properties
 from io import BytesIO
 from functools import partial
 from django.core.files.base import ContentFile
@@ -147,6 +148,8 @@ class ExpenseListView(SingleTableView):
                       ),
                   ),
               ))
+
+        qs = restrict_queryset_to_properties(qs, self.request.user, "property")
 
         r = self.request
         prop = r.GET.get("property") or r.GET.get("property_id")

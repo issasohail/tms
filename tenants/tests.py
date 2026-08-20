@@ -160,6 +160,10 @@ class RegistrationOnboardingTests(TestCase):
             Permission.objects.get(codename="add_lease"),
             Permission.objects.get(codename="view_lease"),
             Permission.objects.get(codename="change_lease"),
+            Permission.objects.get(
+                content_type__app_label="accounts",
+                codename="access_all_properties",
+            ),
         )
 
     def make_shell(self):
@@ -1897,6 +1901,10 @@ class CNICIdentityOCRViewTests(TestCase):
             ),
             Permission.objects.get(
                 content_type__app_label="tenants", codename="change_tenant"
+            ),
+            Permission.objects.get(
+                content_type__app_label="accounts",
+                codename="access_all_properties",
             ),
         )
         self.client.force_login(self.user)

@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.html import escape
 
@@ -28,28 +29,51 @@ LEASE_INVENTORY_FIELD_BY_CODE = {
 
 
 def effective_parking_policy(lease=None, unit=None, property_obj=None):
+    cache_attr = "_effective_parking_policy_cache"
+    if lease is not None and hasattr(lease, cache_attr):
+        return getattr(lease, cache_attr)
+
+    def remember(value):
+        if lease is not None:
+            setattr(lease, cache_attr, value)
+        return value
+
     if lease is not None:
         unit = lease.unit
         property_obj = unit.property
-        policy = ParkingPolicy.objects.filter(lease=lease).first()
-        if policy:
-            return policy
-    if unit is not None:
+    elif unit is not None:
         property_obj = unit.property
-        policy = ParkingPolicy.objects.filter(unit=unit).first()
-        if policy:
-            return policy
+
+    # Lease -> unit -> property is a strict precedence chain and each target is
+    # OneToOne. Fetch every possible override in one query instead of issuing
+    # up to three sequential .first() queries while rendering an agreement.
+    policy_filter = Q()
+    if lease is not None:
+        policy_filter |= Q(lease_id=lease.pk)
+    if unit is not None:
+        policy_filter |= Q(unit_id=unit.pk)
     if property_obj is not None:
-        policy = ParkingPolicy.objects.filter(property=property_obj).first()
-        if policy:
-            return policy
+        policy_filter |= Q(property_id=property_obj.pk)
+
+    if policy_filter:
+        policies = list(ParkingPolicy.objects.filter(policy_filter))
+        by_lease = {row.lease_id: row for row in policies if row.lease_id}
+        by_unit = {row.unit_id: row for row in policies if row.unit_id}
+        by_property = {row.property_id: row for row in policies if row.property_id}
+        if lease is not None and lease.pk in by_lease:
+            return remember(by_lease[lease.pk])
+        if unit is not None and unit.pk in by_unit:
+            return remember(by_unit[unit.pk])
+        if property_obj is not None and property_obj.pk in by_property:
+            return remember(by_property[property_obj.pk])
+
     settings_obj = GlobalSettings.get_solo()
-    return {
+    return remember({
         "enabled": settings_obj.default_parking_enabled,
         "monthly_rate": settings_obj.default_motorcycle_parking_rate,
         "unauthorized_parking_penalty": settings_obj.default_unauthorized_parking_penalty,
         "scope_label": "Global default",
-    }
+    })
 
 
 def policy_value(policy, field):
@@ -77,21 +101,32 @@ def _definition_defaults():
 def _inventory_rows(obj):
     if obj is None:
         return []
+    # Reuse only Django's real prefetch cache. A custom object snapshot can go
+    # stale when inventory rows are changed independently during the request.
     prefetched = getattr(obj, "_prefetched_objects_cache", {}).get("inventory_items")
     if prefetched is not None:
         return prefetched
     return list(obj.inventory_items.select_related("item").all())
 
 def effective_inventory(property_obj=None, unit=None, lease=None):
+    cache_attr = "_effective_inventory_cache"
+    if lease is not None and hasattr(lease, cache_attr):
+        return getattr(lease, cache_attr)
+
+    def remember(value):
+        if lease is not None:
+            setattr(lease, cache_attr, value)
+        return value
+
     if lease is not None:
         unit = lease.unit
-        rows = list(lease.inventory_items.select_related("item").all())
+        rows = _inventory_rows(lease)
         if rows:
-            return [{
+            return remember([{
                 "item": row.item, "quantity": row.quantity,
                 "condition": row.condition or row.item.default_condition,
                 "is_included": row.is_included, "source": "Lease", "override": row,
-            } for row in rows]
+            } for row in rows])
     if unit is not None:
         property_obj = unit.property
     values = _definition_defaults()
@@ -107,7 +142,7 @@ def effective_inventory(property_obj=None, unit=None, lease=None):
                 "quantity": row.quantity, "condition": row.condition,
                 "is_included": row.is_included, "source": "Unit", "override": row,
             })
-    return list(values.values())
+    return remember(list(values.values()))
 
 
 @transaction.atomic
@@ -168,17 +203,13 @@ def sync_lease_inventory_from_fields(
             code__in=LEASE_INVENTORY_FIELD_BY_CODE
         )
     }
+    existing_rows = _inventory_rows(lease)
     existing = {
         row.item.code: row
-        for row in lease.inventory_items.select_related("item").filter(
-            item__code__in=LEASE_INVENTORY_FIELD_BY_CODE
-        )
+        for row in existing_rows
+        if row.item.code in LEASE_INVENTORY_FIELD_BY_CODE
     }
-    inherited = {
-        row["item"].code: row
-        for row in effective_inventory(unit=lease.unit)
-        if row["item"].code in LEASE_INVENTORY_FIELD_BY_CODE
-    }
+    inherited = None
     updated = 0
 
     for code, field_name in LEASE_INVENTORY_FIELD_BY_CODE.items():
@@ -211,8 +242,17 @@ def sync_lease_inventory_from_fields(
                 updated += 1
             continue
 
+        # Unit/property defaults are needed only when a required lease row is
+        # actually missing. Existing leases therefore avoid three inheritance
+        # queries on every agreement preview.
+        if inherited is None:
+            inherited = {
+                row["item"].code: row
+                for row in effective_inventory(unit=lease.unit)
+                if row["item"].code in LEASE_INVENTORY_FIELD_BY_CODE
+            }
         inherited_row = inherited.get(code, {})
-        LeaseInventoryItem.objects.create(
+        created_row = LeaseInventoryItem.objects.create(
             lease=lease,
             item=item,
             quantity=quantity,
@@ -220,8 +260,11 @@ def sync_lease_inventory_from_fields(
             is_included=inherited_row.get("is_included", item.is_active),
             snapshot_source="lease",
         )
+        existing[code] = created_row
         updated += 1
 
+    if updated:
+        lease.__dict__.pop("_effective_inventory_cache", None)
     return updated
 
 
@@ -239,7 +282,9 @@ def sync_lease_field_from_inventory_item(lease, item, quantity):
 
 
 def ensure_lease_inventory_snapshot(lease):
-    if not lease.inventory_items.exists():
+    prefetched = getattr(lease, "_prefetched_objects_cache", {}).get("inventory_items")
+    has_rows = bool(prefetched) if prefetched is not None else lease.inventory_items.exists()
+    if not has_rows:
         # Preserve any inventory counts explicitly set on the lease itself
         # (e.g. entered on the lease-create form) before falling back to
         # unit/global defaults for anything the lease didn't specify.
@@ -247,6 +292,10 @@ def ensure_lease_inventory_snapshot(lease):
         # from the lease's own fields.
         sync_lease_inventory_from_fields(lease)
         copy_inventory_defaults(lease, overwrite=False)
+        # copy_inventory_defaults may create rows after an intentional prefetch.
+        # Drop that relation cache so subsequent reads see newly created rows.
+        getattr(lease, "_prefetched_objects_cache", {}).pop("inventory_items", None)
+        lease.__dict__.pop("_effective_inventory_cache", None)
 
 
 def inventory_list_html(lease):

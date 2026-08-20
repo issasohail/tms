@@ -437,7 +437,14 @@ def _log_webhook_payload(payload):
                         tenant=conversation.tenant if conversation else None,
                         lease=conversation.selected_lease if conversation else None,
                     )
-                if _inbound_rate_allowed(inbound_phone):
+                if _should_process_stateful_control_immediately(conversation, message):
+                    # DONE closes a durable staff upload batch. Do not leave this
+                    # state transition to a daemon worker thread or drop it behind
+                    # the generic per-minute rate limit after a large photo album.
+                    from whatsapp.services.whatsapp_ai import process_inbound_whatsapp_message
+
+                    process_inbound_whatsapp_message(message_log)
+                elif _inbound_rate_allowed(inbound_phone):
                     from accounts.whatsapp_password_reset import is_whatsapp_password_reset_request
 
                     _queue_ai_message(
@@ -514,6 +521,16 @@ def _verification_attempt_allowed(request):
         cache.set(key, 1, timeout=60)
         attempts = 1
     return attempts <= int(getattr(settings, "WHATSAPP_WEBHOOK_VERIFY_RATE_LIMIT", 20))
+
+
+def _should_process_stateful_control_immediately(conversation, message):
+    if not conversation or conversation.pending_state != "staff_waiting_upload":
+        return False
+    if not isinstance(message, dict) or message.get("type") != "text":
+        return False
+    text_payload = message.get("text") or {}
+    body = text_payload.get("body") if isinstance(text_payload, dict) else ""
+    return (body or "").strip().lower() in {"done", "submit", "finished", "finish"}
 
 
 def _inbound_rate_allowed(phone_number):

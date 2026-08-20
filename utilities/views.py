@@ -1,3 +1,4 @@
+from accounts.access import restrict_queryset_to_properties
 from django.views.generic import DetailView
 from .forms import UtilityForm
 from django.urls import reverse_lazy
@@ -38,6 +39,8 @@ class UtilityListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
     def get_queryset(self):
         queryset = super().get_queryset().select_related("property")
+        queryset = restrict_queryset_to_properties(queryset, self.request.user, "property")
+
         property_id = self.request.GET.get('property')
         if property_id:
             queryset = queryset.filter(property_id=property_id)

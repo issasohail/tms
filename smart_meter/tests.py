@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -7,6 +7,8 @@ from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
+from django.db import connection
 from django.urls import reverse
 from django.utils import timezone
 
@@ -55,7 +57,13 @@ class MeterFormUnitOrderingTests(TestCase):
 class MeterRoleUpdateTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="meter-admin", password="test-pass")
-        self.user.user_permissions.add(Permission.objects.get(codename="change_meter"))
+        self.user.user_permissions.add(
+            Permission.objects.get(codename="change_meter"),
+            Permission.objects.get(
+                content_type__app_label="accounts",
+                codename="access_all_properties",
+            ),
+        )
         self.meter = Meter.objects.create(meter_number="ROLE-UPDATE-1")
         MeterRoleHistory.objects.create(
             meter=self.meter,
@@ -139,6 +147,79 @@ class EnergyDashboardMeterRoleTests(TestCase):
 
         roles = [dataset["meterRole"] for dataset in response.context["datasets"]]
         self.assertEqual(roles, [Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK])
+
+
+class EnergyDashboardBoundaryQueryTests(TestCase):
+    def setUp(self):
+        property_obj = Property.objects.create(
+            property_name="Boundary Test",
+            owner_name="Owner",
+            owner_cnic="1234512345670",
+            type="apartment",
+            property_type="apartment",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="1")
+        self.meter = Meter.objects.create(
+            meter_number="BOUNDARY-1",
+            unit=unit,
+            meter_role=Meter.METER_ROLE_BILLING,
+        )
+        tz = timezone.get_current_timezone()
+        self.start_dt = timezone.make_aware(
+            datetime(2026, 8, 1, 0, 0, 0), tz
+        )
+        self.end_dt = timezone.make_aware(
+            datetime(2026, 8, 3, 0, 0, 0), tz
+        )
+        points = [
+            (datetime(2026, 8, 1, 0, 15), "100.000"),
+            (datetime(2026, 8, 1, 12, 0), "105.000"),
+            (datetime(2026, 8, 1, 23, 45), "110.000"),
+            (datetime(2026, 8, 2, 0, 15), "120.000"),
+            (datetime(2026, 8, 2, 23, 45), "130.000"),
+        ]
+        for ts, value in points:
+            MeterReading.objects.create(
+                meter=self.meter,
+                ts=timezone.make_aware(ts, tz),
+                total_energy=Decimal(value),
+            )
+
+    def _boundary_values(self, granularity):
+        from smart_meter.views_dashboard import _boundary_readings_by_meter
+
+        with CaptureQueriesContext(connection) as captured:
+            grouped = _boundary_readings_by_meter(
+                [self.meter.pk],
+                self.start_dt,
+                self.end_dt,
+                timezone.get_current_timezone(),
+                granularity,
+            )
+        return [
+            row["total_energy"] for row in grouped[self.meter.pk]
+        ], len(captured)
+
+    def test_daily_fetches_only_first_and_last_reading_per_day(self):
+        values, query_count = self._boundary_values("daily")
+
+        self.assertEqual(
+            values,
+            [
+                Decimal("100.000"),
+                Decimal("110.000"),
+                Decimal("120.000"),
+                Decimal("130.000"),
+            ],
+        )
+        self.assertEqual(query_count, 2)
+
+    def test_monthly_fetches_only_first_and_last_reading_for_month(self):
+        values, query_count = self._boundary_values("monthly")
+
+        self.assertEqual(values, [Decimal("100.000"), Decimal("130.000")])
+        self.assertEqual(query_count, 2)
 
 
 class ElectricBillDescriptionTests(TestCase):
@@ -344,7 +425,13 @@ class InstantLiveReadingRegressionTests(TestCase):
         self.user = get_user_model().objects.create_user(
             username="instant-reading-user", password="test-pass"
         )
-        self.user.user_permissions.add(Permission.objects.get(codename="change_meter"))
+        self.user.user_permissions.add(
+            Permission.objects.get(codename="change_meter"),
+            Permission.objects.get(
+                content_type__app_label="accounts",
+                codename="access_all_properties",
+            ),
+        )
         self.client.force_login(self.user)
         self.meter = Meter.objects.create(meter_number="INSTANT-READ-1")
         self.live = LiveReading.objects.create(

@@ -246,6 +246,10 @@ class UnitListInlineUpdateTests(TestCase):
         self.user.user_permissions.add(
             Permission.objects.get(codename="view_unit"),
             Permission.objects.get(codename="change_unit"),
+            Permission.objects.get(
+                content_type__app_label="accounts",
+                codename="access_all_properties",
+            ),
         )
         self.client.force_login(self.user)
         self.property = Property.objects.create(

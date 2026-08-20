@@ -4,6 +4,11 @@ from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.utils.functional import SimpleLazyObject
+from .access import (
+    MODEL_PROPERTY_LOOKUPS,
+    enforce_posted_property_scope,
+    require_object_property_access,
+)
 
 
 def _impersonated_user(request):
@@ -17,8 +22,18 @@ def _impersonated_user(request):
 
     User = get_user_model()
     try:
+        impersonator = User.objects.get(pk=impersonator_id, is_active=True)
         user = User.objects.get(pk=impersonate_id, is_active=True)
     except User.DoesNotExist:
+        request.session.pop("impersonate_user_id", None)
+        request.session.pop("impersonator_user_id", None)
+        return original_user
+
+    if not impersonator.is_superuser and not impersonator.has_perm("accounts.impersonate_account"):
+        request.session.pop("impersonate_user_id", None)
+        request.session.pop("impersonator_user_id", None)
+        return original_user
+    if user.is_superuser and not impersonator.is_superuser:
         request.session.pop("impersonate_user_id", None)
         request.session.pop("impersonator_user_id", None)
         return original_user
@@ -335,6 +350,27 @@ class PermissionEnforcementMiddleware:
                 )
             return redirect("login")
         if user.is_superuser or user.has_perm(required_perm):
+            if not user.is_superuser:
+                enforce_posted_property_scope(request, user)
+            app_name = _request_app_name(match)
+            model_name = _model_from_url(app_name, match.url_name or "")
+            if not user.is_superuser and model_name:
+                try:
+                    model = apps.get_model(app_name, model_name)
+                except LookupError:
+                    model = None
+                if model is not None and model._meta.label_lower in MODEL_PROPERTY_LOOKUPS:
+                    candidate_keys = (
+                        "pk",
+                        f"{model._meta.model_name}_id",
+                        "object_id",
+                    )
+                    object_pk = next(
+                        (view_kwargs.get(key) for key in candidate_keys if view_kwargs.get(key) is not None),
+                        None,
+                    )
+                    if object_pk is not None:
+                        require_object_property_access(user, model, object_pk)
             return None
         if request.headers.get("x-requested-with") == "XMLHttpRequest":
             return JsonResponse(

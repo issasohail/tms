@@ -698,7 +698,12 @@
         if (!response.ok || !data.ok) throw new Error(data.message || 'Could not update lease filters.');
         if (serial !== filterRequestSerial) return;
         if (propertyChanged) replaceSelectOptions(unitFilter, data.units || [], 'All Units', '');
-        replaceSelectOptions(leaseFilter, data.leases || [], 'Choose Lease', '');
+        replaceSelectOptions(
+          leaseFilter,
+          data.leases || [],
+          'Choose Lease',
+          currentFilterValue(leaseFilter)
+        );
         if ((unitChanged || tenantChanged || statusChanged || propertyChanged) && (data.leases || []).length === 1) {
           window.location.href = data.leases[0].url;
         }
@@ -736,6 +741,16 @@
       const selected = this.selectedOptions?.[0];
       if (selected?.value && selected.dataset.url) window.location.href = selected.dataset.url;
     });
+
+    // The full lease list is intentionally not part of the critical server
+    // render. Hydrate it after first paint using the same dependent-filter
+    // endpoint already used when Property/Unit/Tenant/Status changes.
+    const hydrateLeaseChoices = () => refreshClauseFilters();
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(hydrateLeaseChoices, {timeout: 500});
+    } else {
+      window.setTimeout(hydrateLeaseChoices, 0);
+    }
 
     function autoResize(el) {
     el.style.height = "auto";

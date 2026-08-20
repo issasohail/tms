@@ -2663,7 +2663,7 @@ class WhatsAppAIAssistant:
                 if first_batch_item and count > 0:
                     notify_staff_pending_request("upload", first_batch_item)
                     return (
-                        f"Upload batch submitted for approval with {count} file(s).\n\n"
+                        f"File upload completed. {count} file(s) uploaded for pending approval.\n\n"
                         f"{staff_menu_text(staff_user)}",
                         "staff_upload_submitted",
                         {"staff_user": staff_user},
@@ -2974,11 +2974,13 @@ class WhatsAppAIAssistant:
         if target_lease:
             conversation.context["staff_upload_unit_id"] = target_lease.unit_id
         conversation.context["staff_upload_target_label"] = option["label"]
-        conversation.pending_state = "staff_upload_target_confirmation"
-        conversation.save(update_fields=["pending_state", "context", "updated_at"])
-        return (
-            f"Confirm upload target: {option['label']}. "
-            "Reply YES to begin uploading or BACK to change it."
+        conversation.save(update_fields=["context", "updated_at"])
+        # Selecting an exact property/unit/lease target is already an explicit staff
+        # action. Start the upload batch immediately instead of requiring a second
+        # YES message. Media sent next is therefore never discarded behind a
+        # confirmation prompt.
+        return self._confirm_staff_upload_target(
+            message_log, conversation, staff_user
         )
 
     def _confirm_staff_upload_target(self, message_log, conversation, staff_user):

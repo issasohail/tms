@@ -62,10 +62,21 @@ def inventory_wardrobes(lease):
 
 
 def _authorized_occupant_rows(lease):
+    cache_attr = "_authorized_occupant_rows_cache"
+    cached = getattr(lease, "__dict__", {}).get(cache_attr)
+    if isinstance(cached, list):
+        return cached
     manager = getattr(lease, "family_members", None)
     if manager is None:
-        return []
-    return list(manager.select_related("family_member", "relationship_type").filter(lives_with_tenant=True))
+        rows = []
+    else:
+        rows = list(
+            manager.select_related("family_member", "relationship_type").filter(
+                lives_with_tenant=True
+            )
+        )
+    setattr(lease, cache_attr, rows)
+    return rows
 
 def authorized_occupants_names(lease):
     return ", ".join(link.family_member.get_full_name() for link in _authorized_occupant_rows(lease))

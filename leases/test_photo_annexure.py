@@ -61,7 +61,11 @@ class LeasePhotoSettingsTestBase(TestCase):
             Permission.objects.get(
                 content_type__app_label="leases",
                 codename="change_lease",
-            )
+            ),
+            Permission.objects.get(
+                content_type__app_label="accounts",
+                codename="access_all_properties",
+            ),
         )
 
     def media(self, *, lease=None, history=None, media_type="image", active=True):

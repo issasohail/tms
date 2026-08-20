@@ -47,7 +47,7 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.decorators import permission_required
 
 from django.db.models import Min, Max
-from django.db.models.functions import RowNumber
+from django.db.models.functions import RowNumber, TruncDay, TruncHour, TruncMonth
 from django.http import HttpResponse
 from django.shortcuts import render, get_object_or_404
 from django.template.loader import render_to_string
@@ -98,6 +98,101 @@ def _period_key_and_label(ts_local: datetime, granularity: str):
         key = ts_local.date()
         label = key.strftime("%b %d, %Y")
     return key, label
+
+
+def _reading_period_expression(granularity: str, tz):
+    """
+    Return the DB-side period bucket matching ``_period_key_and_label``.
+
+    The report range still filters directly on ``ts`` so MySQL can use the
+    existing (meter_id, ts) index. Only the much smaller grouped result is
+    returned to Python.
+    """
+    if granularity == "hourly":
+        return TruncHour("ts", tzinfo=tz)
+    if granularity == "monthly":
+        return TruncMonth("ts", tzinfo=tz)
+    return TruncDay("ts", tzinfo=tz)
+
+
+def _boundary_readings_by_meter(
+    meter_ids,
+    start_dt: datetime,
+    end_dt: datetime,
+    tz,
+    granularity: str,
+):
+    """
+    Return only the first and last MeterReading needed for each meter/period.
+
+    Historically the dashboard fetched *every* reading in the selected window
+    and then kept only the first/last value for each period in Python. On a
+    15-minute history table that can transfer tens of thousands of rows for a
+    monthly report.
+
+    This implementation preserves the same first/last semantics while using:
+      1. one GROUP BY query to identify first_ts/last_ts per meter + period;
+      2. one indexed lookup for the corresponding reading values.
+
+    Duplicate timestamps are resolved deterministically: the lowest id is used
+    for a period's first reading and the highest id for its last reading.
+    """
+    readings_by_meter = defaultdict(list)
+    if not meter_ids:
+        return readings_by_meter
+
+    period_expr = _reading_period_expression(granularity, tz)
+    boundaries = list(
+        MeterReading.objects
+        .filter(meter_id__in=meter_ids, ts__gte=start_dt, ts__lt=end_dt)
+        .annotate(_report_period=period_expr)
+        .values("meter_id", "_report_period")
+        .annotate(first_ts=Min("ts"), last_ts=Max("ts"))
+        .order_by("meter_id", "_report_period")
+    )
+    if not boundaries:
+        return readings_by_meter
+
+    candidate_timestamps = {
+        ts
+        for boundary in boundaries
+        for ts in (boundary["first_ts"], boundary["last_ts"])
+        if ts is not None
+    }
+    if not candidate_timestamps:
+        return readings_by_meter
+
+    candidates_by_key = defaultdict(list)
+    candidate_rows = (
+        MeterReading.objects
+        .filter(
+            meter_id__in=meter_ids,
+            ts__in=candidate_timestamps,
+        )
+        .order_by("meter_id", "ts", "id")
+        .values("id", "meter_id", "ts", "total_energy")
+    )
+    for row in candidate_rows:
+        candidates_by_key[(row["meter_id"], row["ts"])].append(row)
+
+    for boundary in boundaries:
+        meter_id = boundary["meter_id"]
+        first_ts = boundary["first_ts"]
+        last_ts = boundary["last_ts"]
+
+        first_candidates = candidates_by_key.get((meter_id, first_ts), ())
+        last_candidates = candidates_by_key.get((meter_id, last_ts), ())
+        if not first_candidates or not last_candidates:
+            continue
+
+        first_row = first_candidates[0]
+        last_row = last_candidates[-1]
+
+        readings_by_meter[meter_id].append(first_row)
+        if last_row["id"] != first_row["id"]:
+            readings_by_meter[meter_id].append(last_row)
+
+    return readings_by_meter
 
 
 # smart_meter/views_dashboard.py
@@ -263,16 +358,13 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     meter_to_rows = {}
     key_union = set()
 
-    readings_by_meter = defaultdict(list)
-    if meter_ids:
-        readings_qs = (
-            MeterReading.objects
-            .filter(meter_id__in=meter_ids, ts__gte=start_dt, ts__lt=end_dt)
-            .order_by("meter_id", "ts")
-            .values("meter_id", "ts", "total_energy")
-        )
-        for reading in readings_qs:
-            readings_by_meter[reading["meter_id"]].append(reading)
+    readings_by_meter = _boundary_readings_by_meter(
+        meter_ids,
+        start_dt,
+        end_dt,
+        tz,
+        granularity,
+    )
 
     prev_end_by_meter = {}
     if meter_ids:
@@ -1377,11 +1469,11 @@ def build_billing_summary_context(request):
     unit_display_labels = display_labels_for_units(
         source["unit"] for source in row_sources
     )
-    row_lease_ids = [
+    row_lease_ids = sorted({
         source["lease"].id
         for source in row_sources
         if source.get("lease")
-    ]
+    })
 
     balance_by_lease = defaultdict(Decimal)
     if row_lease_ids:

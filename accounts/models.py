@@ -38,6 +38,16 @@ class Account(AbstractBaseUser, PermissionsMixin):
     USERNAME_FIELD = "username"
     REQUIRED_FIELDS = ["email"]
 
+    class Meta:
+        permissions = [
+            ("manage_roles", "Can manage user roles and groups"),
+            ("grant_account_permissions", "Can grant account permissions"),
+            ("manage_property_access", "Can manage staff property access"),
+            ("impersonate_account", "Can impersonate other accounts"),
+            ("assign_staff_status", "Can assign staff status"),
+            ("access_all_properties", "Can access all properties"),
+        ]
+
     def __str__(self):
         return self.username
 
@@ -57,3 +67,29 @@ class Account(AbstractBaseUser, PermissionsMixin):
         result = super().delete(*args, **kwargs)
         cache.delete("core.settings_whatsapp_account_choices")
         return result
+
+
+class AccountPropertyAccess(models.Model):
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="property_access",
+    )
+    property = models.ForeignKey(
+        "properties.Property",
+        on_delete=models.CASCADE,
+        related_name="account_access",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("account", "property"),
+                name="accounts_account_property_access_unique",
+            )
+        ]
+        ordering = ("property__property_name", "property_id")
+
+    def __str__(self):
+        return f"{self.account} -> {self.property}"

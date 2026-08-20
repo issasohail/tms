@@ -1,3 +1,4 @@
+from accounts.access import restrict_queryset_to_properties
 # tenants/views.py
 import csv
 import hashlib
@@ -22,6 +23,7 @@ from django.core.signing import BadSignature, SignatureExpired
 from django.db import IntegrityError, transaction
 from django.db.models import (
     Case,
+    Count,
     DecimalField,
     Exists,
     F,
@@ -3187,7 +3189,7 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
             )
 
             # Leases where this tenant is listed as someone else's family member
-            family_lease_links = list(
+            family_lease_links_raw = list(
                 LeaseFamilyMember.objects.filter(family_member=tenant)
                 .select_related(
                     "lease",
@@ -3197,7 +3199,11 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
                     "primary_tenant",
                     "relationship_type",
                 )
-                .order_by("-lease__start_date", "-lease__id")
+            )
+            family_lease_links = sorted(
+                family_lease_links_raw,
+                key=lambda link: (link.lease.start_date, link.lease_id),
+                reverse=True,
             )
         except Exception:
             family_links = []
@@ -3227,26 +3233,20 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
         context.update(_family_counts(family_links))
         from tenants.services.role_history import tenant_role_history
 
-        context["role_history_rows"] = tenant_role_history(tenant)
-
-        def get_object(self, queryset=None):
-            tenant = super().get_object(queryset)
-            print(
-                f"Retrieved tenant: ID={tenant.pk}, Name={tenant.first_name} {tenant.last_name}"
-            )
-            return tenant
-
-        print(f"Tenant: {tenant}")
-        print(f"Active leases: {tenant.leases.filter(status='active').exists()}")
-        print(f"Found lease: {tenant.lease}")
+        role_family_links = sorted(
+            family_lease_links,
+            key=lambda link: (
+                getattr(link, "sort_order", 0),
+                tenant.first_name or "",
+                tenant.last_name or "",
+            ),
+        )
+        context["role_history_rows"] = tenant_role_history(
+            tenant,
+            primary_leases=all_leases,
+            family_links=role_family_links,
+        )
         return context
-
-    def get_object(self, queryset=None):
-        # Get the tenant object
-        tenant = super().get_object(queryset)
-        # Debug print
-        print(f"Tenant PK: {tenant.pk}, Name: {tenant.first_name} {tenant.last_name}")
-        return tenant
 
 
 class TenantRoleHistoryView(LoginRequiredMixin, DetailView):
@@ -4050,6 +4050,8 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             super().get_queryset().prefetch_related(active_leases, "interested_in")
         )
 
+        queryset = restrict_queryset_to_properties(queryset, self.request.user, "leases__unit__property")
+
         tenant_id = self.request.GET.get("tenant")
         phone = self.request.GET.get("phone")
         property_id = self.request.GET.get("property")
@@ -4470,13 +4472,16 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
         context["current_property"] = property_id
         context["current_unit"] = self.request.GET.get("unit")
         context["show_inactive"] = bool(self.request.GET.get("show_inactive"))
-        context["interest_types"] = (
+        interest_types = list(
             apps.get_model("tenants", "TenantInterestType")
             .objects.filter(is_active=True)
             .order_by("sort_order", "name")
         )
+        context["interest_types"] = interest_types
         context["current_interested_in"] = self.request.GET.getlist("interested_in")
-        context["pre_registration_form"] = TenantPreRegistrationLinkForm()
+        context["pre_registration_form"] = TenantPreRegistrationLinkForm(
+            interest_types=interest_types
+        )
         context["registration_link_days"] = TENANT_REGISTRATION_MAX_AGE // (
             60 * 60 * 24
         )
@@ -4503,38 +4508,31 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
         )
 
         all_tenant_qs = Tenant.objects.all()
-
-        context["total_tenant_count"] = all_tenant_qs.count()
-
-        context["active_tenant_count"] = (
-            all_tenant_qs.annotate(has_active_lease=Exists(active_lease_exists))
-            .filter(has_active_lease=True)
-            .count()
-        )
-
-        context["inactive_tenant_count"] = (
-            all_tenant_qs.annotate(has_active_lease=Exists(active_lease_exists))
-            .filter(has_active_lease=False)
-            .count()
-        )
-
-        context["on_notice_count"] = (
-            all_tenant_qs.annotate(on_notice=Exists(notice_lease_exists))
-            .filter(on_notice=True)
-            .count()
-        )
-
         active_family_exists = LeaseFamilyMember.objects.filter(
             family_member_id=OuterRef("pk"),
             lease__status="active",
             lease__start_date__lte=today,
             lease__end_date__gte=today,
         )
-        context["family_member_tenant_count"] = (
-            all_tenant_qs.annotate(is_active_family_member=Exists(active_family_exists))
-            .filter(is_active_family_member=True)
-            .count()
+        tenant_stats = (
+            all_tenant_qs.annotate(
+                _has_active_lease=Exists(active_lease_exists),
+                _on_notice=Exists(notice_lease_exists),
+                _is_active_family_member=Exists(active_family_exists),
+            )
+            .aggregate(
+                total=Count("pk"),
+                active=Count("pk", filter=Q(_has_active_lease=True)),
+                inactive=Count("pk", filter=Q(_has_active_lease=False)),
+                on_notice=Count("pk", filter=Q(_on_notice=True)),
+                family=Count("pk", filter=Q(_is_active_family_member=True)),
+            )
         )
+        context["total_tenant_count"] = tenant_stats["total"]
+        context["active_tenant_count"] = tenant_stats["active"]
+        context["inactive_tenant_count"] = tenant_stats["inactive"]
+        context["on_notice_count"] = tenant_stats["on_notice"]
+        context["family_member_tenant_count"] = tenant_stats["family"]
 
         context["potential_tenant_count"] = (
             all_tenant_qs.filter(interested_in__isnull=False).distinct().count()

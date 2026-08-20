@@ -1128,6 +1128,7 @@ class MeterCommand(models.Model):
             models.Index(fields=["status", "created_at"]),
             models.Index(fields=["meter_number", "status", "priority"]),
             models.Index(fields=["source", "desired_state", "status"]),
+            models.Index(fields=["meter", "-created_at"], name="sm_cmd_meter_created_idx"),
         ]
         permissions = [
             ("cancel_meter_command", "Can cancel pending meter command"),

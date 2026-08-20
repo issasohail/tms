@@ -1,3 +1,4 @@
+from accounts.access import restrict_queryset_to_properties
 # same helper you use for Cut/Restore
 
 import calendar
@@ -95,6 +96,14 @@ from smart_meter.utils.tenants import (
 from smart_meter.utils.vpn import public_ip, vpn_connected
 from smart_meter.vendor.prepaid import DLT645_2007_Prepaid
 from smart_meter.vendor.switch_OnOff import frame_command as build_switch_frame
+
+def _local_date_bounds(day):
+    """Return timezone-aware [local midnight, next local midnight) bounds."""
+    tz = timezone.get_current_timezone()
+    start = timezone.make_aware(datetime.combine(day, time.min), tz)
+    end = timezone.make_aware(datetime.combine(day + timedelta(days=1), time.min), tz)
+    return start, end
+
 
 from .forms import (
     AssignMeterForm,
@@ -812,6 +821,7 @@ def meter_list(request):
     meters_base_qs = _with_meter_operational_flags(
         _meters_annotated_qs(request, online_minutes=online_minutes)
     )
+    meters_base_qs = restrict_queryset_to_properties(meters_base_qs, request.user, "unit__property")
     current_chip = _normalized_meter_chip(request)
     chip_cards = _meter_chip_cards(request, meters_base_qs, "smart_meter:meter_list")
     meters_qs = _apply_meter_chip_filter(meters_base_qs, current_chip)
@@ -1057,10 +1067,9 @@ def meter_edit(request, pk):
                 if active_installation:
                     effective_date = max(effective_date, active_installation.start_date)
 
+                _effective_start, effective_end = _local_date_bounds(effective_date)
                 latest_reading = (
-                    MeterReading.objects.filter(
-                        meter=meter, ts__date__lte=effective_date
-                    )
+                    MeterReading.objects.filter(meter=meter, ts__lt=effective_end)
                     .order_by("-ts", "-id")
                     .first()
                 )
@@ -1402,37 +1411,16 @@ def meter_detail(request, pk):
         else (latest_reading.total_energy if latest_reading else None)
     )
 
-    def active_lease_for_unit(unit, on_date):
-        if not unit:
-            return None
-        return (
-            Lease.objects.filter(
-                unit=unit, start_date__lte=on_date, end_date__gte=on_date
-            )
-            .select_related("tenant")
-            .order_by("-start_date", "-id")
-            .first()
-        )
-
-    def lease_for_history_row(unit, on_date, fallback=None):
-        lease = active_lease_for_unit(unit, on_date)
-        if lease:
-            return lease
-        if fallback and getattr(fallback, "unit_id", None) == getattr(unit, "id", None):
-            return fallback
-        return None
-
-    def latest_energy_until(ts):
-        reading = (
-            MeterReading.objects.filter(meter=meter, ts__lte=ts).order_by("-ts").first()
-        )
-        return (
-            reading.total_energy
-            if reading and reading.total_energy is not None
-            else None
-        )
-
     display_installation_history = []
+
+    # Resolve each assignment-change boundary reading in the assignment-history
+    # query itself. With the existing (meter, ts) reading index this avoids one
+    # latest-reading query for every history row.
+    change_energy_sq = (
+        MeterReading.objects.filter(meter_id=OuterRef("meter_id"), ts__lte=OuterRef("change_date"))
+        .order_by("-ts", "-id")
+        .values("total_energy")[:1]
+    )
     assignment_changes = list(
         meter.assignment_history.select_related(
             "old_unit",
@@ -1443,8 +1431,62 @@ def meter_detail(request, pk):
             "old_lease__tenant",
             "new_lease",
             "new_lease__tenant",
-        ).order_by("change_date", "id")
+        )
+        .annotate(_change_energy=Subquery(change_energy_sq))
+        .order_by("change_date", "id")
     )
+
+    # History rendering repeatedly asks which lease occupied a unit on a given
+    # date. Load the small relevant lease set once rather than issuing a query
+    # from inside each installation/change loop.
+    history_unit_ids = {
+        unit_id
+        for unit_id in (
+            [installation.unit_id for installation in installation_history]
+            + [change.old_unit_id for change in assignment_changes]
+            + [change.new_unit_id for change in assignment_changes]
+            + [meter.unit_id]
+        )
+        if unit_id
+    }
+    history_dates = [installation.start_date for installation in installation_history]
+    history_dates += [
+        timezone.localtime(change.change_date).date() for change in assignment_changes
+    ]
+    history_min_date = min(history_dates) if history_dates else date.today()
+    history_max_date = max(
+        [installation.end_date or date.today() for installation in installation_history]
+        + [date.today()]
+    )
+    leases_by_unit = defaultdict(list)
+    if history_unit_ids:
+        history_leases = (
+            Lease.objects.filter(
+                unit_id__in=history_unit_ids,
+                start_date__lte=history_max_date,
+                end_date__gte=history_min_date,
+            )
+            .select_related("tenant", "unit", "unit__property")
+            .order_by("unit_id", "-start_date", "-id")
+        )
+        for history_lease in history_leases:
+            leases_by_unit[history_lease.unit_id].append(history_lease)
+
+    def active_lease_for_unit(unit, on_date):
+        if not unit:
+            return None
+        for lease in leases_by_unit.get(unit.id, ()):
+            if lease.start_date <= on_date <= lease.end_date:
+                return lease
+        return None
+
+    def lease_for_history_row(unit, on_date, fallback=None):
+        lease = active_lease_for_unit(unit, on_date)
+        if lease:
+            return lease
+        if fallback and getattr(fallback, "unit_id", None) == getattr(unit, "id", None):
+            return fallback
+        return None
 
     for installation in installation_history:
         segment_unit = installation.unit
@@ -1470,7 +1512,7 @@ def meter_detail(request, pk):
 
         for change in relevant_changes:
             change_day = timezone.localtime(change.change_date).date()
-            change_energy = latest_energy_until(change.change_date)
+            change_energy = change._change_energy
             display_installation_history.append(
                 {
                     "unit": segment_unit,
@@ -1493,14 +1535,17 @@ def meter_detail(request, pk):
             segment_from = change_day
             segment_start_reading = change_energy
 
+        segment_start_dt, _segment_start_end = _local_date_bounds(segment_from)
+        _segment_end_start, segment_end_dt = _local_date_bounds(
+            installation.end_date or date.today()
+        )
         last_installation_reading = (
-            MeterReading.objects.filter(meter=meter, ts__date__gte=segment_from)
-            .filter(
-                ts__date__lte=installation.end_date
-                if installation.end_date
-                else date.today()
+            MeterReading.objects.filter(
+                meter=meter,
+                ts__gte=segment_start_dt,
+                ts__lt=segment_end_dt,
             )
-            .order_by("-ts")
+            .order_by("-ts", "-id")
             .first()
         )
         display_to_date = installation.end_date

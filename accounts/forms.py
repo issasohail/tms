@@ -7,6 +7,7 @@ from django.contrib.auth.forms import (
     UserChangeForm,
 )
 from django.contrib.auth.models import Group, Permission
+from properties.models import Property
 from django.core.exceptions import ValidationError
 from core.utils.text import add_auto_titlecase_class
 
@@ -97,6 +98,16 @@ class AccountChangeForm(UserChangeForm):
 
 
 class AccountAccessForm(forms.ModelForm):
+    all_properties = forms.BooleanField(
+        label="Access all properties",
+        required=False,
+        help_text="If unchecked, access is limited to the selected properties.",
+    )
+    properties = forms.ModelMultipleChoiceField(
+        queryset=Property.objects.order_by("property_name"),
+        required=False,
+        widget=forms.SelectMultiple(attrs={"class": "form-select form-select-sm select2"}),
+    )
     password1 = forms.CharField(label="Password", required=False, widget=forms.PasswordInput(attrs={"class": "form-control form-control-sm"}))
     password2 = forms.CharField(label="Reconfirm Password", required=False, widget=forms.PasswordInput(attrs={"class": "form-control form-control-sm"}))
     groups = forms.ModelMultipleChoiceField(
@@ -127,9 +138,24 @@ class AccountAccessForm(forms.ModelForm):
             "is_staff": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, actor=None, **kwargs):
+        self.actor = actor
         super().__init__(*args, **kwargs)
         add_auto_titlecase_class(self.fields)
+        if self.instance.pk:
+            self.fields["properties"].initial = self.instance.property_access.values_list("property_id", flat=True)
+            self.fields["all_properties"].initial = self.instance.has_perm("accounts.access_all_properties")
+        if actor and not actor.is_superuser and not actor.has_perm("accounts.assign_staff_status"):
+            self.fields.pop("is_staff", None)
+        if actor and not actor.is_superuser and not actor.has_perm("accounts.manage_roles"):
+            self.fields.pop("groups", None)
+        if actor and not actor.is_superuser and not actor.has_perm("accounts.manage_property_access"):
+            self.fields.pop("properties", None)
+            self.fields.pop("all_properties", None)
+        elif actor and not actor.is_superuser and "properties" in self.fields:
+            if not actor.has_perm("accounts.access_all_properties"):
+                allowed_ids = actor.property_access.values_list("property_id", flat=True)
+                self.fields["properties"].queryset = Property.objects.filter(pk__in=allowed_ids).order_by("property_name")
 
     def clean(self):
         cleaned = super().clean()
@@ -176,7 +202,7 @@ class GroupAccessForm(forms.ModelForm):
         add_auto_titlecase_class(self.fields)
 
 
-def permission_groups():
+def permission_groups(actor=None):
     perms = (
         Permission.objects
         .select_related("content_type")
@@ -197,6 +223,17 @@ def permission_groups():
         ])
         .order_by("content_type__app_label", "content_type__model", "codename")
     )
+    if actor is not None and not actor.is_superuser:
+        allowed_names = actor.get_all_permissions()
+        allowed_ids = []
+        for name in allowed_names:
+            if "." not in name:
+                continue
+            app_label, codename = name.split(".", 1)
+            allowed_ids.extend(
+                perms.filter(content_type__app_label=app_label, codename=codename).values_list("id", flat=True)
+            )
+        perms = perms.filter(id__in=allowed_ids)
     grouped = {}
     for perm in perms:
         codename = perm.codename

@@ -315,7 +315,11 @@ class ActiveClauseEditorDeletionTests(TestCase):
             Permission.objects.get(
                 content_type__app_label="leases",
                 codename="change_lease",
-            )
+            ),
+            Permission.objects.get(
+                content_type__app_label="accounts",
+                codename="access_all_properties",
+            ),
         )
         self.client.force_login(self.user)
         self.history.clauses.all().delete()

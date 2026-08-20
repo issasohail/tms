@@ -1,5 +1,5 @@
 {% load lease_tags %}
-{% agreement_signature_config as agreement_signature_settings %}
+{% if not agreement_signature_settings %}{% agreement_signature_config as agreement_signature_settings %}{% endif %}
 
 <style>
     .and-separator { text-align:center; font-weight:bold; margin:5pt 0; }

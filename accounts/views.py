@@ -25,6 +25,7 @@ from .whatsapp_password_reset import (
     whatsapp_password_reset_request_url,
 )
 
+from .models import AccountPropertyAccess
 from .forms import (
     LoginForm,
     AccountCreationForm,
@@ -44,6 +45,75 @@ PERMISSION_ACTIONS = [
     ("change", "Update"),
     ("delete", "Delete"),
 ]
+
+
+MANAGE_ROLES_PERMISSION = "accounts.manage_roles"
+GRANT_PERMISSIONS_PERMISSION = "accounts.grant_account_permissions"
+MANAGE_PROPERTY_ACCESS_PERMISSION = "accounts.manage_property_access"
+IMPERSONATE_PERMISSION = "accounts.impersonate_account"
+ASSIGN_STAFF_PERMISSION = "accounts.assign_staff_status"
+ALL_PROPERTIES_PERMISSION = "accounts.access_all_properties"
+
+
+def _has_custom_perm(user, perm):
+    return user.is_authenticated and (user.is_superuser or user.has_perm(perm))
+
+
+def _editable_permission_queryset(actor):
+    visible = Permission.objects.select_related("content_type").filter(
+        content_type__app_label__in=[
+            "accounts", "properties", "tenants", "leases", "payments",
+            "invoices", "expenses", "utilities", "maintenance", "smart_meter",
+            "reports", "core", "whatsapp",
+        ]
+    )
+    visible = visible.filter(codename__regex=r"^(view|add|change|delete)_")
+    if actor.is_superuser:
+        return visible
+    allowed = actor.get_all_permissions()
+    allowed_pairs = []
+    for perm_name in allowed:
+        try:
+            app_label, codename = perm_name.split(".", 1)
+        except ValueError:
+            continue
+        allowed_pairs.append((app_label, codename))
+    ids = []
+    for app_label, codename in allowed_pairs:
+        ids.extend(visible.filter(content_type__app_label=app_label, codename=codename).values_list("id", flat=True))
+    return visible.filter(id__in=ids)
+
+
+def _sync_property_access(actor, target, cleaned_data):
+    if not _has_custom_perm(actor, MANAGE_PROPERTY_ACCESS_PERMISSION):
+        return
+    access_all_perm = Permission.objects.get(
+        content_type__app_label="accounts", codename="access_all_properties"
+    )
+    if cleaned_data.get("all_properties"):
+        target.user_permissions.add(access_all_perm)
+        AccountPropertyAccess.objects.filter(account=target).delete()
+        return
+    target.user_permissions.remove(access_all_perm)
+    properties = cleaned_data.get("properties") or []
+    AccountPropertyAccess.objects.filter(account=target).exclude(property__in=properties).delete()
+    existing = set(target.property_access.values_list("property_id", flat=True))
+    AccountPropertyAccess.objects.bulk_create(
+        [AccountPropertyAccess(account=target, property=prop) for prop in properties if prop.pk not in existing],
+        ignore_conflicts=True,
+    )
+
+
+def _sync_standard_permissions(actor, target, selected_ids):
+    if not _has_custom_perm(actor, GRANT_PERMISSIONS_PERMISSION):
+        return 0
+    editable = _editable_permission_queryset(actor)
+    selected = editable.filter(id__in=selected_ids)
+    editable_ids = set(editable.values_list("id", flat=True))
+    preserved = target.user_permissions.exclude(id__in=editable_ids)
+    preserved_ids = list(preserved.values_list("id", flat=True))
+    target.user_permissions.set([*preserved_ids, *selected.values_list("id", flat=True)])
+    return selected.count()
 
 
 class LoginView(auth_views.LoginView):
@@ -178,6 +248,13 @@ def _account_perm_required(request, action, message="You do not have permission 
     return redirect("dashboard:home")
 
 
+def _manageable_account(request, pk):
+    target = get_object_or_404(Account, pk=pk)
+    if target.is_superuser and not request.user.is_superuser:
+        raise PermissionDenied("Only a superuser can manage another superuser account.")
+    return target
+
+
 @login_required
 def user_access_list(request):
     denied = _account_perm_required(request, "view")
@@ -194,21 +271,24 @@ def user_access_create(request):
     if denied:
         return denied
     user = Account()
-    form = AccountAccessForm(request.POST or None, instance=user)
+    form = AccountAccessForm(request.POST or None, instance=user, actor=request.user)
     selected_permissions = set()
     if request.method == "POST" and form.is_valid():
         user = form.save()
-        selected_ids = request.POST.getlist("permissions")
-        user.user_permissions.set(Permission.objects.filter(id__in=selected_ids))
+        selected_ids = [value for value in request.POST.getlist("permissions") if value.isdigit()]
+        _sync_standard_permissions(request.user, user, selected_ids)
+        _sync_property_access(request.user, user, form.cleaned_data)
         messages.success(request, "User created.")
         return redirect("accounts:user_access_list")
     return render(request, "accounts/user_access_form.html", {
         "form": form,
         "managed_user": user,
-        "permission_groups": permission_groups(),
+        "permission_groups": permission_groups(request.user),
         "permission_actions": PERMISSION_ACTIONS,
         "selected_permissions": selected_permissions,
         "is_create": True,
+        "can_grant_permissions": _has_custom_perm(request.user, GRANT_PERMISSIONS_PERMISSION),
+        "can_manage_property_access": _has_custom_perm(request.user, MANAGE_PROPERTY_ACCESS_PERMISSION),
     })
 
 
@@ -218,22 +298,25 @@ def user_access_update(request, pk):
     denied = _account_perm_required(request, "change")
     if denied:
         return denied
-    user = get_object_or_404(Account, pk=pk)
-    form = AccountAccessForm(request.POST or None, instance=user)
+    user = _manageable_account(request, pk)
+    form = AccountAccessForm(request.POST or None, instance=user, actor=request.user)
     selected_permissions = set(user.user_permissions.values_list("id", flat=True))
     if request.method == "POST" and form.is_valid():
         user = form.save()
-        selected_ids = request.POST.getlist("permissions")
-        user.user_permissions.set(Permission.objects.filter(id__in=selected_ids))
+        selected_ids = [value for value in request.POST.getlist("permissions") if value.isdigit()]
+        _sync_standard_permissions(request.user, user, selected_ids)
+        _sync_property_access(request.user, user, form.cleaned_data)
         messages.success(request, "User access updated.")
         return redirect("accounts:user_access_list")
     return render(request, "accounts/user_access_form.html", {
         "form": form,
         "managed_user": user,
-        "permission_groups": permission_groups(),
+        "permission_groups": permission_groups(request.user),
         "permission_actions": PERMISSION_ACTIONS,
         "selected_permissions": selected_permissions,
         "is_create": False,
+        "can_grant_permissions": _has_custom_perm(request.user, GRANT_PERMISSIONS_PERMISSION),
+        "can_manage_property_access": _has_custom_perm(request.user, MANAGE_PROPERTY_ACCESS_PERMISSION),
     })
 
 
@@ -294,11 +377,12 @@ def user_permission_autosave(request, pk):
     denied = _account_perm_required(request, "change")
     if denied:
         return denied
-    user = get_object_or_404(Account, pk=pk)
+    user = _manageable_account(request, pk)
+    if not _has_custom_perm(request.user, GRANT_PERMISSIONS_PERMISSION):
+        return JsonResponse({"ok": False, "message": "Permission grant access is required."}, status=403)
     selected_ids = [pk for pk in request.POST.getlist("permissions") if pk.isdigit()]
-    permissions = Permission.objects.filter(id__in=selected_ids)
-    user.user_permissions.set(permissions)
-    return JsonResponse({"ok": True, "saved_count": permissions.count()})
+    saved_count = _sync_standard_permissions(request.user, user, selected_ids)
+    return JsonResponse({"ok": True, "saved_count": saved_count})
 
 
 @login_required
@@ -307,7 +391,7 @@ def user_access_delete(request, pk):
     denied = _account_perm_required(request, "delete")
     if denied:
         return denied
-    user = get_object_or_404(Account, pk=pk)
+    user = _manageable_account(request, pk)
     if user.pk == request.user.pk:
         messages.error(request, "You cannot delete the account you are currently using.")
         return redirect("accounts:user_access_list")
@@ -323,7 +407,7 @@ def user_access_delete(request, pk):
 
 @login_required
 def group_access_list(request):
-    if not _staff_required(request.user):
+    if not _has_custom_perm(request.user, MANAGE_ROLES_PERMISSION):
         messages.error(request, "You do not have permission to manage groups.")
         return redirect("dashboard:home")
     groups = (
@@ -345,11 +429,13 @@ def _selected_permission_ids(form, group):
 @login_required
 @require_http_methods(["GET", "POST"])
 def group_access_create(request):
-    if not _staff_required(request.user):
+    if not _has_custom_perm(request.user, MANAGE_ROLES_PERMISSION):
         messages.error(request, "You do not have permission to manage groups.")
         return redirect("dashboard:home")
     group = Group()
     form = GroupAccessForm(request.POST or None, instance=group)
+    if not request.user.is_superuser:
+        form.fields["permissions"].queryset = _editable_permission_queryset(request.user)
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Group created.")
@@ -357,7 +443,7 @@ def group_access_create(request):
     return render(request, "accounts/group_access_form.html", {
         "form": form,
         "managed_group": group,
-        "permission_groups": permission_groups(),
+        "permission_groups": permission_groups(request.user),
         "permission_actions": PERMISSION_ACTIONS,
         "selected_permissions": _selected_permission_ids(form, group),
         "is_create": True,
@@ -367,19 +453,27 @@ def group_access_create(request):
 @login_required
 @require_http_methods(["GET", "POST"])
 def group_access_update(request, pk):
-    if not _staff_required(request.user):
+    if not _has_custom_perm(request.user, MANAGE_ROLES_PERMISSION):
         messages.error(request, "You do not have permission to manage groups.")
         return redirect("dashboard:home")
     group = get_object_or_404(Group, pk=pk)
     form = GroupAccessForm(request.POST or None, instance=group)
+    preserved_permission_ids = []
+    if not request.user.is_superuser:
+        editable = _editable_permission_queryset(request.user)
+        editable_ids = editable.values_list("id", flat=True)
+        preserved_permission_ids = list(group.permissions.exclude(id__in=editable_ids).values_list("id", flat=True))
+        form.fields["permissions"].queryset = editable
     if request.method == "POST" and form.is_valid():
-        form.save()
+        saved_group = form.save()
+        if preserved_permission_ids:
+            saved_group.permissions.add(*preserved_permission_ids)
         messages.success(request, "Group access updated.")
         return redirect("accounts:group_access_list")
     return render(request, "accounts/group_access_form.html", {
         "form": form,
         "managed_group": group,
-        "permission_groups": permission_groups(),
+        "permission_groups": permission_groups(request.user),
         "permission_actions": PERMISSION_ACTIONS,
         "selected_permissions": _selected_permission_ids(form, group),
         "is_create": False,
@@ -389,7 +483,7 @@ def group_access_update(request, pk):
 @login_required
 @require_POST
 def group_access_delete(request, pk):
-    if not _staff_required(request.user):
+    if not _has_custom_perm(request.user, MANAGE_ROLES_PERMISSION):
         messages.error(request, "You do not have permission to manage groups.")
         return redirect("dashboard:home")
     group = get_object_or_404(Group, pk=pk)
@@ -402,10 +496,12 @@ def group_access_delete(request, pk):
 @login_required
 @require_POST
 def impersonate_start(request, pk):
-    if not _staff_required(request.user):
+    if not _has_custom_perm(request.user, IMPERSONATE_PERMISSION):
         messages.error(request, "You do not have permission to impersonate users.")
         return redirect("dashboard:home")
     target = get_object_or_404(Account, pk=pk, is_active=True)
+    if target.is_superuser and not request.user.is_superuser:
+        raise PermissionDenied("Only a superuser can impersonate another superuser.")
     if target.pk == request.user.pk:
         messages.info(request, "You are already using this account.")
         return redirect("accounts:user_access_list")

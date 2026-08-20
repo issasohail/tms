@@ -245,6 +245,9 @@ class MaintenanceRequestMedia(models.Model):
 
     class Meta:
         ordering = ["-uploaded_at", "-id"]
+        indexes = [
+            models.Index(fields=["request", "is_active"], name="maint_media_req_active_idx"),
+        ]
 
     def __str__(self):
         return self.original_filename or os.path.basename(self.file.name)

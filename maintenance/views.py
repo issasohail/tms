@@ -1,3 +1,4 @@
+from accounts.access import restrict_queryset_to_properties
 import mimetypes
 import os
 import uuid
@@ -457,6 +458,8 @@ class MaintenanceRequestListView(LoginRequiredMixin, ListView):
             )
             .annotate(active_media_count=_active_media_count_annotation())
         )
+        qs = restrict_queryset_to_properties(qs, self.request.user, ("unit__property", "lease__unit__property"))
+
         raw_status = self.request.GET.get("status")
         status = _clean_filter_value(raw_status)
         priority = self.request.GET.get("priority")

@@ -489,9 +489,18 @@ class TenantPreRegistrationLinkForm(forms.Form):
     )
     notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"class": "form-control form-control-sm", "rows": 2}))
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, interest_types=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["interested_in"].queryset = TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name")
+        if interest_types is None:
+            self.fields["interested_in"].queryset = TenantInterestType.objects.filter(
+                is_active=True
+            ).order_by("sort_order", "name")
+        else:
+            # Tenant List already needs this same option set for its filters.
+            # Reuse the evaluated rows instead of issuing the identical query again.
+            self.fields["interested_in"].choices = [
+                (item.pk, str(item)) for item in interest_types
+            ]
         add_auto_titlecase_class(self.fields)
 
     def clean_phone(self):

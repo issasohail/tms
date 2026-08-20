@@ -1,3 +1,4 @@
+from accounts.access import restrict_queryset_to_properties
 # invoices/views.py
 # adjust import if Category lives elsewhere
 import asyncio
@@ -198,6 +199,8 @@ class InvoiceListView(SingleTableView):
                 "lease__security_deposit",
             )
         )
+
+        qs = restrict_queryset_to_properties(qs, self.request.user, "lease__unit__property")
 
         r = self.request
         prop = r.GET.get("property") or r.GET.get("property_id")

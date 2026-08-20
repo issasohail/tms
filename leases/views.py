@@ -1,3 +1,4 @@
+from accounts.access import restrict_queryset_to_properties
 # adjust if your form/formset live elsewhere
 # adjust if your app paths differ
 # leases/views.py
@@ -1070,6 +1071,8 @@ class LeaseListView(SingleTableView):
         )
 
         # Get filter parameters
+        queryset = restrict_queryset_to_properties(queryset, self.request.user, "unit__property")
+
         property_id = self.request.GET.get("property")
         unit_id = self.request.GET.get("unit")
         tenant_id = self.request.GET.get("tenant")
@@ -4038,7 +4041,17 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
         return (
             super()
             .get_queryset()
-            .select_related("tenant", "unit", "unit__property")
+            .select_related(
+                "tenant",
+                "unit",
+                "unit__property",
+                "proposer",
+                "seconder",
+                "proposer_relationship",
+                "seconder_relationship",
+                "witness1_tenant",
+                "witness2_tenant",
+            )
             .prefetch_related(
                 Prefetch(
                     "payments",
@@ -6107,7 +6120,7 @@ def generate_lease_agreement(request, lease_id):
     return response
 
 
-def _edit_clause_filter_context(request, current_lease):
+def _edit_clause_filter_context(request, current_lease, *, include_lease_choices=True):
     property_id = request.GET.get("property") or ""
     unit_id = request.GET.get("unit") or ""
     tenant_id = request.GET.get("tenant") or ""
@@ -6143,23 +6156,39 @@ def _edit_clause_filter_context(request, current_lease):
     )
 
     lease_choices = []
-    for lease in leases_qs[:300]:
-        tenant_name = lease.tenant.get_full_name()
-        prop_name = lease.unit.property.property_name if lease.unit_id else ""
-        unit_number = lease.unit.unit_number if lease.unit_id else ""
-        status = lease.get_status_display()
-        lease_choices.append(
-            {
-                "id": lease.pk,
-                "url": reverse("leases:edit_clauses", kwargs={"pk": lease.pk}),
-                "label": f"{tenant_name} | {prop_name} | {unit_number} | {status}",
-            }
-        )
+    if include_lease_choices:
+        for lease in leases_qs[:300]:
+            tenant_name = lease.tenant.get_full_name()
+            prop_name = lease.unit.property.property_name if lease.unit_id else ""
+            unit_number = lease.unit.unit_number if lease.unit_id else ""
+            status = lease.get_status_display()
+            lease_choices.append(
+                {
+                    "id": lease.pk,
+                    "url": reverse("leases:edit_clauses", kwargs={"pk": lease.pk}),
+                    "label": f"{tenant_name} | {prop_name} | {unit_number} | {status}",
+                }
+            )
+    else:
+        # Keep the current lease visible immediately. The complete lease-choice
+        # list is filled after first paint by the existing AJAX filter endpoint.
+        tenant_name = current_lease.tenant.get_full_name()
+        prop_name = current_lease.unit.property.property_name if current_lease.unit_id else ""
+        unit_number = current_lease.unit.unit_number if current_lease.unit_id else ""
+        lease_choices.append({
+            "id": current_lease.pk,
+            "url": reverse("leases:edit_clauses", kwargs={"pk": current_lease.pk}),
+            "label": f"{tenant_name} | {prop_name} | {unit_number} | {current_lease.get_status_display()}",
+        })
 
     return {
         "filter_properties": Property.objects.only("id", "property_name").order_by("property_name"),
         "filter_units": units_qs,
-        "filter_tenants": Tenant.objects.only("id", "first_name", "last_name").order_by("first_name", "last_name"),
+        "filter_tenants": list(
+            Tenant.objects.only(
+                "id", "first_name", "last_name", "phone", "is_active"
+            ).order_by("first_name", "last_name")
+        ),
         "filter_lease_choices": lease_choices,
         "filter_property": property_id,
         "filter_unit": unit_id,
@@ -6434,7 +6463,21 @@ def edit_clauses(request, pk):
         latest_history,
     )
 
-    lease = get_object_or_404(Lease, pk=pk)
+    lease = get_object_or_404(
+        Lease.objects.select_related(
+            "tenant",
+            "unit",
+            "unit__property",
+            "proposer",
+            "seconder",
+            "proposer_relationship",
+            "seconder_relationship",
+            "witness1_tenant",
+            "witness2_tenant",
+            "late_fee_settings",
+        ),
+        pk=pk,
+    )
     selected_lease_id = request.GET.get("lease_select")
     if selected_lease_id and str(selected_lease_id) != str(lease.pk):
         return redirect("leases:edit_clauses", pk=selected_lease_id)
@@ -6458,14 +6501,33 @@ def edit_clauses(request, pk):
             status=403,
         )
 
-    ensure_original_history(
-        lease,
-        user=request.user if request.user.is_authenticated else None,
+    # Load histories first and only run the repair/creation helper when the
+    # original history is actually absent. In the normal case this avoids an
+    # extra renewal lookup on every agreement edit request.
+    histories = list(
+        LeaseRenewal.objects.filter(lease=lease)
+        .select_related("witness1_tenant", "witness2_tenant")
+        .order_by("-renewal_number", "-id")
     )
-
+    has_original_history = any(
+        item.renewal_number == 1 and item.is_original for item in histories
+    )
+    if not has_original_history:
+        ensure_original_history(
+            lease,
+            user=request.user if request.user.is_authenticated else None,
+        )
+        histories = list(
+            LeaseRenewal.objects.filter(lease=lease)
+            .select_related("witness1_tenant", "witness2_tenant")
+            .order_by("-renewal_number", "-id")
+        )
     history_id = request.POST.get("history_id") or request.GET.get("history")
     if history_id:
-        history = LeaseRenewal.objects.filter(pk=history_id, lease=lease).first()
+        history = next(
+            (item for item in histories if str(item.pk) == str(history_id)),
+            None,
+        )
         if history is None:
             if (
                 request.headers.get("x-requested-with") == "XMLHttpRequest"
@@ -6477,13 +6539,15 @@ def edit_clauses(request, pk):
                 )
             raise Http404("Agreement history was not found for this lease.")
     else:
-        history = latest_history(lease)
+        history = histories[0] if histories else latest_history(lease)
 
-    copy_previous_history_clauses(lease, history)
-    clauses = _filter_electricity_clauses(
-        history.clauses.all().order_by("clause_number"),
-        lease,
-    )
+    # Loading the current history's clauses answers both "does it have clauses?"
+    # and the later rendering query.  Avoid a separate .exists() on the common path.
+    history_clauses = list(history.clauses.all().order_by("clause_number"))
+    if not history_clauses:
+        copy_previous_history_clauses(lease, history)
+        history_clauses = list(history.clauses.all().order_by("clause_number"))
+    clauses = _filter_electricity_clauses(history_clauses, lease)
 
     lease_for_preview = copy(lease)
     for field in [
@@ -6686,7 +6750,12 @@ def edit_clauses(request, pk):
         eligible_agreement_photos,
     )
 
-    current_estamp_status = estamp_status(lease, request.user)
+    # Reuse the same signature configuration for E-Stamp status and the
+    # included agreement preview; otherwise the singleton is queried twice.
+    signature_config = AgreementSignatureTemplate.current()
+    current_estamp_status = estamp_status(
+        lease, request.user, config=signature_config
+    )
     eligible_photos = []
     for photo in eligible_agreement_photos(lease, history):
         thumbnail_url = photo.display_thumbnail_url
@@ -6713,6 +6782,24 @@ def edit_clauses(request, pk):
         len(eligible_photos) if photo_mode == "all" else len(selected_photo_ids)
     )
     photo_per_page = {"1up": 1, "2up": 2, "4up": 4}[photo_layout]
+    # The large lease selector is non-critical to first paint and already has
+    # an AJAX endpoint. Render the current lease immediately, then hydrate the
+    # complete option list after paint.
+    filter_context = _edit_clause_filter_context(
+        request, lease, include_lease_choices=False
+    )
+    role_tenants = [
+        tenant_obj
+        for tenant_obj in filter_context["filter_tenants"]
+        if tenant_obj.is_active
+    ]
+
+    active_placeholders = list(_active_agreement_placeholders())
+    lease_for_preview._active_db_agreement_placeholders = [
+        placeholder
+        for placeholder in active_placeholders
+        if placeholder.source_type in {"custom", "manual"}
+    ]
 
     return render(
         request,
@@ -6721,13 +6808,12 @@ def edit_clauses(request, pk):
             "lease": lease_for_preview,
             "master_lease": lease,
             "history": history,
-            "histories": lease.renewals.all().order_by("-renewal_number"),
+            "histories": histories,
             "clauses": clauses,
             "agreement_date": history.agreement_date or history.start_date,
-            "placeholders": _active_agreement_placeholders(),
-            "role_tenants": Tenant.objects.filter(is_active=True).only(
-                "id", "first_name", "last_name", "phone"
-            ).order_by("first_name", "last_name"),
+            "placeholders": active_placeholders,
+            "agreement_signature_settings": signature_config,
+            "role_tenants": role_tenants,
             "relationship_types": LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name"),
             "estamp_status": current_estamp_status,
             "agreement_photo_settings": {
@@ -6749,7 +6835,7 @@ def edit_clauses(request, pk):
                 photo for photo in eligible_photos
                 if photo.lease_history_id is None
             ],
-            **_edit_clause_filter_context(request, lease),
+            **filter_context,
         },
     )
 

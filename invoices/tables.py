@@ -2,7 +2,7 @@
 from django.utils.html import format_html
 from django.urls import reverse
 from urllib.parse import urlencode
-from django.template.loader import render_to_string
+import json
 from django.core.cache import cache
 import django_tables2 as tables
 from django_tables2.columns import DateColumn, Column
@@ -109,12 +109,11 @@ class InvoiceTable(ExportableTable):
         attrs={"th": {"class": "col-status"}, "td": {"class": "col-status"}},
     )
 
-    actions = tables.TemplateColumn(
-        template_name='components/action_buttons.html',
+    actions = tables.Column(
+        empty_values=(),
         verbose_name='Actions',
         orderable=False,
-
-        attrs={"td": {"class": "text-nowrap actions-cell"}}
+        attrs={"td": {"class": "text-nowrap actions-cell"}},
     )
 
     class Meta(ExportableTable.Meta):
@@ -217,26 +216,79 @@ class InvoiceTable(ExportableTable):
         )
 
     def render_actions(self, record):
-        delete_url = reverse('invoices:invoice_delete', args=[record.pk])
+        delete_url = reverse("invoices:invoice_delete", args=[record.pk])
         request = getattr(self, "request", None)
         if request is not None:
-            return_to = request.get_full_path()
-            delete_url = f"{delete_url}?{urlencode({'return_to': return_to})}"
-        return render_to_string('components/action_buttons.html', {
-            'record': record,  # <-- IMPORTANT: give the template access to the row
-            'view_url': reverse('invoices:invoice_detail', args=[record.pk]),
-            'edit_url': reverse('invoices:invoice_update', args=[record.pk]),
-            'delete_url': delete_url,
-            # optional
-            'make_payment_url': reverse('payments:payment_create') + f'?invoice={record.pk}',
-            'whatsapp_url': (
-                f"fetchWhatsAppPayload('{reverse('invoices:api_invoice_whatsapp', args=[record.pk])}')"
-                ".then(d=>openWhatsApp(d.phone,d.message)).catch(()=>{})"
+            delete_url = f"{delete_url}?{urlencode({'return_to': request.get_full_path()})}"
+
+        view_url = reverse("invoices:invoice_detail", args=[record.pk])
+        edit_url = reverse("invoices:invoice_update", args=[record.pk])
+        pay_url = reverse("payments:payment_create") + f"?invoice={record.pk}"
+
+        lease = getattr(record, "lease", None)
+        tenant = getattr(lease, "tenant", None) if lease else None
+        unit = getattr(lease, "unit", None) if lease else None
+        prop = getattr(unit, "property", None) if unit else None
+        phone = getattr(tenant, "phone", "") or ""
+
+        items_payload = json.dumps(
+            [
+                {
+                    "cat": getattr(getattr(item, "category", None), "name", "") or "",
+                    "desc": getattr(item, "description", "") or "",
+                    "amount": f"{(getattr(item, 'amount', None) or 0):,.2f}",
+                }
+                for item in record.items.all()
+            ],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        lease_balance = getattr(record, "dashboard_lease_balance", None)
+        if lease_balance is None and lease is not None:
+            lease_balance = lease.get_balance
+        security_balance = getattr(record, "dashboard_security_balance", None)
+        if security_balance is None and lease is not None:
+            security_balance = lease.security_balance_to_collect
+        total_balance = getattr(record, "dashboard_total_balance", None)
+
+        if phone:
+            whatsapp = format_html(
+                '<a href="#" class="btn btn-sm btn-success action-btn btn-wa-invoice" '
+                'title="Send WhatsApp" onclick="return window.sendWhatsAppSingleInvoiceFromList(this);" '
+                'data-phone="{}" data-object-id="{}" data-fname="{}" data-lname="{}" '
+                'data-invno="{}" data-issue="{}" data-issue-month="{}" data-due="{}" '
+                'data-property="{}" data-unit="{}" data-status="{}" data-leasebal="{}" '
+                'data-securitybal="{}" data-totalbal="{}" data-total="{}" data-items="{}">'
+                '<i class="fab fa-whatsapp"></i><span class="btn-text ms-1">WhatsApp</span></a>',
+                phone, record.pk, getattr(tenant, "first_name", "") or "",
+                getattr(tenant, "last_name", "") or "", record.invoice_number or "",
+                record.issue_date.strftime("%b %d, %Y") if record.issue_date else "",
+                record.issue_date.strftime("%Y-%m") if record.issue_date else "",
+                record.due_date.strftime("%b %d, %Y") if record.due_date else "",
+                getattr(prop, "property_name", "") or "",
+                getattr(unit, "unit_number", "") or "",
+                record.get_status_display() if hasattr(record, "get_status_display") else (record.status or ""),
+                f"{(lease_balance or 0):,.2f}", f"{(security_balance or 0):,.2f}",
+                f"{(total_balance or 0):,.2f}" if total_balance is not None else "",
+                f"{(record.amount or 0):,.2f}", items_payload,
+            )
+        else:
+            whatsapp = mark_safe(
+                '<button type="button" class="btn btn-sm btn-secondary action-btn" title="No phone number" disabled>'
+                '<i class="fab fa-whatsapp"></i><span class="btn-text ms-1">WhatsApp</span></button>'
             )
 
+        return format_html(
+            '<div class="d-flex actions-wrap">'
+            '<a href="{}" class="btn btn-sm btn-info action-btn btn-view"><i class="fas fa-eye"></i><span class="btn-text ms-1">View</span></a>'
+            '<a href="{}" class="btn btn-sm btn-warning action-btn btn-edit"><i class="fas fa-edit"></i><span class="btn-text ms-1">Edit</span></a>'
+            '<a href="{}" class="btn btn-sm btn-danger action-btn btn-delete"><i class="fas fa-trash"></i><span class="btn-text ms-1">Delete</span></a>'
+            '{}'
+            '<a href="{}" class="btn btn-sm btn-success action-btn btn-pay"><i class="fas fa-money-bill-wave"></i><span class="btn-text ms-1">Pay</span></a>'
+            '</div>',
+            view_url, edit_url, delete_url, whatsapp, pay_url,
+        )
 
-
-        })
 
 
 class InvoiceListView(tables.SingleTableView):

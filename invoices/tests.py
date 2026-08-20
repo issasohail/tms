@@ -625,6 +625,7 @@ class InvoiceLifecycleAndAccountingStatusTests(TestCase):
 
         view = InvoiceListView()
         view.request = RequestFactory().get("/", {"status": "disputed"})
+        view.request.user = self.user
         ids = set(view.get_queryset().values_list("id", flat=True))
 
         self.assertIn(disputed.pk, ids)
@@ -653,6 +654,7 @@ class InvoiceLifecycleAndAccountingStatusTests(TestCase):
 
         view = InvoiceListView()
         view.request = RequestFactory().get("/", {"status": "paid"})
+        view.request.user = self.user
         ids = set(view.get_queryset().values_list("id", flat=True))
 
         self.assertIn(paid.pk, ids)
@@ -683,6 +685,7 @@ class InvoiceLifecycleAndAccountingStatusTests(TestCase):
 
         view = InvoiceListView()
         view.request = RequestFactory().get("/", {"status": "overdue"})
+        view.request.user = self.user
         ids = set(view.get_queryset().values_list("id", flat=True))
 
         self.assertIn(overdue.pk, ids)

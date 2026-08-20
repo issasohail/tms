@@ -80,7 +80,7 @@ from whatsapp.services.whatsapp_ai import (
     detect_intent,
     process_inbound_whatsapp_message,
 )
-from whatsapp.views import _log_webhook_payload
+from whatsapp.views import _log_webhook_payload, _should_process_stateful_control_immediately
 
 
 class WhatsAppStaffAccessManagementTests(TestCase):
@@ -193,6 +193,7 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
                     "change_pendingwhatsapppayment",
                     "change_pendingwhatsappmaintenance",
                     "view_maintenancerequest",
+                    "access_all_properties",
                 ]
             )
         )
@@ -1449,15 +1450,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
 
         conversation.refresh_from_db()
-        self.assertIn("Confirm upload target", response)
-        response = WhatsAppAIAssistant(
-            service=MagicMock()
-        )._confirm_staff_upload_target(
-            self.message,
-            conversation,
-            self.staff1,
-        )
-        conversation.refresh_from_db()
+        self.assertIn("Target selected", response)
+        self.assertNotIn("Reply YES", response)
+        self.assertEqual(conversation.pending_state, "staff_waiting_upload")
         self.assertIn("Secure gallery upload link", response)
         self.assertIn("no login required", response)
         self.assertIn("forward it to the tenant", response)
@@ -2648,11 +2643,6 @@ class WhatsAppControlledAssistantTests(TestCase):
             self.message, conversation, "1", self.staff1
         )
         conversation.refresh_from_db()
-        self.assertEqual(conversation.pending_state, "staff_upload_target_confirmation")
-        assistant._consume_staff_menu_state(
-            self.message, conversation, "YES", self.staff1
-        )
-        conversation.refresh_from_db()
         self.assertEqual(conversation.pending_state, "staff_waiting_upload")
         self.assertEqual(
             conversation.context["staff_upload_kind"],
@@ -2711,12 +2701,8 @@ class WhatsAppControlledAssistantTests(TestCase):
             self.message, conversation, "1", self.staff1
         )
         conversation.refresh_from_db()
-        self.assertIn("Confirm upload target", response)
-        response = assistant._consume_staff_menu_state(
-            self.message, conversation, "YES", self.staff1
-        )
-        conversation.refresh_from_db()
         self.assertIn("Target selected", response)
+        self.assertNotIn("Reply YES", response)
         self.assertEqual(conversation.pending_state, "staff_waiting_upload")
         self.assertEqual(conversation.context["staff_upload_lease_id"], lease.pk)
         self.assertEqual(
@@ -2724,7 +2710,7 @@ class WhatsAppControlledAssistantTests(TestCase):
             PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
         )
 
-    def test_staff_upload_confirmation_back_restarts_target_selection(self):
+    def test_staff_upload_back_closes_active_batch(self):
         WhatsAppStaffPropertyAccess.objects.create(
             staff_user=self.staff1,
             property=self.property,
@@ -2752,8 +2738,9 @@ class WhatsAppControlledAssistantTests(TestCase):
         conversation.refresh_from_db()
         self.assertEqual(
             conversation.pending_state,
-            "staff_upload_target_confirmation",
+            "staff_waiting_upload",
         )
+        self.assertTrue(conversation.context.get("staff_upload_batch_key"))
 
         response = assistant._handle_staff_message(
             self.message,
@@ -2767,14 +2754,11 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
 
         conversation.refresh_from_db()
-        self.assertIn("Select the target property", response)
-        self.assertEqual(conversation.pending_state, "staff_upload_target_query")
+        self.assertIn("Upload session closed", response)
+        self.assertEqual(conversation.pending_state, "")
         self.assertNotIn("staff_upload_batch_key", conversation.context)
         self.assertNotIn("staff_upload_unit_id", conversation.context)
-        self.assertEqual(
-            conversation.context["staff_upload_kind"],
-            PendingWhatsAppMedia.TARGET_UNIT_PHOTO,
-        )
+        self.assertNotIn("staff_upload_kind", conversation.context)
 
     def test_staff_media_lease_photo_shortcut_skips_property_and_unit_menus(self):
         property_obj = Property.objects.create(
@@ -2815,12 +2799,8 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
 
         conversation.refresh_from_db()
-        self.assertIn("Confirm upload target", response)
-        response = assistant._consume_staff_menu_state(
-            self.message, conversation, "YES", self.staff1
-        )
-        conversation.refresh_from_db()
         self.assertIn("Target selected", response)
+        self.assertNotIn("Reply YES", response)
         self.assertEqual(conversation.pending_state, "staff_waiting_upload")
         self.assertEqual(conversation.context["staff_upload_lease_id"], lease.pk)
 
@@ -2897,12 +2877,8 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
 
         conversation.refresh_from_db()
-        self.assertIn("Confirm upload target", response)
-        response = assistant._consume_staff_menu_state(
-            self.message, conversation, "YES", self.staff1
-        )
-        conversation.refresh_from_db()
         self.assertIn("Target selected", response)
+        self.assertNotIn("Reply YES", response)
         self.assertNotIn("Danish", response)
         self.assertNotIn("Nisar", response)
         self.assertEqual(conversation.pending_state, "staff_waiting_upload")
@@ -2932,12 +2908,8 @@ class WhatsAppControlledAssistantTests(TestCase):
         )
 
         conversation.refresh_from_db()
-        self.assertIn("Confirm upload target", response)
-        response = assistant._consume_staff_menu_state(
-            self.message, conversation, "YES", self.staff1
-        )
-        conversation.refresh_from_db()
         self.assertIn("Target selected", response)
+        self.assertNotIn("Reply YES", response)
         self.assertEqual(conversation.pending_state, "staff_waiting_upload")
         self.assertEqual(conversation.context["staff_upload_lease_id"], self.lease.pk)
 
@@ -3315,14 +3287,8 @@ class WhatsAppControlledAssistantTests(TestCase):
             message, staff_conversation, "Test Residency#1", self.staff1
         )
         staff_conversation.refresh_from_db()
-        self.assertEqual(
-            staff_conversation.pending_state, "staff_upload_target_confirmation"
-        )
-        assistant._consume_staff_menu_state(
-            message, staff_conversation, "YES", self.staff1
-        )
-        staff_conversation.refresh_from_db()
         self.assertEqual(staff_conversation.pending_state, "staff_waiting_upload")
+        self.assertTrue(staff_conversation.context.get("staff_upload_batch_key"))
 
         media_log = WhatsAppMessageLog.objects.create(
             direction="inbound",
@@ -3421,7 +3387,8 @@ class WhatsAppControlledAssistantTests(TestCase):
             },
         )
         conversation.refresh_from_db()
-        self.assertEqual(conversation.pending_state, "staff_upload_target_confirmation")
+        self.assertEqual(conversation.pending_state, "staff_waiting_upload")
+        self.assertTrue(conversation.context.get("staff_upload_batch_key"))
 
         media_log = WhatsAppMessageLog.objects.create(
             direction="inbound",
@@ -3599,15 +3566,13 @@ class WhatsAppControlledAssistantTests(TestCase):
         self.assertIn("F56 / F56-FLAT# 05", confirmation)
         self.assertEqual(
             conversation.pending_state,
-            "staff_upload_target_confirmation",
+            "staff_waiting_upload",
         )
         self.assertEqual(
             conversation.context["staff_upload_unit_id"],
             f56_unit.pk,
         )
-        assistant._consume_staff_menu_state(
-            self.message, conversation, "YES", self.staff1
-        )
+        self.assertNotIn("Reply YES", confirmation)
         conversation.refresh_from_db()
         expected_batch_key = uuid.UUID(conversation.context["staff_upload_batch_key"])
 
@@ -3669,6 +3634,24 @@ class WhatsAppControlledAssistantTests(TestCase):
             {self.staff1.pk},
         )
         notify_pending.assert_not_called()
+
+    def test_done_is_immediate_stateful_control_for_open_staff_upload_batch(self):
+        conversation = WhatsAppConversation(
+            pending_state="staff_waiting_upload",
+        )
+
+        self.assertTrue(
+            _should_process_stateful_control_immediately(
+                conversation,
+                {"type": "text", "text": {"body": "Done"}},
+            )
+        )
+        self.assertFalse(
+            _should_process_stateful_control_immediately(
+                conversation,
+                {"type": "text", "text": {"body": "another photo coming"}},
+            )
+        )
 
     @patch("whatsapp.services.whatsapp_ai.notify_staff_pending_request")
     def test_done_submits_once_and_returns_staff_menu(self, notify_pending):

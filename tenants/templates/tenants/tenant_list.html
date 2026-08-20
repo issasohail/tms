@@ -2,6 +2,7 @@
 {% load static humanize money_tags %}
 {% load payments_url_helpers %}
 {% load tenants_url_helpers %}
+{% load tenant_filters %}
 
 {% block main_container_class %}container-fluid px-2{% endblock %}
 
@@ -388,10 +389,35 @@
                             <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="tenant-name-link d-block" title="{{ tenant.first_name }} {{ tenant.last_name }}"><strong>{{ tenant.first_name }} {{ tenant.last_name }}</strong></a>
                             <div class="text-muted xsmall tenant-meta-line">
                                 {{ tenant.get_gender_display }} &nbsp;•&nbsp; {{ tenant.number_of_family_member }} Members
-                                {% include "tenants/_tenant_role_badges.html" with tenant=tenant %}
+                                {% if tenant.role_badges %}
+<div class="tenant-role-list" aria-label="Tenant roles">
+    {% for role in tenant.role_badges %}
+        {% if role.count == 1 %}
+            <a href="{{ role.targets.0.url }}" class="tenant-role-name-badge role-{{ role.key }}" title="Open {{ role.label }} lease">{{ role.label }}</a>
+        {% else %}
+            <button type="button" class="tenant-role-name-badge role-{{ role.key }}" data-role-choice-button data-role-label="{{ role.label }}" data-tenant-name="{{ tenant.first_name }} {{ tenant.last_name }}">{{ role.label }} {{ role.count }}</button>
+            <span class="d-none" data-role-targets>
+                {% for target in role.targets %}<a href="{{ target.url }}" data-role-target-link data-role-period="{{ target.period }}">{{ target.label }}</a>{% endfor %}
+            </span>
+        {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
                             </div>
                             <div class="xsmall tenant-phone-link-wrap">
-                                <i class="fas fa-phone-alt me-1"></i>{% include "tenants/_whatsapp_phone_link.html" with phone=tenant.phone label=tenant.phone name=tenant.get_full_name only %}
+                                <i class="fas fa-phone-alt me-1"></i>{% if tenant.phone %}
+  {% with wa_phone=tenant.phone|whatsapp_phone %}
+    {% if wa_phone %}
+      <a href="https://wa.me/{{ wa_phone }}?text=Hello{% if tenant.get_full_name %} {{ tenant.get_full_name|urlencode }}{% endif %}" target="_blank" rel="noopener" class="phone-wa-link">
+        {{ tenant.phone|format_phone }} <i class="fab fa-whatsapp text-success"></i>
+      </a>
+    {% else %}
+      {{ tenant.phone|format_phone }}
+    {% endif %}
+  {% endwith %}
+{% else %}
+  -
+{% endif %}
                             </div>
                             {% if tenant.email %}<div class="xsmall text-muted text-truncate">{{ tenant.email }}</div>{% endif %}
                             <div class="mt-1 interest-badges">{% for item in tenant.interested_in.all %}<span class="badge bg-light text-dark border">{% if item.name == 'Single Room with Attached Bath and Kitchen' %}Single Room{% else %}{{ item.name }}{% endif %}</span>{% endfor %}</div>
@@ -509,13 +535,38 @@
 
                 <div class="tcv2-subline">
                     {{ tenant.get_gender_display }} <span>•</span> {{ tenant.number_of_family_member }} Members
-                    {% include "tenants/_tenant_role_badges.html" with tenant=tenant %}
+                    {% if tenant.role_badges %}
+<div class="tenant-role-list" aria-label="Tenant roles">
+    {% for role in tenant.role_badges %}
+        {% if role.count == 1 %}
+            <a href="{{ role.targets.0.url }}" class="tenant-role-name-badge role-{{ role.key }}" title="Open {{ role.label }} lease">{{ role.label }}</a>
+        {% else %}
+            <button type="button" class="tenant-role-name-badge role-{{ role.key }}" data-role-choice-button data-role-label="{{ role.label }}" data-tenant-name="{{ tenant.first_name }} {{ tenant.last_name }}">{{ role.label }} {{ role.count }}</button>
+            <span class="d-none" data-role-targets>
+                {% for target in role.targets %}<a href="{{ target.url }}" data-role-target-link data-role-period="{{ target.period }}">{{ target.label }}</a>{% endfor %}
+            </span>
+        {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
                 </div>
 
                 <div class="tcv2-phone-row">
                     <div class="tcv2-phone">
                         <i class="fas fa-phone-alt"></i>
-                        {% include "tenants/_whatsapp_phone_link.html" with phone=tenant.phone label=tenant.phone name=tenant.get_full_name only %}
+                        {% if tenant.phone %}
+  {% with wa_phone=tenant.phone|whatsapp_phone %}
+    {% if wa_phone %}
+      <a href="https://wa.me/{{ wa_phone }}?text=Hello{% if tenant.get_full_name %} {{ tenant.get_full_name|urlencode }}{% endif %}" target="_blank" rel="noopener" class="phone-wa-link">
+        {{ tenant.phone|format_phone }} <i class="fab fa-whatsapp text-success"></i>
+      </a>
+    {% else %}
+      {{ tenant.phone|format_phone }}
+    {% endif %}
+  {% endwith %}
+{% else %}
+  -
+{% endif %}
                     </div>
                     {% if not lease %}
                     <span class="tcv2-no-lease-inline">No active lease</span>

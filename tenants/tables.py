@@ -3,7 +3,6 @@ from django_tables2.utils import A
 from django.utils.html import format_html
 from django.urls import reverse
 from .models import Tenant
-from django.template.loader import render_to_string
 from properties.tables import ExportableTable
 from django.utils.safestring import mark_safe
 from core.utils.identity import format_cnic, format_phone
@@ -101,11 +100,10 @@ class TenantTable(ExportableTable):
     )
 
     balance = tables.Column(
+        empty_values=(),
         verbose_name='Balance',
         orderable=False,
-        accessor='current_lease.get_balance',
         attrs={
-            # Reduced width
             "td": {"class": "text-end", "style": "width: 75px;"},
             "th": {"class": "text-end", "style": "width: 75px;"}
         }
@@ -119,12 +117,10 @@ class TenantTable(ExportableTable):
         }
     )
 
-    actions = tables.TemplateColumn(
-        template_name='components/action_buttons.html',
+    actions = tables.Column(
+        empty_values=(),
         verbose_name='Actions',
         orderable=False,
-        # attrs={"td": {"class": "text-nowrap", "style": "width: 120px;"}}
-        # Reduced from 120px
         attrs={
             "td": {
                 "class": "p-0",
@@ -182,8 +178,12 @@ class TenantTable(ExportableTable):
         """Format rent value"""
         return f"${float(value):,.2f}" if value else "-"
 
-    def render_balance(self, value):
-        """Format balance value"""
+    def render_balance(self, record):
+        """Use the page-level bulk balance cache; never aggregate per table row."""
+        lease = record.current_lease
+        value = getattr(lease, "_cached_get_balance", None) if lease else None
+        if value is None and lease is not None:
+            value = lease.get_balance
         return f"${float(value):,.2f}" if value else "0.00"
 
     def render_status(self, value, record):
@@ -194,25 +194,40 @@ class TenantTable(ExportableTable):
 
     def render_actions(self, record):
         active_lease = None
-        if hasattr(record, 'active_leases') and record.active_leases:
+        if hasattr(record, "active_leases") and record.active_leases:
             active_lease = record.active_leases[0]
 
-        context = {
-            'record': record,
-            'view_url': reverse('tenants:tenant_detail', args=[record.pk]),
-            'edit_url': reverse('tenants:tenant_update', args=[record.pk]),
-            'delete_url': reverse('tenants:tenant_delete', args=[record.pk]),
-            'make_payment_url': reverse('payments:payment_create') + f'?lease={active_lease.pk}' if active_lease else None,
-            'send_message_url': reverse('notifications:create') + f'?tenant_id={record.pk}',
-            'view_ledger_url': reverse('tenants:lease_ledger_by_pk', kwargs={'lease_id': record.pk}),
-            'send_ledger_url': reverse('tenants:send_ledger', kwargs={'pk': record.pk}),
-            'whatsapp_url': f"javascript:sendWhatsApp({record.pk})",
-            'record': record,
-            'sms_url': f"javascript:sendSMS({record.pk}, '{record.phone}', '{record.first_name}', '{active_lease.unit.property.property_name if active_lease else ''}', '{active_lease.unit.unit_number if active_lease else ''}', {active_lease.get_balance if active_lease else 0})",
-            'small_buttons': True  # Add this flag for smaller buttons
-        }
+        view_url = reverse("tenants:tenant_detail", args=[record.pk])
+        edit_url = reverse("tenants:tenant_update", args=[record.pk])
+        delete_url = reverse("tenants:tenant_delete", args=[record.pk])
+        message_url = reverse("notifications:create") + f"?tenant_id={record.pk}"
+        ledger_url = reverse("tenants:lease_ledger_by_pk", kwargs={"lease_id": record.pk})
+        send_ledger_url = reverse("tenants:send_ledger", kwargs={"pk": record.pk})
+        pay_url = (
+            reverse("payments:payment_create") + f"?lease={active_lease.pk}"
+            if active_lease else None
+        )
 
-        return render_to_string('components/action_buttons.html', context)
+        pay_html = (
+            format_html(
+                '<a href="{}" class="btn btn-sm btn-success action-btn btn-pay">'
+                '<i class="fas fa-money-bill-wave"></i><span class="btn-text ms-1">Pay</span></a>',
+                pay_url,
+            )
+            if pay_url else ""
+        )
+        return format_html(
+            '<div class="d-flex actions-wrap">'
+            '<a href="{}" class="btn btn-sm btn-info action-btn btn-view"><i class="fas fa-eye"></i><span class="btn-text ms-1">View</span></a>'
+            '<a href="{}" class="btn btn-sm btn-warning action-btn btn-edit"><i class="fas fa-edit"></i><span class="btn-text ms-1">Edit</span></a>'
+            '<a href="{}" class="btn btn-sm btn-danger action-btn btn-delete"><i class="fas fa-trash"></i><span class="btn-text ms-1">Delete</span></a>'
+            '{}'
+            '<a href="{}" class="btn btn-sm btn-primary action-btn btn-message"><i class="fas fa-envelope"></i><span class="btn-text ms-1">Message</span></a>'
+            '<a href="{}" class="btn btn-sm btn-secondary action-btn btn-ledger"><i class="fas fa-file-invoice-dollar"></i><span class="btn-text ms-1">Ledger</span></a>'
+            '<a href="{}" class="btn btn-sm btn-info action-btn btn-ledger-send"><i class="fas fa-paper-plane"></i><span class="btn-text ms-1">Send Ledger</span></a>'
+            '</div>',
+            view_url, edit_url, delete_url, pay_html, message_url, ledger_url, send_ledger_url,
+        )
 
     def before_render(self, request):
         """Set export title based on filters before rendering"""

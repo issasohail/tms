@@ -1,3 +1,4 @@
+from accounts.access import restrict_queryset_to_properties
 from decimal import Decimal
 
 from django.core.paginator import EmptyPage, Paginator
@@ -99,6 +100,8 @@ class PaymentListView(SingleTableView):
                 "unit__property__property_name",
             )
         )
+
+        leases = restrict_queryset_to_properties(leases, request.user, "unit__property")
 
         property_id = request.GET.get("property")
         tenant_id = request.GET.get("tenant")

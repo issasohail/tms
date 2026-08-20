@@ -1,3 +1,4 @@
+from accounts.access import restrict_queryset_to_properties
 import json
 import logging
 import os
@@ -87,7 +88,7 @@ class PropertyListView(SingleTableView):
     table_pagination = {"per_page": 15, "paginator_class": LazyPaginator}
 
     def get_queryset(self):
-        return Property.objects.all()
+        return restrict_queryset_to_properties(Property.objects.all(), self.request.user, "")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -422,6 +423,8 @@ class UnitListView(SingleTableMixin, FilterView):
                 ),
             )
         )
+        queryset = restrict_queryset_to_properties(queryset, self.request.user, "property")
+
         property_id = self.request.GET.get("property")
         if property_id:
             queryset = queryset.filter(property_id=property_id)

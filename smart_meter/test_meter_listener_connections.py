@@ -192,6 +192,12 @@ class DbCommandPollerConnectionLifecycleTests(TestCase):
     ):
         revalidate.return_value = SimpleNamespace(allowed=True, reason="test")
         handler = MagicMock()
+
+        def fake_enqueue_send(frame, expire_at=None, transport_q=None):
+            if transport_q is not None:
+                transport_q.put_nowait((True, ""))
+
+        handler.enqueue_send.side_effect = fake_enqueue_send
         get_handler.return_value = handler
         command = SimpleNamespace(
             pk=1,

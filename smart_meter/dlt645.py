@@ -303,21 +303,25 @@ def parse_frame(frame: bytes, accept_bad_checksum: bool = False) -> Optional[dic
     # Unknown DI: still return header info
     return parsed
 
-# --- builders for commands (write / control) ---
+# --- builders for commands (read / write / control) ---
+
+CHECKSUM_MODES = ("std", "incl_2nd68", "incl_1st68")
+FRAME_PREFIX = b"\xFE" * 4
 
 
 def _bcd_bytes_from_amount(amount: float, bytes_count: int = 4, decimals: int = 2) -> bytes:
-    """
-    Convert e.g. 123.45 -> bcd(0000012345) across bytes_count bytes, big-endian digit order,
-    then apply +0x33 offset per DL/T645 when you place into DATA.
+    """Encode an amount as zero-padded BCD digit pairs, before the +0x33 transform.
+
+    This preserves the project's existing representation (for example Rs 1.00 is
+    ``00 00 01 00``). Manufacturer confirmation of the byte order is still required.
     """
     scaled = int(round(amount * (10 ** decimals)))
-    s = f"{scaled:0{bytes_count*2}d}"  # 2 nibbles per byte
-    # big-endian BCD (hi nibble first per digit pairs)
-    out = bytearray()
-    for i in range(0, len(s), 2):
-        out.append((int(s[i]) << 4) | int(s[i+1]))
-    return bytes(out)
+    if scaled < 0:
+        raise ValueError("amount must not be negative")
+    s = f"{scaled:0{bytes_count * 2}d}"
+    if len(s) > bytes_count * 2:
+        raise ValueError(f"amount does not fit in {bytes_count} BCD bytes")
+    return bytes((int(s[i]) << 4) | int(s[i + 1]) for i in range(0, len(s), 2))
 
 
 def _add_33(data: bytes) -> bytes:
@@ -325,150 +329,154 @@ def _add_33(data: bytes) -> bytes:
 
 
 def _addr_from_meter_number(meter_number: str) -> bytes:
+    """Return a 12-hex-character meter address in DL/T645 on-wire byte order."""
+    if len(meter_number) != 12:
+        raise ValueError("meter number must be exactly 12 hexadecimal characters")
+    try:
+        return bytes.fromhex(meter_number)[::-1]
+    except ValueError as exc:
+        raise ValueError("meter number must be exactly 12 hexadecimal characters") from exc
+
+
+def calculate_outbound_checksum(frame_without_checksum: bytes, checksum_mode: str) -> int:
+    """Calculate one explicit outbound checksum window.
+
+    ``frame_without_checksum`` starts at the first 0x68 and ends at the final DATA
+    byte. It must not contain the checksum, terminator, or optional FE preamble.
     """
-    Meter number as 12 hex chars (e.g. '250619510016'), return 6 bytes little-endian on-wire.
+    if checksum_mode not in CHECKSUM_MODES:
+        raise ValueError(f"checksum_mode must be one of {', '.join(CHECKSUM_MODES)}")
+    if len(frame_without_checksum) < 10 or frame_without_checksum[0] != 0x68:
+        raise ValueError("frame_without_checksum must start with a complete DL/T645 header")
+    start_index = {"std": 8, "incl_2nd68": 7, "incl_1st68": 0}[checksum_mode]
+    return sum(frame_without_checksum[start_index:]) & 0xFF
+
+
+def build_frame(
+    meter_number: str,
+    control: int,
+    data_field: bytes,
+    *,
+    checksum_mode: str = "std",
+    include_preamble: bool = False,
+) -> bytes:
+    """Build a DL/T645 frame with an explicitly selectable checksum window.
+
+    The generic default remains ``std`` for backward compatibility. Manufacturer-
+    specific callers must choose their required mode rather than changing this default.
     """
-    # interpret as hex pairs big-endian then reverse to little-endian on wire
-    be = bytes.fromhex(meter_number)
-    return be[::-1]
+    if not 0 <= control <= 0xFF:
+        raise ValueError("control must fit in one byte")
+    if len(data_field) > 0xFF:
+        raise ValueError("data field is too long")
+    body = (
+        b"\x68"
+        + _addr_from_meter_number(meter_number)
+        + b"\x68"
+        + bytes([control, len(data_field)])
+        + data_field
+    )
+    checksum = calculate_outbound_checksum(body, checksum_mode)
+    frame = body + bytes([checksum, 0x16])
+    return (FRAME_PREFIX + frame) if include_preamble else frame
 
 
-def build_frame(meter_number: str, control: int, data_field: bytes) -> bytes:
+def _require_bytes(name: str, value: bytes, expected_length: Optional[int] = None) -> bytes:
+    if not isinstance(value, bytes):
+        raise TypeError(f"{name} must be bytes")
+    if expected_length is not None and len(value) != expected_length:
+        raise ValueError(f"{name} must be exactly {expected_length} bytes")
+    return value
+
+
+def build_topup_frame(
+    meter_number: str,
+    amount: float,
+    order_no: bytes,
+    *,
+    operator: bytes,
+    mac1: bytes,
+    schedule_no: bytes,
+    mailing_addr: bytes,
+    mac2: bytes,
+    checksum_mode: str,
+    include_preamble: bool = False,
+) -> bytes:
+    """Build a 070102FF structure from caller-supplied security material.
+
+    This only assembles bytes; it does not authenticate with an ESAM and must not be
+    treated as proof that a meter will accept the transaction.
     """
-    Build a full frame: [68][addr6][68][C][L][DATA][CS][16]
-    CS = sum from C through last DATA modulo 256 (standard window).
-    """
-    start = b'\x68'
-    addr = _addr_from_meter_number(meter_number)
-    head2 = b'\x68'
-    C = bytes([control])
-    L = bytes([len(data_field)])
-    core = C + L + data_field
-    cs = bytes([sum(core) & 0xFF])
-    return start + addr + head2 + core + cs + b'\x16'
+    plain = (
+        bytes.fromhex("070102FF")[::-1]
+        + _require_bytes("operator", operator, 4)
+        + _bcd_bytes_from_amount(amount, 4, 2)
+        + _require_bytes("order_no", order_no, 8)
+        + _require_bytes("mac1", mac1, 4)
+        + _require_bytes("schedule_no", schedule_no, 6)
+        + _require_bytes("mailing_addr", mailing_addr)
+        + _require_bytes("mac2", mac2, 4)
+    )
+    return build_frame(
+        meter_number, 0x03, _add_33(plain),
+        checksum_mode=checksum_mode, include_preamble=include_preamble,
+    )
 
 
-def build_topup_frame(meter_number: str, amount: float, order_no: bytes, operator=b'\x11\x22\x33\x44',
-                      mac1=b'\x00\x00\x00\x00', schedule_no=b'\x00'*6, mailing_addr=b'', mac2=b'\x00\x00\x00\x00'):
-    # DI little-endian on the wire, but we construct DI as big-endian then reverse and +0x33 in the DATA
-    di_be = bytes.fromhex("070102FF")
-    di_le = di_be[::-1]
-    amt_bcd = _bcd_bytes_from_amount(amount, 4, 2)
-    # Assemble DATA before +0x33:
-    data_plain = di_le + operator + amt_bcd + order_no + \
-        mac1 + schedule_no + mailing_addr + mac2
-    data_onwire = _add_33(data_plain)
-    return build_frame(meter_number, 0x03, data_onwire)
+def build_init_amount_frame(
+    meter_number: str,
+    amount: float,
+    *,
+    operator: bytes,
+    mac1: bytes,
+    purchase_count: bytes,
+    mac2: bytes,
+    checksum_mode: str,
+    include_preamble: bool = False,
+) -> bytes:
+    """Build a 070103FF structure with no implicit MAC or purchase-count values."""
+    plain = (
+        bytes.fromhex("070103FF")[::-1]
+        + _require_bytes("operator", operator, 4)
+        + _bcd_bytes_from_amount(amount, 4, 2)
+        + _require_bytes("mac1", mac1, 4)
+        + _require_bytes("purchase_count", purchase_count, 4)
+        + _require_bytes("mac2", mac2, 4)
+    )
+    return build_frame(
+        meter_number, 0x03, _add_33(plain),
+        checksum_mode=checksum_mode, include_preamble=include_preamble,
+    )
 
 
-def build_init_amount_frame(meter_number: str, amount: float, operator=b'\x11\x22\x33\x44'):
-    di_be = bytes.fromhex("070103FF")
-    di_le = di_be[::-1]
-    amt_bcd = _bcd_bytes_from_amount(amount, 4, 2)
-    data_plain = di_le + operator + amt_bcd + \
-        (b'\x00\x00\x00\x00') + (b'\x00\x00\x00\x00') + (b'\x00\x00\x00\x00')
-    data_onwire = _add_33(data_plain)
-    return build_frame(meter_number, 0x03, data_onwire)
-
-
-def build_refund_frame(meter_number: str, amount: float, order_no: bytes, operator=b'\x11\x22\x33\x44'):
-    di_be = bytes.fromhex("070108FF")
-    di_le = di_be[::-1]
-    amt_bcd = _bcd_bytes_from_amount(amount, 4, 2)
-    data_plain = di_le + operator + amt_bcd + order_no + \
-        (b'\x00\x00\x00\x00') + (b'\x00'*6) + (b'\x00\x00\x00\x00')
-    data_onwire = _add_33(data_plain)
-    return build_frame(meter_number, 0x03, data_onwire)
-# =========================
-# WRITE/CONTROL FRAME BUILDERS (prepaid)
-# =========================
-
-
-def _bcd_bytes_from_amount(amount: float, bytes_count: int = 4, decimals: int = 2) -> bytes:
-    scaled = int(round(amount * (10 ** decimals)))
-    s = f"{scaled:0{bytes_count*2}d}"
-    out = bytearray()
-    for i in range(0, len(s), 2):
-        out.append((int(s[i]) << 4) | int(s[i+1]))
-    return bytes(out)
-
-
-def _add_33(data: bytes) -> bytes:
-    return bytes(((b + 0x33) & 0xFF) for b in data)
-
-
-def _addr_from_meter_number(meter_number: str) -> bytes:
-    be = bytes.fromhex(meter_number)
-    return be[::-1]
-
-
-def build_frame(meter_number: str, control: int, data_field: bytes) -> bytes:
-    start = b'\x68'
-    addr = _addr_from_meter_number(meter_number)
-    head2 = b'\x68'
-    C = bytes([control])
-    L = bytes([len(data_field)])
-    core = C + L + data_field
-    cs = bytes([sum(core) & 0xFF])
-    return start + addr + head2 + core + cs + b'\x16'
-
-# ---- Prepaid commands ----
-
-
-def build_topup_frame(meter_number: str, amount: float, order_no: bytes,
-                      operator=b'\x11\x22\x33\x44',
-                      mac1=b'\x00\x00\x00\x00',
-                      schedule_no=b'\x00'*6,
-                      mailing_addr=b'',
-                      mac2=b'\x00\x00\x00\x00'):
-    di_be = bytes.fromhex("070102FF")
-    di_le = di_be[::-1]
-    amt_bcd = _bcd_bytes_from_amount(amount, 4, 2)
-    data_plain = di_le + operator + amt_bcd + order_no + \
-        mac1 + schedule_no + mailing_addr + mac2
-    data_onwire = _add_33(data_plain)
-    return build_frame(meter_number, 0x03, data_onwire)
-
-
-def build_init_amount_frame(meter_number: str, amount: float, operator=b'\x11\x22\x33\x44'):
-    di_be = bytes.fromhex("070103FF")
-    di_le = di_be[::-1]
-    amt_bcd = _bcd_bytes_from_amount(amount, 4, 2)
-    data_plain = di_le + operator + amt_bcd + \
-        (b'\x00\x00\x00\x00') + (b'\x00\x00\x00\x00') + (b'\x00\x00\x00\x00')
-    data_onwire = _add_33(data_plain)
-    return build_frame(meter_number, 0x03, data_onwire)
-
-
-def build_refund_frame(meter_number: str, amount: float, order_no: bytes, operator=b'\x11\x22\x33\x44'):
-    di_be = bytes.fromhex("070108FF")
-    di_le = di_be[::-1]
-    amt_bcd = _bcd_bytes_from_amount(amount, 4, 2)
-    data_plain = di_le + operator + amt_bcd + order_no + \
-        (b'\x00\x00\x00\x00') + (b'\x00'*6) + (b'\x00\x00\x00\x00')
-    data_onwire = _add_33(data_plain)
-    return build_frame(meter_number, 0x03, data_onwire)
-# ---- generic helpers already added previously ----
-
-
-def _add_33(data: bytes) -> bytes:
-    return bytes(((b + 0x33) & 0xFF) for b in data)
-
-
-def _addr_from_meter_number(meter_number: str) -> bytes:
-    be = bytes.fromhex(meter_number)
-    return be[::-1]
-
-
-def build_frame(meter_number: str, control: int, data_field: bytes) -> bytes:
-    start = b'\x68'
-    addr = _addr_from_meter_number(meter_number)
-    head2 = b'\x68'
-    C = bytes([control])
-    L = bytes([len(data_field)])
-    core = C + L + data_field
-    cs = bytes([sum(core) & 0xFF])
-    return start + addr + head2 + core + cs + b'\x16'
+def build_refund_frame(
+    meter_number: str,
+    amount: float,
+    order_no: bytes,
+    *,
+    operator: bytes,
+    mac1: bytes,
+    schedule_no: bytes,
+    mailing_addr: bytes,
+    mac2: bytes,
+    checksum_mode: str,
+    include_preamble: bool = False,
+) -> bytes:
+    """Build a 070108FF structure from explicit, externally derived fields."""
+    plain = (
+        bytes.fromhex("070108FF")[::-1]
+        + _require_bytes("operator", operator, 4)
+        + _bcd_bytes_from_amount(amount, 4, 2)
+        + _require_bytes("order_no", order_no, 8)
+        + _require_bytes("mac1", mac1, 4)
+        + _require_bytes("schedule_no", schedule_no, 6)
+        + _require_bytes("mailing_addr", mailing_addr)
+        + _require_bytes("mac2", mac2, 4)
+    )
+    return build_frame(
+        meter_number, 0x03, _add_33(plain),
+        checksum_mode=checksum_mode, include_preamble=include_preamble,
+    )
 
 # ---- READ price parameter: DI=070104FF, C=0x11 ----
 

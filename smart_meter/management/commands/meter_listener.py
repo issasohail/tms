@@ -791,8 +791,10 @@ class DbCommandPoller(threading.Thread):
                 self._wait_online(cmd, f"meter {meter_no} not connected")
                 return
 
-            waiter: queue.Queue = queue.Queue()
-            _push_waiter(meter_no, waiter, cmd.expect_di or None)
+            waiter = None
+            if (cmd.expect_di or "").strip():
+                waiter = queue.Queue()
+                _push_waiter(meter_no, waiter, cmd.expect_di)
             try:
                 frame = bytes.fromhex(cmd.frame_hex.strip())
             except Exception:

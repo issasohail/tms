@@ -2,12 +2,9 @@
 import socket
 import json
 import logging
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from smart_meter.dlt645 import (
-    build_topup_frame,
-    build_init_amount_frame,
-    build_refund_frame,
     build_read_price_param_frame,  # DI 070104FF
     build_read_frame_for_di,       # generic DI reader
     parse_frame,
@@ -94,20 +91,16 @@ class Command(BaseCommand):
         if not meter:
             raise SystemExit("--meter is required for this operation")
 
-        amount = o["amount"]
-        order_hex = o["order"]
+        # Money-changing operations require manufacturer-confirmed ESAM/MAC inputs.
+        # Keep this transport command unable to generate or send placeholder writes.
+        if op in {"topup", "init", "refund"}:
+            raise CommandError(
+                f"{op} is disabled: verified ESAM authentication, MAC values, "
+                "operator ordering, and transaction semantics are not implemented"
+            )
 
-        # Build request frame for the selected op
-        if op == "topup":
-            frame = build_topup_frame(meter, amount, bytes.fromhex(order_hex))
-            expect_di = None  # reply is typically 0x83 with echo
-        elif op == "init":
-            frame = build_init_amount_frame(meter, amount)
-            expect_di = None
-        elif op == "refund":
-            frame = build_refund_frame(meter, amount, bytes.fromhex(order_hex))
-            expect_di = None
-        elif op == "readprice":
+        # Build a read-only request frame for the selected operation.
+        if op == "readprice":
             frame = build_read_price_param_frame(meter)  # DI 070104FF as read
             expect_di = "070104FF"
         elif op == "readdi":

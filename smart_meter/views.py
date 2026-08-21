@@ -56,7 +56,6 @@ from leases.models import (
     LeaseUnitOccupancy,
 )
 from properties.models import Property, Unit  # adjust if different
-from smart_meter.dlt645_money import build_amount_init_frame
 from smart_meter.forms import MeterPrepaidSettingsForm
 from smart_meter.meter_client import send_restore_command  # ✅ we'll add this below
 
@@ -4316,24 +4315,11 @@ def meter_reading_row(request, pk):
 @require_POST
 def reset_meter_display_balance(request, meter_id):
     meter = get_object_or_404(Meter, pk=meter_id)
-    frame_bytes = build_amount_init_frame(meter.meter_number, 0.00)
-
-    res = _call_send(
-        meter_number=meter.meter_number,
-        frame=frame_bytes,  # send raw bytes; helper will adapt
-        timeout=35.0,
-        expect_di=None,
-        initiated_by=request.user.get_username()
-        if hasattr(request.user, "get_username")
-        else "anonymous",
-        reason="set display balance to 0.00",
-        auth=getattr(settings, "METER_CTRL_SECRET", None),
+    messages.error(
+        request,
+        "Display-balance reset is disabled until the meter's ESAM/MAC and "
+        f"transaction requirements are verified ({meter.meter_number}).",
     )
-
-    if res.get("ok"):
-        messages.success(request, f"Reset to 0.00 sent to {meter.meter_number}.")
-    else:
-        messages.error(request, f"Reset failed: {res.get('error', 'no reply')}")
     return redirect(request.META.get("HTTP_REFERER", "/"))
 
 
@@ -4351,24 +4337,11 @@ def set_meter_display_balance(request, meter_id):
         messages.error(request, "Amount must be ≥ 0.")
         return redirect(request.META.get("HTTP_REFERER", "/"))
 
-    frame_bytes = build_amount_init_frame(meter.meter_number, float(amt))
-
-    res = _call_send(
-        meter_number=meter.meter_number,
-        frame=frame_bytes,  # raw bytes again
-        timeout=35.0,
-        expect_di=None,
-        initiated_by=request.user.get_username()
-        if hasattr(request.user, "get_username")
-        else "anonymous",
-        reason=f"set display balance to {amt:.2f}",
-        auth=getattr(settings, "METER_CTRL_SECRET", None),
+    messages.error(
+        request,
+        "Display-balance writes are disabled until the meter's ESAM/MAC and "
+        f"transaction requirements are verified ({meter.meter_number}, requested {amt:.2f}).",
     )
-
-    if res.get("ok"):
-        messages.success(request, f"Set {amt:.2f} sent to {meter.meter_number}.")
-    else:
-        messages.error(request, f"Set failed: {res.get('error', 'no reply')}")
     return redirect(request.META.get("HTTP_REFERER", "/"))
 
 

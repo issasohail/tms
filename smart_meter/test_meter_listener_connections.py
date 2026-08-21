@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError
@@ -181,6 +182,33 @@ class DbCommandPollerConnectionLifecycleTests(SimpleTestCase):
             poller.run()
 
         self.assertEqual(close_connections.call_count, 2)
+
+    @patch("smart_meter.management.commands.meter_listener.MeterCommand.objects.filter")
+    @patch("smart_meter.management.commands.meter_listener._push_waiter")
+    @patch("smart_meter.management.commands.meter_listener._get_handler")
+    @patch("smart_meter.management.commands.meter_listener.revalidate_command")
+    def test_blank_expect_di_does_not_create_wildcard_waiter(
+        self, revalidate, get_handler, push_waiter, _filter
+    ):
+        revalidate.return_value = SimpleNamespace(allowed=True, reason="test")
+        handler = MagicMock()
+        get_handler.return_value = handler
+        command = SimpleNamespace(
+            pk=1,
+            meter_number="260305510012",
+            expect_di="   ",
+            frame_hex="68",
+            timeout=0.1,
+            attempt_count=0,
+        )
+        poller = DbCommandPoller(interval=1)
+
+        with patch.object(poller, "_ack") as acknowledge:
+            poller._process_command(command)
+
+        push_waiter.assert_not_called()
+        handler.enqueue_send.assert_called_once()
+        acknowledge.assert_called_once_with(command, "")
 
 
 class ReadingPersistenceRegressionTests(TestCase):

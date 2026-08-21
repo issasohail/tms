@@ -165,7 +165,7 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         process_frame.assert_called_once_with(frame)
 
 
-class DbCommandPollerConnectionLifecycleTests(SimpleTestCase):
+class DbCommandPollerConnectionLifecycleTests(TestCase):
     @patch("smart_meter.management.commands.meter_listener.close_old_connections")
     def test_background_poller_closes_connections_after_loop_error(
         self, close_connections

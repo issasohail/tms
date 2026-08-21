@@ -65,7 +65,7 @@
             <li><hr class="dropdown-divider my-1"></li>
             {% if perms.core.view_globalsettings%}<li><a class="dropdown-item" href="{% url 'core:settings' %}">Settings</a></li>{% endif %}
             <li><a class="dropdown-item" href="{% url 'accounts:profile' %}">My Profile</a></li>
-            {% if user.is_staff %}<li><a class="dropdown-item" href="{% url 'accounts:user_access_list' %}">User Access</a></li>{% endif %}
+            {% if perms.accounts.view_account %}<li><a class="dropdown-item" href="{% url 'accounts:user_access_list' %}">User Access</a></li>{% endif %}
           </ul>
         </div>
 
@@ -150,7 +150,7 @@
         <li><a class="dlink" href="{% url 'handyman:handyman_list' %}">Handyman</a></li>
         {% if perms.invoices.view_invoice     %}<li><a class="dlink" href="{% url 'invoices:invoice_list' %}">Invoices</a></li>{% endif %}
         {% if perms.core.view_globalsettings  %}<li><a class="dlink" href="{% url 'core:settings' %}">Settings</a></li>{% endif %}
-        {% if user.is_staff %}<li><a class="dlink" href="{% url 'accounts:user_access_list' %}">Users</a></li>{% endif %}
+        {% if perms.accounts.view_account %}<li><a class="dlink" href="{% url 'accounts:user_access_list' %}">Users</a></li>{% endif %}
         <!-- Fast add -->
         {% if perms.payments.add_payment  %}<li><a class="dlink dlink--add" href="{% url 'payments:payment_create' %}">+ Payment</a></li>{% endif %}
         {% if perms.leases.add_lease      %}<li><a class="dlink dlink--add" href="{% url 'leases:lease_create' %}">+ Lease</a></li>{% endif %}

@@ -9,7 +9,7 @@ source .venv/bin/activate
 
 git pull origin main
 
-python -m pip install -r requirements.txt
+
 python manage.py migrate
 python manage.py collectstatic --noinput
 python manage.py check
@@ -25,6 +25,7 @@ curl -I https://kirayas.com/
 
 
 
+python -m pip install -r requirements.txt
 
 cd E:\tenant_management_system
 
@@ -34,3 +35,10 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 .\backup_tms_for_chatgpt.ps1
 
+.\export_tms_sanitized_for_chatgpt.ps1
+cd E:\tenant_management_system
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\export_tms_sanitized_for_chatgpt.ps1
+
+
+git apply E:\tenant_management_system\tms_performance_optimization_2026-08-17.patch

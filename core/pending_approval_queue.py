@@ -105,4 +105,14 @@ def pending_approval_actionable_counts(request=None):
 
 
 def pending_approval_count(request=None):
-    return sum(pending_approval_actionable_counts(request).values())
+    request_cache_attr = "_tms_pending_approval_count"
+    if request is not None and hasattr(request, request_cache_attr):
+        return getattr(request, request_cache_attr)
+
+    # Approval/rejection actions are expected to update the badge immediately.
+    # Keep cross-request results exact; request-local memoization above still
+    # prevents duplicate work within a single response.
+    total = sum(pending_approval_actionable_counts(request).values())
+    if request is not None:
+        setattr(request, request_cache_attr, total)
+    return total

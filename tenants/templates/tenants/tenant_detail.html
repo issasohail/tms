@@ -342,6 +342,11 @@
                     <span>Monthly: {{ lease.get_total_payment|money:2 }}</span>
                     <span>Balance: {{ lease.tenant_detail_total_balance|default:0|money:2 }}</span>
                   </div>
+                  {% if lease.tenant_detail_security_balance %}
+                    <div class="small text-muted">
+                      Lease {{ lease.tenant_detail_lease_balance|default:0|money:2 }} | Sec {{ lease.tenant_detail_security_balance|default:0|money:2 }}
+                    </div>
+                  {% endif %}
                   <div class="td-side-mini-actions">
                     <a href="{% url 'leases:lease_detail' lease.pk %}" class="btn btn-sm btn-primary">Detail</a>
                     <a href="{% url 'leases:lease_ledger_by_pk' lease.pk %}" class="btn btn-sm btn-dark">Ledger</a>

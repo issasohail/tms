@@ -3105,10 +3105,10 @@ class TenantDetailView(LoginRequiredMixin, DetailView):
             item.list_security_due = security_balance
             item.tenant_detail_lease_balance = lease_balance
             item.tenant_detail_security_balance = security_balance
-            # Tenant Detail's "Balance" must match Lease.get_balance()/Lease Detail.
-            # Security due is displayed separately and must not be folded into this figure.
-            item.tenant_detail_total_balance = lease_balance
-            tenant.current_balance += lease_balance
+            # Tenant Detail presents the tenant's total collectible balance, so include
+            # any security deposit that is still due while retaining the breakdown.
+            item.tenant_detail_total_balance = lease_balance + security_balance
+            tenant.current_balance += item.tenant_detail_total_balance
 
         # Defaults for the “active lease” tables
         invoices = Invoice.objects.none()
@@ -4189,16 +4189,31 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
     def _attach_lease_totals(self, tenants):
         leases = []
+        zero = Decimal("0.00")
+        today = timezone.localdate()
         for tenant in tenants:
-            lease = tenant.current_lease
-            if lease:
-                leases.append(lease)
+            candidates = list(getattr(tenant, "active_leases", []) or [])
+            tenant.list_active_leases = [
+                lease
+                for lease in candidates
+                if lease.status == "active"
+                and (not lease.start_date or lease.start_date <= today)
+                and (not lease.end_date or lease.end_date >= today)
+            ]
+            tenant.list_primary_lease = (
+                tenant.list_active_leases[0] if tenant.list_active_leases else None
+            )
+            tenant.active_lease_count = len(tenant.list_active_leases)
+            tenant.active_monthly_total = zero
+            tenant.active_lease_balance_total = zero
+            tenant.active_security_due_total = zero
+            tenant.active_total_due = zero
+            leases.extend(tenant.list_active_leases)
 
         lease_ids = [lease.id for lease in leases]
         if not lease_ids:
             return
 
-        zero = Decimal("0.00")
         decimal_field = DecimalField(max_digits=12, decimal_places=2)
         zero_db = Value(zero, output_field=decimal_field)
 
@@ -4278,7 +4293,6 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                     row["lease_id"], zero
                 ) + (row["total"] or zero)
 
-        today = timezone.localdate()
         for lease in leases:
             attach_lease_expiry_countdown(lease, today=today)
             balance = invoice_totals.get(lease.id, zero) - payment_totals.get(
@@ -4303,6 +4317,23 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             )
             lease._cached_get_balance = balance
             lease._cached_security_due = security_due
+            lease.cached_total_due = balance + security_due
+
+        for tenant in tenants:
+            active_leases = tenant.list_active_leases
+            tenant.active_monthly_total = sum(
+                (lease.cached_monthly_payment for lease in active_leases), zero
+            )
+            tenant.active_lease_balance_total = sum(
+                (lease._cached_get_balance for lease in active_leases), zero
+            )
+            tenant.active_security_due_total = sum(
+                (lease._cached_security_due for lease in active_leases), zero
+            )
+            tenant.active_total_due = (
+                tenant.active_lease_balance_total
+                + tenant.active_security_due_total
+            )
 
     def get_context_data(self, **kwargs):
         # This template renders its own HTML table, so skip SingleTableView's
@@ -4555,6 +4586,8 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
         try:
             if export_format == "csv":
+                tenants = list(queryset)
+                self._attach_lease_totals(tenants)
                 response = HttpResponse(content_type="text/csv")
                 response["Content-Disposition"] = (
                     f'attachment; filename="{filename}.csv"'
@@ -4567,25 +4600,32 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                         "First Name",
                         "Last Name",
                         "Phone",
-                        "Property",
-                        "Unit",
-                        "Rent",
-                        "Balance",
+                        "Active Leases",
+                        "Units",
+                        "Monthly Total",
+                        "Lease Balance",
+                        "Security Due",
+                        "Total Due",
                     ]
                 )
 
-                for tenant in queryset:
-                    lease = tenant.current_lease
+                for tenant in tenants:
+                    active_leases = tenant.list_active_leases
                     writer.writerow(
                         [
                             tenant.id,
                             tenant.first_name,
                             tenant.last_name,
                             format_phone(tenant.phone),
-                            lease.unit.property.property_name if lease else "",
-                            lease.unit.unit_number if lease else "",
-                            lease.get_total_payment if lease else "",
-                            lease.get_balance if lease else "",
+                            tenant.active_lease_count,
+                            "; ".join(
+                                f"{lease.unit.property.property_name} / {lease.unit.unit_number}"
+                                for lease in active_leases
+                            ),
+                            tenant.active_monthly_total,
+                            tenant.active_lease_balance_total,
+                            tenant.active_security_due_total,
+                            tenant.active_total_due,
                         ]
                     )
                 return response
@@ -4601,7 +4641,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                     ws.title = "Tenants"
 
                     # ===== REPORT TITLE =====
-                    last_column = 19
+                    last_column = 21
                     ws.merge_cells(
                         start_row=1, start_column=1, end_row=1, end_column=last_column
                     )
@@ -4643,6 +4683,8 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                         "Lease\nEnd Date",
                         "Monthly\nRent",
                         "Current\nBalance",
+                        "Security\nDue",
+                        "Total\nDue",
                         "Family\nMembers",
                         "Gender",
                         "Emergency\nContact",
@@ -4684,15 +4726,17 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                         "H": 12,
                         "I": 12,
                         "J": 15,
-                        "K": 7,
-                        "L": 8,
-                        "M": 13,
-                        "N": 12,
-                        "O": 15,
-                        "P": 22,
-                        "Q": 22,
-                        "R": 20,
-                        "S": 20,
+                        "K": 15,
+                        "L": 15,
+                        "M": 7,
+                        "N": 8,
+                        "O": 13,
+                        "P": 12,
+                        "Q": 15,
+                        "R": 22,
+                        "S": 22,
+                        "T": 20,
+                        "U": 20,
                     }
                     for col, width in col_widths.items():
                         ws.column_dimensions[col].width = width
@@ -4711,7 +4755,8 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
                     # ===== DATA POPULATION =====
                     for idx, tenant in enumerate(tenants, start=header_row + 1):
-                        lease = tenant.current_lease
+                        active_leases = tenant.list_active_leases
+                        lease = tenant.list_primary_lease
                         ws.row_dimensions[idx].height = data_row_height
 
                         # Basic data
@@ -4721,11 +4766,16 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                             tenant.last_name,
                             format_phone(tenant.phone),
                             tenant.email,
-                            lease.unit.property.property_name if lease else "",
-                            lease.unit.unit_number if lease else "",
-                            lease.end_date if lease else None,
-                            lease.get_total_payment if lease else None,
-                            lease.get_balance if lease else None,
+                            "; ".join(
+                                lease.unit.property.property_name
+                                for lease in active_leases
+                            ),
+                            "; ".join(lease.unit.unit_number for lease in active_leases),
+                            lease.end_date if tenant.active_lease_count == 1 else None,
+                            tenant.active_monthly_total,
+                            tenant.active_lease_balance_total,
+                            tenant.active_security_due_total,
+                            tenant.active_total_due,
                             tenant.number_of_family_member,
                             tenant.get_gender_display(),
                             tenant.emergency_contact_name,
@@ -4741,12 +4791,12 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                         for col_num, value in enumerate(data, 1):
                             cell = ws.cell(row=idx, column=col_num, value=value)
                             cell.alignment = (
-                                wrap_style if col_num in [18, 19] else center_style
+                                wrap_style if col_num in [20, 21] else center_style
                             )
                             cell.border = cell_border
                             if idx % 2 == 0:
                                 cell.fill = PatternFill("solid", fgColor="F2F6FC")
-                            if col_num in [9, 10]:
+                            if col_num in [9, 10, 11, 12]:
                                 cell.number_format = (
                                     '"Rs." #,##0.00;[Red]-"Rs." #,##0.00'
                                 )
@@ -4755,11 +4805,11 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
                         # ===== IMAGE HANDLING =====
                         image_data = [
-                            ("O", tenant.photo, 90, 90),  # Photo
+                            ("Q", tenant.photo, 90, 90),  # Photo
                             # CNIC Front (adjusted ratio)
-                            ("P", tenant.cnic_front, 150, 90),
+                            ("R", tenant.cnic_front, 150, 90),
                             # CNIC Back (adjusted ratio)
-                            ("Q", tenant.cnic_back, 150, 90),
+                            ("S", tenant.cnic_back, 150, 90),
                         ]
 
                         for col, image, width, height in image_data:
@@ -4778,7 +4828,7 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
                     # ===== FINAL TOUCHES =====
                     last_row = max(header_row, header_row + len(tenants))
-                    ws.auto_filter.ref = f"A{header_row}:S{last_row}"
+                    ws.auto_filter.ref = f"A{header_row}:U{last_row}"
                     ws.freeze_panes = f"A{header_row + 1}"
                     ws.sheet_view.showGridLines = False
                     ws.page_setup.orientation = "landscape"

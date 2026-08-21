@@ -714,6 +714,14 @@
 .ll-table-wrap td.col-balance a,
 .ll-table-wrap td.col-balance { color: #078044; }
 .ll-table-wrap td.col-sec { color: #101828; }
+.lease-balance-stack {
+  display: flex !important;
+  flex-direction: column;
+  gap: 2px;
+  color: inherit !important;
+  text-decoration: none !important;
+}
+.lease-balance-stack:hover { background: #f2f7ff; }
 .ll-table-wrap td.col-actions { overflow: visible; }
 .actions-wrap { display: flex; align-items: center; gap: 7px; flex-wrap: nowrap; }
 .actions-wrap .btn {
@@ -789,13 +797,11 @@
     --col-start: 0;
     --col-end: 62px;
     --col-balance: 62px;
-    --col-sec: 0;
+    --col-sec: 62px;
     --col-actions: 84px;
   }
-  .ll-page--layout2 .ll-table-wrap table.table thead th.col-start,
-  .ll-page--layout2 .ll-table-wrap table.table thead th.col-sec { display: none; }
-  .ll-page--layout2 .ll-table-wrap table.table tbody td.col-start,
-  .ll-page--layout2 .ll-table-wrap table.table tbody td.col-sec { display: none; }
+  .ll-page--layout2 .ll-table-wrap table.table thead th.col-start { display: none; }
+  .ll-page--layout2 .ll-table-wrap table.table tbody td.col-start { display: none; }
   .ll-page--layout2 .ll-table-wrap table.table tbody td,
   .ll-page--layout2 .ll-table-wrap table.table thead th { padding: 6px 4px; }
   .ll-page--layout2 .ll-table-wrap .col-property { width: var(--col-prop); }
@@ -1523,8 +1529,9 @@ document.addEventListener("DOMContentLoaded", function () {
       const status = text(row, '.col-status') || '-';
       const statusEnded = /ended|terminated|inactive/i.test(status);
       const monthly = text(row, '.col-monthly') || '-';
-      const balance = text(row, '.col-balance') || '-';
-      const security = text(row, '.col-sec') || '-';
+      const balanceCell = row.querySelector('.col-balance');
+      const balance = balanceCell?.innerHTML || '-';
+      const totalDue = text(row, '.col-sec') || '-';
       const start = cleanDate(text(row, '.col-start')) || '-';
       const endCell = row.querySelector('.col-end');
       const end = compactDate(cleanDate(text(row, '.col-end'))) || '-';
@@ -1542,8 +1549,8 @@ document.addEventListener("DOMContentLoaded", function () {
         </div>
         <div class="ll-card-money">
           <div class="ll-card-money-item"><span class="ll-card-label">Monthly</span><span class="ll-card-value">${monthly}</span></div>
-          <div class="ll-card-money-item"><span class="ll-card-label">Balance</span><span class="ll-card-value is-balance">${balance}</span></div>
-          <div class="ll-card-money-item"><span class="ll-card-label">Sec. Balance</span><span class="ll-card-value is-security">${security}</span></div>
+          <div class="ll-card-money-item"><span class="ll-card-label">Lease / Sec. Balance</span><span class="ll-card-value is-balance">${balance}</span></div>
+          <div class="ll-card-money-item"><span class="ll-card-label">Total Due</span><span class="ll-card-value is-security">${totalDue}</span></div>
         </div>
         <div class="ll-card-dates">
           <span class="ll-card-date">▣ Start ${start}</span>
@@ -1684,8 +1691,8 @@ document.addEventListener("DOMContentLoaded", function () {
         if (labels[i]) td.setAttribute('data-label', labels[i]);
         const normalized = (labels[i] || '').toLowerCase();
         if (normalized.includes('monthly') || normalized.includes('rent')) td.setAttribute('data-short-label', 'Monthly');
-        if (normalized.includes('balance')) td.setAttribute('data-short-label', 'Bal');
-        if (normalized.includes('sec')) td.setAttribute('data-short-label', 'Sec Due');
+        if (normalized.includes('lease balance')) td.setAttribute('data-short-label', 'Lease / Sec');
+        if (normalized.includes('total due')) td.setAttribute('data-short-label', 'Total');
         if (normalized.includes('start')) td.setAttribute('data-short-label', 'Start');
         if (normalized.includes('end')) td.setAttribute('data-short-label', 'End');
       });
@@ -1699,8 +1706,6 @@ document.addEventListener("DOMContentLoaded", function () {
       const unitCell = tr.querySelector('td.col-unit');
       const endCell = tr.querySelector('td.col-end');
       const startCell = tr.querySelector('td.col-start');
-      const balanceCell = tr.querySelector('td.col-balance');
-      const secCell = tr.querySelector('td.col-sec');
 
       function appendSub(target, source, prefix) {
         if (!target || !source || target.querySelector(`[data-layout2-sub="${prefix}"]`)) return;
@@ -1715,7 +1720,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
       appendSub(propertyCell, unitCell, 'unit');
       appendSub(endCell, startCell, 'start');
-      appendSub(balanceCell, secCell, 'sec');
     });
   })();
 

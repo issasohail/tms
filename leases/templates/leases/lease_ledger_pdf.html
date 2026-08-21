@@ -162,6 +162,10 @@
                 <p class="current-balance {% if current_balance >= 0 %}positive{% else %}negative{% endif %}">
                     <strong>Current Balance:</strong> Rs.{{ current_balance|floatformat:0|intcomma }}
                 </p>
+                <p class="current-balance negative">
+                    <strong>Total Due:</strong> Rs.{{ total_outstanding|floatformat:0|intcomma }}
+                    <br><small>Lease Rs.{{ lease_balance_due|floatformat:0|intcomma }} + Security Rs.{{ security_totals.balance_to_collect|floatformat:0|intcomma }}</small>
+                </p>
             </div>
         </div>
     </div>

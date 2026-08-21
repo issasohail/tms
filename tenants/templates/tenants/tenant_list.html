@@ -365,15 +365,15 @@
                 <th class="col-notes">Notes</th>
                 <th class="col-lease"><a class="sortable-th" href="?{% for key,value in request.GET.items %}{% if key != 'sort' and key != 'page' %}{{ key }}={{ value|urlencode }}&{% endif %}{% endfor %}sort={% if request.GET.sort == 'lease' %}-lease{% else %}lease{% endif %}">Lease &amp; Payment {% if request.GET.sort == 'lease' %}▲{% elif request.GET.sort == '-lease' %}▼{% endif %}</a></th>
                 <th class="col-money col-monthly">Monthly</th>
-                <th class="col-money col-balance">Balance</th>
-                <th class="col-money col-sec-balance">Sec. Balance</th>
+                <th class="col-money col-balance">Balance/<br>Sec. Balance</th>
+                <th class="col-money col-total-due">Total Due</th>
                 <th class="col-active">Active</th>
                 <th class="col-actions">Actions</th>
             </tr>
             </thead>
             <tbody>
             {% for tenant in tenants %}
-            {% with lease=tenant.current_lease %}
+            {% with lease=tenant.list_primary_lease %}
             <tr>
                 <td class="col-sn">{{ page_obj.start_index|add:forloop.counter0 }}</td>
                 <td class="p-2 col-tenant">
@@ -450,17 +450,24 @@
                 <td class="col-notes xsmall" title="{{ tenant.notes|default:'-' }}">{{ tenant.notes|default:"-"|truncatechars:42 }}</td>
                 <td class="p-2 col-lease xsmall">
                     {% with family_rel=tenant.current_family_relationship %}
-                    {% if lease %}
-                    <a href="{% url 'leases:lease_detail' lease.pk %}" class="lease-link"><strong>{{ lease.unit.property.property_name|slice:":8" }}-{{ lease.unit.unit_number }}</strong></a>
-                    <div class="lease-dates mt-1">
-                        <span>Start: {{ lease.start_date|date:"Y-m-d" }}</span>
-                        <span>
-                            End: <span class="{% if lease.expiry_countdown_label %}text-danger fw-bold{% endif %}">{{ lease.end_date|date:"Y-m-d" }}</span>
-                            {% if lease.expiry_countdown_label %}
-                                <small class="lease-expiry-countdown lease-expiry-countdown-desktop">{{ lease.expiry_countdown_label }}</small>
-                            {% endif %}
-                        </span>
+                    {% if tenant.list_active_leases %}
+                    {% if tenant.active_lease_count > 1 %}<span class="badge bg-primary-subtle text-primary mb-1">{{ tenant.active_lease_count }} active leases</span>{% endif %}
+                    {% for active_lease in tenant.list_active_leases %}
+                    <div class="tenant-list-lease-item{% if not forloop.last %} mb-1 pb-1 border-bottom{% endif %}">
+                        <div class="d-flex align-items-center gap-1 flex-wrap">
+                            <a href="{% url 'leases:lease_detail' active_lease.pk %}" class="lease-link"><strong>{{ active_lease.unit.property.property_name|slice:":8" }}-{{ active_lease.unit.unit_number }}</strong></a>
+                        </div>
+                        <div class="lease-dates mt-1">
+                            <span>Start: {{ active_lease.start_date|date:"Y-m-d" }}</span>
+                            <span>
+                                End: <span class="{% if active_lease.expiry_countdown_label %}text-danger fw-bold{% endif %}">{{ active_lease.end_date|date:"Y-m-d" }}</span>
+                                {% if active_lease.expiry_countdown_label %}
+                                    <small class="lease-expiry-countdown lease-expiry-countdown-desktop">{{ active_lease.expiry_countdown_label }}</small>
+                                {% endif %}
+                            </span>
+                        </div>
                     </div>
+                    {% endfor %}
                     {% elif family_rel %}
                     <div class="family-lease-compact">
                         <span class="badge bg-purple-soft text-purple border family-member-badge">Family Member</span>
@@ -471,20 +478,25 @@
                     {% else %}<span class="text-muted fst-italic">No active lease</span>{% endif %}
                     {% endwith %}
                 </td>
-                <td class="money-cell">{% if lease %}{{ lease.cached_monthly_payment|default:lease.get_total_payment|money:0 }}{% else %}-{% endif %}</td>
-                <td class="money-cell {% if lease and lease.get_balance > 0 %}text-danger{% else %}text-success{% endif %}">{% if lease %}{{ lease.get_balance|money:0 }}{% else %}-{% endif %}</td>
-                <td class="money-cell {% if lease and lease.security_due > 0 %}text-danger{% else %}text-success{% endif %}">{% if lease %}{{ lease.security_due|money:0 }}{% else %}-{% endif %}</td>
+                <td class="money-cell">{% if lease %}{{ tenant.active_monthly_total|money:0 }}{% else %}-{% endif %}</td>
+                <td class="money-cell">{% if lease %}<div class="balance-stack">{% for active_lease in tenant.list_active_leases %}<a href="{% url 'leases:lease_ledger_by_pk' active_lease.id %}" class="balance-pair{% if not forloop.last %} border-bottom pb-1{% endif %}" title="Open ledger for {{ active_lease.unit.unit_number }}"><span class="{% if active_lease.get_balance > 0 %}text-danger{% else %}text-success{% endif %}">{{ active_lease.get_balance|money:0 }}</span><span class="{% if active_lease.security_due > 0 %}text-danger{% else %}text-success{% endif %}">{{ active_lease.security_due|money:0 }}</span></a>{% endfor %}</div>{% else %}-{% endif %}</td>
+                <td class="money-cell {% if tenant.active_total_due > 0 %}text-danger fw-bold{% else %}text-success{% endif %}">{% if lease %}{{ tenant.active_total_due|money:0 }}{% else %}-{% endif %}</td>
                 <td class="col-active text-center"><button type="button" class="tenant-status-toggle {% if tenant.is_active %}is-active{% else %}is-inactive{% endif %}" data-tenant-id="{{ tenant.id }}" data-active="{% if tenant.is_active %}1{% else %}0{% endif %}">{% if tenant.is_active %}Active{% else %}Inactive{% endif %}</button></td>
                 <td class="p-2 col-actions">
                     <div class="tenant-action-grid">
                         <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="action-pill action-view" title="View" data-bs-toggle="tooltip"><i class="fas fa-eye"></i> <span>View</span></a>
                         <a href="{% url 'tenants:tenant_update' tenant.id %}" class="action-pill action-edit" title="Edit" data-bs-toggle="tooltip"><i class="fas fa-edit"></i> <span>Edit</span></a>
                         <a href="{% url 'tenants:tenant_delete' tenant.id %}" class="action-pill action-delete" title="Delete" data-bs-toggle="tooltip"><i class="fas fa-trash"></i> <span>Delete</span></a>
-                        {% if lease %}
-                        <a href="{% url 'leases:lease_ledger_by_pk' lease.id %}" class="action-pill action-ledger" title="Ledger" data-bs-toggle="tooltip"><i class="fas fa-file-invoice-dollar"></i> <span>Ledger</span></a>
-                        <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}" class="action-pill action-pay" title="Pay" data-bs-toggle="tooltip"><i class="fas fa-money-bill-wave"></i> <span>Pay</span></a>
-                        <button type="button" class="action-pill action-wa" title="WhatsApp" data-bs-toggle="tooltip" onclick="sendWhatsAppReminder('{{ tenant.phone|default_if_none:""|escapejs }}','{{ tenant.first_name|default_if_none:""|escapejs }}','{{ tenant.last_name|default_if_none:""|escapejs }}','{{ lease.unit.property.property_name|default_if_none:""|escapejs }}','{{ lease.unit.unit_number|default_if_none:""|escapejs }}','{{ lease.get_balance|default_if_none:0 }}','{{ lease.security_due|default_if_none:0 }}','{{ lease.id }}')"><i class="fab fa-whatsapp"></i> <span>WhatsApp</span></button>
-                        {% endif %}
+                        {% for active_lease in tenant.list_active_leases %}
+                        <div class="lease-action-group">
+                            <a href="{% url 'leases:lease_detail' active_lease.id %}" class="lease-action-label" title="Open lease">{{ active_lease.unit.unit_number }}</a>
+                            <div class="lease-action-buttons">
+                                <a href="{% url 'leases:lease_ledger_by_pk' active_lease.id %}" class="action-pill action-ledger" title="Ledger for {{ active_lease.unit.unit_number }}" data-bs-toggle="tooltip"><i class="fas fa-file-invoice-dollar"></i> <span>Ledger</span></a>
+                                <a href="{% url 'payments:payment_create' %}?lease={{ active_lease.id }}" class="action-pill action-pay" title="Pay for {{ active_lease.unit.unit_number }}" data-bs-toggle="tooltip"><i class="fas fa-money-bill-wave"></i> <span>Pay</span></a>
+                                <button type="button" class="action-pill action-wa" title="WhatsApp for {{ active_lease.unit.unit_number }}" data-bs-toggle="tooltip" onclick="sendWhatsAppReminder('{{ tenant.phone|default_if_none:""|escapejs }}','{{ tenant.first_name|default_if_none:""|escapejs }}','{{ tenant.last_name|default_if_none:""|escapejs }}','{{ active_lease.unit.property.property_name|default_if_none:""|escapejs }}','{{ active_lease.unit.unit_number|default_if_none:""|escapejs }}','{{ active_lease.get_balance|default_if_none:0 }}','{{ active_lease.security_due|default_if_none:0 }}','{{ active_lease.id }}')"><i class="fab fa-whatsapp"></i> <span>WhatsApp</span></button>
+                            </div>
+                        </div>
+                        {% endfor %}
 
                     </div>
                 </td>
@@ -498,7 +510,7 @@
 
 <div class="tenant-cards d-lg-none">
     {% for tenant in tenants %}
-    {% with lease=tenant.current_lease %}
+    {% with lease=tenant.list_primary_lease %}
     <div class="tenant-card tenant-card-v2">
 
         
@@ -628,65 +640,7 @@
         </div>
 
         
-        <div class="tcv2-lease-box {% if not lease %}no-active-lease{% endif %}">
-            {% if lease %}
-                <a href="{% url 'leases:lease_detail' lease.pk %}" class="tcv2-lease-title">
-                    <i class="fas fa-home"></i>
-                    <span>{{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }}</span>
-                </a>
-
-                <div class="tcv2-money-grid">
-                    <div class="tcv2-money-item">
-                        <span>Monthly</span>
-                        <strong>{{ lease.cached_monthly_payment|default:lease.get_total_payment|money:0 }}</strong>
-                    </div>
-
-                    <div class="tcv2-money-item">
-                        <span>Balance</span>
-                        <strong class="{% if lease.get_balance > 0 %}text-danger{% else %}text-success{% endif %}">
-                            {{ lease.get_balance|money:0 }}
-                        </strong>
-                    </div>
-
-                    <div class="tcv2-money-item">
-                        <span>Sec. Balance</span>
-                        <strong class="{% if lease.security_due > 0 %}text-danger{% else %}text-success{% endif %}">
-                            {{ lease.security_due|money:0 }}
-                        </strong>
-                    </div>
-                </div>
-
-                <div class="tcv2-date-row">
-                    <span class="tcv2-date-start">
-                        <i class="far fa-calendar-alt"></i>
-                        Start: {{ lease.start_date|date:"Y-m-d" }}
-                    </span>
-
-                    {% if lease.expiry_countdown_label %}
-                        <span class="lease-expiry-countdown lease-expiry-countdown-mobile">{{ lease.expiry_countdown_label }}</span>
-                    {% endif %}
-
-                    <span class="tcv2-date-end">
-                        End:
-                        <span class="{% if lease.expiry_countdown_label %}text-danger fw-bold{% endif %}">
-                            {{ lease.end_date|date:"Y-m-d" }}
-                        </span>
-                    </span>
-                </div>
-
-                {% if lease.expiry_countdown_label %}
-                    <small class="lease-expiry-countdown lease-expiry-countdown-tablet">{{ lease.expiry_countdown_label }}</small>
-                {% endif %}
-            {% else %}
-                <div class="tcv2-no-lease">
-                    <i class="fas fa-file-circle-exclamation"></i>
-                    No active lease
-                </div>
-            {% endif %}
-        </div>
-
-        
-        <div class="tcv2-actions {% if not lease %}no-lease-actions{% endif %}">
+        <div class="tcv2-actions tcv2-tenant-actions">
             <a href="{% url 'tenants:tenant_detail' tenant.id %}" class="tcv2-action action-view">
                 <i class="fas fa-eye"></i>
                 <span>View</span>
@@ -696,31 +650,40 @@
                 <i class="fas fa-edit"></i>
                 <span>Edit</span>
             </a>
-
-            {% if lease %}
-                <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}" class="tcv2-action action-pay">
-                    <i class="fas fa-money-bill-wave"></i>
-                    <span>Pay</span>
-                </a>
-
-                <a href="{% url 'leases:lease_ledger_by_pk' lease.id %}" class="tcv2-action action-ledger">
-                    <i class="fas fa-file-invoice-dollar"></i>
-                    <span>Ledger</span>
-                </a>
-
-                <button type="button"
-                        class="tcv2-action action-wa"
-                        onclick="sendWhatsAppReminder('{{ tenant.phone|default_if_none:""|escapejs }}','{{ tenant.first_name|default_if_none:""|escapejs }}','{{ tenant.last_name|default_if_none:""|escapejs }}','{{ lease.unit.property.property_name|default_if_none:""|escapejs }}','{{ lease.unit.unit_number|default_if_none:""|escapejs }}','{{ lease.get_balance|default_if_none:0 }}','{{ lease.security_due|default_if_none:0 }}','{{ lease.id }}')">
-                    <i class="fab fa-whatsapp"></i>
-                    <span>WhatsApp</span>
-                </button>
-            {% endif %}
-
             <a href="{% url 'tenants:tenant_delete' tenant.id %}" class="tcv2-action action-delete">
                 <i class="fas fa-trash"></i>
                 <span>Delete</span>
             </a>
         </div>
+
+        {% if tenant.list_active_leases %}
+            {% if tenant.active_lease_count > 1 %}<div class="tcv2-active-count"><span class="badge bg-primary-subtle text-primary">{{ tenant.active_lease_count }} active leases</span></div>{% endif %}
+            {% for active_lease in tenant.list_active_leases %}
+            <div class="tcv2-lease-box">
+                <a href="{% url 'leases:lease_detail' active_lease.pk %}" class="tcv2-lease-title">
+                    <i class="fas fa-home"></i>
+                    <span>{{ active_lease.unit.property.property_name }}-{{ active_lease.unit.unit_number }}</span>
+                </a>
+                <div class="tcv2-date-row">
+                    <span class="tcv2-date-start"><i class="far fa-calendar-alt"></i> Start: {{ active_lease.start_date|date:"Y-m-d" }}</span>
+                    {% if active_lease.expiry_countdown_label %}<span class="lease-expiry-countdown lease-expiry-countdown-mobile">{{ active_lease.expiry_countdown_label }}</span>{% endif %}
+                    <span class="tcv2-date-end">End: <span class="{% if active_lease.expiry_countdown_label %}text-danger fw-bold{% endif %}">{{ active_lease.end_date|date:"Y-m-d" }}</span></span>
+                </div>
+                <div class="tcv2-money-grid">
+                    <div class="tcv2-money-item"><span>Monthly</span><strong>{{ active_lease.cached_monthly_payment|money:0 }}</strong></div>
+                    <div class="tcv2-money-item"><span>Balance</span><a href="{% url 'leases:lease_ledger_by_pk' active_lease.id %}" class="tcv2-balance-line" title="Open ledger"><strong class="{% if active_lease.get_balance > 0 %}text-danger{% else %}text-success{% endif %}">{{ active_lease.get_balance|money:0 }}</strong><strong class="{% if active_lease.security_due > 0 %}text-danger{% else %}text-success{% endif %}">{{ active_lease.security_due|money:0 }}</strong></a></div>
+                    <div class="tcv2-money-item"><span>Total Due</span><strong class="{% if active_lease.cached_total_due > 0 %}text-danger{% else %}text-success{% endif %}">{{ active_lease.cached_total_due|money:0 }}</strong></div>
+                </div>
+                <div class="tcv2-actions tcv2-lease-actions">
+                    <a href="{% url 'payments:payment_create' %}?lease={{ active_lease.id }}" class="tcv2-action action-pay"><i class="fas fa-money-bill-wave"></i><span>Pay</span></a>
+                    <a href="{% url 'leases:lease_ledger_by_pk' active_lease.id %}" class="tcv2-action action-ledger"><i class="fas fa-file-invoice-dollar"></i><span>Ledger</span></a>
+                    <button type="button" class="tcv2-action action-wa" onclick="sendWhatsAppReminder('{{ tenant.phone|default_if_none:""|escapejs }}','{{ tenant.first_name|default_if_none:""|escapejs }}','{{ tenant.last_name|default_if_none:""|escapejs }}','{{ active_lease.unit.property.property_name|default_if_none:""|escapejs }}','{{ active_lease.unit.unit_number|default_if_none:""|escapejs }}','{{ active_lease.get_balance|default_if_none:0 }}','{{ active_lease.security_due|default_if_none:0 }}','{{ active_lease.id }}')"><i class="fab fa-whatsapp"></i><span>WhatsApp</span></button>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="tcv2-lease-box no-active-lease"><div class="tcv2-no-lease"><i class="fas fa-file-circle-exclamation"></i> No active lease</div></div>
+        {% endif %}
 
     </div>
     {% endwith %}
@@ -1032,7 +995,7 @@
 ========================================================= */
 .tenant-table-wrap{
     width:100%;
-    overflow-x:auto;
+    overflow-x:hidden;
     border:1px solid #e6eaf0;
     border-radius:10px;
     background:#fff;
@@ -1041,8 +1004,8 @@
 
 .tenant-table{
     table-layout:fixed;
-    width:1800px;
-    min-width:1800px;
+    width:100%;
+    min-width:0;
     margin-bottom:0;
 }
 
@@ -1061,19 +1024,45 @@
     vertical-align:middle;
 }
 
+/* Desktop width tuning: adjust these two pixel values if needed. */
+.tenant-list-page{
+    --tenant-list-balance-width:100px;
+    --tenant-list-actions-width:235px;
+}
+
 /* Column widths */
 .tenant-table .col-sn{ width:2%; text-align:center; }
 .tenant-table .col-tenant{ width:13%; }
 .tenant-table .col-emergency{ width:7%; }
 .tenant-table .col-cnic{ width:7%; }
-.tenant-table .col-address{ width:14%; }
-.tenant-table .col-notes{ width:8%; }
+.tenant-table .col-address{ width:12%; }
+.tenant-table .col-notes{ width:6%; }
 .tenant-table .col-lease{ width:10%; }
 .tenant-table .col-active{ width:5%; text-align:center; }
 .tenant-table .col-monthly{ width:5%; text-align:center; }
-.tenant-table .col-balance{ width:5%; text-align:center; }
-.tenant-table .col-sec-balance{ width:6%; text-align:center; }
-.tenant-table .col-actions{ width:15%; }
+.tenant-table .col-balance{ width:7%; text-align:center; }
+.tenant-table .col-total-due{ width:6%; text-align:center; }
+.tenant-table .col-actions{ width:16%; }
+
+@media (min-width:1200px){
+    .tenant-table .col-balance{ width:var(--tenant-list-balance-width); }
+    .tenant-table .col-actions{ width:var(--tenant-list-actions-width); }
+}
+
+.lease-mini-action{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:22px;
+    height:22px;
+    padding:0;
+    border-radius:5px;
+    color:#0d6efd;
+    background:#eef5ff;
+    text-decoration:none;
+    cursor:pointer;
+}
+.lease-mini-action:hover{ color:#fff; background:#0d6efd; }
 
 /* =========================================================
    PHOTOS / CNIC IMAGES
@@ -1234,9 +1223,62 @@ img.is-missing,
 
 .money-cell{
     text-align:center;
+    vertical-align:middle !important;
     font-weight:900;
     font-size:.8rem;
     white-space:nowrap;
+}
+
+.balance-stack{
+    display:flex;
+    flex-direction:column;
+    gap:.12rem;
+    justify-content:center;
+    min-height:100%;
+}
+
+.balance-pair{
+    display:flex;
+    flex-direction:column;
+    gap:.1rem;
+    padding:.12rem 0;
+    color:inherit;
+    text-decoration:none;
+}
+.balance-pair:hover{ background:#f2f7ff; text-decoration:none; }
+
+.lease-action-group{
+    grid-column:1 / -1;
+    padding-top:4px;
+    border-top:1px solid #dbe5f2;
+}
+.lease-action-label{
+    display:block;
+    margin-bottom:3px;
+    color:#0d6efd;
+    font-size:.66rem;
+    font-weight:900;
+    text-align:left;
+    text-decoration:none;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+.lease-action-buttons{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:4px;
+}
+.lease-action-buttons .action-pill{ width:100%; min-width:0; }
+.tcv2-active-count{ margin:.1rem .62rem .35rem; }
+.tcv2-tenant-actions{ margin-top:.15rem; }
+.tcv2-lease-actions{ padding:.5rem !important; border-top:1px solid #d7e8ff; }
+.tcv2-balance-line{
+    display:flex;
+    justify-content:center;
+    gap:.3rem;
+    white-space:nowrap;
+    text-decoration:none;
 }
 
 .text-truncate{
@@ -1597,7 +1639,7 @@ button.action-pill{
     white-space:nowrap;
 }
 
-/* Monthly / Balance / Security grid */
+/* Monthly / Balance / Security / Total grid */
 .tcv2-money-grid{
     display:grid;
     grid-template-columns:repeat(3,1fr);
@@ -3734,7 +3776,8 @@ img.is-missing{
 @media (min-width:1000px){
     .tenant-table-wrap{
         max-height:calc(100vh - 140px);
-        overflow:auto;
+        overflow-x:hidden;
+        overflow-y:auto;
     }
 
     .tenant-table thead th{
@@ -4240,6 +4283,23 @@ img.is-missing{
 
     .tcv2-mobile-doc-row{
         display:grid !important;
+    }
+}
+
+/* Mobile tenant and per-lease actions match the full-width document row. */
+@media (max-width:999.98px){
+    .tenant-card-v2 .tcv2-actions,
+    .tenant-card-v2 .tcv2-actions.no-lease-actions{
+        width:100% !important;
+        grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+        gap:.42rem !important;
+        padding:.05rem .72rem .55rem !important;
+        box-sizing:border-box !important;
+    }
+
+    .tenant-card-v2 .tcv2-action{
+        width:100% !important;
+        min-width:0 !important;
     }
 }
 </style>

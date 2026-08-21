@@ -1032,6 +1032,8 @@ class LeaseListView(SingleTableView):
                 + Coalesce(F("internet_charges"), zero),
                 output_field=money_field,
             ),
+        ).annotate(
+            list_total_due=F("list_balance") + F("list_security_due"),
         )
 
     def get_queryset(self):
@@ -5079,7 +5081,7 @@ def _active_monthly_total_for_lease(lease):
     )
     if active_history:
         return active_history.total_monthly_amount
-    return lease.total_payment
+    return lease.get_total_payment
 
 
 def _readable_phone(value):
@@ -5244,6 +5246,8 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     "total_paid": ZERO,
                     "total_owed": ZERO,
                     "current_balance": ZERO,
+                    "lease_balance_due": ZERO,
+                    "total_outstanding": ZERO,
                     # security deposit context (all zero)
                     "deposit_transactions": deposit_tx,
                     "security_required": sec_totals["required"],
@@ -5425,6 +5429,11 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     -t["amount"] for t in transactions if t["amount"] < 0
                 ),
                 "current_balance": balance,
+                "lease_balance_due": lease.get_balance or ZERO,
+                "total_outstanding": (
+                    (lease.get_balance or ZERO)
+                    + sec_totals["balance_to_collect"]
+                ),
                 # security deposit context
                 "deposit_transactions": deposit_tx,
                 "security_required": sec_totals["required"],
@@ -5614,6 +5623,9 @@ def lease_ledger_pdf(request, lease_id):
         else:
             transaction_columns = [transactions]
 
+        security_totals = security_deposit_totals(lease)
+        lease_balance_due = lease.get_balance or Decimal("0.00")
+        total_outstanding = lease_balance_due + security_totals["balance_to_collect"]
         context = {
             "lease": lease,
             "tenant": lease.tenant,
@@ -5628,8 +5640,10 @@ def lease_ledger_pdf(request, lease_id):
             ),
             "total_owed": sum(-t["amount"] for t in transactions if t["amount"] < 0),
             "current_balance": balance,
+            "lease_balance_due": lease_balance_due,
+            "total_outstanding": total_outstanding,
             "security_rows": security_rows,
-            "security_totals": security_deposit_totals(lease),
+            "security_totals": security_totals,
             "date": datetime.now().date(),
             "generated_on": datetime.now(),
             "intcomma": intcomma,
@@ -5755,6 +5769,10 @@ def export_ledger_excel(request, lease_id):
             balance += t["amount"]
             t["balance"] = balance
 
+        security_totals = security_deposit_totals(lease)
+        lease_balance_due = lease.get_balance or Decimal("0.00")
+        total_outstanding = lease_balance_due + security_totals["balance_to_collect"]
+
         # Create workbook and worksheet
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -5817,9 +5835,12 @@ def export_ledger_excel(request, lease_id):
         # Security Deposit Info- 3rd row
         ws.append(
             [
-                f"Total Payment: {lease.total_payment}",
+                f"Total Payment: {lease.get_total_payment}",
                 f"Return Amount: {lease.security_deposit_return_amount or 'N/A'}",
                 f"New Rent: {new_rent:.2f}",
+                f"Lease Balance: {lease_balance_due}",
+                f"Security Due: {security_totals['balance_to_collect']}",
+                f"Total Due: {total_outstanding}",
             ]
         )
 

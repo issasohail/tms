@@ -36,7 +36,8 @@ class LeaseTable(ExportableTable):
     export_verbose_names = {
         "sn": "S.N.",
         "family_members": "Family",
-        "security_due": "Sec. Balance",
+        "balance": "Lease Balance / Sec. Balance",
+        "total_due": "Total Due",
     }
     excel_include_property = True
     compact_export_heading = True
@@ -57,7 +58,7 @@ class LeaseTable(ExportableTable):
             "start_date": 60,
             "end_date": 60,
             "balance": 60,
-            "security_due": 45,
+            "total_due": 55,
         },
     }
 
@@ -165,8 +166,7 @@ class LeaseTable(ExportableTable):
 
     balance = tables.Column(
         accessor="list_balance",
-        verbose_name="Balance",
-        linkify=lambda record: reverse("leases:lease_ledger_by_pk", args=[record.pk]),
+        verbose_name=mark_safe("Lease Balance/<br>Sec. Balance"),
         attrs={
             "td": {"class": "col-balance text-center"},
             "th": {"class": "col-balance text-end"},
@@ -174,9 +174,9 @@ class LeaseTable(ExportableTable):
         orderable=False,
     )
 
-    security_due = tables.Column(
-        accessor="list_security_due",
-        verbose_name="Sec. Due",
+    total_due = tables.Column(
+        accessor="list_total_due",
+        verbose_name="Total Due",
         attrs={
             "td": {"class": "col-sec text-end"},
             "th": {"class": "col-sec text-end"},
@@ -363,27 +363,28 @@ class LeaseTable(ExportableTable):
         )
 
     def render_balance(self, value, record):
-        """Format balance for display and exports"""
-        formatted_value = format_money(value, self.global_settings, decimals=0)
+        lease_balance = value or Decimal("0.00")
+        security_balance = getattr(record, "list_security_due", Decimal("0.00")) or Decimal("0.00")
+        lease_formatted = format_money(lease_balance, self.global_settings, decimals=0)
+        security_formatted = format_money(security_balance, self.global_settings, decimals=0)
+        request = getattr(self, "request", None)
+        if request and request.GET.get("_export"):
+            return f"{lease_formatted} / {security_formatted}"
+        url = reverse("leases:lease_ledger_by_pk", args=[record.pk])
+        lease_class = "text-danger" if lease_balance > 0 else "text-success"
+        security_class = "text-danger" if security_balance > 0 else "text-success"
+        return mark_safe(
+            f'<a href="{url}" class="lease-balance-stack" title="Open lease ledger">'
+            f'<span class="{lease_class}">{lease_formatted}</span>'
+            f'<span class="{security_class}">{security_formatted}</span>'
+            f'</a>'
+        )
 
-        # For exports, just return the formatted value
-        if hasattr(self, "export_formats") and getattr(self, "is_export", False):
-            return formatted_value
-
-        # For HTML display, return the formatted value (it will be automatically linked)
-        return formatted_value
-
-    def render_security_due(self, value, record):
-        formatted = format_money(value, self.global_settings, decimals=0)
-
-        # Exports (CSV/XLSX/PDF)
-        if hasattr(self, "export_formats") and getattr(self, "is_export", False):
-            return formatted
-
-        # HTML: highlight if > 0
+    def render_total_due(self, value):
+        formatted = format_money(value or Decimal("0.00"), self.global_settings, decimals=0)
         if value and value > 0:
             return mark_safe(f'<span class="text-danger fw-bold">{formatted}</span>')
-        return formatted
+        return mark_safe(f'<span class="text-success fw-bold">{formatted}</span>')
 
     def render_start_date(self, value):
         """Format date for exports"""
@@ -508,8 +509,7 @@ class LeaseTable(ExportableTable):
     def value_owner(self, value, record):
         return (value or "").strip()
 
-    def value_security_due(self, value, record):
-        """Export security balance as plain text, never rendered HTML."""
+    def value_total_due(self, value, record):
         return format_money(value, self.global_settings, decimals=0)
 
     def value_tenant(self, value, record):
@@ -638,7 +638,7 @@ class LeaseTable(ExportableTable):
             "start_date",
             "end_date",
             "balance",
-            "security_due",
+            "total_due",
             "actions",
         )
         sequence = fields

@@ -97,13 +97,20 @@
 {# Row 4 (mobile): Heading with period on next line #}
 {% if lease %}
 <div class="mobile-heading">
-  <h6 class="mb-0">Lease Ledger for {{ lease.tenant.get_full_name|truncatechars:15 }}</h6>
-  <div class="xsmall text-muted">
-    {{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }}
-    <br class="d-360-break"><span class="heading-period">
-      <span class="text-muted">Period:</span>
-      <strong>{{ lease.start_date|date:"M d, Y" }} – {{ lease.end_date|date:"M d, Y" }}</strong>
-    </span>
+  <div>
+    <h6 class="mb-0">Lease Ledger for {{ lease.tenant.get_full_name|truncatechars:15 }}</h6>
+    <div class="xsmall text-muted">
+      {{ lease.unit.property.property_name }}-{{ lease.unit.unit_number }}
+      <br class="d-360-break"><span class="heading-period">
+        <span class="text-muted">Period:</span>
+        <strong>{{ lease.start_date|date:"M d, Y" }} – {{ lease.end_date|date:"M d, Y" }}</strong>
+      </span>
+    </div>
+  </div>
+  <div class="ledger-total-box" title="Lease balance plus security balance">
+    <span>Total Outstanding</span>
+    <strong>Rs. {{ total_outstanding|floatformat:0|intcomma }}</strong>
+    <small>Lease Rs. {{ lease_balance_due|floatformat:0|intcomma }} + Security Rs. {{ security_balance_to_collect|floatformat:0|intcomma }}</small>
   </div>
 </div>
 {% endif %}
@@ -538,7 +545,29 @@
   .mobile-heading {
     order: 4;
     margin-bottom: .25rem;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:.75rem;
   }
+
+  .ledger-total-box{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    min-width:250px;
+    padding:.55rem .85rem;
+    border:2px solid #0d6efd;
+    border-radius:9px;
+    background:#eaf3ff;
+    color:#073b8c;
+    text-decoration:none;
+    box-shadow:0 2px 7px rgba(13,110,253,.16);
+  }
+  .ledger-total-box span{ font-size:.72rem; font-weight:800; text-transform:uppercase; }
+  .ledger-total-box strong{ font-size:1.55rem; line-height:1.05; }
+  .ledger-total-box small{ margin-top:.18rem; color:#345b91; font-size:.68rem; }
+  .ledger-total-box:hover{ color:#052f70; background:#dcecff; }
 
   /* Filters row scrolling + snap */
   .filters-row,
@@ -835,6 +864,11 @@
     .deposit-ledger-table td:nth-child(3) {
       min-width: 180px;
     }
+  }
+
+  @media (max-width: 767.98px) {
+    .mobile-heading{ align-items:stretch; flex-direction:column; }
+    .ledger-total-box{ min-width:0; align-items:center; text-align:center; }
   }
 
   /* ===== Desktop ≥ 1200px ===== */

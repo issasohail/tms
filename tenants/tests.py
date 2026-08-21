@@ -97,7 +97,7 @@ class TenantListExpiryMarkupTests(SimpleTestCase):
 
     def test_desktop_countdown_is_below_end_date(self):
         desktop_end = self.template_source.index(
-            'End: <span class="{% if lease.expiry_countdown_label %}'
+            'End: <span class="{% if active_lease.expiry_countdown_label %}'
         )
         desktop_countdown = self.template_source.index(
             "lease-expiry-countdown lease-expiry-countdown-desktop", desktop_end
@@ -2192,6 +2192,7 @@ class TenantDetailLeaseBalanceRegressionTests(TestCase):
             start_date=timezone.localdate() - timedelta(days=30),
             end_date=timezone.localdate() + timedelta(days=300),
             monthly_rent=Decimal("17300.00"),
+            security_deposit=Decimal("1590.00"),
             status="active",
         )
         Invoice.objects.create(
@@ -2209,7 +2210,7 @@ class TenantDetailLeaseBalanceRegressionTests(TestCase):
             status="cancelled",
         )
 
-    def test_tenant_detail_uses_same_balance_as_lease_detail(self):
+    def test_tenant_detail_adds_outstanding_security_to_lease_balance(self):
         response = self.client.get(
             reverse("tenants:tenant_detail", args=[self.tenant.pk])
         )
@@ -2220,10 +2221,144 @@ class TenantDetailLeaseBalanceRegressionTests(TestCase):
             if item.pk == self.lease.pk
         )
         self.assertEqual(
-            displayed_lease.tenant_detail_total_balance, self.lease.get_balance
+            displayed_lease.tenant_detail_lease_balance, self.lease.get_balance
         )
         self.assertEqual(
-            displayed_lease.tenant_detail_total_balance, Decimal("7991.00")
+            displayed_lease.tenant_detail_security_balance, Decimal("1590.00")
         )
+        self.assertEqual(
+            displayed_lease.tenant_detail_total_balance, Decimal("9581.00")
+        )
+        self.assertEqual(response.context["leases_total_balance"], Decimal("9581.00"))
         self.assertContains(response, "Balance:")
-        self.assertNotContains(response, "Total: Rs. 9,581")
+
+
+class TenantListMultipleActiveLeaseTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        from invoices.models import Invoice
+        from leases.models import Lease
+        from properties.models import Property, Unit
+        from tenants.models import Tenant
+
+        self.user = get_user_model().objects.create_superuser(
+            username="tenant-list-multi-lease",
+            email="tenant-list-multi-lease@example.com",
+            password="test-password",
+        )
+        self.client.force_login(self.user)
+        property_obj = Property.objects.create(
+            property_name="Multiple Lease Property",
+            owner_name="Owner",
+            owner_cnic="61101-6666666-6",
+            type="Residential",
+            property_type="apartment",
+            total_units=2,
+        )
+        first_unit = Unit.objects.create(property=property_obj, unit_number="ML-1")
+        second_unit = Unit.objects.create(property=property_obj, unit_number="ML-2")
+        self.tenant = Tenant.objects.create(
+            first_name="Multiple", last_name="Lease", cnic="61101-7777777-7"
+        )
+        today = timezone.localdate()
+        self.first_lease = Lease.objects.create(
+            tenant=self.tenant,
+            unit=first_unit,
+            start_date=today - timedelta(days=60),
+            end_date=today + timedelta(days=300),
+            monthly_rent=Decimal("10000.00"),
+            security_deposit=Decimal("3000.00"),
+            status="active",
+        )
+        self.second_lease = Lease.objects.create(
+            tenant=self.tenant,
+            unit=second_unit,
+            start_date=today - timedelta(days=30),
+            end_date=today + timedelta(days=330),
+            monthly_rent=Decimal("20000.00"),
+            security_deposit=Decimal("4000.00"),
+            status="active",
+        )
+        Invoice.objects.create(
+            lease=self.first_lease,
+            issue_date=today,
+            due_date=today,
+            amount=Decimal("5000.00"),
+            status="sent",
+        )
+        Invoice.objects.create(
+            lease=self.second_lease,
+            issue_date=today,
+            due_date=today,
+            amount=Decimal("7000.00"),
+            status="sent",
+        )
+
+    def test_tenant_list_aggregates_all_active_leases_in_one_tenant_row(self):
+        response = self.client.get(
+            reverse("tenants:tenant_list"),
+            {"tenant": self.tenant.pk, "tenant_status": "active"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        displayed_tenant = list(response.context["tenants"])[0]
+        self.assertEqual(displayed_tenant.pk, self.tenant.pk)
+        self.assertEqual(displayed_tenant.active_lease_count, 2)
+        self.assertEqual(
+            {lease.pk for lease in displayed_tenant.list_active_leases},
+            {self.first_lease.pk, self.second_lease.pk},
+        )
+        self.assertEqual(
+            displayed_tenant.active_monthly_total,
+            sum(
+                (
+                    lease.cached_monthly_payment
+                    for lease in displayed_tenant.list_active_leases
+                ),
+                Decimal("0.00"),
+            ),
+        )
+        self.assertEqual(
+            displayed_tenant.active_lease_balance_total, Decimal("12000.00")
+        )
+        self.assertEqual(
+            displayed_tenant.active_security_due_total, Decimal("7000.00")
+        )
+        self.assertEqual(displayed_tenant.active_total_due, Decimal("19000.00"))
+        self.assertContains(response, "2 active leases")
+        self.assertContains(response, "ML-1")
+        self.assertContains(response, "ML-2")
+        self.assertContains(response, "Total Due")
+        self.assertContains(
+            response, reverse("leases:lease_ledger_by_pk", args=[self.first_lease.pk])
+        )
+        self.assertContains(
+            response, reverse("leases:lease_ledger_by_pk", args=[self.second_lease.pk])
+        )
+
+    def test_multi_lease_exports_include_aggregate_security_and_total_due(self):
+        from io import BytesIO
+
+        import openpyxl
+
+        csv_response = self.client.get(
+            reverse("tenants:tenant_list"),
+            {"tenant": self.tenant.pk, "tenant_status": "active", "export": "csv"},
+        )
+        self.assertEqual(csv_response.status_code, 200)
+        csv_text = csv_response.content.decode("utf-8")
+        self.assertIn("Lease Balance,Security Due,Total Due", csv_text)
+        self.assertIn("12000.00,7000.00,19000.00", csv_text)
+
+        xlsx_response = self.client.get(
+            reverse("tenants:tenant_list"),
+            {"tenant": self.tenant.pk, "tenant_status": "active", "export": "xlsx"},
+        )
+        self.assertEqual(xlsx_response.status_code, 200)
+        workbook = openpyxl.load_workbook(BytesIO(xlsx_response.content))
+        sheet = workbook.active
+        self.assertEqual(sheet["K4"].value, "Security\nDue")
+        self.assertEqual(sheet["L4"].value, "Total\nDue")
+        self.assertEqual(Decimal(str(sheet["K5"].value)), Decimal("7000.00"))
+        self.assertEqual(Decimal(str(sheet["L5"].value)), Decimal("19000.00"))

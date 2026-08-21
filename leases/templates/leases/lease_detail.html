@@ -20,7 +20,7 @@
 }
 
 /* Section 1 — photo + cnic front/back (fixed) */
-.ld-hdr-media { grid-area:media; display:flex; align-items:flex-start; gap:6px; }
+.ld-hdr-media { grid-area:media; display:flex; flex-wrap:wrap; align-content:flex-start; align-items:flex-start; gap:6px; }
 .ld-doc-tile {
   width:96px; background:#eff6ff; border:2px solid #2563eb; border-radius:7px;
   padding:5px; text-align:center;
@@ -38,6 +38,15 @@
   height:64px; display:flex; align-items:center; justify-content:center;
   background:#fff; border-radius:4px; color:#94a3b8; font-size:10px;
 }
+.ld-balance-box {
+  flex:0 0 100%; display:grid; grid-template-columns:repeat(3,1fr); gap:5px;
+  margin-top:2px; padding:9px 10px; border:2px solid #2563eb; border-radius:8px;
+  background:#eff6ff; box-shadow:0 2px 7px rgba(37,99,235,.14);
+}
+.ld-balance-item { min-width:0; text-align:center; }
+.ld-balance-item span { display:block; color:#475569; font-size:9px; font-weight:800; text-transform:uppercase; }
+.ld-balance-item strong { display:block; margin-top:2px; color:#dc2626; font-size:16px; line-height:1.1; white-space:nowrap; }
+.ld-balance-item--total strong { color:#111827; font-size:18px; }
 
 /* Section 2 — tenant / lease identity (fixed, bigger type) */
 .ld-hdr-info {
@@ -371,6 +380,7 @@
   .ld-hdr-media {
     width:100%; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px;
   }
+  .ld-balance-box { grid-column:1 / -1; }
   .ld-doc-tile, .ld-hdr-vehicle .ld-doc-tile { width:100%; min-width:0; }
   .ld-doc-img, .ld-doc-empty { height:68px; }
   .ld-hdr-info {
@@ -663,6 +673,11 @@
           <span class="ld-doc-label">CNIC Back</span>
         {% endif %}
       </div>
+      <div class="ld-balance-box">
+        <div class="ld-balance-item"><span>Lease Balance</span><strong>{{ balance_due|default:0|money:0 }}</strong></div>
+        <div class="ld-balance-item"><span>Security Due</span><strong>{{ security_balance_to_collect|default:0|money:0 }}</strong></div>
+        <div class="ld-balance-item ld-balance-item--total"><span>Total Outstanding</span><strong>{{ total_outstanding|default:0|money:0 }}</strong></div>
+      </div>
     </div>
 
     <!-- Section 2: tenant / lease identity (fixed, bigger type) -->
@@ -699,9 +714,6 @@
           {{ lease.get_status_display }}
         </span>
       </div>
-      <div class="ld-hdr-balance">Lease Balance: {{ balance_due|default:0|money:0 }}</div>
-      <div class="small text-danger">Security Due: {{ security_balance_to_collect|default:0|money:0 }}</div>
-      <div class="small fw-bold">Total Outstanding: {{ total_outstanding|default:0|money:0 }}</div>
     </div>
 
     <!-- Section 3: actions (fills remaining space, right aligned) -->
@@ -870,6 +882,10 @@
         <div class="ld-f">
           <div class="ld-f-label">Maintenance + Water</div>
           <div class="ld-f-value">{{ lease.society_maintenance|default:0|money:0 }} + {{ lease.water_charges|default:0|money:0 }}</div>
+        </div>
+        <div class="ld-f">
+          <div class="ld-f-label">Internet Charges</div>
+          <div class="ld-f-value">{{ lease.internet_charges|default:0|money:0 }}</div>
         </div>
         <div class="ld-f">
           <div class="ld-f-label">Rent Increase %</div>

@@ -632,6 +632,107 @@ class LeaseBillingChangeRegressionTests(TestCase):
             agreement_charges=0,
         )
 
+    def test_lease_detail_displays_internet_and_includes_it_in_monthly_total(self):
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+
+        user = get_user_model().objects.create_superuser(
+            username="lease-detail-internet",
+            email="lease-detail-internet@example.com",
+            password="test-password",
+        )
+        self.client.force_login(user)
+        self.lease.water_charges = Decimal("2000.00")
+        self.lease.internet_charges = Decimal("500.00")
+        self.lease.save(update_fields=["water_charges", "internet_charges"])
+
+        response = self.client.get(
+            reverse("leases:lease_detail", args=[self.lease.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["lease_total_payment"], Decimal("13500.00"))
+        self.assertContains(response, "Internet Charges")
+        self.assertContains(response, "Rs. 500")
+
+    def test_lease_list_and_ledger_show_combined_lease_and_security_due(self):
+        from io import BytesIO
+        from unittest.mock import patch
+
+        import openpyxl
+        from datetime import date
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        from invoices.models import Invoice
+
+        user = get_user_model().objects.create_superuser(
+            username="combined-lease-balances",
+            email="combined-lease-balances@example.com",
+            password="test-password",
+        )
+        self.client.force_login(user)
+        self.lease.security_deposit = Decimal("3000.00")
+        self.lease.save(update_fields=["security_deposit"])
+        Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date.today(),
+            due_date=date.today(),
+            amount=Decimal("5000.00"),
+            status="sent",
+        )
+
+        list_response = self.client.get(
+            reverse("leases:lease_list"),
+            {"tenant": self.lease.tenant_id, "status": "active"},
+        )
+        listed_lease = list(list_response.context["table"].data)[0]
+        self.assertEqual(listed_lease.list_balance, Decimal("5000.00"))
+        self.assertEqual(listed_lease.list_security_due, Decimal("3000.00"))
+        self.assertEqual(listed_lease.list_total_due, Decimal("8000.00"))
+        self.assertContains(list_response, "Lease Balance/")
+        self.assertContains(list_response, "Total Due")
+
+        ledger_response = self.client.get(
+            reverse("leases:lease_ledger_by_pk", args=[self.lease.pk])
+        )
+        self.assertEqual(ledger_response.context["lease_balance_due"], Decimal("5000.00"))
+        self.assertEqual(ledger_response.context["total_outstanding"], Decimal("8000.00"))
+        self.assertContains(ledger_response, "Total Outstanding")
+        self.assertContains(ledger_response, "Rs. 8,000")
+
+        with patch("leases.views.render_to_string", return_value="<html></html>") as render_mock, patch(
+            "leases.views.HTML.write_pdf", return_value=b"pdf"
+        ):
+            pdf_response = self.client.get(
+                reverse("leases:lease_ledger_pdf", args=[self.lease.pk])
+            )
+        self.assertEqual(
+            pdf_response.status_code,
+            200,
+            pdf_response.content.decode("utf-8", errors="replace"),
+        )
+        pdf_context = render_mock.call_args.args[1]
+        self.assertEqual(pdf_context["lease_balance_due"], Decimal("5000.00"))
+        self.assertEqual(pdf_context["total_outstanding"], Decimal("8000.00"))
+
+        excel_response = self.client.get(
+            reverse("leases:export_ledger_excel", args=[self.lease.pk])
+        )
+        workbook = openpyxl.load_workbook(BytesIO(excel_response.content), data_only=True)
+        sheet_values = [
+            cell.value
+            for row in workbook.active.iter_rows()
+            for cell in row
+            if cell.value is not None
+        ]
+        self.assertIn("Lease Balance: 5000.00", sheet_values)
+        self.assertIn("Security Due: 3000.00", sheet_values)
+        self.assertIn("Total Due: 8000.00", sheet_values)
+
     def test_end_date_only_is_not_a_billing_change_or_backfill(self):
         from datetime import timedelta
 

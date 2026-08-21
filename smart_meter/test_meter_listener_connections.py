@@ -1,3 +1,5 @@
+import queue
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -12,8 +14,10 @@ from smart_meter.models import LiveReading, Meter, MeterReading
 
 
 class FakeSocket:
-    def __init__(self, recv_result=b""):
+    def __init__(self, recv_result=b"", send_error=None):
         self.recv_result = recv_result
+        self.send_error = send_error
+        self.sent_frames = []
         self.close_calls = 0
 
     def settimeout(self, _timeout):
@@ -34,6 +38,11 @@ class FakeSocket:
 
     def shutdown(self, _how):
         pass
+
+    def sendall(self, frame):
+        if self.send_error is not None:
+            raise self.send_error
+        self.sent_frames.append(frame)
 
     def close(self):
         self.close_calls += 1
@@ -163,6 +172,81 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
             handler.process_frame(frame)
 
         process_frame.assert_called_once_with(frame)
+
+    @patch("smart_meter.management.commands.meter_listener.threading.Thread.start")
+    @patch("smart_meter.management.commands.meter_listener.close_old_connections")
+    def test_expired_frame_reports_transport_failure(
+        self, _close_connections, _start
+    ):
+        handler = self.make_handler([TimeoutError(), b""])
+        transport_q = queue.Queue(maxsize=1)
+        handler.enqueue_send(
+            b"\x68", expire_at=time.time() - 1, transport_q=transport_q
+        )
+
+        handler.run()
+
+        self.assertEqual(
+            transport_q.get_nowait(),
+            (False, "frame expired before socket send"),
+        )
+        self.assertEqual(handler.conn.sent_frames, [])
+
+    @patch("smart_meter.management.commands.meter_listener.threading.Thread.start")
+    @patch("smart_meter.management.commands.meter_listener.close_old_connections")
+    def test_send_error_reports_transport_failure(self, _close_connections, _start):
+        handler = ClientHandler(
+            FakeSocket([TimeoutError()], send_error=OSError("simulated send failure")),
+            ("127.0.0.1", 12345),
+        )
+        transport_q = queue.Queue(maxsize=1)
+        handler.enqueue_send(b"\x68", transport_q=transport_q)
+
+        handler.run()
+
+        self.assertEqual(
+            transport_q.get_nowait(),
+            (False, "socket send failed: simulated send failure"),
+        )
+        self.assertEqual(handler.disconnect_reason, "send_error")
+
+    @patch("smart_meter.management.commands.meter_listener.threading.Thread.start")
+    @patch("smart_meter.management.commands.meter_listener.close_old_connections")
+    def test_legacy_two_tuple_tx_item_still_sends(self, _close_connections, _start):
+        handler = self.make_handler([TimeoutError(), b""])
+        handler.tx.put((b"\x68", 0.0))
+
+        handler.run()
+
+        self.assertEqual(handler.conn.sent_frames, [b"\x68"])
+
+    @patch("smart_meter.management.commands.meter_listener.parse_frame")
+    @patch("smart_meter.management.commands.meter_listener._register_handler")
+    @patch(
+        "smart_meter.management.commands.meter_listener.verify_checksum",
+        return_value=(True, "standard"),
+    )
+    def test_unresolved_di_logs_full_raw_frame(
+        self, _verify_checksum, _register_handler, parse_frame
+    ):
+        parse_frame.return_value = {
+            "meter_number": "260305510012",
+            "control_code": 0x91,
+            "di": None,
+            "data": None,
+        }
+        handler = self.make_handler()
+        frame = b"\x68\x01\xAB"
+
+        with self.assertLogs("smart_meter.listener", level="INFO") as captured:
+            handler.process_frame(frame)
+
+        raw_log = next(line for line in captured.output if "RAW_UNPARSED_RX" in line)
+        self.assertIn("meter=260305510012", raw_log)
+        self.assertIn("peer=127.0.0.1:12345", raw_log)
+        self.assertIn("control_code=0x91", raw_log)
+        self.assertIn("len=3", raw_log)
+        self.assertIn("frame=6801AB", raw_log)
 
 
 class DbCommandPollerConnectionLifecycleTests(TestCase):

@@ -297,7 +297,7 @@ class ClientHandler(threading.Thread):
         self.dump_raw = dump_raw
         self.accept_bad = accept_bad
 
-        # Outbound frames queue: (frame: bytes, expire_at: float)
+        # Outbound frames queue: (frame, expire_at[, transport_q])
         self.tx: queue.Queue = queue.Queue()
         self.alive = True
         # UPDATED: longer read timeout to reduce churn
@@ -313,8 +313,13 @@ class ClientHandler(threading.Thread):
         # UPDATED: heartbeat thread control
         self._hb_stop = threading.Event()
 
-    def enqueue_send(self, frame: bytes, expire_at: float | None = None):
-        self.tx.put((frame, float(expire_at or 0.0)))
+    def enqueue_send(
+        self,
+        frame: bytes,
+        expire_at: float | None = None,
+        transport_q: queue.Queue | None = None,
+    ):
+        self.tx.put((frame, float(expire_at or 0.0), transport_q))
 
     # UPDATED: clean close that other code can call
     def close(self, reason="shutdown"):
@@ -438,9 +443,14 @@ class ClientHandler(threading.Thread):
                     while True:
                         item = self.tx.get_nowait()
                         if isinstance(item, tuple):
-                            frame, expire_at = item
+                            if len(item) == 3:
+                                frame, expire_at, transport_q = item
+                            else:
+                                frame, expire_at = item
+                                transport_q = None
                         else:
                             frame, expire_at = item, 0.0
+                            transport_q = None
 
                         now = time.time()
                         if expire_at and now > expire_at:
@@ -451,6 +461,13 @@ class ClientHandler(threading.Thread):
                                 now - expire_at,
                                 frame.hex().upper(),
                             )
+                            if transport_q is not None:
+                                try:
+                                    transport_q.put_nowait(
+                                        (False, "frame expired before socket send")
+                                    )
+                                except queue.Full:
+                                    pass
                             continue
 
                         logger.info(
@@ -460,7 +477,22 @@ class ClientHandler(threading.Thread):
                             len(frame),
                             frame.hex().upper(),
                         )
-                        self.conn.sendall(frame)
+                        try:
+                            self.conn.sendall(frame)
+                        except Exception as send_exc:
+                            if transport_q is not None:
+                                try:
+                                    transport_q.put_nowait(
+                                        (False, f"socket send failed: {send_exc}")
+                                    )
+                                except queue.Full:
+                                    pass
+                            raise
+                        if transport_q is not None:
+                            try:
+                                transport_q.put_nowait((True, ""))
+                            except queue.Full:
+                                pass
                         self.last_seen = now
 
                 except queue.Empty:
@@ -562,6 +594,16 @@ class ClientHandler(threading.Thread):
         ctrl_code = parsed.get("control_code", 0)
         di = parsed.get("di")
         data = parsed.get("data")
+
+        if not di:
+            logger.info(
+                "RAW_UNPARSED_RX meter=%s peer=%s control_code=0x%02X len=%s frame=%s",
+                meter_number or self.meter_number or "unknown",
+                self.peer,
+                ctrl_code,
+                len(frame),
+                frame.hex().upper(),
+            )
 
         self.last_seen = time.time()
 
@@ -809,7 +851,24 @@ class DbCommandPoller(threading.Thread):
                 last_attempt_at=now,
                 error="",
             )
-            h.enqueue_send(frame, expire_at=time.time() + ttl)
+            transport_q = queue.Queue(maxsize=1)
+            h.enqueue_send(
+                frame,
+                expire_at=time.time() + ttl,
+                transport_q=transport_q,
+            )
+
+            try:
+                transport_ok, transport_error = transport_q.get(timeout=ttl)
+            except queue.Empty:
+                self._retry_or_fail(cmd, "timeout waiting for socket transmission")
+                return
+
+            if not transport_ok:
+                self._retry_or_fail(
+                    cmd, transport_error or "socket transmission failed"
+                )
+                return
 
             if (cmd.expect_di or "").strip():
                 try:
@@ -818,9 +877,8 @@ class DbCommandPoller(threading.Thread):
                 except queue.Empty:
                     self._retry_or_fail(cmd, "timeout waiting for reply")
             else:
-                # Existing switch frames do not currently declare a verified relay
-                # status DI. Record transport acknowledgement only; automatic
-                # enforcement never treats this as authoritative relay verification.
+                # Transport acknowledgement means sendall() completed on the live
+                # meter socket. It does not prove the meter applied the command.
                 self._ack(cmd, "")
         except Exception as e:
             self._retry_or_fail(cmd, str(e))

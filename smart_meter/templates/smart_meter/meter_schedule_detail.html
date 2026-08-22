@@ -1,0 +1,24 @@
+{% extends 'base.html' %}{% block content %}{% include 'smart_meter/meterbar.html' %}<div class="container py-2"><div class="d-flex justify-content-between"><div><h3>Meter Details: {{meter.meter_number}}</h3><small>{{meter.display_location_name}}</small></div><a class="btn btn-primary btn-sm align-self-start" href="{% url 'smart_meter:meter_detail' meter.id %}">Back</a></div><ul class="nav nav-tabs my-3"><li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:meter_detail' meter.id %}">Meter Overview</a></li>{% if perms.smart_meter.view_meter_credit_details %}<li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:credit_control' meter.id %}">Credit Control</a></li>{% endif %}<li class="nav-item"><a class="nav-link active">Meter Schedule</a></li></ul>
+<div class="row g-3"><div class="col-lg-9"><div class="row g-2 mb-3"><div class="col-md-3"><div class="card card-body"><small>Schedule Status</small><b>{% if events %}Active{% else %}No Schedule{% endif %}</b></div></div><div class="col-md-3"><div class="card card-body"><small>Active Now</small><b>{% if allowed_now == True %}Power ON{% elif allowed_now == False %}Power OFF{% else %}-{% endif %}</b></div></div><div class="col-md-3"><div class="card card-body"><small>Next Event</small><b>{% if next %}{{next.0.get_weekday_display}} {{next.0.event_time|time:'H:i'}} {{next.0.command|upper}}{% else %}-{% endif %}</b></div></div><div class="col-md-3"><div class="card card-body"><small>Total Events</small><b>{{events|length}}</b></div></div></div>
+<div class="card card-body"><div class="d-flex justify-content-between mb-2"><h5>Schedule Events</h5><form method="post" action="{% url 'smart_meter:meter_schedule_copy' meter.id %}" class="d-flex gap-1">{% csrf_token %}<input type="hidden" name="next" value="{{request.path}}"><select name="source_meter_id" class="form-select form-select-sm copy-meter-select" data-placeholder="Search meter or unit..." required><option value=""></option>{% for m in meters %}<option value="{{m.id}}">{{m.meter_number}} — {{m.unit.property.property_name|default:'No Property'}} / {{m.unit.unit_number|default:'No Unit'}}</option>{% endfor %}</select><button class="btn btn-secondary btn-sm">Copy</button></form></div><table class="table table-sm"><thead><tr><th>S.N.</th><th>Day</th><th>Time</th><th>Command</th><th>Notes</th><th>Status</th></tr></thead><tbody>{% for e in events %}<tr><td>{{forloop.counter}}</td><td>{{e.get_weekday_display}}</td><td>{{e.event_time|time:'H:i'}}</td><td><span class="badge {% if e.command == 'on' %}bg-success{% else %}bg-danger{% endif %}">{{e.command|upper}}</span></td><td>{{e.notes|default:'-'}}</td><td>{% if e.is_enabled %}<span class="text-success">Active</span>{% else %}Disabled{% endif %}</td></tr>{% empty %}<tr><td colspan="6">No schedule events configured. Use the main Meter Schedule page to add events.</td></tr>{% endfor %}</tbody></table><a href="{% url 'smart_meter:meter_schedule_list' %}?meter={{meter.meter_number}}" class="btn btn-primary btn-sm align-self-start">Edit Schedule</a></div></div><div class="col-lg-3"><div class="card card-body mb-3"><h6>Weekly Summary</h6>{% for s in summary %}<div class="d-flex justify-content-between border-bottom py-1"><span>{{s.label}}</span><span>{{s.count}} events <span class="text-success">ON {{s.on}}</span> / <span class="text-danger">OFF {{s.off}}</span></span></div>{% endfor %}</div><div class="card card-body"><h6>Today's Timeline</h6>{% for e in today_events %}<div class="py-1">{{e.event_time|time:'H:i'}} — <b>{{e.command|upper}}</b></div>{% empty %}<small>No events today.</small>{% endfor %}</div></div></div></div><script>
+document.addEventListener('DOMContentLoaded', function () {
+  if (!(window.jQuery && window.jQuery.fn && window.jQuery.fn.select2)) return;
+  const $ = window.jQuery;
+  const $select = $('.copy-meter-select');
+  $select.select2({
+    theme: 'bootstrap-5',
+    width: '260px',
+    allowClear: true,
+    placeholder: $select.data('placeholder') || 'Search meter or unit...'
+  });
+  $(document).off('select2:open.meterScheduleCopy').on('select2:open.meterScheduleCopy', function () {
+    window.setTimeout(function () {
+      const search = document.querySelector('.select2-container--open .select2-search__field');
+      if (search) {
+        search.focus();
+        search.select();
+      }
+    }, 0);
+  });
+});
+</script>{% endblock %}

@@ -362,6 +362,9 @@ class TrustedDeviceRegistryAdmin(admin.ModelAdmin):
 def _attach_pending_media(pending, user):
     from leases.models_lease_photos import LeaseMedia
 
+    gallery_description = "" if (pending.ai_notes or "").startswith(
+        "[Extracted video frame]"
+    ) else pending.ai_notes[:300]
     pending.file.open("rb")
     content = ContentFile(pending.file.read(), name=pending.original_filename or pending.file.name)
     pending.file.close()
@@ -371,7 +374,7 @@ def _attach_pending_media(pending, user):
             file=content,
             media_type="image" if pending.media_type == "image" else "video" if pending.media_type == "video" else "file",
             title=pending.original_filename or "WhatsApp lease photo",
-            description=pending.ai_notes[:300],
+            description=gallery_description,
             original_filename=pending.original_filename,
             uploaded_by=user,
         )
@@ -404,7 +407,7 @@ def _attach_pending_media(pending, user):
         PropertyMedia.objects.create(
             property=pending.property,
             file=content,
-            description=pending.ai_notes[:300],
+            description=gallery_description,
             uploaded_by=user,
             original_filename=pending.original_filename,
         )
@@ -413,7 +416,7 @@ def _attach_pending_media(pending, user):
         UnitMedia.objects.create(
             unit=pending.unit,
             file=content,
-            description=pending.ai_notes[:300],
+            description=gallery_description,
             uploaded_by=user,
             original_filename=pending.original_filename,
         )

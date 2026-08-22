@@ -583,7 +583,7 @@
                         <div class="unit-photo-card">
                             {% if media.file_type == "image" %}
                                 <a href="{{ media.file.url }}" target="_blank" rel="noopener">
-                                    <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="img-fluid rounded border unit-photo-thumb" alt="{{ media.description|default:media.original_filename }}">
+                                    <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="img-fluid rounded border unit-photo-thumb" alt="{{ media.visible_description|default:media.original_filename }}">
                                 </a>
                             {% else %}
                                 <a href="{{ media.file.url }}" target="_blank" rel="noopener" class="d-flex align-items-center justify-content-center border rounded text-decoration-none small" style="height:90px;">
@@ -597,7 +597,7 @@
                         </div>
                         <div class="small text-muted mt-1 unit-photo-description"
                              title="Click to edit"
-                             data-update-url="{% url 'properties:unit_media_update' unit.pk media.pk %}">{{ media.description|default:"No Description" }}</div>
+                             data-update-url="{% url 'properties:unit_media_update' unit.pk media.pk %}">{{ media.visible_description|default:"No Description" }}</div>
                     </div>
                     {% endfor %}
                 </div>

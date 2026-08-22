@@ -133,8 +133,8 @@
     <div class="media-item" data-masonry-item data-media-id="{{ media.pk }}">
         <div class="card media-card" draggable="true">
             {% if media.file_type == "image" %}
-                <a href="{{ media.file.url }}" target="_blank" rel="noopener">
-                    <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="card-img-top tms-masonry-image" alt="{{ media.description|default:media.display_filename }}">
+                <a href="{% url 'properties:media_public_file' public_token media.pk %}" target="_blank" rel="noopener">
+                    <img src="{% url 'properties:media_public_file' public_token media.pk %}?variant=thumbnail" class="card-img-top tms-masonry-image" alt="{{ media.visible_description|default:media.display_filename }}">
                 </a>
             {% elif media.file_type == "video" %}
                 <video class="card-img-top tms-masonry-image" controls>
@@ -157,22 +157,22 @@
                 </div>
                 {% if update_url_name %}
                     <div class="mt-2 description-box" data-update-url="{% url update_url_name owner.pk media.pk %}">
-                        <div class="small description-view {% if not media.description %}text-muted{% endif %}"
-                             title="Click to edit">{{ media.description|default:"No Description" }}</div>
+                        <div class="small description-view {% if not media.visible_description %}text-muted{% endif %}"
+                             title="Click to edit">{{ media.visible_description|default:"No Description" }}</div>
                         <textarea name="description"
                                   class="form-control form-control-sm description-input d-none"
                                   rows="2"
                                   maxlength="300"
-                                  placeholder="Description">{{ media.description }}</textarea>
+                                  placeholder="Description">{{ media.visible_description }}</textarea>
                         <div class="small text-muted mt-1 description-status"></div>
                     </div>
                 {% else %}
-                    <div class="small text-muted mt-2">{{ media.description }}</div>
+                    <div class="small text-muted mt-2">{{ media.visible_description|default:"No Description" }}</div>
                 {% endif %}
             </div>
             <div class="card-footer bg-white d-flex justify-content-between gap-2">
                 {% if media.file_type == "image" %}
-                    <a href="{{ media.file.url }}" class="btn btn-outline-secondary btn-sm" download>Download</a>
+                    <a href="{% url 'properties:media_public_file' public_token media.pk %}?variant=original&amp;download=1" class="btn btn-outline-secondary btn-sm" download>Download</a>
                 {% else %}
                     <a href="{% url 'properties:media_public_file' public_token media.pk %}" class="btn btn-outline-secondary btn-sm" download>Download</a>
                 {% endif %}

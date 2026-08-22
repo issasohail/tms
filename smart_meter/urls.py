@@ -5,6 +5,7 @@ from .views import generate_bill_view, view_bills
 from .views import recharge_balance, meter_status
 from smart_meter.views import meter_settings, refund_balance, toggle_power
 from . import views
+from . import views_schedule
 from . import views_credit_control
 from .views_dashboard import energy_dashboard
 from . import views_dashboard
@@ -36,6 +37,10 @@ urlpatterns = [
     path('energy-dashboard/', energy_dashboard, name='energy_dashboard'),
 
     path('meters/', views.meter_list, name='meter_list'),
+    path('meters/schedules/', views_schedule.meter_schedule_list, name='meter_schedule_list'),
+    path('meters/schedules/<int:meter_id>/update/', views_schedule.meter_schedule_update, name='meter_schedule_update'),
+    path('meters/schedules/<int:meter_id>/copy/', views_schedule.meter_schedule_copy, name='meter_schedule_copy'),
+    path('meters/<int:meter_id>/schedule/', views_schedule.meter_schedule_detail, name='meter_schedule_detail'),
     path('meters/add/', views.add_meter, name='add_meter'),
     path('meters/<int:pk>/', views.meter_detail, name='meter_detail'),
     path('meters/<int:pk>/credit-control/', views_credit_control.credit_control, name='credit_control'),

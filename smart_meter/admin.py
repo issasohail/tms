@@ -3,7 +3,7 @@ from django.contrib import admin
 from .models import (
     Meter, LiveReading, MeterReading, Tariff, Bill, Payment,
     MeterAssignmentHistory, MeterInstallation, MeterRoleHistory,
-    MeterCheckGroup, MeterCheckGroupMembership,
+    MeterCheckGroup, MeterCheckGroupMembership, MeterTimingEvent,
 )
 # smart_meter/admin.py
 from django.contrib import admin
@@ -205,3 +205,10 @@ class MeterPrepaidRechargeAdmin(admin.ModelAdmin):
     list_filter = ("status", "created_at")
     search_fields = ("transaction_id", "pilot__meter__meter_number", "manufacturer_sequence")
     readonly_fields = ("raw_command", "raw_ack", "created_at", "updated_at")
+
+
+@admin.register(MeterTimingEvent)
+class MeterTimingEventAdmin(admin.ModelAdmin):
+    list_display = ("meter", "weekday", "event_time", "command", "is_enabled")
+    list_filter = ("weekday", "is_enabled")
+    search_fields = ("meter__meter_number", "meter__unit__unit_number")

@@ -242,6 +242,36 @@ class Meter(models.Model):
         ]
 
 
+class MeterTimingEvent(models.Model):
+    WEEKDAYS = [
+        (0, "Monday"), (1, "Tuesday"), (2, "Wednesday"), (3, "Thursday"),
+        (4, "Friday"), (5, "Saturday"), (6, "Sunday"),
+    ]
+    COMMAND_CHOICES = [("on", "ON"), ("off", "OFF")]
+
+    meter = models.ForeignKey(Meter, on_delete=models.CASCADE, related_name="timing_events")
+    weekday = models.PositiveSmallIntegerField(choices=WEEKDAYS)
+    event_time = models.TimeField()
+    command = models.CharField(max_length=3, choices=COMMAND_CHOICES)
+    notes = models.CharField(max_length=160, blank=True)
+    is_enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.meter.meter_number} {self.get_weekday_display()} {self.event_time:%H:%M} {self.command.upper()}"
+
+    class Meta:
+        ordering = ["meter_id", "weekday", "event_time", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["meter", "weekday", "event_time"],
+                name="uniq_meter_timing_event",
+            ),
+        ]
+        indexes = [models.Index(fields=["meter", "weekday", "is_enabled"], name="sm_tevent_meter_day_idx")]
+
+
 class MeterInstallation(models.Model):
     meter = models.ForeignKey(
         Meter,
@@ -1067,6 +1097,7 @@ class MeterCommand(models.Model):
         ("payment", "Payment"),
         ("prepaid", "Prepaid Pilot"),
         ("system", "System"),
+        ("schedule", "Timing Schedule"),
     ]
 
     meter = models.ForeignKey(

@@ -177,6 +177,11 @@ def still_should_disconnect(command: MeterCommand) -> RevalidationResult:
 
 def still_should_reconnect(command: MeterCommand) -> RevalidationResult:
     account = command.related_credit_account
+    if command.meter_id:
+        from smart_meter.services.timing_schedule import schedule_allows_power
+        schedule_allowed = schedule_allows_power(command.meter)
+        if schedule_allowed is False:
+            return RevalidationResult(False, "timing schedule blocks reconnection", desired_state="on")
     if not account or not account.is_enabled:
         return RevalidationResult(False, "credit account inactive", desired_state="on")
     if command.source in {"credit_control", "payment"} and not (
@@ -225,6 +230,9 @@ def revalidate_command(command: MeterCommand) -> RevalidationResult:
         return RevalidationResult(False, "command expired", desired_state=command.desired_state)
     if command.source == "manual":
         return RevalidationResult(True, "manual command", desired_state=command.desired_state)
+    if command.source == "schedule":
+        from smart_meter.services.timing_schedule import revalidate_schedule_command
+        return revalidate_schedule_command(command)
     if command.desired_state == "off":
         return still_should_disconnect(command)
     if command.desired_state == "on":
@@ -270,7 +278,18 @@ def queue_relay_command(
     key = hashlib.sha256(raw_key.encode()).hexdigest()
 
     with transaction.atomic():
-        cancel_obsolete_automatic_commands(meter, desired_state, f"superseded by {desired_state} request: {reason}"[:255])
+        if source == "schedule":
+            opposite = "on" if desired_state == "off" else "off"
+            cancel_sources = ["schedule"] if desired_state == "on" else ["schedule", "credit_control", "payment", "system"]
+            MeterCommand.objects.filter(
+                meter=meter, command_type="relay", desired_state=opposite,
+                source__in=cancel_sources, status__in=ACTIVE,
+            ).update(
+                status="cancelled", cancelled_at=timezone.now(),
+                cancelled_reason=f"superseded by schedule {desired_state}: {reason}"[:255], error="",
+            )
+        else:
+            cancel_obsolete_automatic_commands(meter, desired_state, f"superseded by {desired_state} request: {reason}"[:255])
         existing = MeterCommand.objects.select_for_update().filter(
             meter=meter,
             command_type="relay",

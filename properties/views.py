@@ -1483,7 +1483,9 @@ def _draw_photo_page(pdf, media_items, title, page_num, total_pages, pagesize):
         pdf.drawString(x, y_top - img_h - 4 * mm, media.display_filename[:55])
         pdf.setFont("Helvetica", 8)
         pdf.drawString(
-            x, y_top - img_h - 8 * mm, (media.description or "No description")[:70]
+            x,
+            y_top - img_h - 8 * mm,
+            (media.visible_description or "No Description")[:70],
         )
 
     _pdf_footer(pdf, title, page_num, total_pages, width)
@@ -1694,7 +1696,7 @@ def _export_media_docx(
         document.add_paragraph(
             timezone.localtime(media.uploaded_at).strftime("%Y-%m-%d %H:%M")
         )
-        document.add_paragraph(media.description or "No description")
+        document.add_paragraph(media.visible_description or "No Description")
         if media.file_type == "image":
             path = _image_path(media)
             if path and os.path.exists(path):
@@ -2135,15 +2137,33 @@ def unit_media_public_file(request, token, media_id):
     model = UnitMedia if owner_kind == "unit" else PropertyMedia
     lookup = {"unit": owner} if owner_kind == "unit" else {"property": owner}
     media = get_object_or_404(model, pk=media_id, is_active=True, **lookup)
-    media_file = (
-        media.stamped_file
-        if media.file_type == "image" and media.stamped_file
-        else media.file
-    )
-    if not media_file:
+    variant = request.GET.get("variant", "")
+    if variant == "original":
+        media_file = media.file
+    elif variant == "thumbnail":
+        media_file = media.thumbnail or media.stamped_file or media.file
+    else:
+        media_file = (
+            media.stamped_file
+            if media.file_type == "image" and media.stamped_file
+            else media.file
+        )
+    if not media_file or not media_file.name:
         raise Http404("File not found.")
-    media_file.open("rb")
-    return FileResponse(media_file)
+    try:
+        if not media_file.storage.exists(media_file.name):
+            raise Http404("File not found.")
+        media_file.open("rb")
+    except (FileNotFoundError, OSError, ValueError):
+        raise Http404("File not found.")
+    download_name = os.path.basename(
+        (media.original_filename or media.file.name or "download").replace("\\", "/")
+    )
+    return FileResponse(
+        media_file,
+        as_attachment=request.GET.get("download") == "1",
+        filename=download_name,
+    )
 
 
 def public_unit_photo_upload(request, token):

@@ -448,6 +448,38 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         self.assertEqual(video.status, PendingWhatsAppMedia.STATUS_REJECTED)
         self.assertEqual(frame.status, PendingWhatsAppMedia.STATUS_APPROVED)
         self.assertEqual(self.unit.media_files.filter(file_type="image").count(), 1)
+        gallery_image = self.unit.media_files.get(file_type="image")
+        self.assertEqual(gallery_image.description, "")
+        self.assertTrue(gallery_image.file.storage.exists(gallery_image.file.name))
+        self.assertTrue(
+            gallery_image.stamped_file.storage.exists(gallery_image.stamped_file.name)
+        )
+        self.assertTrue(
+            gallery_image.thumbnail.storage.exists(gallery_image.thumbnail.name)
+        )
+        self.assertTrue(frame.ai_notes.startswith("[Extracted video frame]"))
+
+    def test_normal_pending_media_description_is_preserved(self):
+        note = "Tenant highlighted the kitchen cabinet damage."
+        pending = self._pending(
+            filename="cabinet.jpg",
+            file=self._jpeg_upload("cabinet.jpg"),
+            media_type="image",
+            purpose=PendingWhatsAppMedia.PURPOSE_UNIT,
+            target_kind=PendingWhatsAppMedia.TARGET_UNIT_PHOTO,
+            ai_notes=note,
+        )
+
+        response = self._approve(
+            pending,
+            destination=f"unit_photo:{self.unit.pk}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        gallery_image = self.unit.media_files.get(file_type="image")
+        self.assertEqual(gallery_image.description, note)
+        pending.refresh_from_db()
+        self.assertEqual(pending.ai_notes, note)
 
     @override_settings(WHATSAPP_MAX_INBOUND_VIDEO_BYTES=32 * 1024 * 1024)
     @patch("whatsapp.services.whatsapp.WhatsAppService.download_media_to_file")

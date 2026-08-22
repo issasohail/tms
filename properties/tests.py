@@ -123,6 +123,188 @@ class PropertyAndUnitMediaPathTests(SimpleTestCase):
         )
 
 
+class SignedGalleryMediaTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._media_directory = tempfile.TemporaryDirectory()
+        cls._media_override = override_settings(MEDIA_ROOT=cls._media_directory.name)
+        cls._media_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._media_override.disable()
+        cls._media_directory.cleanup()
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="gallery-user", password="test-password"
+        )
+        self.user.user_permissions.add(
+            Permission.objects.get(codename="view_property"),
+            Permission.objects.get(codename="view_unit"),
+            Permission.objects.get(
+                content_type__app_label="accounts",
+                codename="access_all_properties",
+            ),
+        )
+        self.client.force_login(self.user)
+        self.property = Property.objects.create(
+            property_name="Gallery Property",
+            owner_name="Owner",
+            owner_cnic="35202-1234567-1",
+            type="Residential",
+            property_type="apartment",
+            total_units=2,
+        )
+        self.unit = Unit.objects.create(
+            property=self.property,
+            unit_number="G-01",
+            status="vacant",
+        )
+        self.other_unit = Unit.objects.create(
+            property=self.property,
+            unit_number="G-02",
+            status="vacant",
+        )
+        self.unit_media = UnitMedia.objects.create(
+            unit=self.unit,
+            file=self._photo(),
+            description="Kitchen",
+            uploaded_by=self.user,
+            original_filename="gallery.jpg",
+        )
+        self.property_media = PropertyMedia.objects.create(
+            property=self.property,
+            file=self._photo("building.jpg", "green"),
+            description="Front elevation",
+            uploaded_by=self.user,
+            original_filename="building.jpg",
+        )
+
+    def _photo(self, name="gallery.jpg", color="blue"):
+        output = BytesIO()
+        Image.new("RGB", (120, 90), color).save(output, format="JPEG")
+        return SimpleUploadedFile(
+            name, output.getvalue(), content_type="image/jpeg"
+        )
+
+    def _token(self, owner_kind="unit", owner_id=None):
+        from properties.views import _sign_media_token
+
+        return _sign_media_token(owner_kind, owner_id or self.unit.pk)
+
+    def _media_url(self, media=None, token=None):
+        return reverse(
+            "properties:media_public_file",
+            args=[token or self._token(), (media or self.unit_media).pk],
+        )
+
+    def test_logged_in_galleries_use_only_signed_image_urls(self):
+        cases = (
+            (
+                reverse("properties:unit_media", args=[self.unit.pk]),
+                self.unit_media,
+            ),
+            (
+                reverse("properties:property_media", args=[self.property.pk]),
+                self.property_media,
+            ),
+        )
+
+        for page_url, media in cases:
+            with self.subTest(page_url=page_url):
+                response = self.client.get(page_url)
+                token_kind = "unit" if isinstance(media, UnitMedia) else "property"
+                owner_id = self.unit.pk if token_kind == "unit" else self.property.pk
+                signed_url = self._media_url(
+                    media=media,
+                    token=self._token(token_kind, owner_id),
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, f'href="{signed_url}"')
+                self.assertContains(response, f'{signed_url}?variant=thumbnail')
+                self.assertContains(
+                    response,
+                    f'{signed_url}?variant=original&amp;download=1',
+                    html=False,
+                )
+                self.assertNotContains(response, media.file.url)
+                self.assertNotContains(response, media.thumbnail.url)
+                self.assertNotContains(response, media.stamped_file.url)
+
+    def test_signed_image_variants_return_jpeg(self):
+        base_url = self._media_url()
+
+        for query in ("", "?variant=thumbnail", "?variant=original"):
+            with self.subTest(query=query):
+                response = self.client.get(f"{base_url}{query}")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response["Content-Type"], "image/jpeg")
+                self.assertTrue(b"".join(response.streaming_content))
+                response.close()
+
+        download = self.client.get(f"{base_url}?variant=original&download=1")
+        self.assertEqual(download.status_code, 200)
+        self.assertIn("attachment", download["Content-Disposition"])
+        self.assertIn("gallery.jpg", download["Content-Disposition"])
+        download.close()
+
+    def test_invalid_expired_and_wrong_owner_tokens_return_404(self):
+        invalid_url = self._media_url(token="invalid-token")
+        self.assertEqual(self.client.get(invalid_url).status_code, 404)
+
+        token = self._token()
+        with patch("properties.views.UNIT_MEDIA_SHARE_MAX_AGE", -1):
+            self.assertEqual(self.client.get(self._media_url(token=token)).status_code, 404)
+
+        other_media = UnitMedia.objects.create(
+            unit=self.other_unit,
+            file=self._photo("other.jpg", "red"),
+            original_filename="other.jpg",
+        )
+        self.assertEqual(self.client.get(self._media_url(media=other_media)).status_code, 404)
+
+    def test_inactive_and_missing_selected_files_return_404(self):
+        self.unit_media.is_active = False
+        self.unit_media.save(update_fields=["is_active", "updated_at"])
+        self.assertEqual(self.client.get(self._media_url()).status_code, 404)
+
+        self.unit_media.is_active = True
+        self.unit_media.save(update_fields=["is_active", "updated_at"])
+        UnitMedia.objects.filter(pk=self.unit_media.pk).update(
+            file="properties/missing-original.jpg"
+        )
+        self.unit_media.refresh_from_db()
+        self.assertEqual(
+            self.client.get(f"{self._media_url()}?variant=original").status_code,
+            404,
+        )
+
+    def test_existing_extracted_description_is_hidden_without_database_change(self):
+        technical_note = "[Extracted video frame] Selected from walkthrough.mp4"
+        self.unit_media.description = technical_note
+        self.unit_media.save(update_fields=["description", "updated_at"])
+        self.property_media.description = technical_note
+        self.property_media.save(update_fields=["description", "updated_at"])
+
+        responses = (
+            self.client.get(reverse("properties:unit_media", args=[self.unit.pk])),
+            self.client.get(
+                reverse("properties:property_media", args=[self.property.pk])
+            ),
+        )
+
+        for response in responses:
+            self.assertContains(response, "No Description")
+            self.assertNotContains(response, technical_note)
+        self.unit_media.refresh_from_db()
+        self.property_media.refresh_from_db()
+        self.assertEqual(self.unit_media.description, technical_note)
+        self.assertEqual(self.property_media.description, technical_note)
+
+
 class PublicUnitPhotoUploadTests(TestCase):
     @classmethod
     def setUpClass(cls):

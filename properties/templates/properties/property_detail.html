@@ -191,7 +191,7 @@
                     <div class="col-6 col-md-2">
                         {% if media.file_type == "image" %}
                             <a href="{{ media.display_url }}" target="_blank" rel="noopener">
-                                <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="img-fluid rounded border" alt="{{ media.description|default:media.original_filename }}" style="height:90px; width:100%; object-fit:cover;">
+                                <img src="{% if media.thumbnail %}{{ media.thumbnail.url }}{% else %}{{ media.display_url }}{% endif %}" class="img-fluid rounded border" alt="{{ media.visible_description|default:media.original_filename }}" style="height:90px; width:100%; object-fit:cover;">
                             </a>
                         {% else %}
                             <a href="{{ media.file.url }}" target="_blank" rel="noopener" class="d-flex align-items-center justify-content-center border rounded text-decoration-none small" style="height:90px;">

@@ -535,6 +535,13 @@ class BasePropertyMedia(models.Model):
         return self.file.url
 
     @property
+    def visible_description(self):
+        description = self.description or ""
+        if description.startswith("[Extracted video frame]"):
+            return ""
+        return description
+
+    @property
     def display_filename(self):
         return os.path.basename(self.file.name or self.original_filename or "file")
 
@@ -618,6 +625,7 @@ class BasePropertyMedia(models.Model):
                 ContentFile(thumb_buffer.getvalue()),
                 save=False,
             )
+        self.file.close()
 
     @property
     def footer_text(self):

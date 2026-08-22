@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block main_container_class %}container meter-schedule-container{% endblock %}
+{% block extra_css %}
+<style>
+  .meter-schedule-container { max-width: 1520px !important; }
+  .meter-schedule-container .schedule-editor-col { min-width: 620px; }
+  .meter-schedule-container .schedule-row { column-gap: .45rem !important; }
+  .meter-schedule-container .ev-days { display:flex; flex-wrap:wrap; gap:.32rem; }
+  .meter-schedule-container .day-toggle { min-width:38px; border-width:1px; opacity:.68; transition:.12s ease; }
+  .meter-schedule-container .day-toggle.is-selected { opacity:1; font-weight:700; box-shadow:inset 0 0 0 2px rgba(0,0,0,.12); transform:translateY(-1px); }
+  .meter-schedule-container .day-toggle[data-day="0"] { background:#dbeafe; border-color:#93c5fd; color:#1e40af; }
+  .meter-schedule-container .day-toggle[data-day="1"] { background:#ccfbf1; border-color:#5eead4; color:#115e59; }
+  .meter-schedule-container .day-toggle[data-day="2"] { background:#ede9fe; border-color:#c4b5fd; color:#5b21b6; }
+  .meter-schedule-container .day-toggle[data-day="3"] { background:#ffedd5; border-color:#fdba74; color:#9a3412; }
+  .meter-schedule-container .day-toggle[data-day="4"] { background:#dcfce7; border-color:#86efac; color:#166534; }
+  .meter-schedule-container .day-toggle[data-day="5"] { background:#fce7f3; border-color:#f9a8d4; color:#9d174d; }
+  .meter-schedule-container .day-toggle[data-day="6"] { background:#fee2e2; border-color:#fca5a5; color:#991b1b; }
+  @media (max-width:1590px) { .meter-schedule-container { max-width:calc(100% - 24px) !important; } }
+</style>
+{% endblock %}
+{% block content %}{% include 'smart_meter/meterbar.html' %}
+<div class="container-fluid px-3"><h3 class="mb-0"><i class="fas fa-clock"></i> Meter Schedule Management</h3><p class="text-muted small">Create, filter and manage event-based ON/OFF schedules. The latest scheduled event remains effective until the next event.</p>
+<form method="get" class="card card-body mb-3"><div class="row g-2"><div class="col-md-2"><input name="meter" value="{{ request.GET.meter }}" class="form-control" placeholder="Search meter no."></div><div class="col-md-2"><select name="property" class="form-select"><option value="">All Properties</option>{% for p in properties %}<option value="{{p.id}}" {% if request.GET.property == p.id|stringformat:'s' %}selected{% endif %}>{{p.property_name}}</option>{% endfor %}</select></div><div class="col-md-2"><select name="unit" class="form-select"><option value="">All Units</option>{% for u in units %}<option value="{{u.id}}">{{u.unit_number}}</option>{% endfor %}</select></div><div class="col-md-2"><select name="status" class="form-select"><option value="">All Status</option><option value="active">Has Schedule</option><option value="none">No Schedule</option></select></div><div class="col-md-1"><select name="command" class="form-select"><option value="">All Cmd</option><option value="on">ON</option><option value="off">OFF</option></select></div><div class="col-md-1"><select name="day" class="form-select"><option value="">All Days</option>{% for n,d in days %}<option value="{{n}}">{{d}}</option>{% endfor %}</select></div><div class="col-md-2"><button class="btn btn-primary">Filter</button> <a href="{% url 'smart_meter:meter_schedule_list' %}" class="btn btn-outline-secondary">Reset</a></div></div></form>
+<div class="table-responsive"><table class="table table-bordered table-sm bg-white align-middle"><thead class="table-light"><tr><th>S.N.</th><th>Meter</th><th>Property / Unit</th><th>Tenant</th><th>Power</th><th>Status</th><th>Next</th><th class="schedule-editor-col">Schedule Editor (Inline)</th><th>Copy / Save</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{row.sn}}</td><td><strong><a href="{% url 'smart_meter:meter_schedule_detail' row.meter.id %}">{{row.meter.meter_number}}</a></strong><br><small>{{row.meter.display_location_name}}</small></td><td>{{row.meter.unit.property.property_name|default:'-'}}<br><small>{{row.meter.unit.unit_number|default:'-'}}</small></td><td>{{row.meter.current_tenant|default:'-'}}</td><td>{{row.meter.get_power_status_display}}</td><td>{% if row.has_schedule %}<span class="badge {% if row.allowed_now %}bg-success{% else %}bg-warning text-dark{% endif %}">Scheduled {% if row.allowed_now %}ON{% else %}OFF{% endif %} Now</span>{% else %}<span class="badge bg-secondary">No Schedule</span>{% endif %}</td><td>{% if row.next %}{{row.next.0.get_weekday_display}} {{row.next.0.event_time|time:'H:i'}} <b>{{row.next.0.command|upper}}</b>{% else %}-{% endif %}</td><td><form method="post" action="{% url 'smart_meter:meter_schedule_update' row.meter.id %}" class="schedule-form">{% csrf_token %}<input type="hidden" name="events_json"><input type="hidden" name="next" value="{{request.get_full_path}}"><div class="schedule-rows">{% for g in row.groups %}<div class="schedule-row d-flex gap-1 mb-1 align-items-center"><input type="time" class="form-control form-control-sm ev-time" value="{{g.time}}" style="width:105px"><select class="form-select form-select-sm ev-command" style="width:85px"><option value="on" {% if g.command == 'on' %}selected{% endif %}>ON</option><option value="off" {% if g.command == 'off' %}selected{% endif %}>OFF</option></select><div class="ev-days">{% for n,d in days %}<label class="btn btn-sm day-toggle{% if n in g.days %} is-selected{% endif %}" data-day="{{n}}"><input type="checkbox" value="{{n}}" {% if n in g.days %}checked{% endif %} hidden>{{d}}</label>{% endfor %}</div><button type="button" class="btn btn-sm btn-outline-danger remove-row">×</button></div>{% endfor %}</div><button type="button" class="btn btn-sm btn-outline-primary add-row">+ Add Event</button></form></td><td><form method="post" action="{% url 'smart_meter:meter_schedule_copy' row.meter.id %}" class="mb-1">{% csrf_token %}<input type="hidden" name="next" value="{{request.get_full_path}}"><select name="source_meter_id" class="form-select form-select-sm mb-1 copy-meter-select" data-placeholder="Search meter or unit..." required><option value=""></option>{% for m in meters %}{% if m.id != row.meter.id %}<option value="{{m.id}}">{{m.meter_number}} — {{m.unit.property.property_name|default:'No Property'}} / {{m.unit.unit_number|default:'No Unit'}}</option>{% endif %}{% endfor %}</select><button class="btn btn-sm btn-secondary w-100">Copy</button></form><button type="button" class="btn btn-sm btn-primary w-100 save-schedule">Save Inline</button></td></tr>{% empty %}<tr><td colspan="9" class="text-center">No meters found.</td></tr>{% endfor %}
+</tbody></table></div></div>
+<script>
+function bindRow(r){r.querySelectorAll('.day-toggle').forEach(l=>l.onclick=()=>setTimeout(()=>l.classList.toggle('is-selected',l.querySelector('input').checked),0));r.querySelector('.remove-row').onclick=()=>r.remove();}
+document.querySelectorAll('.schedule-form').forEach(f=>{f.querySelectorAll('.schedule-row').forEach(bindRow);f.querySelector('.add-row').onclick=()=>{let r=document.createElement('div');r.className='schedule-row d-flex gap-1 mb-1 align-items-center';r.innerHTML='<input type="time" class="form-control form-control-sm ev-time" style="width:105px"><select class="form-select form-select-sm ev-command" style="width:85px"><option value="on">ON</option><option value="off">OFF</option></select><div class="ev-days">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d,i)=>`<label class="btn btn-sm day-toggle" data-day="${i}"><input type="checkbox" value="${i}" hidden>${d}</label>`).join('')+'</div><button type="button" class="btn btn-sm btn-outline-danger remove-row">×</button>';f.querySelector('.schedule-rows').appendChild(r);bindRow(r);};f.closest('tr').querySelector('.save-schedule').onclick=()=>{let a=[];f.querySelectorAll('.schedule-row').forEach(r=>a.push({time:r.querySelector('.ev-time').value,command:r.querySelector('.ev-command').value,days:[...r.querySelectorAll('.ev-days input:checked')].map(x=>+x.value)}));f.querySelector('[name=events_json]').value=JSON.stringify(a);f.submit();};});
+
+document.addEventListener('DOMContentLoaded', function () {
+  if (!(window.jQuery && window.jQuery.fn && window.jQuery.fn.select2)) return;
+  const $ = window.jQuery;
+  $('.copy-meter-select').each(function () {
+    const $select = $(this);
+    $select.select2({
+      theme: 'bootstrap-5',
+      width: '100%',
+      allowClear: true,
+      placeholder: $select.data('placeholder') || 'Search meter or unit...'
+    });
+  });
+  $(document).off('select2:open.meterScheduleCopy').on('select2:open.meterScheduleCopy', function () {
+    window.setTimeout(function () {
+      const search = document.querySelector('.select2-container--open .select2-search__field');
+      if (search) {
+        search.focus();
+        search.select();
+      }
+    }, 0);
+  });
+});
+</script>{% endblock %}

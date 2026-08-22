@@ -1046,6 +1046,10 @@ def _attach_pending_media_from_core(pending, user):
     from properties.models import PropertyMedia, UnitMedia
     from whatsapp.models import PendingWhatsAppMedia
 
+    gallery_description = "" if (pending.ai_notes or "").startswith(
+        VIDEO_FRAME_NOTE_PREFIX
+    ) else pending.ai_notes[:300]
+
     missing_file_message = (
         "The source media file is missing from storage. Restore or re-upload it before approval."
     )
@@ -1082,7 +1086,7 @@ def _attach_pending_media_from_core(pending, user):
                 thumbnail=processing_thumbnail,
                 media_type="image" if pending.media_type == "image" else "video" if pending.media_type == "video" else "file",
                 title=pending.original_filename or "WhatsApp lease photo",
-                description=pending.ai_notes[:300],
+                description=gallery_description,
                 original_filename=pending.original_filename,
                 uploaded_by=user,
             )
@@ -1135,7 +1139,7 @@ def _attach_pending_media_from_core(pending, user):
             destination = PropertyMedia.objects.create(
                 property=pending.property,
                 file=content,
-                description=pending.ai_notes[:300],
+                description=gallery_description,
                 uploaded_by=user,
                 original_filename=pending.original_filename,
             )
@@ -1145,7 +1149,7 @@ def _attach_pending_media_from_core(pending, user):
             destination = UnitMedia.objects.create(
                 unit=pending.unit,
                 file=content,
-                description=pending.ai_notes[:300],
+                description=gallery_description,
                 uploaded_by=user,
                 original_filename=pending.original_filename,
             )

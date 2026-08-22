@@ -45,7 +45,7 @@ except ImportError:
     _SAFE_HANDLER_KW = {}
     _ROTATION_ENABLED = False
 
-LOG_DIR = getattr(settings, "LOG_DIR", r"C:\tenant_management_system\logs")
+LOG_DIR = getattr(settings, "LOG_DIR", settings.BASE_DIR / "logs")
 Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 LOG_PATH = str(Path(LOG_DIR) / "meter_listener_worker.log")
 
@@ -948,6 +948,30 @@ class DbCommandPoller(threading.Thread):
             cmd.save(update_fields=["status", "error", "updated_at"])
 
 
+class MeterTimingSchedulePoller(threading.Thread):
+    """Evaluate recurring meter operating windows without requiring cron."""
+
+    def __init__(self, interval=30.0):
+        super().__init__(name="meter-timing-schedule-poller", daemon=True)
+        self.interval = interval
+        self._stop = threading.Event()
+
+    def run(self):
+        logger.info("Meter timing schedule poller started")
+        while not self._stop.is_set():
+            try:
+                close_old_connections()
+                from smart_meter.services.timing_schedule import enforce_all_timing_schedules
+                queued = enforce_all_timing_schedules()
+                if queued:
+                    logger.info("Meter timing scheduler queued %s command(s)", len(queued))
+            except Exception:
+                logger.exception("Meter timing schedule poller error")
+            finally:
+                close_old_connections()
+                self._stop.wait(self.interval)
+
+
 class Command(BaseCommand):
     help = "Start DL/T 645 listener; store live readings; provide a local control port to send commands."
 
@@ -992,6 +1016,7 @@ class Command(BaseCommand):
 
         # ⬇️ Start DB poller (no port 7000 needed)
         DbCommandPoller(debug=debug).start()
+        MeterTimingSchedulePoller().start()
 
         logger.info("✅ Listening on %s:%s for DL/T 645 frames...", host, port)
 

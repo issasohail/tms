@@ -18,8 +18,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from easy_thumbnails.conf import Settings as thumb_settings
 
-LOG_DIR = r"C:\tenant_management_system\logs"
-os.makedirs(LOG_DIR, exist_ok=True)
 # import pymysql
 # pymysql.install_as_MySQLdb()
 
@@ -33,6 +31,11 @@ SMART_METER_ONLINE_THRESHOLD_MINUTES = 10
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env", override=True)
+
+# Cross-platform log directory. Production should set LOG_DIR in .env, e.g.
+# LOG_DIR=/home/ivs/apps/tms/logs
+LOG_DIR = Path(os.getenv("LOG_DIR", str(BASE_DIR / "logs"))).expanduser()
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 APPEND_SLASH = True  # or False if you prefer
 
 # Quick-start development settings - unsuitable for production
@@ -547,8 +550,6 @@ WEASYPRINT_DPI = 300
 
 EMAIL_DEBUG = True
 # --- logging ---
-LOG_DIR = r"C:\tenant_management_system\logs"
-os.makedirs(LOG_DIR, exist_ok=True)
 
 LOGGING = {
     "version": 1,  # REQUIRED

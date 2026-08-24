@@ -28,7 +28,7 @@ def frame_command(meter_number, byCmd):
 
 # Example usage
 meter_number = '250619510017'
-byCmd = 0x1C
+byCmd = 0x1B
 # request_frame = frame_command(meter_number, byCmd)
 # print(f"ON switch_onOff.py Request frame: {request_frame.hex()}")
 

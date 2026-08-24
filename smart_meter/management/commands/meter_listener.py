@@ -118,7 +118,7 @@ def _decode_switch_action_from_hex(frame_hex: str) -> str | None:
         channel = b[i + 10 + 8]
         if channel == 0x4D:
             return "OFF"
-        if channel == 0x4F:
+        if channel == 0x4E:
             return "ON"
         return None
     except Exception:

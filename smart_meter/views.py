@@ -2302,7 +2302,7 @@ def restore_meter(request, meter_id):
     """Restore (close relay) for a single meter — meter-number based, no IP needed."""
     meter = get_object_or_404(Meter, pk=meter_id)
 
-    byCmd = 0x1C  # ON
+    byCmd = 0x1B  # ON (DL/T645 close/permit-close command)
     frame = build_switch_frame(meter.meter_number, byCmd)
     frame_hex = _as_hex(frame)
     cmd_name = "ON"
@@ -3735,7 +3735,7 @@ def meter_switch(request):
     if request.method == "POST" and form.is_valid():
         meter = form.cleaned_data["meter"]
         on = form.cleaned_data["action"] == "on"
-        byCmd = 0x1C if on else 0x1A
+        byCmd = 0x1B if on else 0x1A
         cmd_name = "ON" if on else "OFF"
 
         # Build frame
@@ -3965,8 +3965,8 @@ def bulk_power_action(request):
             request.META.get("HTTP_REFERER") or reverse("smart_meter:meter_list")
         )
 
-    byCmd = 0x1C if action == "restore" else 0x1A  # 0x1C=ON, 0x1A=OFF
-    cmd_name = "ON" if byCmd == 0x1C else "OFF"
+    byCmd = 0x1B if action == "restore" else 0x1A  # 0x1B=ON, 0x1A=OFF
+    cmd_name = "ON" if byCmd == 0x1B else "OFF"
     ok_count = 0
     failures = []
 
@@ -4117,8 +4117,8 @@ def switch_lab(request):
 
     if request.method == "POST" and form.is_valid():
         meter_hex = form.cleaned_data["meter_number"]
-        byCmd = 0x1C if form.cleaned_data["action"] == "on" else 0x1A
-        cmd_name = "ON" if byCmd == 0x1C else "OFF"
+        byCmd = 0x1B if form.cleaned_data["action"] == "on" else 0x1A
+        cmd_name = "ON" if byCmd == 0x1B else "OFF"
 
         # Build frame via vendor function
         frame = build_switch_frame(meter_hex, byCmd)

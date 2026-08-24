@@ -271,7 +271,9 @@ def queue_relay_command(
     if meter.is_check_meter and source != "manual":
         raise ValueError("automatic relay commands are not allowed for audit/check meters")
 
-    by_cmd = 0x1C if desired_state == "on" else 0x1A
+    # DL/T645 load-switch command types: 0x1A trips (opens) and 0x1B
+    # permits/closes the relay.  0x1C is an alarm command, not relay ON.
+    by_cmd = 0x1B if desired_state == "on" else 0x1A
     frame_hex = frame_command(meter.meter_number, by_cmd).hex().upper()
     account_key = credit_account.pk if credit_account else "none"
     raw_key = f"relay:{meter.pk}:{desired_state}:{source}:{account_key}"
@@ -290,13 +292,14 @@ def queue_relay_command(
             )
         else:
             cancel_obsolete_automatic_commands(meter, desired_state, f"superseded by {desired_state} request: {reason}"[:255])
+        reusable_statuses = ACTIVE if source != "manual" else ACTIVE - {"acknowledged"}
         existing = MeterCommand.objects.select_for_update().filter(
             meter=meter,
             command_type="relay",
             desired_state=desired_state,
             source=source,
             related_credit_account=credit_account,
-            status__in=ACTIVE,
+            status__in=reusable_statuses,
         ).order_by("-created_at").first()
         if existing:
             return existing

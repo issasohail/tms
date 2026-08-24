@@ -1095,6 +1095,51 @@
     el.textContent = text || '';
   }
 
+  const mqRowPowerStatus = window.matchMedia('(max-width: 991.98px)');
+  const rowPowerStatusTimers = new Map();
+  let headingPowerStatusTimer = null;
+
+  function setPowerActionMsg(row, text, tone, processing = false, clearAfter = 0) {
+    const meterId = row?.dataset?.meterId || '';
+    const previousTimer = rowPowerStatusTimers.get(meterId);
+    if (previousTimer) {
+      clearTimeout(previousTimer);
+      rowPowerStatusTimers.delete(meterId);
+    }
+
+    if (!mqRowPowerStatus.matches) {
+      if (headingPowerStatusTimer) {
+        clearTimeout(headingPowerStatusTimer);
+        headingPowerStatusTimer = null;
+      }
+      setHeaderMsg(text, tone, processing);
+      if (clearAfter > 0) {
+        headingPowerStatusTimer = setTimeout(() => {
+          setHeaderMsg('', 'text-muted', false);
+          headingPowerStatusTimer = null;
+        }, clearAfter);
+      }
+      return;
+    }
+
+    setHeaderMsg('', 'text-muted', false);
+    row?.querySelectorAll('.row-power-action-status').forEach(el => {
+      el.className = 'row-power-action-status ' + (tone || 'text-muted') + (processing ? ' processing' : '');
+      el.textContent = text || '';
+    });
+
+    if (clearAfter > 0) {
+      const timer = setTimeout(() => {
+        row?.querySelectorAll('.row-power-action-status').forEach(el => {
+          el.className = 'row-power-action-status text-muted';
+          el.textContent = '';
+        });
+        rowPowerStatusTimers.delete(meterId);
+      }, clearAfter);
+      rowPowerStatusTimers.set(meterId, timer);
+    }
+  }
+
   /* Power toggle helpers */
   function setOnlineBadge(badge, state) {
     if (!badge) return;
@@ -1125,24 +1170,23 @@
     return m ? decodeURIComponent(m[2]) : null;
   }
 
-  let _headingMsgClearTimer = null;
-
   async function togglePower(btn) {
-    if (_headingMsgClearTimer) { clearTimeout(_headingMsgClearTimer); _headingMsgClearTimer = null; }
-
     const row = btn.closest('[data-meter-row]') || btn.closest('tr') || document;
-    const onlineEl = row.querySelector('.online-badge');   /* finds the one in mobile-actions */
-    const powerEl = row.querySelector('.power-badge');    /* finds the one in mobile-actions */
 
     const isOff = (btn.dataset.status || 'OFF').toUpperCase() === 'OFF';
     const url = isOff ? btn.dataset.restoreUrl : btn.dataset.cutoffUrl;
     const nextIsOn = isOff;
-    const unitNumber = btn.dataset.unitNumber || '';
     const statusUrl = btn.dataset.statusUrl;
 
-    setHeaderMsg(`${isOff ? 'Turning ON' : 'Turning OFF'} power for unit ${unitNumber}…`, 'text-warning', true);
+    setPowerActionMsg(
+      row,
+      `${isOff ? 'Restoring' : 'Disconnecting'} power…`,
+      'text-warning',
+      true
+    );
 
-    btn.disabled = true;
+    row.classList.add('power-action-pending');
+    row.querySelectorAll('.power-toggle').forEach(b => { b.disabled = true; });
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -1157,27 +1201,36 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) throw new Error(data.error || 'Request failed');
 
-      setPowerBadge(powerEl, nextIsOn);
-      row.querySelectorAll('.power-toggle').forEach(b => b.dataset.status = nextIsOn ? 'ON' : 'OFF');
-
-      setHeaderMsg(`Power ${nextIsOn ? 'ON (restored)' : 'OFF (cut)'} for unit ${unitNumber}`, nextIsOn ? 'text-success' : 'text-danger');
-      _headingMsgClearTimer = setTimeout(() => setHeaderMsg('', 'text-muted', false), 6000);
+      setRowPowerState(row, nextIsOn ? 'ON' : 'OFF');
 
       if (nextIsOn) {
-        setOnlineBadge(onlineEl, 'pending');
+        setPowerActionMsg(row, 'Power restored. Checking meter connection…', 'text-warning', true);
         if (statusUrl) {
           const ok = await pollOnline(statusUrl);
-          setOnlineBadge(onlineEl, ok ? 'online' : 'offline');
+          setPowerActionMsg(
+            row,
+            ok ? 'Power restored — meter online' : 'Power restored — awaiting a fresh reading',
+            ok ? 'text-success' : 'text-warning',
+            false,
+            ok ? 8000 : 12000
+          );
         } else {
-          setOnlineBadge(onlineEl, 'offline');
+          setPowerActionMsg(row, 'Power restored successfully', 'text-success', false, 8000);
         }
       } else {
-        setOnlineBadge(onlineEl, 'offline');
+        setPowerActionMsg(row, 'Power disconnected successfully', 'text-success', false, 8000);
       }
     } catch (e) {
-      setHeaderMsg(`Error toggling power for unit ${unitNumber}: ${e.message || 'Request failed'}`, 'text-danger');
+      setPowerActionMsg(
+        row,
+        `${isOff ? 'Restore' : 'Disconnect'} failed: ${e.message || 'Request failed'}`,
+        'text-danger',
+        false,
+        12000
+      );
     } finally {
-      btn.disabled = false;
+      row.classList.remove('power-action-pending');
+      row.querySelectorAll('.power-toggle').forEach(b => { b.disabled = false; });
     }
   }
 
@@ -1681,6 +1734,7 @@
                   {{ r.tenant_name|default:"Vacant"|slice:":20" }}
                 {% endif %}
               </span>
+              <div class="row-power-action-status mobile-action-status text-muted" aria-live="polite"></div>
             </td>
 
             <td class="sticky-left col-unit text-center" title="{{ m.display_location_name }}">
@@ -1693,6 +1747,7 @@
               {% else %}
                 {{ r.tenant_name|default:"Vacant" }}
               {% endif %}
+              <div class="row-power-action-status tablet-action-status text-muted" aria-live="polite"></div>
             </td>
 
             <td class="sticky-left col-meter text-center" title="{{ m.meter_number }}">
@@ -1976,6 +2031,283 @@
       width: 72px !important;
       min-width: 72px !important;
       max-width: 72px !important;
+    }
+  }
+
+  /* Row-local relay feedback. Connectivity remains controlled by live readings. */
+  .row-power-action-status {
+    display: none;
+    margin-top: .3rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .row-power-action-status.processing::before {
+    content: "";
+    display: inline-block;
+    width: .75rem;
+    height: .75rem;
+    margin-right: .35rem;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    vertical-align: -.1rem;
+  }
+
+  @media (min-width: 577px) and (max-width: 991.98px) {
+    #captureArea .table-responsive {
+      overflow-x: auto;
+    }
+
+    #captureArea table.table-compact {
+      min-width: 780px;
+    }
+
+    #captureArea table.table-compact th,
+    #captureArea table.table-compact td {
+      font-size: .75rem;
+      padding: .3rem .35rem !important;
+      line-height: 1.25;
+    }
+
+    #captureArea table.table-compact th.sno,
+    #captureArea table.table-compact td.sno {
+      display: table-cell !important;
+      position: sticky !important;
+      left: 0 !important;
+      z-index: 3 !important;
+      width: 36px !important;
+      min-width: 36px !important;
+      max-width: 36px !important;
+      background-color: var(--bs-body-bg);
+    }
+
+    #captureArea table.table-compact th.col-tenant,
+    #captureArea table.table-compact td.col-tenant {
+      width: 165px;
+      min-width: 165px;
+      max-width: 165px;
+      white-space: normal;
+    }
+
+    #captureArea .tablet-action-status:not(:empty) {
+      display: block;
+      font-size: .72rem;
+    }
+
+    #captureArea .power-toggle {
+      width: 34px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+
+  @media (max-width: 576px) {
+    #captureArea {
+      padding-right: .5rem;
+      padding-left: .5rem;
+    }
+
+    #captureArea .card,
+    #captureArea .table-responsive {
+      overflow: visible;
+      border: 0;
+      background: transparent;
+    }
+
+    #captureArea table.table-compact,
+    #captureArea table.table-compact tbody {
+      display: block;
+      width: 100%;
+    }
+
+    #captureArea table.table-compact thead {
+      display: none;
+    }
+
+    #captureArea table.table-compact tr[data-meter-row] {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1.15fr) minmax(118px, 1fr);
+      grid-template-rows: auto auto;
+      gap: .45rem .55rem;
+      width: 100%;
+      margin-bottom: .55rem;
+      padding: .65rem .55rem;
+      border: 1px solid var(--bs-border-color);
+      border-left: 4px solid #6c757d;
+      border-radius: .65rem;
+      background-color: var(--bs-body-bg);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, .06);
+    }
+
+    #captureArea table.table-compact tr[data-meter-row].row-online {
+      border-left-color: var(--bs-success);
+    }
+
+    #captureArea table.table-compact tr[data-meter-row].power-action-pending {
+      box-shadow: 0 0 0 .15rem rgba(255, 193, 7, .2);
+    }
+
+    #captureArea table.table-compact tr[data-meter-row] > td {
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      padding: 0 !important;
+      border: 0;
+      background: transparent;
+      overflow: visible;
+      white-space: normal;
+      font-size: .75rem;
+      line-height: 1.25;
+    }
+
+    #captureArea table.table-compact td.sno {
+      display: flex !important;
+      grid-column: 1;
+      grid-row: 1 / span 2;
+      align-items: flex-start;
+      justify-content: center;
+      position: static !important;
+      padding-top: .05rem !important;
+      color: #495057;
+      font-size: .78rem;
+      font-weight: 800;
+    }
+
+    #captureArea table.table-compact td.sno::before {
+      content: "#";
+    }
+
+    #captureArea table.table-compact td.col-prop {
+      display: block !important;
+      grid-column: 2;
+      grid-row: 1;
+      text-align: left !important;
+    }
+
+    #captureArea table.table-compact td.col-meter {
+      display: block !important;
+      grid-column: 3;
+      grid-row: 1;
+      text-align: right !important;
+      font-size: .78rem;
+      font-weight: 700;
+    }
+
+    #captureArea table.table-compact td[data-col="updated"] {
+      grid-column: 2;
+      grid-row: 2;
+      text-align: left !important;
+      font-size: .72rem;
+    }
+
+    #captureArea table.table-compact td[data-col="total_energy"] {
+      grid-column: 3;
+      grid-row: 2;
+      text-align: right !important;
+      font-size: .72rem;
+    }
+
+    #captureArea table.table-compact td[data-col="updated"]::before,
+    #captureArea table.table-compact td[data-col="total_energy"]::before {
+      display: block;
+      margin-bottom: .12rem;
+      color: #6c757d;
+      font-size: .62rem;
+      font-weight: 700;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+    }
+
+    #captureArea table.table-compact td[data-col="updated"]::before {
+      content: "Updated";
+    }
+
+    #captureArea table.table-compact td[data-col="total_energy"]::before {
+      content: "Energy";
+    }
+
+    #captureArea table.table-compact .col-prop .mobile-property,
+    #captureArea table.table-compact .col-prop .mobile-unit,
+    #captureArea table.table-compact .col-prop .mobile-tenant {
+      display: block;
+      max-width: 100%;
+      margin-top: .12rem;
+      overflow: visible;
+      white-space: normal;
+      text-overflow: clip;
+      overflow-wrap: anywhere;
+      line-height: 1.2;
+    }
+
+    #captureArea table.table-compact .col-prop .mobile-property {
+      margin-top: 0;
+      color: #495057;
+      font-size: .7rem;
+      font-weight: 600;
+    }
+
+    #captureArea table.table-compact .col-prop .mobile-unit {
+      color: #212529;
+      font-size: .78rem;
+      font-weight: 800;
+    }
+
+    #captureArea table.table-compact .col-prop .mobile-tenant {
+      color: #495057;
+      font-size: .76rem;
+    }
+
+    #captureArea .mobile-action-status:not(:empty) {
+      display: block;
+      font-size: .72rem;
+    }
+
+    #captureArea table.table-compact .col-meter .mobile-actions {
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: .25rem;
+      margin-top: .35rem;
+    }
+
+    #captureArea table.table-compact .col-meter .mobile-actions .badge {
+      padding: .22rem .35rem;
+      font-size: .62rem;
+    }
+
+    #captureArea table.table-compact .col-meter .mobile-actions .power-toggle {
+      width: 32px;
+      height: 32px;
+      min-width: 32px;
+      padding: 0;
+      font-size: .78rem;
+    }
+
+    #captureArea table.table-compact td[data-col="total_energy"] .total-energy-main {
+      font-size: .76rem;
+      font-weight: 800;
+    }
+
+    #captureArea table.table-compact td[data-col="total_energy"] .mobile-voltage,
+    #captureArea table.table-compact td[data-col="total_energy"] .mobile-current,
+    #captureArea table.table-compact td[data-col="updated"] .u-time {
+      font-size: .68rem;
+      line-height: 1.2;
+    }
+
+    #captureArea table.table-compact tbody > tr:not([data-meter-row]) {
+      display: block;
+    }
+
+    #captureArea table.table-compact tbody > tr:not([data-meter-row]) > td {
+      display: block;
+      width: 100%;
+      font-size: .85rem;
     }
   }
 </style>

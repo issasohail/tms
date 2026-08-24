@@ -252,6 +252,17 @@
 .ld-act-link { color:inherit; text-decoration:none; min-width:0; }
 .ld-act-link:hover .ld-act-l, .ld-act-link:focus .ld-act-l { text-decoration:underline; }
 .ld-act-sn { font-size:11px; font-weight:700; color:#9ca3af; flex-shrink:0; }
+.ld-recent-line {
+  display:grid; grid-template-columns:18px 66px minmax(0,1fr) auto;
+  align-items:center; gap:4px; min-width:0; width:100%;
+}
+.ld-recent-line .ld-act-sn,
+.ld-recent-line .ld-act-d,
+.ld-recent-line .ld-act-l { font-size:11px; }
+.ld-recent-line .ld-act-l {
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;
+}
+.ld-recent-line .ld-act-a { font-size:11px; }
 
 /* ---- tables ---- */
 .ld-tw { overflow-x:auto; -webkit-overflow-scrolling:touch; }
@@ -1842,8 +1853,10 @@
       <div class="card-header py-2"><strong>Recent Invoices</strong></div>
       <div class="card-body py-1 px-2 small">
         {% for inv in recent_invoices %}
-          <a href="{% url 'invoices:invoice_detail' inv.pk %}" class="ld-act ld-act-link">
-            <span><span class="ld-act-sn">{{ forloop.counter }}.</span> <span class="ld-act-d">{{ inv.issue_date|date:'M d, Y' }}</span><br><span class="ld-act-l">{{ inv.description|default:'Invoice'|truncatechars:28 }}</span></span>
+          <a href="{% url 'invoices:invoice_detail' inv.pk %}" class="ld-act ld-act-link ld-recent-line">
+            <span class="ld-act-sn">{{ forloop.counter }}.</span>
+            <span class="ld-act-d">{{ inv.issue_date|date:'M d, Y' }}</span>
+            <span class="ld-act-l" title="{{ inv.description|default:'Invoice' }}">{{ inv.description|default:'Invoice' }}</span>
             <span class="ld-act-a text-danger">{{ inv.amount|money:0 }}</span>
           </a>
         {% empty %}<div class="ld-empty">No invoices yet.</div>{% endfor %}
@@ -1855,8 +1868,10 @@
       <div class="card-header py-2"><strong>Recent Payments</strong></div>
       <div class="card-body py-1 px-2 small">
         {% for p in recent_payments %}
-          <a href="{% url 'payments:payment_detail' p.pk %}" class="ld-act ld-act-link">
-            <span><span class="ld-act-sn">{{ forloop.counter }}.</span> <span class="ld-act-d">{{ p.payment_date|date:'M d, Y' }}</span><br><span class="ld-act-l">{{ p.reference_number|default:'Payment'|truncatechars:28 }}</span></span>
+          <a href="{% url 'payments:payment_detail' p.pk %}" class="ld-act ld-act-link ld-recent-line">
+            <span class="ld-act-sn">{{ forloop.counter }}.</span>
+            <span class="ld-act-d">{{ p.payment_date|date:'M d, Y' }}</span>
+            <span class="ld-act-l" title="{{ p.reference_number|default:'Payment' }}">{{ p.reference_number|default:'Payment' }}</span>
             <span class="ld-act-a text-success">{{ p.amount|money:0 }}</span>
           </a>
         {% empty %}<div class="ld-empty">No payments yet.</div>{% endfor %}

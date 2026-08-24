@@ -2,7 +2,6 @@
     [string]$ProjectPath = "",
     [string]$OutputDir = "",
     [ValidateSet("Ask", "Yes", "No")][string]$DataMode = "Ask",
-    [ValidateSet("Ask", "Yes", "No")][string]$VenvMode = "Ask",
     [string]$LiveContainer = "tms_db",
     [string]$DbName = "tenant_management",
     [string]$DbUser = "user",
@@ -225,11 +224,11 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 $IncludeSanitizedData = Resolve-Choice -Mode $DataMode -Prompt "Include SANITIZED database data in this ZIP?" -Default $false
-$IncludeVenv = Resolve-Choice -Mode $VenvMode -Prompt "Include the Windows .venv in this ZIP? (larger/slower)" -Default $false
+$IncludeVenv = $true
 
 $DataTag = if ($IncludeSanitizedData) { "DATA" } else { "NODATA" }
-$VenvTag = if ($IncludeVenv) { "VENV" } else { "NOVENV" }
-$ZipName = "TMS_${Timestamp}_${Commit}_${DataTag}_${VenvTag}.zip"
+$VenvTag = "VENV"
+$ZipName = "TMS_${Timestamp}_${Commit}_${DataTag}.zip"
 $ZipPath = Join-Path $OutputDir $ZipName
 
 $TempRoot = Join-Path $env:TEMP "tms_chatgpt_export_$Timestamp"
@@ -250,7 +249,7 @@ Write-Host "Project         : $ProjectPath"
 Write-Host "Branch          : $Branch"
 Write-Host "Commit          : $Commit"
 Write-Host "Sanitized data  : $IncludeSanitizedData"
-Write-Host "Include .venv   : $IncludeVenv"
+Write-Host "Include .venv   : True (always)"
 Write-Host "Output          : $ZipPath"
 Write-Host ""
 
@@ -305,7 +304,7 @@ Created: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 Branch:  $Branch
 Commit:  $Commit
 Sanitized data included: $IncludeSanitizedData
-Windows .venv included: $IncludeVenv
+Windows .venv included: True
 
 SOURCE FILE POLICY
 - Current working copies of Git-tracked files are included.
@@ -314,7 +313,7 @@ SOURCE FILE POLICY
 - Production .env, logs, media/private uploads, old ZIPs, and local DB files are not intentionally included.
 
 VIRTUAL ENVIRONMENT NOTE
-- If included, .venv is the LOCAL WINDOWS virtual environment.
+- .venv is the LOCAL WINDOWS virtual environment and is always included.
 - It is useful for Windows recovery/reproduction.
 - A Windows .venv cannot execute directly on Linux/macOS.
 - _chatgpt_export/requirements_full.txt is always included as the portable dependency record.
@@ -329,7 +328,6 @@ $($RecentCommits -join "`r`n")
 "@
     Set-Content -LiteralPath (Join-Path $MetaRoot "TMS_CHATGPT_HANDOFF.txt") -Value $Handoff -Encoding UTF8
 
-    if ($IncludeVenv) {
         Write-Step "[3] Copying Windows .venv (excluding caches only)"
         $SourceVenv = Join-Path $ProjectPath ".venv"
         $DestVenv = Join-Path $ExportRoot ".venv"
@@ -371,10 +369,6 @@ print(f".venv copied: {files} files, {size / (1024*1024):.2f} MB")
 '@
         $CopyVenvCode | & $Python - $SourceVenv $DestVenv
         if ($LASTEXITCODE -ne 0) { Fail "Virtual environment copy failed." }
-    }
-    else {
-        Write-Step "[3] Skipping .venv (requirements snapshot is still included)"
-    }
 
     if ($IncludeSanitizedData) {
         Write-Step "[4] Validating Docker/MySQL and reading Django DB credentials"
@@ -765,7 +759,7 @@ print("Project safety scan passed: no obvious API/private-key patterns found out
     Write-Host "BACKUP COMPLETE" -ForegroundColor Green
     Write-Host "File : $ZipPath" -ForegroundColor Green
     Write-Host "Size : $SizeMB MB"
-    Write-Host "Mode : $DataTag / $VenvTag"
+    Write-Host "Mode : $DataTag / VENV (always included)"
     Write-Host "Time : $TotalElapsed"
     if ($IncludeSanitizedData) {
         Write-Host "Test login: admin / $SharedDjangoPassword" -ForegroundColor Yellow

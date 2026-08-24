@@ -33,17 +33,17 @@ Unblock-File .\backup_tms_for_chatgpt.ps1
 
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
-.\backup_tms_for_chatgpt.ps1
 
-.\export_tms_sanitized_for_chatgpt.ps1
 cd E:\tenant_management_system
 
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\export_tms_sanitized_for_chatgpt.ps1
 
-# Project + .venv, NO database
-.\backup_tms_for_chatgpt.ps1 -DataMode No
 
-# Project + .venv + sanitized database
-.\backup_tms_for_chatgpt.ps1 -DataMode Yes
-h
+
+
+# Normal, smaller backup
+.\backup_tms_for_chatgpt.ps1 -VenvMode No
+
+# Disaster-recovery backup including the Windows environment
+.\backup_tms_for_chatgpt.ps1 -VenvMode Yes

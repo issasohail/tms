@@ -1,5 +1,22 @@
 {% load humanize %}
 
+<style>
+  .renewal-mobile-list { display:none; }
+  @media (max-width:767.98px) {
+    .renewal-desktop-table { display:none; }
+    .renewal-mobile-list { display:grid; gap:.6rem; padding:.65rem; }
+    .renewal-mobile-card { border:1px solid #e2e6ea; border-radius:.6rem; padding:.65rem; background:#fff; min-width:0; }
+    .renewal-mobile-top { display:flex; justify-content:space-between; align-items:flex-start; gap:.5rem; }
+    .renewal-mobile-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.45rem .75rem; margin-top:.55rem; }
+    .renewal-mobile-field { min-width:0; }
+    .renewal-mobile-field small { display:block; color:#6c757d; font-size:.65rem; text-transform:uppercase; }
+    .renewal-mobile-field strong { display:block; font-size:.78rem; overflow-wrap:anywhere; }
+    .renewal-mobile-wide { grid-column:1 / -1; }
+    .renewal-mobile-actions { display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.6rem; padding-top:.55rem; border-top:1px dashed #dee2e6; }
+    .renewal-mobile-actions .btn { font-size:.68rem; padding:.25rem .42rem; }
+  }
+</style>
+
 <div class="card mb-3">
   <div class="card-header bg-dark text-white py-2 px-3 d-flex justify-content-between align-items-center">
     <span>Lease Renewal History</span>
@@ -8,7 +25,7 @@
     </a>
   </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
+    <div class="table-responsive renewal-desktop-table">
       <table class="table table-sm table-striped align-middle mb-0">
         <thead>
           <tr>
@@ -75,6 +92,32 @@
           {% endfor %}
         </tbody>
       </table>
+    </div>
+    <div class="renewal-mobile-list">
+      {% for renewal in renewals %}
+        <article class="renewal-mobile-card">
+          <div class="renewal-mobile-top">
+            <div><strong>#{{ renewal.renewal_number }}</strong> {% if renewal.is_original %}<span class="badge bg-info text-dark">Original</span>{% else %}<span class="badge bg-secondary">Renewal</span>{% endif %}</div>
+            {% if renewal.is_agreement_signed %}<span class="badge bg-success">Signed</span>{% else %}<span class="badge bg-secondary">Pending</span>{% endif %}
+          </div>
+          <div class="renewal-mobile-grid">
+            <div class="renewal-mobile-field"><small>Start</small><strong>{{ renewal.start_date|date:"M d, Y" }}</strong></div>
+            <div class="renewal-mobile-field"><small>End</small><strong>{{ renewal.end_date|date:"M d, Y" }}</strong></div>
+            <div class="renewal-mobile-field"><small>Rent</small><strong>Rs {{ renewal.monthly_rent|floatformat:0|intcomma }}</strong></div>
+            <div class="renewal-mobile-field"><small>Total Monthly</small><strong>Rs {{ renewal.total_monthly_amount|floatformat:0|intcomma }}</strong></div>
+            <div class="renewal-mobile-field renewal-mobile-wide"><small>Files</small><strong>{% if renewal.generated_agreement_pdf %}<a href="{{ renewal.generated_agreement_pdf.url }}" target="_blank">PDF</a>{% endif %}{% if renewal.generated_agreement_docx %} <a href="{{ renewal.generated_agreement_docx.url }}" target="_blank">DOCX</a>{% endif %}{% if renewal.signed_copy %} <a href="{{ renewal.signed_copy.url }}" target="_blank">Signed</a>{% endif %}{% if not renewal.generated_agreement_pdf and not renewal.generated_agreement_docx and not renewal.signed_copy %}—{% endif %}</strong></div>
+          </div>
+          <div class="renewal-mobile-actions">
+            <a href="{% url 'leases:lease_history_detail' lease.pk renewal.pk %}" class="btn btn-outline-dark">View</a>
+            <a href="{% url 'leases:lease_history_edit' lease.pk renewal.pk %}" class="btn btn-outline-secondary">Edit</a>
+            <a href="{% url 'leases:edit_clauses' lease.pk %}?history={{ renewal.pk }}" class="btn btn-outline-success">Clauses</a>
+            <a href="{% url 'leases:renewal_agreement' lease.pk renewal.pk %}" class="btn btn-outline-primary">Generate PDF</a>
+            <a href="{% url 'leases:renewal_upload_signed' lease.pk renewal.pk %}" class="btn btn-outline-secondary">Upload Signed</a>
+          </div>
+        </article>
+      {% empty %}
+        <div class="text-muted p-2">No renewals recorded yet.</div>
+      {% endfor %}
     </div>
   </div>
 </div>

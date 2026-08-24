@@ -250,7 +250,7 @@
     </div>
     {% if deposit_transactions %}
     <div class="table-responsive">
-      <table class="table table-sm table-striped deposit-ledger-table mb-0">
+      <table class="table table-sm table-striped deposit-ledger-table ledger-mobile-cards mb-0">
         <thead>
           <tr>
             <th>Date</th>
@@ -264,12 +264,12 @@
         <tbody>
           {% for t in deposit_transactions %}
           <tr>
-            <td>{{ t.date|date:"M d, Y" }}</td>
-            <td>{{ t.type }}</td>
-            <td title="{{ t.description }}">{{ t.description }}</td>
-            <td class="text-end">{{ t.amount|intcomma }}</td>
-            <td class="text-end">{{ t.balance|intcomma }}</td>
-            <td class="text-center">
+            <td data-label="Date">{{ t.date|date:"M d, Y" }}</td>
+            <td data-label="Type">{{ t.type }}</td>
+            <td data-label="Description" title="{{ t.description }}">{{ t.description }}</td>
+            <td data-label="Amount" class="text-end">{{ t.amount|intcomma }}</td>
+            <td data-label="Deposit Balance" class="text-end">{{ t.balance|intcomma }}</td>
+            <td data-label="Actions" class="text-center">
               <div class="d-flex justify-content-center gap-1">
                 {% if t.obj.payment and t.obj.payment.detail %}
                 <a class="btn btn-success btn-slim"
@@ -309,17 +309,17 @@
   <div class="deposit-ledger-panel mt-2">
     <h5 class="section-title mb-2">Security Deposit Ledger Transfers</h5>
     <div class="table-responsive">
-      <table class="table table-sm mb-0">
+      <table class="table table-sm ledger-mobile-cards mb-0">
         <thead><tr><th>Date</th><th>Reference</th><th>Amount</th><th>Reason</th><th>Status</th><th class="no-print">Action</th></tr></thead>
         <tbody>
         {% for transfer in security_ledger_transfers %}
           <tr>
-            <td>{{ transfer.transaction_date|date:"M d, Y" }}</td>
-            <td>{{ transfer.reference }}</td>
-            <td>Rs. {{ transfer.amount|intcomma }}</td>
-            <td>{{ transfer.reason }}</td>
-            <td>{% if transfer.is_reversed %}<span class="badge bg-secondary">Reversed</span>{% else %}<span class="badge bg-primary">Transferred</span>{% endif %}</td>
-            <td class="no-print">
+            <td data-label="Date">{{ transfer.transaction_date|date:"M d, Y" }}</td>
+            <td data-label="Reference">{{ transfer.reference }}</td>
+            <td data-label="Amount">Rs. {{ transfer.amount|intcomma }}</td>
+            <td data-label="Reason">{{ transfer.reason }}</td>
+            <td data-label="Status">{% if transfer.is_reversed %}<span class="badge bg-secondary">Reversed</span>{% else %}<span class="badge bg-primary">Transferred</span>{% endif %}</td>
+            <td data-label="Action" class="no-print">
               {% if not transfer.is_reversed and perms.invoices.reverse_security_deposit_ledger_transfer %}
               <form method="post" action="{% url 'leases:lease_reverse_security_transfer' lease.id transfer.id %}" class="d-flex gap-1" onsubmit="return confirm('Reverse this security deposit ledger transfer?');">
                 {% csrf_token %}
@@ -366,7 +366,7 @@
   <div class="card">
     <div class="card-body">
       <div class="table-responsive">
-        <table class="table table-striped table-sm text-center align-middle compact-table mobile-tiny mobile-nowrap">
+        <table class="table table-striped table-sm text-center align-middle compact-table mobile-tiny ledger-mobile-cards">
           <thead>
             <tr>
               <th>#</th>
@@ -380,17 +380,17 @@
           <tbody>
             {% for t in transactions %}
             <tr{% if t.is_focused %} id="focused-payment-row" class="table-warning focused-payment-row"{% endif %}>
-              <td>{{ forloop.counter }}</td>
-              <td>{{ t.date|date:"M d, Y" }}</td>
-              <td>{{ t.type }}</td>
-              <td class="desc-col" title="{{ t.description }}">{{ t.description }}</td>
-              <td class="{% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+              <td data-label="#">{{ forloop.counter }}</td>
+              <td data-label="Date">{{ t.date|date:"M d, Y" }}</td>
+              <td data-label="Type">{{ t.type }}</td>
+              <td data-label="Description" class="desc-col" title="{{ t.description }}">{{ t.description }}</td>
+              <td data-label="Amount" class="{% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                 <a href="{{ t.url }}"
                   class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                   {{ t.amount|intcomma }}
                 </a>
               </td>
-              <td>{{ t.balance|intcomma }}</td>
+              <td data-label="Balance">{{ t.balance|intcomma }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -945,8 +945,54 @@
     .deposit-summary-item strong { margin-left:auto; white-space:nowrap; }
     .deposit-ledger-panel > .d-flex { align-items:flex-start !important; flex-wrap:wrap; }
     .deposit-ledger-panel > .d-flex > .d-flex { width:100%; flex-wrap:wrap; }
-    .deposit-ledger-table { min-width:700px; }
-    .compact-table.mobile-tiny { min-width:520px; }
+    .deposit-section .table-responsive,
+    .card-body > .table-responsive { overflow-x:visible; }
+    .ledger-mobile-cards,
+    .ledger-mobile-cards tbody {
+      display:block;
+      width:100%;
+      min-width:0 !important;
+    }
+    .ledger-mobile-cards thead { display:none; }
+    .ledger-mobile-cards tr {
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:.35rem .65rem;
+      margin-bottom:.65rem;
+      padding:.65rem;
+      border:1px solid #dee2e6;
+      border-radius:.55rem;
+      background:#fff;
+    }
+    .ledger-mobile-cards tr:last-child { margin-bottom:0; }
+    .ledger-mobile-cards td,
+    .ledger-mobile-cards td.desc-col {
+      display:block !important;
+      width:auto !important;
+      min-width:0 !important;
+      padding:0 !important;
+      border:0 !important;
+      text-align:left !important;
+      white-space:normal !important;
+      overflow-wrap:anywhere;
+      font-size:.76rem !important;
+    }
+    .ledger-mobile-cards td::before {
+      content:attr(data-label);
+      display:block;
+      margin-bottom:.08rem;
+      color:#6c757d;
+      font-size:.62rem;
+      font-weight:700;
+      letter-spacing:.025em;
+      text-transform:uppercase;
+    }
+    .ledger-mobile-cards td[data-label="Description"],
+    .ledger-mobile-cards td[data-label="Actions"] { grid-column:1 / -1; }
+    .ledger-mobile-cards td[data-label="Actions"] .d-flex {
+      justify-content:flex-start !important;
+      flex-wrap:wrap;
+    }
     .ledger-total-box { width:100%; max-width:none; margin-top:.5rem; }
     .mobile-heading { display:block; }
     .mobile-heading h6 { overflow-wrap:anywhere; }

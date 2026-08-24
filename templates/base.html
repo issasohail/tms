@@ -733,20 +733,29 @@
 
           const row = document.createElement('div');
           row.className = 'tms-cnic-ocr-row';
+          const leaseDocumentCard = input.closest('.lf-identity-doc-card');
+          const leaseDocumentHeader = leaseDocumentCard?.querySelector('.lf-card-head');
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'btn btn-outline-primary btn-sm';
-          button.innerHTML = '<i class="fas fa-id-card me-1"></i> Read CNIC Details';
-          button.title = 'Re-read both CNIC sides. Automatic OCR fills blank fields only.';
+          button.innerHTML = '<i class="fas fa-id-card me-1"></i> ' + (leaseDocumentHeader ? 'Read CNIC' : 'Read CNIC Details');
+          button.title = 'Read CNIC details from the uploaded images.';
           const status = document.createElement('span');
           status.className = 'tms-cnic-ocr-status';
-          status.textContent = 'Upload both sides; blank fields will fill automatically.';
+          status.textContent = leaseDocumentHeader ? '' : 'Upload both sides; blank fields will fill automatically.';
           row.append(button, status);
-          const wrappingLabel = input.closest('label');
-          if (wrappingLabel && wrappingLabel.contains(input)) {
-            wrappingLabel.insertAdjacentElement('afterend', row);
+          if (leaseDocumentHeader) {
+            row.classList.add('tms-cnic-ocr-row-header');
+            const title = leaseDocumentHeader.querySelector('.lf-card-title');
+            if (title) title.insertAdjacentElement('afterend', row);
+            else leaseDocumentHeader.appendChild(row);
           } else {
-            input.insertAdjacentElement('afterend', row);
+            const wrappingLabel = input.closest('label');
+            if (wrappingLabel && wrappingLabel.contains(input)) {
+              wrappingLabel.insertAdjacentElement('afterend', row);
+            } else {
+              input.insertAdjacentElement('afterend', row);
+            }
           }
 
           async function readCnic() {

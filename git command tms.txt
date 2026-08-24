@@ -37,8 +37,13 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 .\export_tms_sanitized_for_chatgpt.ps1
 cd E:\tenant_management_system
+
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\export_tms_sanitized_for_chatgpt.ps1
 
+# Project + .venv, NO database
+.\backup_tms_for_chatgpt.ps1 -DataMode No
 
-git apply E:\tenant_management_system\tms_performance_optimization_2026-08-17.patch
+# Project + .venv + sanitized database
+.\backup_tms_for_chatgpt.ps1 -DataMode Yes
+h

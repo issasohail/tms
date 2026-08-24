@@ -465,7 +465,8 @@
     .action-sep { height: 16px; }
   }
 
-  /* Tablet and mobile: description receives the full content width; amount sits below it. */
+  /* Tablet and mobile: category/description, amount and actions share the first row.
+     Long descriptions wrap naturally below the amount without adding an amount-only row. */
   @media (max-width: 767.98px) {
     .table-responsive { overflow-x: visible; }
     .invoice-items-table,
@@ -473,22 +474,22 @@
     .invoice-items-table thead { display: none; }
     .invoice-items-table tr.item-row {
       display: grid;
-      grid-template-columns: 26px minmax(0, 1fr) 38px;
-      grid-template-areas:
-        "sn details actions"
-        "sn amount actions";
+      grid-template-columns: 26px minmax(0, 1fr) minmax(82px, auto) 42px;
+      grid-template-areas: "sn details amount actions";
       border-bottom: 1px solid rgba(0,0,0,.12);
     }
     .invoice-items-table tr.item-row > td { border: 0; }
     .invoice-items-table tr.item-row > td:first-child { grid-area: sn; padding-top: .45rem; }
     .invoice-items-table tr.item-row > td.cell-cat-desc {
       grid-area: details;
-      padding: .45rem .35rem .5rem;
+      padding: .45rem .25rem .5rem;
+      min-width: 0;
     }
     .invoice-items-table tr.item-row > td.text-end {
       grid-area: amount;
-      padding: .55rem .35rem;
-      border-top: 1px solid rgba(0,0,0,.10);
+      padding: .45rem .2rem;
+      border-top: 0;
+      align-self: start;
     }
     .invoice-items-table tr.item-row > td.item-actions {
       grid-area: actions;
@@ -496,6 +497,9 @@
       text-align: center;
     }
     .cell-cat-desc { --category-share: 30%; }
+    .cat-desc-view { display:block; min-width:0; overflow-wrap:anywhere; }
+    .category-view { display:inline; margin-right:.25rem; }
+    .desc-view { display:inline; overflow-wrap:anywhere; }
     .desc-view { font-size: .74rem; line-height: 1.2; }
   }
 

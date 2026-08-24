@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}New Suggestion / Report Error{% endblock %}
 {% block content %}
+<style>
+  .suggestion-photo-preview { display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:.5rem; margin-top:.5rem; }
+  .suggestion-photo-preview figure { margin:0; min-width:0; }
+  .suggestion-photo-preview img { width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #dee2e6; border-radius:.45rem; }
+  .suggestion-photo-preview figcaption { font-size:.68rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  @media (max-width:575.98px) { .card-body { padding:.75rem; } input[name="photos"] { font-size:.82rem; } }
+</style>
 <div class="card shadow-sm">
   <div class="card-header d-flex justify-content-between align-items-center">
     <h5 class="mb-0">New Suggestion / Report Error</h5>
@@ -34,6 +41,7 @@
           <label class="form-label">Photos / Screenshots</label>
           <div id="photoUploadAlert" class="alert alert-danger py-2 d-none" role="alert"></div>
           <input type="file" name="photos" class="form-control" multiple accept="image/*">
+          <div class="suggestion-photo-preview" id="suggestionPhotoPreview" aria-live="polite"></div>
           <div class="form-text">You can upload multiple screenshots.</div>
         </div>
       </div>
@@ -46,6 +54,22 @@
 </div>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+  const photos = document.querySelector('input[type="file"][name="photos"]');
+  const photoPreview = document.getElementById("suggestionPhotoPreview");
+  if (photos && photoPreview) photos.addEventListener("change", function () {
+    photoPreview.replaceChildren();
+    Array.from(photos.files || []).forEach(function (file) {
+      const figure = document.createElement("figure");
+      const img = document.createElement("img");
+      const caption = document.createElement("figcaption");
+      img.alt = file.name;
+      img.src = URL.createObjectURL(file);
+      img.onload = function () { URL.revokeObjectURL(img.src); };
+      caption.textContent = file.name;
+      figure.append(img, caption);
+      photoPreview.appendChild(figure);
+    });
+  });
   const description = document.querySelector("textarea[name='description']");
   if (!description) return;
 

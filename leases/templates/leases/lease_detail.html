@@ -249,6 +249,8 @@
 .ld-act-d  { font-size:11px; color:#6b7280; }
 .ld-act-l  { color:#111827; }
 .ld-act-a  { font-weight:600; white-space:nowrap; }
+.ld-act-link { color:inherit; text-decoration:none; min-width:0; }
+.ld-act-link:hover .ld-act-l, .ld-act-link:focus .ld-act-l { text-decoration:underline; }
 .ld-act-sn { font-size:11px; font-weight:700; color:#9ca3af; flex-shrink:0; }
 
 /* ---- tables ---- */
@@ -1416,6 +1418,23 @@
           </div>
         </div>
 
+        <div class="ld-inner-card mt-2">
+          <div class="ld-inner-head">
+            <span>Vehicle &amp; Motorcycle Parking</span>
+            <a href="{% url 'leases:parking_manage' 'lease' lease.pk %}" class="btn btn-sm btn-outline-primary no-print">Manage</a>
+          </div>
+          <div class="ld-inner-body small">
+            <strong>{% if parking_enabled %}Enabled{% else %}Disabled{% endif %}</strong>
+            &middot; Rs. {{ parking_monthly_rate|floatformat:0 }}/month
+            &middot; Rs. {{ parking_penalty|floatformat:0 }} penalty
+            {% for allocation in parking_allocations %}
+              <div class="mt-1"><span class="badge bg-success">{{ allocation.parking_space.label }}</span> Rs. {{ allocation.monthly_rate|floatformat:0 }}/month</div>
+            {% empty %}
+              <div class="text-muted mt-1">No reserved parking space assigned.</div>
+            {% endfor %}
+          </div>
+        </div>
+
         {% if pending_vehicle_count %}
         <div class="ld-inner-card collapse" id="pendingVehicleSubmissionCard">
           <div class="ld-inner-head">Pending Vehicle Submissions</div>
@@ -1496,13 +1515,13 @@
             <div class="ld-inner-body">
               {% if recent_payments %}
                 {% for p in recent_payments %}
-                  <div class="ld-act">
+                  <a class="ld-act ld-act-link" href="{% url 'payments:payment_detail' p.pk %}">
                     <div class="d-flex align-items-baseline gap-2">
                       <span class="ld-act-sn">{{ forloop.counter }}.</span>
                       <div><div class="ld-act-d">{{ p.payment_date }}</div><div class="ld-act-l">{{ p.reference_number|default:"Payment" }}</div></div>
                     </div>
                     <div class="ld-act-a" style="color:#15803d;">{{ p.amount|money:0 }}</div>
-                  </div>
+                  </a>
                 {% endfor %}
               {% else %}
                 <div class="ld-empty">No payments yet.</div>
@@ -1514,13 +1533,13 @@
             <div class="ld-inner-body">
               {% if invoices %}
                 {% for inv in invoices %}
-                  <div class="ld-act">
+                  <a class="ld-act ld-act-link" href="{% url 'invoices:invoice_detail' inv.pk %}">
                     <div class="d-flex align-items-baseline gap-2">
                       <span class="ld-act-sn">{{ forloop.counter }}.</span>
                       <div><div class="ld-act-d">{{ inv.issue_date }}</div><div class="ld-act-l">{{ inv.description|default:"Invoice" }}</div></div>
                     </div>
                     <div class="ld-act-a" style="color:#dc2626;">{{ inv.amount|money:0 }}</div>
-                  </div>
+                  </a>
                 {% endfor %}
               {% else %}
                 <div class="ld-empty">No invoices yet.</div>
@@ -1784,8 +1803,8 @@
 </div>
 {% endif %}
 
-<div class="row g-3 mb-3">
-  <div class="col-lg-7">
+<div class="row g-3 mb-3 ld-detail-summary-cards">
+  <div class="col-12 col-xl-6">
     <div class="card h-100">
       <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <strong>Lease Inventory</strong>
@@ -1818,10 +1837,30 @@
       </div>
     </div>
   </div>
-  <div class="col-lg-5">
+  <div class="col-12 col-md-6 col-xl-3">
     <div class="card h-100">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center"><strong>Motorcycle Parking</strong><a href="{% url 'leases:parking_manage' 'lease' lease.pk %}" class="btn btn-sm btn-outline-primary">Manage</a></div>
-      <div class="card-body py-2 small"><strong>{% if parking_enabled %}Enabled{% else %}Disabled{% endif %}</strong> &middot; Rs. {{ parking_monthly_rate|floatformat:0 }}/month &middot; Rs. {{ parking_penalty|floatformat:0 }} penalty{% for allocation in parking_allocations %}<div class="mt-1"><span class="badge bg-success">{{ allocation.parking_space.label }}</span> Rs. {{ allocation.monthly_rate|floatformat:0 }}/month</div>{% endfor %}</div>
+      <div class="card-header py-2"><strong>Recent Invoices</strong></div>
+      <div class="card-body py-1 px-2 small">
+        {% for inv in recent_invoices %}
+          <a href="{% url 'invoices:invoice_detail' inv.pk %}" class="ld-act ld-act-link">
+            <span><span class="ld-act-sn">{{ forloop.counter }}.</span> <span class="ld-act-d">{{ inv.issue_date|date:'M d, Y' }}</span><br><span class="ld-act-l">{{ inv.description|default:'Invoice'|truncatechars:28 }}</span></span>
+            <span class="ld-act-a text-danger">{{ inv.amount|money:0 }}</span>
+          </a>
+        {% empty %}<div class="ld-empty">No invoices yet.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card h-100">
+      <div class="card-header py-2"><strong>Recent Payments</strong></div>
+      <div class="card-body py-1 px-2 small">
+        {% for p in recent_payments %}
+          <a href="{% url 'payments:payment_detail' p.pk %}" class="ld-act ld-act-link">
+            <span><span class="ld-act-sn">{{ forloop.counter }}.</span> <span class="ld-act-d">{{ p.payment_date|date:'M d, Y' }}</span><br><span class="ld-act-l">{{ p.reference_number|default:'Payment'|truncatechars:28 }}</span></span>
+            <span class="ld-act-a text-success">{{ p.amount|money:0 }}</span>
+          </a>
+        {% empty %}<div class="ld-empty">No payments yet.</div>{% endfor %}
+      </div>
     </div>
   </div>
 </div>

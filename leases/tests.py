@@ -130,6 +130,68 @@ class AuthorizedOccupantsPlaceholderTests(TestCase):
         self.assertNotIn("{{authorized_occupants_table}}", rendered)
 
 
+class CurrentRenewalMasterSyncTests(SimpleTestCase):
+    def test_syncs_only_changed_financial_fields_to_current_renewal(self):
+        from decimal import Decimal
+
+        from leases.views import _sync_current_renewal_from_lease
+
+        renewal = SimpleNamespace(
+            monthly_rent=Decimal("12000.00"),
+            security_deposit=Decimal("18000.00"),
+            save=Mock(),
+        )
+        active_qs = Mock()
+        active_qs.order_by.return_value.first.return_value = renewal
+        renewals = Mock()
+        renewals.filter.return_value = active_qs
+        lease = SimpleNamespace(
+            monthly_rent=Decimal("15000.00"),
+            security_deposit=Decimal("22000.00"),
+            renewals=renewals,
+        )
+
+        count = _sync_current_renewal_from_lease(
+            lease,
+            changed_fields={"monthly_rent", "security_deposit"},
+        )
+
+        self.assertEqual(count, 1)
+        self.assertEqual(renewal.monthly_rent, Decimal("15000.00"))
+        self.assertEqual(renewal.security_deposit, Decimal("22000.00"))
+        saved_fields = renewal.save.call_args.kwargs["update_fields"]
+        self.assertIn("monthly_rent", saved_fields)
+        self.assertIn("security_deposit", saved_fields)
+
+    def test_does_not_change_fields_not_edited_on_master_form(self):
+        from decimal import Decimal
+
+        from leases.views import _sync_current_renewal_from_lease
+
+        renewal = SimpleNamespace(
+            monthly_rent=Decimal("12000.00"),
+            security_deposit=Decimal("18000.00"),
+            save=Mock(),
+        )
+        active_qs = Mock()
+        active_qs.order_by.return_value.first.return_value = renewal
+        renewals = Mock()
+        renewals.filter.return_value = active_qs
+        lease = SimpleNamespace(
+            monthly_rent=Decimal("15000.00"),
+            security_deposit=Decimal("22000.00"),
+            renewals=renewals,
+        )
+
+        _sync_current_renewal_from_lease(
+            lease,
+            changed_fields={"monthly_rent"},
+        )
+
+        self.assertEqual(renewal.monthly_rent, Decimal("15000.00"))
+        self.assertEqual(renewal.security_deposit, Decimal("18000.00"))
+
+
 class LeaseInventorySynchronizationTests(TestCase):
     def setUp(self):
         from datetime import date, timedelta

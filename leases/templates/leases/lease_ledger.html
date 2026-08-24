@@ -933,6 +933,24 @@
     background: #ffffff !important;
     padding: 16px !important;
   }
+
+  @media (max-width: 767.98px) {
+    .deposit-section { display:block; min-width:0; }
+    .deposit-summary-panel, .deposit-ledger-panel { width:100%; min-width:0; }
+    .deposit-summary-row { display:grid; grid-template-columns:1fr; gap:0; }
+    .deposit-summary-item {
+      display:flex; justify-content:space-between; align-items:center; gap:.75rem;
+      width:100%; padding:.45rem .6rem; border-bottom:1px solid #e5e7eb;
+    }
+    .deposit-summary-item strong { margin-left:auto; white-space:nowrap; }
+    .deposit-ledger-panel > .d-flex { align-items:flex-start !important; flex-wrap:wrap; }
+    .deposit-ledger-panel > .d-flex > .d-flex { width:100%; flex-wrap:wrap; }
+    .deposit-ledger-table { min-width:700px; }
+    .compact-table.mobile-tiny { min-width:520px; }
+    .ledger-total-box { width:100%; max-width:none; margin-top:.5rem; }
+    .mobile-heading { display:block; }
+    .mobile-heading h6 { overflow-wrap:anywhere; }
+  }
 </style>
 {% endblock %}
 

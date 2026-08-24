@@ -35,6 +35,7 @@
   }
   .ticket-card-title:hover { color: #1a1a1a; text-decoration: underline; }
   .ticket-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
+  .ticket-card-top-actions { display:flex; align-items:flex-start; flex:0 0 auto; gap:.35rem; }
   .ticket-card-sn { font-size: .8rem; color: #000; font-weight: 800; margin-right: .35rem; }
   .ticket-card-title-wrap { display: flex; align-items: flex-start; min-width: 0; }
   .ticket-card-meta {
@@ -44,6 +45,10 @@
   .ticket-card-meta-left { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: .6rem; min-width: 0; }
   .ticket-card-meta .btn { padding: .25rem .5rem; font-size: .85rem; line-height: 1; }
   .ticket-card-meta .js-ticket-delete { flex: 0 0 auto; margin-left: auto; }
+  .suggestion-photo-preview { display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:.5rem; margin-top:.5rem; }
+  .suggestion-photo-preview figure { margin:0; min-width:0; }
+  .suggestion-photo-preview img { display:block; width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #dee2e6; border-radius:.45rem; }
+  .suggestion-photo-preview figcaption { font-size:.68rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:.15rem; }
   @media (max-width: 999.98px) {
     .ticket-table-card { display: none; }
     .ticket-cards { display: block; }
@@ -153,6 +158,7 @@
             <span class="ticket-card-sn">#{{ forloop.counter }}</span>
             <a href="{% url 'core:suggestion_detail' t.id %}" class="ticket-card-title">{{ t.title }}</a>
           </div>
+          <div class="ticket-card-top-actions">
           {% if request.user.is_staff or request.user.is_superuser %}
             <span class="badge bg-secondary ticket-status-badge" role="button" tabindex="0"
                   data-ticket-id="{{ t.id }}" data-status="{{ t.status }}"
@@ -160,6 +166,11 @@
           {% else %}
             <span class="badge bg-secondary">{{ t.get_status_display }}</span>
           {% endif %}
+          {% if request.user.is_staff or request.user.is_superuser or t.user_name_snapshot == request.user.get_username %}
+            <button type="button" class="btn btn-outline-danger btn-sm js-ticket-delete" aria-label="Delete"
+                    data-url="{% url 'core:suggestion_delete' t.id %}"><i class="bi bi-trash"></i></button>
+          {% endif %}
+          </div>
         </div>
         <div class="ticket-card-meta">
           <div class="ticket-card-meta-left">
@@ -167,10 +178,6 @@
             <span>{{ t.user_name_snapshot }}</span>
             <span class="js-ticket-date" data-created="{{ t.created_at|default:'' }}"></span>
           </div>
-          {% if request.user.is_staff or request.user.is_superuser or t.user_name_snapshot == request.user.get_username %}
-            <button type="button" class="btn btn-outline-danger btn-sm js-ticket-delete" aria-label="Delete"
-                    data-url="{% url 'core:suggestion_delete' t.id %}"><i class="bi bi-trash"></i></button>
-          {% endif %}
         </div>
       </div>
     {% empty %}
@@ -222,6 +229,7 @@
               <label class="form-label">Photos / Screenshots</label>
               <div id="newTicketPhotoAlert" class="alert alert-danger py-2 d-none" role="alert"></div>
               <input type="file" name="photos" class="form-control" multiple accept="image/*">
+              <div class="suggestion-photo-preview" data-photo-preview aria-live="polite"></div>
             </div>
           </div>
         </div>
@@ -251,6 +259,25 @@ function suggestionGetCookie(name) {
 }
 
 const TICKET_STATUS_CHOICES = JSON.parse(document.getElementById("ticket-status-choices").textContent);
+
+document.querySelectorAll('input[type="file"][name="photos"]').forEach(function (input) {
+  input.addEventListener("change", function () {
+    const preview = input.parentElement.querySelector("[data-photo-preview]");
+    if (!preview) return;
+    preview.replaceChildren();
+    Array.from(input.files || []).forEach(function (file) {
+      const figure = document.createElement("figure");
+      const img = document.createElement("img");
+      const caption = document.createElement("figcaption");
+      img.alt = file.name;
+      img.src = URL.createObjectURL(file);
+      img.onload = function () { URL.revokeObjectURL(img.src); };
+      caption.textContent = file.name;
+      figure.append(img, caption);
+      preview.appendChild(figure);
+    });
+  });
+});
 
 function formatTicketDate(raw) {
   if (!raw) return "-";

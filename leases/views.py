@@ -3441,10 +3441,12 @@ def record_security_paid_from_lease_form(lease):
     )
 
 
-def _sync_current_renewal_end_date(lease, *, user=None):
+def _sync_current_renewal_from_lease(lease, *, changed_fields=None, user=None):
     """
-    Keep the active/current renewal history row aligned when the master lease
-    end date is edited directly from the lease form.
+    Keep the active/current renewal history row aligned when master lease
+    financial or period fields are edited directly from the lease form.
+
+    Completed historical rows are deliberately left unchanged.
     """
     today = timezone.localdate()
     renewal = (
@@ -3457,13 +3459,31 @@ def _sync_current_renewal_end_date(lease, *, user=None):
     if renewal is None:
         return 0
 
+    syncable_fields = {
+        "start_date",
+        "end_date",
+        "lease_months",
+        "agreement_date",
+        "monthly_rent",
+        "society_maintenance",
+        "water_charges",
+        "bill_water_charges",
+        "bill_recurring_charges",
+        "internet_charges",
+        "agreement_charges",
+        "security_deposit",
+        "rent_increase_percent",
+        "witness1_tenant",
+        "witness2_tenant",
+        "terms",
+    }
+    requested = syncable_fields.intersection(changed_fields or syncable_fields)
     update_fields = []
-    if renewal.end_date != lease.end_date:
-        renewal.end_date = lease.end_date
-        update_fields.append("end_date")
-    if renewal.lease_months != lease.lease_months:
-        renewal.lease_months = lease.lease_months
-        update_fields.append("lease_months")
+    for field in requested:
+        value = getattr(lease, field, None)
+        if getattr(renewal, field, None) != value:
+            setattr(renewal, field, value)
+            update_fields.append(field)
     if not update_fields:
         return 0
     if user and getattr(user, "is_authenticated", False):
@@ -3791,8 +3811,17 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
 
         family_fs.instance = self.object
         family_fs.save()
+        # The master fields are the user's intended values. Renewal form rows
+        # are also present on this page and can otherwise overwrite those
+        # edits with their stale pre-submit values.
+        master_changed_fields = set(form.changed_data)
         renewal_fs.instance = self.object
         renewal_fs.save()
+        renewal_sync_count = _sync_current_renewal_from_lease(
+            self.object,
+            changed_fields=master_changed_fields,
+            user=self.request.user,
+        )
         active_history = self.object.renewals.order_by(
             "-renewal_number", "-id"
         ).first()
@@ -3816,10 +3845,6 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
                 f"{attached_vehicle_count} pending vehicle submission(s) linked to this lease.",
             )
         self._handle_quick_add(self.object)
-        renewal_sync_count = _sync_current_renewal_end_date(
-            self.object,
-            user=self.request.user,
-        )
         recurring_sync_count = _sync_lease_recurring_charge_end_dates(self.object)
 
         # ---------- STEP 4: SECURITY LEDGER ADJUSTMENT ----------
@@ -3885,7 +3910,7 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
 
         sync_bits = []
         if renewal_sync_count:
-            sync_bits.append("current renewal end date")
+            sync_bits.append("current renewal financial/period values")
         if recurring_sync_count:
             sync_bits.append(f"{recurring_sync_count} recurring charge date(s)")
         sync_note = f" Synced {', '.join(sync_bits)}." if sync_bits else ""
@@ -4179,6 +4204,11 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 "recent_payments": sorted(
                     list(lease.payments.all()),
                     key=lambda payment: payment.payment_date,
+                    reverse=True,
+                )[:5],
+                "recent_invoices": sorted(
+                    list(lease.invoices.all()),
+                    key=lambda invoice: (invoice.issue_date, invoice.pk),
                     reverse=True,
                 )[:5],
                 "invoices": sorted(

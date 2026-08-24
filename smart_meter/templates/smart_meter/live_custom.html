@@ -883,6 +883,46 @@
       btn.dataset.status = isOn ? "ON" : "OFF";
     });
   }
+
+  function setRelayWorkflowState(tr, reading) {
+    const confirmed = !!reading.relay_confirmed;
+    const state = (reading.power_status || '').toLowerCase();
+    tr.querySelectorAll('.relay-action[data-action="on"]').forEach(btn => {
+      btn.disabled = confirmed && state === 'on';
+    });
+    tr.querySelectorAll('.relay-action[data-action="off"]').forEach(btn => {
+      btn.disabled = confirmed && state === 'off';
+    });
+
+    const status = reading.relay_command_status || '';
+    const desired = reading.relay_command_desired_state || '';
+    const operation = desired === 'on' ? 'Restoring…' : 'Connecting…';
+    if (['new', 'pending', 'waiting_online', 'claimed', 'sent'].includes(status)) {
+      setRowOperationStatus(tr, operation, 'is-working');
+    } else if (status === 'acknowledged') {
+      setRowOperationStatus(tr, operation, 'is-working');
+    } else if (['failed', 'error', 'timeout', 'expired'].includes(status)) {
+      setRowOperationStatus(tr, 'Failed', 'is-error');
+    } else {
+      setRowOperationStatus(tr, '', '');
+    }
+
+    tr.querySelectorAll('.mobile-confirmed-at').forEach(el => {
+      if (status === 'acknowledged') {
+        el.textContent = 'Acknowledged, not verified';
+      } else if (['new', 'pending', 'waiting_online', 'claimed', 'sent'].includes(status)) {
+        el.textContent = 'Command pending';
+      } else if (['failed', 'error', 'timeout', 'expired'].includes(status)) {
+        el.textContent = reading.relay_command_error || 'Command failed';
+      } else if (confirmed && reading.relay_confirmed_at) {
+        const confirmedAt = new Date(reading.relay_confirmed_at);
+        const stale = (Date.now() - confirmedAt.getTime()) > ({{ online_minutes }} * 60000);
+        el.textContent = `${stale ? 'Stale confirmation' : 'Confirmed'} ${confirmedAt.toLocaleString()}`;
+      } else {
+        el.textContent = 'Unknown relay status';
+      }
+    });
+  }
   function flashCell(td) {
     if (!td) return;
     td.classList.remove("cell-changed");   // restart animation
@@ -979,6 +1019,7 @@
 
         setRowOnlineState(tr, r.is_online);
         setRowPowerState(tr, r.power_status);
+        setRelayWorkflowState(tr, r);
 
         setCell(tr, "source_ip", r.source_ip);
         setCell(tr, "port", r.port);
@@ -1095,6 +1136,15 @@
     el.textContent = text || '';
   }
 
+  function setRowOperationStatus(row, text, state = '') {
+    if (!row) return;
+    row.querySelectorAll('.power-operation-status').forEach(el => {
+      el.className = `power-operation-status ${state}`.trim();
+      el.textContent = text || '';
+      el.hidden = !text;
+    });
+  }
+
   /* Power toggle helpers */
   function setOnlineBadge(badge, state) {
     if (!badge) return;
@@ -1109,17 +1159,6 @@
     if (isOn) { badge.classList.add('bg-success'); badge.textContent = 'ON'; }
     else { badge.classList.add('bg-danger'); badge.textContent = 'OFF'; }
   }
-  async function pollOnline(statusUrl, tries = [0, 2000, 5000, 10000, 20000]) {
-    for (let i = 0; i < tries.length; i++) {
-      if (tries[i] > 0) await new Promise(r => setTimeout(r, tries[i]));
-      try {
-        const res = await fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-        const data = await res.json();
-        if (data && data.online === true) return true;
-      } catch { }
-    }
-    return false;
-  }
   function getCookie(name) {
     const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
     return m ? decodeURIComponent(m[2]) : null;
@@ -1127,20 +1166,22 @@
 
   let _headingMsgClearTimer = null;
 
-  async function togglePower(btn) {
+  async function requestRelayAction(btn) {
     if (_headingMsgClearTimer) { clearTimeout(_headingMsgClearTimer); _headingMsgClearTimer = null; }
 
     const row = btn.closest('[data-meter-row]') || btn.closest('tr') || document;
-    const onlineEl = row.querySelector('.online-badge');   /* finds the one in mobile-actions */
-    const powerEl = row.querySelector('.power-badge');    /* finds the one in mobile-actions */
-
-    const isOff = (btn.dataset.status || 'OFF').toUpperCase() === 'OFF';
-    const url = isOff ? btn.dataset.restoreUrl : btn.dataset.cutoffUrl;
-    const nextIsOn = isOff;
+    const desiredState = btn.dataset.action;
+    const isOnAction = desiredState === 'on';
+    const url = btn.dataset.url;
     const unitNumber = btn.dataset.unitNumber || '';
-    const statusUrl = btn.dataset.statusUrl;
+    const actionLabel = isOnAction ? 'Restoring…' : 'Connecting…';
+    const confirmation = isOnAction
+      ? `Turn ON / close the circuit for ${unitNumber}?`
+      : `Turn OFF / open the circuit for ${unitNumber}?`;
+    if (!window.confirm(confirmation)) return;
 
-    setHeaderMsg(`${isOff ? 'Turning ON' : 'Turning OFF'} power for unit ${unitNumber}…`, 'text-warning', true);
+    setHeaderMsg(`${isOnAction ? 'Turning ON' : 'Turning OFF'} power for unit ${unitNumber}…`, 'text-warning', true);
+    setRowOperationStatus(row, actionLabel, 'is-working');
 
     btn.disabled = true;
     try {
@@ -1157,33 +1198,20 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) throw new Error(data.error || 'Request failed');
 
-      setPowerBadge(powerEl, nextIsOn);
-      row.querySelectorAll('.power-toggle').forEach(b => b.dataset.status = nextIsOn ? 'ON' : 'OFF');
-
-      setHeaderMsg(`Power ${nextIsOn ? 'ON (restored)' : 'OFF (cut)'} for unit ${unitNumber}`, nextIsOn ? 'text-success' : 'text-danger');
+      setHeaderMsg(`Relay command acknowledged for unit ${unitNumber}; awaiting physical verification`, 'text-warning', true);
+      setRowOperationStatus(row, actionLabel, 'is-working');
       _headingMsgClearTimer = setTimeout(() => setHeaderMsg('', 'text-muted', false), 6000);
-
-      if (nextIsOn) {
-        setOnlineBadge(onlineEl, 'pending');
-        if (statusUrl) {
-          const ok = await pollOnline(statusUrl);
-          setOnlineBadge(onlineEl, ok ? 'online' : 'offline');
-        } else {
-          setOnlineBadge(onlineEl, 'offline');
-        }
-      } else {
-        setOnlineBadge(onlineEl, 'offline');
-      }
     } catch (e) {
-      setHeaderMsg(`Error toggling power for unit ${unitNumber}: ${e.message || 'Request failed'}`, 'text-danger');
+      setHeaderMsg(`Relay command failed for unit ${unitNumber}: ${e.message || 'Request failed'}`, 'text-danger');
+      setRowOperationStatus(row, 'Failed', 'is-error');
     } finally {
       btn.disabled = false;
     }
   }
 
   document.addEventListener('click', (e) => {
-    const btn = e.target.closest('.power-toggle');
-    if (btn) togglePower(btn);
+    const btn = e.target.closest('.relay-action');
+    if (btn) requestRelayAction(btn);
   });
 
   /* Init */
@@ -1659,6 +1687,44 @@
           {% with m=r.meter u=r.meter.unit p=r.meter.unit.property %}
           <tr class="row-{% if r.is_online %}online{% else %}offline{% endif %}" data-meter-row
             data-meter-id="{{ m.id }}">
+            <td class="mobile-meter-card-v2" colspan="17">
+              <div class="mobile-line mobile-line-one">
+                <div class="mobile-location"><span class="mobile-serial">{{ forloop.counter }}</span><span>{{ p.property_name|slice:":8" }}</span></div>
+                <div class="mobile-balance">{{ CURRENCY_SYMBOL }} {{ r.balance|default:"0.00" }}</div>
+                <a href="{% url 'smart_meter:meter_detail' m.id %}" class="mobile-meter-number live-detail-link">{{ m.meter_number }}</a>
+              </div>
+              <div class="mobile-line mobile-line-two">
+                <div class="mobile-unit-name">{{ m.display_location_name|default:"" }}</div>
+                <span class="power-operation-status mobile-operation" role="status" aria-live="polite" {% if not r.latest_relay_command or r.latest_relay_command.status == 'verified' %}hidden{% endif %}>
+                  {% if r.latest_relay_command.desired_state == 'on' %}Restoring…{% elif r.latest_relay_command %}Connecting…{% endif %}
+                </span>
+                <div class="mobile-state-badges">
+                  <span class="badge rounded-pill online-badge {% if r.is_online %}bg-success{% else %}bg-secondary{% endif %}">{% if r.is_online %}Online{% else %}Offline{% endif %}</span>
+                  <span class="badge rounded-pill power-badge {% if m.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">{% if m.power_status|lower == 'on' %}ON{% else %}OFF{% endif %}</span>
+                </div>
+              </div>
+              <div class="mobile-line mobile-line-three">
+                <div class="mobile-full-tenant">{% if r.tenant_id %}<a href="{% url 'tenants:tenant_detail' r.tenant_id %}" class="live-detail-link">{{ r.tenant_name|default:"Vacant" }}</a>{% else %}{{ r.tenant_name|default:"Vacant" }}{% endif %}</div>
+                <a href="{% url 'smart_meter:energy_dashboard' %}?meter={{ m.id }}&start={{ energy_start_date|date:'Y-m-d' }}&end={{ energy_end_date|date:'Y-m-d' }}" class="mobile-fixed-energy live-detail-link">{{ r.total_energy|default:"—" }} kWh</a>
+              </div>
+              <div class="mobile-line mobile-line-four">
+                <div class="mobile-date-time">{{ r.ts|date:"Y-m-d" }} · {{ r.ts|date:"H:i:s" }}</div>
+                <div class="mobile-va"><span>V {{ r.voltage_a|default:"—" }}</span><span>A {{ r.current_a|default:"—" }}</span></div>
+              </div>
+              <div class="mobile-explicit-actions">
+                <button type="button" class="btn btn-sm btn-outline-success relay-action" data-action="on"
+                  data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
+                  data-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
+                  {% if r.confirmed_relay_state == 'on' %}disabled{% endif %}>Turn ON</button>
+                <button type="button" class="btn btn-sm btn-outline-danger relay-action" data-action="off"
+                  data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
+                  data-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
+                  {% if r.confirmed_relay_state == 'off' %}disabled{% endif %}>Turn OFF</button>
+                <small class="mobile-confirmed-at">
+                  {% if r.relay_confirmed_at %}Confirmed {{ r.relay_confirmed_at|date:"Y-m-d H:i:s" }}{% else %}Unknown relay status{% endif %}
+                </small>
+              </div>
+            </td>
             <td class="sticky-left sno text-center">{{ forloop.counter }}</td>
 
             <td class="sticky-left col-recharge text-center">
@@ -1681,6 +1747,7 @@
                   {{ r.tenant_name|default:"Vacant"|slice:":20" }}
                 {% endif %}
               </span>
+              <span class="power-operation-status" role="status" aria-live="polite" hidden></span>
             </td>
 
             <td class="sticky-left col-unit text-center" title="{{ m.display_location_name }}">
@@ -1714,14 +1781,6 @@
                   class="badge rounded-pill power-badge {% if m.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">
                   {% if m.power_status|lower == 'on' %}ON{% else %}OFF{% endif %}
                 </span>
-                <button type="button" class="btn btn-sm btn-secondary power-toggle" title="Toggle power"
-                  aria-label="Toggle power" data-status="{{ m.power_status|upper|default:'OFF' }}"
-                  data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
-                  data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
-                  data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
-                  data-status-url="{% url 'smart_meter:meter_status' m.id %}">
-                  <i class="fas fa-power-off"></i>
-                </button>
               </div>
             </td>
 
@@ -1739,14 +1798,16 @@
                 class="badge rounded-pill power-badge {% if m.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">
                 {% if m.power_status|lower == 'on' %}ON{% else %}OFF{% endif %}
               </span>
-              <button type="button" class="btn btn-sm btn-secondary power-toggle" title="Toggle power"
-                aria-label="Toggle power" data-status="{{ m.power_status|upper|default:'OFF' }}"
-                data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
-                data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
-                data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
-                data-status-url="{% url 'smart_meter:meter_status' m.id %}">
-                <i class="fas fa-power-off"></i>
-              </button>
+              <div class="explicit-relay-actions">
+                <button type="button" class="btn btn-sm btn-outline-success relay-action" data-action="on"
+                  data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
+                  data-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
+                  {% if r.confirmed_relay_state == 'on' %}disabled{% endif %}>ON</button>
+                <button type="button" class="btn btn-sm btn-outline-danger relay-action" data-action="off"
+                  data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
+                  data-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
+                  {% if r.confirmed_relay_state == 'off' %}disabled{% endif %}>OFF</button>
+              </div>
             </td>
 
             <!-- Updated: date + time -->
@@ -1976,6 +2037,316 @@
       width: 72px !important;
       min-width: 72px !important;
       max-width: 72px !important;
+    }
+  }
+</style>
+
+<style>
+  /* Readable card layout for phones and tablets. Desktop table is unchanged. */
+  .power-operation-status {
+    display: block;
+    margin-top: .4rem;
+    padding: .38rem .5rem;
+    border-radius: .5rem;
+    font-size: .78rem;
+    font-weight: 700;
+    line-height: 1.25;
+    white-space: normal;
+  }
+  .power-operation-status[hidden] { display: none !important; }
+  .power-operation-status.is-working { color: #7a4b00; background: #fff3cd; }
+  .power-operation-status.is-success { color: #0f5132; background: #d1e7dd; }
+  .power-operation-status.is-error { color: #842029; background: #f8d7da; }
+  .power-operation-status.is-working::before {
+    content: "";
+    display: inline-block;
+    width: .72rem;
+    height: .72rem;
+    margin-right: .4rem;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    vertical-align: -.08rem;
+    animation: power-status-spin .75s linear infinite;
+  }
+  @keyframes power-status-spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 991.98px) {
+    #captureArea .card { border: 0; background: transparent; }
+    #captureArea .card .table-responsive { overflow: visible; }
+    #captureArea table.table-compact,
+    #captureArea table.table-compact tbody { display: block; width: 100%; }
+    #captureArea table.table-compact thead { display: none; }
+    #captureArea table.table-compact tr[data-meter-row] {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
+      gap: .65rem .75rem;
+      margin-bottom: .85rem;
+      padding: .9rem .8rem .8rem 2.8rem;
+      border: 1px solid #dbe2ea;
+      border-radius: .8rem;
+      background: var(--bs-body-bg, #fff);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, .07);
+    }
+    #captureArea table.table-compact tr[data-meter-row] > td {
+      display: block !important;
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      padding: 0 !important;
+      border: 0;
+      overflow: visible;
+      white-space: normal;
+      font-size: .86rem;
+      text-align: left !important;
+    }
+    #captureArea table.table-compact tr[data-meter-row] > td.sno {
+      position: absolute !important;
+      top: .8rem;
+      left: .7rem;
+      width: 1.55rem !important;
+      height: 1.55rem;
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      color: #fff;
+      background: #334155;
+      font-size: .78rem;
+      font-weight: 800;
+    }
+    #captureArea table.table-compact td.col-prop {
+      grid-column: 1 / 3;
+      grid-row: 1;
+    }
+    #captureArea table.table-compact .col-prop .mobile-property,
+    #captureArea table.table-compact .col-prop .mobile-unit,
+    #captureArea table.table-compact .col-prop .mobile-tenant {
+      display: block !important;
+      max-width: 100%;
+      overflow: visible;
+      text-overflow: clip;
+      white-space: normal;
+      line-height: 1.2;
+    }
+    #captureArea table.table-compact .col-prop .mobile-property {
+      color: #64748b;
+      font-size: .78rem;
+      font-weight: 600;
+    }
+    #captureArea table.table-compact .col-prop .mobile-unit {
+      color: #1e293b;
+      font-size: 1rem;
+      font-weight: 800;
+      margin-top: .18rem;
+    }
+    #captureArea table.table-compact .col-prop .mobile-tenant {
+      color: #0f172a;
+      font-size: .94rem;
+      font-weight: 650;
+      margin-top: .18rem;
+    }
+    #captureArea table.table-compact td.col-meter {
+      grid-column: 3;
+      grid-row: 1;
+      text-align: right !important;
+    }
+    #captureArea table.table-compact td.col-meter > .live-detail-link {
+      display: block;
+      font-size: .82rem;
+      overflow-wrap: anywhere;
+    }
+    #captureArea table.table-compact .col-meter .mobile-actions {
+      display: flex !important;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: .3rem;
+      margin-top: .45rem;
+    }
+    #captureArea table.table-compact .col-meter .mobile-actions .badge {
+      font-size: .72rem;
+      padding: .32rem .48rem;
+    }
+    #captureArea table.table-compact .col-meter .mobile-actions .btn {
+      width: 2rem;
+      height: 2rem;
+      min-width: 2rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .82rem;
+      padding: 0;
+    }
+    #captureArea table.table-compact td[data-col="updated"],
+    #captureArea table.table-compact td[data-col="balance"],
+    #captureArea table.table-compact td[data-col="total_energy"] {
+      padding-top: .65rem !important;
+      border-top: 1px solid #e5e7eb;
+      font-size: .88rem;
+    }
+    #captureArea table.table-compact td[data-col="updated"]::before,
+    #captureArea table.table-compact td[data-col="balance"]::before,
+    #captureArea table.table-compact td[data-col="total_energy"]::before {
+      display: block;
+      margin-bottom: .18rem;
+      color: #64748b;
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    #captureArea table.table-compact td[data-col="updated"]::before { content: "Updated"; }
+    #captureArea table.table-compact td[data-col="balance"]::before { content: "Balance"; }
+    #captureArea table.table-compact td[data-col="total_energy"]::before { content: "Energy"; }
+    #captureArea table.table-compact td[data-col="updated"] .u-date,
+    #captureArea table.table-compact td[data-col="updated"] .u-time { display: block; font-size: .82rem; }
+    #captureArea table.table-compact td[data-col="updated"] .u-sep { display: none; }
+    #captureArea table.table-compact td[data-col="total_energy"] .total-energy-main {
+      display: block;
+      color: #111827;
+      font-size: .94rem;
+      font-weight: 800;
+    }
+    #captureArea table.table-compact td[data-col="total_energy"] .mobile-voltage,
+    #captureArea table.table-compact td[data-col="total_energy"] .mobile-current {
+      display: block !important;
+      margin-top: .12rem;
+      font-size: .76rem;
+      line-height: 1.15;
+    }
+    #captureArea table.table-compact td.col-recharge {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      display: flex !important;
+      gap: .5rem;
+    }
+    #captureArea table.table-compact td.col-recharge .btn {
+      min-height: 2.25rem;
+      margin-top: 0 !important;
+      font-size: .78rem;
+    }
+    #captureArea table.table-compact td.col-unit,
+    #captureArea table.table-compact td.col-tenant,
+    #captureArea table.table-compact td.col-status,
+    #captureArea table.table-compact td.col-power,
+    #captureArea table.table-compact td[data-col="source_ip"],
+    #captureArea table.table-compact td[data-col="port"],
+    #captureArea table.table-compact td[data-col="voltage_a"],
+    #captureArea table.table-compact td[data-col="current_a"],
+    #captureArea table.table-compact td[data-col="total_power"],
+    #captureArea table.table-compact td[data-col="pf_total"] { display: none !important; }
+  }
+
+  @media (max-width: 575.98px) {
+    #captureArea table.table-compact tr[data-meter-row] {
+      grid-template-columns: minmax(0, 1fr) minmax(0, .9fr);
+      padding-left: 2.65rem;
+    }
+    #captureArea table.table-compact td.col-prop { grid-column: 1; }
+    #captureArea table.table-compact td.col-meter { grid-column: 2; }
+    #captureArea table.table-compact td[data-col="updated"] { grid-column: 1; }
+    #captureArea table.table-compact td[data-col="balance"] { grid-column: 2; }
+    #captureArea table.table-compact td[data-col="total_energy"] { grid-column: 1 / -1; }
+    #captureArea table.table-compact td.col-recharge { grid-row: auto; }
+  }
+</style>
+
+<style>
+  .mobile-meter-card-v2 { display: none; }
+  .explicit-relay-actions { display: flex; justify-content: center; gap: .25rem; margin-top: .25rem; }
+  .explicit-relay-actions .btn { padding: .12rem .3rem; font-size: .68rem; }
+
+  @media (max-width: 991.98px) {
+    #captureArea table.table-compact tr[data-meter-row] {
+      display: block;
+      margin-bottom: .75rem;
+      padding: 0;
+    }
+    #captureArea table.table-compact tr[data-meter-row] > td:not(.mobile-meter-card-v2) {
+      display: none !important;
+    }
+    #captureArea table.table-compact tr[data-meter-row] > td.mobile-meter-card-v2 {
+      display: block !important;
+      width: 100% !important;
+      max-width: none !important;
+      padding: .75rem !important;
+      border: 0;
+      color: inherit;
+      font-size: .82rem;
+      overflow: visible;
+    }
+    .mobile-meter-card-v2 .mobile-line {
+      display: grid;
+      gap: .35rem;
+      align-items: center;
+      min-width: 0;
+    }
+    .mobile-meter-card-v2 .mobile-line + .mobile-line { margin-top: .48rem; }
+    .mobile-meter-card-v2 .mobile-line-one {
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      padding-bottom: .48rem;
+      border-bottom: 1px solid #dee2e6;
+    }
+    .mobile-meter-card-v2 .mobile-line-two {
+      grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+    .mobile-meter-card-v2 .mobile-line-three,
+    .mobile-meter-card-v2 .mobile-line-four {
+      grid-template-columns: minmax(0, 1fr) 104px;
+    }
+    .mobile-meter-card-v2 .mobile-line-four {
+      padding-top: .45rem;
+      border-top: 1px solid #dee2e6;
+    }
+    .mobile-meter-card-v2 .mobile-location {
+      display: flex;
+      align-items: center;
+      gap: .3rem;
+      min-width: 0;
+      color: #64748b;
+    }
+    .mobile-meter-card-v2 .mobile-serial {
+      display: inline-flex;
+      flex: 0 0 auto;
+      width: 1.35rem;
+      height: 1.35rem;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: #334155;
+      color: #fff;
+      font-weight: 700;
+    }
+    .mobile-meter-card-v2 .mobile-balance { text-align: center; white-space: nowrap; font-weight: 700; }
+    .mobile-meter-card-v2 .mobile-meter-number { text-align: right; overflow-wrap: anywhere; }
+    .mobile-meter-card-v2 .mobile-unit-name,
+    .mobile-meter-card-v2 .mobile-full-tenant { min-width: 0; white-space: nowrap; font-weight: 700; }
+    .mobile-meter-card-v2 .mobile-operation {
+      display: block;
+      margin: 0;
+      padding: .28rem .42rem;
+      white-space: nowrap;
+      text-align: center;
+      font-size: .72rem;
+    }
+    .mobile-meter-card-v2 .mobile-state-badges { display: flex; justify-content: flex-end; gap: .2rem; white-space: nowrap; }
+    .mobile-meter-card-v2 .mobile-state-badges .badge { font-size: .68rem; padding: .18rem .34rem; }
+    .mobile-meter-card-v2 .mobile-fixed-energy { width: 104px; text-align: right; white-space: nowrap; font-weight: 700; }
+    .mobile-meter-card-v2 .mobile-date-time { color: #64748b; white-space: nowrap; }
+    .mobile-meter-card-v2 .mobile-va { width: 104px; display: flex; justify-content: flex-end; gap: .4rem; white-space: nowrap; }
+    .mobile-meter-card-v2 .mobile-explicit-actions {
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      margin-top: .6rem;
+      padding-top: .55rem;
+      border-top: 1px solid #dee2e6;
+    }
+    .mobile-meter-card-v2 .mobile-confirmed-at {
+      margin-left: auto;
+      color: #64748b;
+      text-align: right;
     }
   }
 </style>

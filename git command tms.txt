@@ -43,6 +43,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 
 # Normal, smaller backup
+Set-ExecutionPolicy -Scope Process Bypass -Force
 .\backup_tms_for_chatgpt.ps1 -VenvMode No
 
 # Disaster-recovery backup including the Windows environment

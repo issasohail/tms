@@ -318,7 +318,7 @@ def queue_relay_command(
             related_payment=related_payment,
             status="pending",
             expires_at=timezone.now() + expires_in,
-            requires_verification=(source != "manual") if requires_verification is None else requires_verification,
+            requires_verification=True if requires_verification is None else requires_verification,
         )
     logger.info("meter_command_queued meter=%s command=%s desired=%s source=%s", meter.pk, cmd.pk, desired_state, source)
     return cmd

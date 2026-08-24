@@ -30,6 +30,12 @@ from smart_meter.models import (
     UnknownMeter,
 )
 from smart_meter.services.command_lifecycle import revalidate_command
+from smart_meter.services.relay_status import (
+    classify_relay_ack,
+    parse_authoritative_relay_state,
+    sync_authoritative_relay_status,
+)
+from smart_meter.utils.frames import build_read_028011FF
 
 try:
     from concurrent_log_handler import ConcurrentRotatingFileHandler as _SafeHandler
@@ -225,24 +231,46 @@ def _get_handler(meter_number: str) -> ClientHandler | None:
         return ACTIVE_HANDLERS.get(meter_number)
 
 
-def _push_waiter(meter_number: str, q: queue.Queue, expect_di: str | None):
+def _push_waiter(
+    meter_number: str,
+    q: queue.Queue,
+    expect_di: str | None,
+    expect_controls=None,
+):
     with REPLY_LOCK:
         REPLY_WAITERS.setdefault(meter_number, []).append(
-            {"q": q, "expect_di": (expect_di or "").upper()}
+            {
+                "q": q,
+                "expect_di": (expect_di or "").upper(),
+                "expect_controls": frozenset(expect_controls or ()),
+            }
         )
 
 
-def _deliver_if_match(meter_number: str, di: str, frame: bytes) -> bool:
+def _deliver_if_match(meter_number: str, di: str, control_code: int, frame: bytes) -> bool:
     di = (di or "").upper()
     with REPLY_LOCK:
         lst = REPLY_WAITERS.get(meter_number) or []
         for i, item in enumerate(lst):
             exp = item["expect_di"]
-            if not exp or exp == di:
+            controls = item.get("expect_controls") or frozenset()
+            if controls and control_code not in controls:
+                continue
+            if exp and exp != di:
+                continue
+            if exp or controls:
                 lst.pop(i)
                 item["q"].put(frame)
                 return True
         return False
+
+
+def _remove_waiter(meter_number: str, q: queue.Queue) -> None:
+    with REPLY_LOCK:
+        waiters = REPLY_WAITERS.get(meter_number) or []
+        REPLY_WAITERS[meter_number] = [item for item in waiters if item["q"] is not q]
+        if not REPLY_WAITERS[meter_number]:
+            REPLY_WAITERS.pop(meter_number, None)
 
 
 def handle_frame(addr, raw_bytes, status):
@@ -620,7 +648,7 @@ class ClientHandler(threading.Thread):
 
         # Deliver to a waiting "send-and-wait" caller (but skip keepalives)
         if di != "80808080" and ctrl_code in (0x91, 0x83, 0x9C, 0xDC) and meter_number:
-            delivered = _deliver_if_match(meter_number, di, frame)
+            delivered = _deliver_if_match(meter_number, di, ctrl_code, frame)
             if delivered and self.debug:
                 logger.debug(f"📤 Delivered reply to waiter for meter {meter_number}")
 
@@ -658,7 +686,10 @@ class ClientHandler(threading.Thread):
             )
             return
 
-        # Live upsert
+        # Live upsert.  Only a valid status word from the documented
+        # 0x028011FF response may replace the last confirmed relay status.
+        status_word = data.get("status_word") if di == "028011FF" else None
+        relay_state = parse_authoritative_relay_state(status_word)
         live_defaults = {
             "balance": data.get("balance"),
             "overdraft": data.get("overdraft"),
@@ -680,7 +711,6 @@ class ClientHandler(threading.Thread):
             "peak_total_energy": data.get("peak_total_energy"),
             "valley_total_consumption": data.get("valley_total_consumption"),
             "flat_total_consumption": data.get("flat_total_consumption"),
-            "status_word": data.get("status_word"),
             "source_ip": self.addr[0],
             "source_port": self.addr[1],
             "prev1_day_energy": data.get("prev1_day_energy"),
@@ -696,10 +726,14 @@ class ClientHandler(threading.Thread):
             "last3_days_valley_energy": data.get("last3_days_valley_energy"),
             "last3_days_flat_energy": data.get("last3_days_flat_energy"),
         }
+        if relay_state is not None:
+            live_defaults["status_word"] = status_word
         with transaction.atomic():
             live_reading, _live_created = LiveReading.objects.update_or_create(
                 meter=meter, defaults=live_defaults
             )
+        if relay_state is not None:
+            sync_authoritative_relay_status(meter, status_word)
 
         # Historical snapshot on cadence
         now = timezone.now()
@@ -833,8 +867,14 @@ class DbCommandPoller(threading.Thread):
                 self._wait_online(cmd, f"meter {meter_no} not connected")
                 return
 
+            is_relay = getattr(cmd, "command_type", "") == "relay" and getattr(
+                cmd, "desired_state", ""
+            ) in {"on", "off"}
             waiter = None
-            if (cmd.expect_di or "").strip():
+            if is_relay:
+                waiter = queue.Queue()
+                _push_waiter(meter_no, waiter, None, expect_controls={0x9C, 0xDC})
+            elif (cmd.expect_di or "").strip():
                 waiter = queue.Queue()
                 _push_waiter(meter_no, waiter, cmd.expect_di)
             try:
@@ -861,20 +901,44 @@ class DbCommandPoller(threading.Thread):
             try:
                 transport_ok, transport_error = transport_q.get(timeout=ttl)
             except queue.Empty:
+                if waiter is not None:
+                    _remove_waiter(meter_no, waiter)
                 self._retry_or_fail(cmd, "timeout waiting for socket transmission")
                 return
 
             if not transport_ok:
+                if waiter is not None:
+                    _remove_waiter(meter_no, waiter)
                 self._retry_or_fail(
                     cmd, transport_error or "socket transmission failed"
                 )
                 return
 
-            if (cmd.expect_di or "").strip():
+            if is_relay:
+                try:
+                    reply = waiter.get(timeout=ttl)
+                except queue.Empty:
+                    _remove_waiter(meter_no, waiter)
+                    self._retry_or_fail(cmd, "timeout waiting for relay acknowledgement")
+                    return
+
+                parsed_ack = parse_frame(reply)
+                ack_result = classify_relay_ack(parsed_ack, meter_no)
+                if ack_result is None:
+                    self._retry_or_fail(cmd, "invalid or mismatched relay acknowledgement")
+                    return
+                if ack_result == "failed":
+                    self._fail(cmd, "meter returned negative relay acknowledgement 0xDC")
+                    return
+
+                self._ack(cmd, reply.hex().upper())
+                self._verify_relay(cmd, h, ttl)
+            elif (cmd.expect_di or "").strip():
                 try:
                     reply = waiter.get(timeout=ttl)
                     self._ack(cmd, reply.hex().upper())
                 except queue.Empty:
+                    _remove_waiter(meter_no, waiter)
                     self._retry_or_fail(cmd, "timeout waiting for reply")
             else:
                 # Transport acknowledgement means sendall() completed on the live
@@ -882,6 +946,73 @@ class DbCommandPoller(threading.Thread):
                 self._ack(cmd, "")
         except Exception as e:
             self._retry_or_fail(cmd, str(e))
+
+    def _verify_relay(self, cmd, handler, ttl):
+        meter_no = (cmd.meter_number or "").strip()
+        status_frame = build_read_028011FF(meter_no)
+        status_hex = status_frame.hex().upper()
+        waiter = queue.Queue()
+        _push_waiter(
+            meter_no,
+            waiter,
+            "028011FF",
+            expect_controls={0x91, 0x83},
+        )
+        MeterCommand.objects.filter(pk=cmd.pk).update(status_query_hex=status_hex)
+
+        transport_q = queue.Queue(maxsize=1)
+        handler.enqueue_send(
+            status_frame,
+            expire_at=time.time() + ttl,
+            transport_q=transport_q,
+        )
+        try:
+            transport_ok, transport_error = transport_q.get(timeout=ttl)
+        except queue.Empty:
+            _remove_waiter(meter_no, waiter)
+            self._verification_unconfirmed(cmd, "status query socket transmission timed out")
+            return
+        if not transport_ok:
+            _remove_waiter(meter_no, waiter)
+            self._verification_unconfirmed(
+                cmd, transport_error or "status query socket transmission failed"
+            )
+            return
+
+        try:
+            reply = waiter.get(timeout=ttl)
+        except queue.Empty:
+            _remove_waiter(meter_no, waiter)
+            self._verification_unconfirmed(cmd, "relay-status verification timed out")
+            return
+
+        parsed = parse_frame(reply)
+        if (
+            not parsed
+            or parsed.get("meter_number") != meter_no
+            or parsed.get("di") != "028011FF"
+        ):
+            self._verification_unconfirmed(cmd, "relay-status response did not match command meter/DI")
+            return
+        status_word = (parsed.get("data") or {}).get("status_word")
+        meter = Meter.objects.filter(pk=cmd.meter_id, meter_number=meter_no).first()
+        if meter is None:
+            self._verification_unconfirmed(cmd, "relay-status command meter no longer exists")
+            return
+        relay_state = sync_authoritative_relay_status(
+            meter,
+            status_word,
+            command=cmd,
+            status_reply_hex=reply.hex().upper(),
+        )
+        if relay_state is None:
+            self._verification_unconfirmed(cmd, "relay-status response had no valid status word")
+
+    def _verification_unconfirmed(self, cmd, reason):
+        MeterCommand.objects.filter(pk=cmd.pk).update(
+            status="acknowledged",
+            error=f"acknowledged but not verified: {reason}",
+        )
 
     def _ack(self, cmd, reply_hex):
         with transaction.atomic():

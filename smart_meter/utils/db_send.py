@@ -28,7 +28,7 @@ def send_via_db(
         from smart_meter.services.command_lifecycle import queue_relay_command
         cmd = queue_relay_command(
             meter, desired_state, source=source, initiated_by=initiated_by or "",
-            reason=reason or "", requires_verification=False,
+            reason=reason or "", requires_verification=True,
         )
         if expect_di and not cmd.expect_di:
             MeterCommand.objects.filter(pk=cmd.pk).update(expect_di=(expect_di or "").upper())

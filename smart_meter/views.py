@@ -66,11 +66,13 @@ from smart_meter.models import (
     Meter,
     MeterBalance,
     MeterEvent,
+    MeterCommand,
     MeterPrepaidSettings,
     MeterReading,
     MeterSettings,
 )
 from smart_meter.services.billing import generate_bill_for_unit
+from smart_meter.services.relay_status import parse_authoritative_relay_state
 from smart_meter.status import online_threshold_minutes
 
 # You will write these
@@ -594,6 +596,7 @@ def _meters_annotated_qs(request, online_minutes: int = 10):
         last_voltage_a=Subquery(live_qs.values("voltage_a")[:1]),
         last_current_a=Subquery(live_qs.values("current_a")[:1]),
         last_total_energy=Subquery(live_qs.values("total_energy")[:1]),
+        last_status_word=Subquery(live_qs.values("status_word")[:1]),
     )
 
     # Online/Offline from **live** timestamp
@@ -911,6 +914,10 @@ def meter_list(request):
 
     for meter in page_obj.object_list:
         meter.display_electricity_rate = resolve_electricity_rate(meter=meter)
+        meter.confirmed_relay_state = parse_authoritative_relay_state(
+            meter.last_status_word
+        )
+        meter.relay_confirmed_at = meter.last_ts if meter.confirmed_relay_state else None
     attach_active_tenant_names(
         page_obj.object_list,
         lambda meter: meter.unit_id,
@@ -1997,6 +2004,7 @@ def live_custom(request):
             "current_a",
             "total_power",
             "pf_total",
+            "status_word",
             "meter__id",
             "meter__unit",
             "meter__meter_number",
@@ -2055,6 +2063,20 @@ def live_custom(request):
         info = tenant_info.get(unit_key)
         reading.tenant_name = info["name"] if info else "Vacant"
         reading.tenant_id = info["tenant_id"] if info else None
+    latest_relay_commands = {}
+    for command in MeterCommand.objects.filter(
+        meter_id__in=[reading.meter_id for reading in rows],
+        command_type="relay",
+    ).order_by("meter_id", "-created_at"):
+        latest_relay_commands.setdefault(command.meter_id, command)
+    for reading in rows:
+        reading.confirmed_relay_state = parse_authoritative_relay_state(
+            reading.status_word
+        )
+        reading.relay_confirmed_at = (
+            reading.ts if reading.confirmed_relay_state else None
+        )
+        reading.latest_relay_command = latest_relay_commands.get(reading.meter_id)
     readings_missing_counts = []
     for reading in rows:
         if reading.meter_id in active_meter_count_by_id:
@@ -2271,20 +2293,23 @@ def cutoff_meter(request, meter_id):
 
             return _redirect_back(request)
 
-    # Update UI state
+    # Sending/acknowledging a command is not authoritative relay state.
+    # ``Meter.power_status`` is updated only by a valid 0x028011FF readback.
     success = bool(res.get("ok"))
-    if success:
-        Meter.objects.filter(pk=meter.pk).update(power_status="off")
-        try:
-            refresh_live(meter.meter_number)
-        except Exception:
-            pass
 
     # Respond depending on caller
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         # blank line separator
 
-        return JsonResponse({"success": success, "error": res.get("error")})
+        return JsonResponse(
+            {
+                "success": success,
+                "error": res.get("error"),
+                "command_id": res.get("command_id"),
+                "command_status": res.get("status"),
+                "desired_state": "off",
+            }
+        )
     else:
         if success:
             messages.success(request, f"Cut off sent to {meter.meter_number}.")
@@ -2372,15 +2397,17 @@ def restore_meter(request, meter_id):
             return _redirect_back(request)
 
     success = bool(res.get("ok"))
-    if success:
-        Meter.objects.filter(pk=meter.pk).update(power_status="on")
-        try:
-            refresh_live(meter.meter_number)
-        except Exception:
-            pass
 
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return JsonResponse({"success": success, "error": res.get("error")})
+        return JsonResponse(
+            {
+                "success": success,
+                "error": res.get("error"),
+                "command_id": res.get("command_id"),
+                "command_status": res.get("status"),
+                "desired_state": "on",
+            }
+        )
     else:
         if success:
             messages.success(request, f"Restore sent to {meter.meter_number}.")
@@ -3821,13 +3848,6 @@ def meter_switch(request):
                 refresh_live(meter.meter_number)  # best-effort
             except Exception:
                 pass
-            # Optional: keep Meter.power_status in sync if you use it
-            try:
-                Meter.objects.filter(pk=meter.pk).update(
-                    power_status="on" if on else "off"
-                )
-            except Exception:
-                pass
             messages.success(request, f"Command sent. Reply: {res.get('reply', '')}")
         else:
             messages.error(
@@ -4038,6 +4058,9 @@ def bulk_power_action(request):
                     allow_switch=True,  # <-- explicit
                     initiated_by=request.user.get_username(),  # <-- who clicked
                     reason="manual switch from UI",  # <-- audit
+                    command_type="relay",
+                    desired_state="on" if action == "restore" else "off",
+                    source="manual",
                     auth=secret,  # <-- optional shared secret
                 )
                 logger.info(
@@ -4057,11 +4080,6 @@ def bulk_power_action(request):
                     refresh_live(m.meter_number)
                 except Exception:
                     pass
-                # keep UI state if you store it on Meter
-                if cmd_name == "OFF":
-                    Meter.objects.filter(pk=m.pk).update(power_status="off")
-                else:
-                    Meter.objects.filter(pk=m.pk).update(power_status="on")
             else:
                 failures.append(f"{m.meter_number}: {res.get('error', 'no reply')}")
 
@@ -4458,6 +4476,7 @@ def live_custom_data(request):
             "current_a",
             "total_power",
             "pf_total",
+            "status_word",
             "meter__id",
             "meter__unit",
             "meter__meter_number",
@@ -4504,6 +4523,12 @@ def live_custom_data(request):
 
     payload = []
     rows = attach_active_meter_counts(qs, lambda reading: reading.meter)
+    latest_relay_commands = {}
+    for command in MeterCommand.objects.filter(
+        meter_id__in=[reading.meter_id for reading in rows],
+        command_type="relay",
+    ).order_by("meter_id", "-created_at"):
+        latest_relay_commands.setdefault(command.meter_id, command)
     for r in rows:
         is_online = bool(r.ts and r.ts >= cutoff)
         if offline_only and is_online:
@@ -4512,12 +4537,19 @@ def live_custom_data(request):
         m = r.meter
         u = m.unit
         p = u.property
+        confirmed_state = parse_authoritative_relay_state(r.status_word)
+        latest_command = latest_relay_commands.get(m.id)
 
         payload.append(
             {
                 "meter_id": m.id,
                 "is_online": is_online,
                 "power_status": (m.power_status or "OFF").upper(),
+                "relay_confirmed": bool(confirmed_state),
+                "relay_confirmed_at": _ts_iso(r.ts) if confirmed_state else None,
+                "relay_command_status": latest_command.status if latest_command else "",
+                "relay_command_desired_state": latest_command.desired_state if latest_command else "",
+                "relay_command_error": latest_command.error if latest_command else "",
                 # values that map to your table columns
                 "property_name": p.property_name or "",
                 "property_short": (p.property_name or "")[:8],

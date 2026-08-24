@@ -215,17 +215,15 @@
                   <span class="badge power-badge {% if m.power_status|lower == 'off' %}bg-danger{% else %}bg-success{% endif %}">
                     {% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}
                   </span>
-                  <button type="button"
-                          class="btn btn-sm power-toggle {% if m.power_status|lower == 'off' %}btn-outline-success{% else %}btn-outline-danger{% endif %} no-export"
-                          title="{% if m.power_status|lower == 'off' %}Turn power on{% else %}Turn power off{% endif %}"
-                          aria-label="{% if m.power_status|lower == 'off' %}Turn power on{% else %}Turn power off{% endif %}"
-                          data-status="{% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}"
-                          data-meter-id="{{ m.id }}"
-                          data-meter-number="{{ m.meter_number }}"
-                          data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
-                          data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}">
-                    <i class="fas fa-power-off"></i>
-                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-success relay-action no-export"
+                          data-action="on" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}"
+                          data-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
+                          {% if m.confirmed_relay_state == 'on' %}disabled{% endif %}>ON</button>
+                  <button type="button" class="btn btn-sm btn-outline-danger relay-action no-export"
+                          data-action="off" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}"
+                          data-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
+                          {% if m.confirmed_relay_state == 'off' %}disabled{% endif %}>OFF</button>
+                  <small class="d-block text-muted">{% if m.relay_confirmed_at %}Confirmed {{ m.relay_confirmed_at|date:"Y-m-d H:i:s" }}{% else %}Unknown/stale{% endif %}</small>
                 </div>
               </td>
 
@@ -312,7 +310,8 @@
           <div class="meter-mobile-footer no-export">
             <div class="power-control meter-mobile-power">
               <span class="badge power-badge {% if m.power_status|lower == 'off' %}bg-danger{% else %}bg-success{% endif %}">{% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}</span>
-              <button type="button" class="btn btn-sm power-toggle {% if m.power_status|lower == 'off' %}btn-outline-success{% else %}btn-outline-danger{% endif %}" data-status="{% if m.power_status|lower == 'off' %}OFF{% else %}ON{% endif %}" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-cutoff-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}" data-restore-url="{% url 'smart_meter:smart_meter_restore' m.id %}" aria-label="Toggle power"><i class="fas fa-power-off"></i></button>
+              <button type="button" class="btn btn-sm btn-outline-success relay-action" data-action="on" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-url="{% url 'smart_meter:smart_meter_restore' m.id %}" {% if m.confirmed_relay_state == 'on' %}disabled{% endif %}>ON</button>
+              <button type="button" class="btn btn-sm btn-outline-danger relay-action" data-action="off" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}" {% if m.confirmed_relay_state == 'off' %}disabled{% endif %}>OFF</button>
             </div>
             <div class="meter-mobile-mode">{{ m.get_billing_mode_display }} / {{ m.display_electricity_rate.rate|floatformat:2 }} ({{ m.display_electricity_rate.source }})</div>
             <div class="btn-group btn-group-sm meter-mobile-actions">
@@ -778,13 +777,14 @@ body.meter-exporting #meterListExportArea {
     row.classList.toggle('table-danger', !isOn);
   }
 
-  async function togglePower(button) {
+  async function requestRelayAction(button) {
     const row = button.closest('[data-meter-row]');
-    const isOff = (button.dataset.status || 'OFF').toUpperCase() === 'OFF';
-    const nextIsOn = isOff;
-    const url = isOff ? button.dataset.restoreUrl : button.dataset.cutoffUrl;
+    const desiredState = button.dataset.action;
+    const isOnAction = desiredState === 'on';
+    const url = button.dataset.url;
     const meterNumber = button.dataset.meterNumber || button.dataset.meterId || '';
-    const actionText = isOff ? 'restore power' : 'cut off power';
+    const actionText = isOnAction ? 'Turn ON / close circuit' : 'Turn OFF / open circuit';
+    if (!window.confirm(`${actionText} for meter ${meterNumber}?`)) return;
 
     showPowerStatus('working', `Sending ${actionText} command...`, meterNumber ? `Meter ${meterNumber}` : '');
     setButtonWorking(button, true);
@@ -803,10 +803,9 @@ body.meter-exporting #meterListExportArea {
       if (!response.ok || data.success === false) {
         throw new Error(data.error || 'Request failed');
       }
-      document.querySelectorAll(`[data-meter-row="${button.dataset.meterId}"]`).forEach(meterRow => setPowerState(meterRow, nextIsOn));
       showPowerStatus(
         'success',
-        nextIsOn ? 'Power restored successfully.' : 'Power cut off successfully.',
+        'Command acknowledged; awaiting physical relay verification.',
         meterNumber ? `Meter ${meterNumber}` : ''
       );
     } catch (error) {
@@ -821,8 +820,8 @@ body.meter-exporting #meterListExportArea {
   }
 
   document.addEventListener('click', event => {
-    const button = event.target.closest('.power-toggle');
-    if (button) togglePower(button);
+    const button = event.target.closest('.relay-action');
+    if (button) requestRelayAction(button);
   });
 
   function loadScriptOnce(src, test) {

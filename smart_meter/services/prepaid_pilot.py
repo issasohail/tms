@@ -105,8 +105,8 @@ def guarded_parameter_write(*, meter_id, parameter, value, user, reason, confirm
 
 def prepaid_recharge_disabled_reason():
     return (
-        "DL/T645 recharge remains disabled: the manufacturer charge frame is now "
-        "implemented for offline generation, but initial prepaid activation/configuration, "
-        "acknowledgement and error handling, duplicate/replay rules, balance read-back "
-        "reconciliation, and model/firmware applicability are not yet approved for physical testing."
+        "Automatic prepaid recharge remains disabled. One recharge frame and its C=83 / "
+        "DI=070102FF acknowledgement have been physically proven, but any uncertain outcome "
+        "must be reconciled from 028011FF and must never be retried. Refund semantics and "
+        "initial prepaid activation/configuration remain unproven."
     )

@@ -32,6 +32,16 @@ from smart_meter.models import (
     UnknownMeter,
 )
 from smart_meter.services.command_lifecycle import revalidate_command
+from smart_meter.services.prepaid_money import (
+    MONEY_COMMAND_TYPES,
+    UNCERTAIN_OPERATOR_MESSAGE,
+    acknowledge_late_prepaid_reply,
+    is_prepaid_money_command,
+    mark_prepaid_acknowledged,
+    mark_prepaid_definitive_failure,
+    mark_prepaid_uncertain,
+    reconcile_prepaid_balance,
+)
 from smart_meter.services.relay_status import (
     classify_relay_ack,
     parse_authoritative_relay_state,
@@ -204,9 +214,21 @@ def _register_handler(meter_number: str, handler: ClientHandler):
     # Wake deferred DB commands after the socket identity is known. This is
     # fail-open for the reading path; the periodic poller remains the fallback.
     try:
-        MeterCommand.objects.filter(
+        waiting = MeterCommand.objects.filter(
             meter_number=meter_number,
             status="waiting_online",
+        )
+        ambiguous_money = list(waiting.filter(
+            command_type__in=MONEY_COMMAND_TYPES,
+            attempt_count__gt=0,
+        ))
+        for command in ambiguous_money:
+            mark_prepaid_uncertain(
+                command, "meter connection changed after the first enqueue attempt"
+            )
+        waiting.exclude(
+            command_type__in=MONEY_COMMAND_TYPES,
+            attempt_count__gt=0,
         ).update(
             status="pending",
             next_attempt_at=None,
@@ -651,6 +673,8 @@ class ClientHandler(threading.Thread):
         # Deliver to a waiting "send-and-wait" caller (but skip keepalives)
         if di != "80808080" and ctrl_code in (0x91, 0x83, 0x9C, 0xDC) and meter_number:
             delivered = _deliver_if_match(meter_number, di, ctrl_code, frame)
+            if not delivered:
+                acknowledge_late_prepaid_reply(meter_number, di, ctrl_code, frame)
             if delivered and self.debug:
                 logger.debug(f"📤 Delivered reply to waiter for meter {meter_number}")
 
@@ -734,6 +758,8 @@ class ClientHandler(threading.Thread):
             live_reading, _live_created = LiveReading.objects.update_or_create(
                 meter=meter, defaults=live_defaults
             )
+        if di == "028011FF" and data.get("balance") is not None:
+            reconcile_prepaid_balance(meter, data.get("balance"))
         if relay_state is not None:
             sync_authoritative_relay_status(meter, status_word)
 
@@ -821,6 +847,15 @@ class DbCommandPoller(threading.Thread):
             try:
                 close_old_connections()
                 now = timezone.now()
+                ambiguous_money = list(MeterCommand.objects.filter(
+                    status__in=("new", "pending", "retry", "waiting_online"),
+                    command_type__in=MONEY_COMMAND_TYPES,
+                    attempt_count__gt=0,
+                ))
+                for command in ambiguous_money:
+                    mark_prepaid_uncertain(
+                        command, "legacy retry suppressed before redispatch"
+                    )
                 with transaction.atomic():
                     qs = (
                         MeterCommand.objects.select_for_update(skip_locked=True)
@@ -840,6 +875,8 @@ class DbCommandPoller(threading.Thread):
                             cmd.status = "expired"
                             cmd.error = "command expired before dispatch"
                             cmd.save(update_fields=["status", "error", "updated_at"])
+                            if is_prepaid_money_command(cmd):
+                                mark_prepaid_definitive_failure(cmd, cmd.error)
                         else:
                             cmd.status = "claimed"
                             cmd.save(update_fields=["status", "updated_at"])
@@ -853,6 +890,8 @@ class DbCommandPoller(threading.Thread):
                 self._stop.wait(self.interval)
 
     def _process_command(self, cmd: MeterCommand):
+        is_money = is_prepaid_money_command(cmd)
+        enqueued = False
         try:
             meter_no = (cmd.meter_number or "").strip()
             if not meter_no:
@@ -878,7 +917,12 @@ class DbCommandPoller(threading.Thread):
                 _push_waiter(meter_no, waiter, None, expect_controls={0x9C, 0xDC})
             elif (cmd.expect_di or "").strip():
                 waiter = queue.Queue()
-                _push_waiter(meter_no, waiter, cmd.expect_di)
+                _push_waiter(
+                    meter_no,
+                    waiter,
+                    cmd.expect_di,
+                    expect_controls={0x83} if is_money else None,
+                )
             try:
                 frame = bytes.fromhex(cmd.frame_hex.strip())
             except Exception:
@@ -898,6 +942,7 @@ class DbCommandPoller(threading.Thread):
                 expire_at=time.time() + ttl,
                 transport_q=transport_q,
             )
+            enqueued = True
 
             try:
                 transport_ok, transport_error = transport_q.get(timeout=ttl)
@@ -935,6 +980,10 @@ class DbCommandPoller(threading.Thread):
                 self._ack(cmd, reply.hex().upper())
                 self._verify_relay(cmd, h, ttl)
             elif (cmd.expect_di or "").strip():
+                if is_money:
+                    MeterCommand.objects.filter(pk=cmd.pk).update(
+                        status="sent", next_attempt_at=None
+                    )
                 try:
                     reply = waiter.get(timeout=ttl)
                     self._ack(cmd, reply.hex().upper())
@@ -946,7 +995,10 @@ class DbCommandPoller(threading.Thread):
                 # socket. Non-relay compatibility commands do not request a reply.
                 self._ack(cmd, "")
         except Exception as e:
-            self._retry_or_fail(cmd, str(e))
+            if is_money and not enqueued:
+                self._fail(cmd, str(e))
+            else:
+                self._retry_or_fail(cmd, str(e))
 
     def _verify_relay(self, cmd, handler, ttl):
         meter_no = (cmd.meter_number or "").strip()
@@ -1035,6 +1087,8 @@ class DbCommandPoller(threading.Thread):
                     "updated_at",
                 ]
             )
+            if is_prepaid_money_command(cmd):
+                mark_prepaid_acknowledged(cmd, reply_hex or "")
 
     def _wait_online(self, cmd, msg):
         with transaction.atomic():
@@ -1045,6 +1099,9 @@ class DbCommandPoller(threading.Thread):
             cmd.save(update_fields=["status", "error", "next_attempt_at", "updated_at"])
 
     def _retry_or_fail(self, cmd, msg):
+        if is_prepaid_money_command(cmd):
+            mark_prepaid_uncertain(cmd, msg)
+            return
         with transaction.atomic():
             cmd = MeterCommand.objects.select_for_update().get(pk=cmd.pk)
             if cmd.status == "cancelled":
@@ -1091,6 +1148,8 @@ class DbCommandPoller(threading.Thread):
                     "status", "error", "raw_ack_hex", "reply_hex", "updated_at"
                 ]
             )
+            if is_prepaid_money_command(cmd):
+                mark_prepaid_definitive_failure(cmd, msg, reply_hex or "")
 
 
 class MeterTimingSchedulePoller(threading.Thread):

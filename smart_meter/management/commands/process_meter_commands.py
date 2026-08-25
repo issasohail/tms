@@ -2,6 +2,10 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from smart_meter.models import MeterCommand
 from smart_meter.services.command_lifecycle import revalidate_command
+from smart_meter.services.prepaid_money import (
+    is_prepaid_money_command,
+    mark_prepaid_uncertain,
+)
 
 
 class Command(BaseCommand):
@@ -25,6 +29,13 @@ class Command(BaseCommand):
                 if not opts["dry_run"]:
                     MeterCommand.objects.filter(pk=cmd.pk).update(status="cancelled", cancelled_at=timezone.now(), cancelled_reason=result.reason[:255])
             elif opts["retry"] and cmd.status in {"retry", "waiting_online"}:
+                if is_prepaid_money_command(cmd) and cmd.attempt_count > 0:
+                    self.stdout.write(
+                        f"hold command={cmd.pk}: prepaid outcome uncertain; do not retry"
+                    )
+                    if not opts["dry_run"]:
+                        mark_prepaid_uncertain(cmd, "manual retry request blocked")
+                    continue
                 self.stdout.write(f"wake command={cmd.pk}")
                 if not opts["dry_run"]:
                     MeterCommand.objects.filter(pk=cmd.pk).update(status="pending", next_attempt_at=None)

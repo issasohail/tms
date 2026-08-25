@@ -12,6 +12,8 @@ Frame layout (DL/T645-2007):
 - CS is sum of C + L + DATA (i.e., from the SECOND 0x68+1) modulo 256. We also accept two vendor variants as fallbacks.
 """
 
+from decimal import Decimal, InvalidOperation
+import re
 from typing import Tuple, Optional, Dict
 
 # ----------------------------
@@ -389,38 +391,125 @@ def _require_bytes(name: str, value: bytes, expected_length: Optional[int] = Non
     return value
 
 
+CHARGE_DATA_IDENTIFIERS = {
+    "recharge": "070102FF",
+    "topup": "070102FF",
+    "refund": "070108FF",
+    "070102ff": "070102FF",
+    "070108ff": "070108FF",
+}
+CHARGE_OPERATOR = bytes.fromhex("77665544")
+CHARGE_MAC = bytes.fromhex("33333333")
+CHARGE_DATA_LENGTH = 0x22
+
+
+def _amount_to_cents(amount) -> int:
+    """Convert an exact money value to positive integer cents.
+
+    Binary floats are deliberately rejected because a value such as ``1.15`` may
+    not have an exact base-2 representation. Decimal, integer, and decimal-string
+    inputs reproduce the manufacturer's ``int(money * 100)`` result without
+    silently discarding a fractional cent.
+    """
+    if isinstance(amount, bool) or isinstance(amount, float):
+        raise TypeError("amount must be a Decimal, integer, or decimal string, not float")
+    try:
+        value = amount if isinstance(amount, Decimal) else Decimal(str(amount))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError("amount must be a valid decimal money value") from exc
+    if not value.is_finite():
+        raise ValueError("amount must be finite")
+
+    cents = value * 100
+    if cents != cents.to_integral_value():
+        raise ValueError("amount must not contain fractional cents")
+    cents_int = int(cents)
+    if cents_int <= 0:
+        raise ValueError("amount must be positive")
+    if cents_int > 0xFFFFFFFF:
+        raise ValueError("amount in cents must fit in four bytes")
+    return cents_int
+
+
+def _charge_data_identifier(operation: str) -> str:
+    if not isinstance(operation, str):
+        raise TypeError("operation must be recharge, refund, 070102FF, or 070108FF")
+    key = operation.strip().lower()
+    try:
+        return CHARGE_DATA_IDENTIFIERS[key]
+    except KeyError as exc:
+        raise ValueError("charge DI must be 070102FF (recharge) or 070108FF (refund)") from exc
+
+
+def _charge_order_bytes(order_number: str) -> bytes:
+    if not isinstance(order_number, str):
+        raise TypeError("order number must be a hexadecimal string")
+    value = order_number.strip()
+    if not value:
+        raise ValueError("order number must not be empty")
+    if len(value) > 16:
+        raise ValueError("order number must be at most 16 hexadecimal characters")
+    if re.fullmatch(r"[0-9A-Fa-f]+", value) is None:
+        raise ValueError("order number must contain only hexadecimal characters")
+    try:
+        return bytes.fromhex(value.zfill(16))
+    except ValueError as exc:
+        raise ValueError("order number must contain only hexadecimal characters") from exc
+
+
+def build_charge_frame(
+    meter_number: str,
+    operation: str,
+    order_number: str,
+    amount,
+) -> bytes:
+    """Build the manufacturer's complete recharge or refund frame.
+
+    The returned frame always includes four FE wake-up bytes, control ``03``, a
+    34-byte DATA field, and the manufacturer's checksum window beginning at the
+    first ``68`` after the wake-up bytes. This function only builds bytes and has
+    no transport or database side effects.
+    """
+    if not isinstance(meter_number, str) or re.fullmatch(
+        r"[0-9A-Fa-f]{12}", meter_number
+    ) is None:
+        raise ValueError("meter number must be exactly 12 hexadecimal characters")
+    meter_address = _addr_from_meter_number(meter_number)
+    data_identifier = _charge_data_identifier(operation)
+    cents = _amount_to_cents(amount)
+    order = _charge_order_bytes(order_number)
+
+    data_field = (
+        _add_33(bytes.fromhex(data_identifier)[::-1])
+        + CHARGE_OPERATOR
+        + _add_33(cents.to_bytes(4, byteorder="little", signed=False))
+        + _add_33(order[::-1])
+        + CHARGE_MAC
+        + _add_33(meter_address)
+        + CHARGE_MAC
+    )
+    if len(data_field) != CHARGE_DATA_LENGTH:
+        raise ValueError("manufacturer charge DATA field must be exactly 0x22 bytes")
+
+    frame = build_frame(
+        meter_number,
+        0x03,
+        data_field,
+        checksum_mode="incl_1st68",
+        include_preamble=True,
+    )
+    if verify_checksum(frame[4:], 0) != (True, "incl_1st68"):
+        raise ValueError("manufacturer charge frame checksum is not incl_1st68")
+    return frame
+
+
 def build_topup_frame(
     meter_number: str,
-    amount: float,
-    order_no: bytes,
-    *,
-    operator: bytes,
-    mac1: bytes,
-    schedule_no: bytes,
-    mailing_addr: bytes,
-    mac2: bytes,
-    checksum_mode: str,
-    include_preamble: bool = False,
+    amount,
+    order_number: str,
 ) -> bytes:
-    """Build a 070102FF structure from caller-supplied security material.
-
-    This only assembles bytes; it does not authenticate with an ESAM and must not be
-    treated as proof that a meter will accept the transaction.
-    """
-    plain = (
-        bytes.fromhex("070102FF")[::-1]
-        + _require_bytes("operator", operator, 4)
-        + _bcd_bytes_from_amount(amount, 4, 2)
-        + _require_bytes("order_no", order_no, 8)
-        + _require_bytes("mac1", mac1, 4)
-        + _require_bytes("schedule_no", schedule_no, 6)
-        + _require_bytes("mailing_addr", mailing_addr)
-        + _require_bytes("mac2", mac2, 4)
-    )
-    return build_frame(
-        meter_number, 0x03, _add_33(plain),
-        checksum_mode=checksum_mode, include_preamble=include_preamble,
-    )
+    """Compatibility name for the manufacturer's recharge operation."""
+    return build_charge_frame(meter_number, "recharge", order_number, amount)
 
 
 def build_init_amount_frame(
@@ -451,32 +540,11 @@ def build_init_amount_frame(
 
 def build_refund_frame(
     meter_number: str,
-    amount: float,
-    order_no: bytes,
-    *,
-    operator: bytes,
-    mac1: bytes,
-    schedule_no: bytes,
-    mailing_addr: bytes,
-    mac2: bytes,
-    checksum_mode: str,
-    include_preamble: bool = False,
+    amount,
+    order_number: str,
 ) -> bytes:
-    """Build a 070108FF structure from explicit, externally derived fields."""
-    plain = (
-        bytes.fromhex("070108FF")[::-1]
-        + _require_bytes("operator", operator, 4)
-        + _bcd_bytes_from_amount(amount, 4, 2)
-        + _require_bytes("order_no", order_no, 8)
-        + _require_bytes("mac1", mac1, 4)
-        + _require_bytes("schedule_no", schedule_no, 6)
-        + _require_bytes("mailing_addr", mailing_addr)
-        + _require_bytes("mac2", mac2, 4)
-    )
-    return build_frame(
-        meter_number, 0x03, _add_33(plain),
-        checksum_mode=checksum_mode, include_preamble=include_preamble,
-    )
+    """Compatibility name for the manufacturer's refund operation."""
+    return build_charge_frame(meter_number, "refund", order_number, amount)
 
 # ---- READ price parameter: DI=070104FF, C=0x11 ----
 

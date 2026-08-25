@@ -5,6 +5,7 @@ not open sockets, start the listener, dispatch commands, or create MeterCommand 
 """
 
 import inspect
+from decimal import Decimal
 from unittest.mock import patch
 
 from django.core.management import call_command
@@ -14,7 +15,8 @@ from django.test import RequestFactory, SimpleTestCase
 from smart_meter.dlt645 import (
     _add_33,
     _addr_from_meter_number,
-    _bcd_bytes_from_amount,
+    _amount_to_cents,
+    build_charge_frame,
     build_frame,
     build_init_amount_frame,
     build_read_frame_for_di,
@@ -32,14 +34,19 @@ CAPTURED_SECURITY_QUERY = bytes.fromhex(
     "681200510503266803083235B43A445566773716"
 )
 CAPTURED_SECURITY_RESPONSE = bytes.fromhex("6812005105032668C301355A16")
+MANUFACTURER_RECHARGE = bytes.fromhex(
+    "FEFEFEFE681200510503266803223235343A77665544435A33336B74453595B57345"
+    "33333333453384383659333333338A16"
+)
+MANUFACTURER_REFUND = bytes.fromhex(
+    "FEFEFEFE68120051050326680322323B343A776655441B3633336C74453595B57345"
+    "33333333453384383659333333334516"
+)
 
 # Deliberately fake, non-production material for structure tests only.
 TEST_OPERATOR = bytes.fromhex("11223344")
 TEST_MAC1 = bytes.fromhex("01020304")
 TEST_MAC2 = bytes.fromhex("A1A2A3A4")
-TEST_ORDER = bytes.fromhex("0102030405060708")
-TEST_SCHEDULE = bytes.fromhex("101112131415")
-TEST_MAILING_ADDRESS = bytes.fromhex("202122232425")
 TEST_PURCHASE_COUNT = bytes.fromhex("00000001")
 
 
@@ -48,6 +55,11 @@ def _plain_data(frame: bytes) -> bytes:
         frame = frame[1:]
     length = frame[9]
     return bytes((value - 0x33) & 0xFF for value in frame[10:10 + length])
+
+
+def _data_field(frame: bytes) -> bytes:
+    inner = frame[4:] if frame.startswith(b"\xFE" * 4) else frame
+    return inner[10:10 + inner[9]]
 
 
 class DLT645PrimitiveTests(SimpleTestCase):
@@ -103,44 +115,90 @@ class DLT645PrimitiveTests(SimpleTestCase):
 
 
 class PrepaidAmountAndStructureTests(SimpleTestCase):
-    def test_amount_encoding_preserves_existing_project_representation(self):
+    def test_manufacturer_binary_little_endian_amount_examples(self):
         expected = {
-            0.00: "00000000",
-            1.00: "00000100",
-            50.00: "00005000",
-            100.00: "00010000",
+            Decimal("1.00"): "97333333",
+            Decimal("10.00"): "1B363333",
+            Decimal("50.00"): "BB463333",
+            Decimal("100.00"): "435A3333",
         }
-        for amount, plain_hex in expected.items():
+        for amount, encoded_hex in expected.items():
             with self.subTest(amount=amount):
-                plain = _bcd_bytes_from_amount(amount, 4, 2)
-                self.assertEqual(plain.hex().upper(), plain_hex)
-                self.assertEqual(_add_33(plain), bytes((b + 0x33) & 0xFF for b in plain))
+                frame = build_charge_frame(METER, "recharge", "1", amount)
+                self.assertEqual(_data_field(frame)[8:12].hex().upper(), encoded_hex)
 
-    def test_security_sensitive_arguments_have_no_defaults(self):
-        required = {
-            build_topup_frame: ("operator", "mac1", "schedule_no", "mailing_addr", "mac2", "checksum_mode"),
-            build_init_amount_frame: ("operator", "mac1", "purchase_count", "mac2", "checksum_mode"),
-            build_refund_frame: ("operator", "mac1", "schedule_no", "mailing_addr", "mac2", "checksum_mode"),
-        }
-        for builder, names in required.items():
-            signature = inspect.signature(builder)
-            for name in names:
-                with self.subTest(builder=builder.__name__, argument=name):
-                    self.assertIs(signature.parameters[name].default, inspect.Parameter.empty)
+    def test_manufacturer_recharge_vector_byte_for_byte(self):
+        frame = build_charge_frame(
+            METER, "recharge", "1240826202124138", Decimal("100.00")
+        )
+        self.assertEqual(frame, MANUFACTURER_RECHARGE)
+        self.assertEqual(
+            build_topup_frame(METER, Decimal("100.00"), "1240826202124138"),
+            MANUFACTURER_RECHARGE,
+        )
 
-    def test_offline_topup_structure(self):
-        frame = build_topup_frame(
-            METER, 50.00, TEST_ORDER,
-            operator=TEST_OPERATOR, mac1=TEST_MAC1,
-            schedule_no=TEST_SCHEDULE, mailing_addr=TEST_MAILING_ADDRESS,
-            mac2=TEST_MAC2, checksum_mode="incl_1st68",
+    def test_manufacturer_refund_vector_byte_for_byte(self):
+        frame = build_charge_frame(
+            METER, "refund", "1240826202124139", Decimal("10.00")
         )
-        expected = (
-            bytes.fromhex("FF020107") + TEST_OPERATOR + bytes.fromhex("00005000")
-            + TEST_ORDER + TEST_MAC1 + TEST_SCHEDULE + TEST_MAILING_ADDRESS + TEST_MAC2
+        self.assertEqual(frame, MANUFACTURER_REFUND)
+        self.assertEqual(
+            build_refund_frame(METER, Decimal("10.00"), "1240826202124139"),
+            MANUFACTURER_REFUND,
         )
-        self.assertEqual(_plain_data(frame), expected)
-        self.assertEqual(verify_checksum(frame, 0), (True, "incl_1st68"))
+
+    def test_charge_field_reversal_and_plus_33(self):
+        data = _data_field(MANUFACTURER_RECHARGE)
+        self.assertEqual(MANUFACTURER_RECHARGE[5:11], bytes.fromhex("120051050326"))
+        self.assertEqual(data[0:4], _add_33(bytes.fromhex("070102FF")[::-1]))
+        self.assertEqual(data[4:8], bytes.fromhex("77665544"))
+        self.assertEqual(data[12:20], bytes.fromhex("6B74453595B57345"))
+        self.assertEqual(data[20:24], bytes.fromhex("33333333"))
+        self.assertEqual(data[24:30], _add_33(bytes.fromhex(METER)[::-1]))
+        self.assertEqual(data[30:34], bytes.fromhex("33333333"))
+
+    def test_short_order_number_is_left_zero_padded_then_reversed(self):
+        data = _data_field(build_charge_frame(METER, "070102FF", "A1", "1.00"))
+        self.assertEqual(data[12:20], bytes.fromhex("D433333333333333"))
+
+    def test_charge_control_length_and_checksum_window(self):
+        inner = MANUFACTURER_RECHARGE[4:]
+        self.assertEqual(inner[8], 0x03)
+        self.assertEqual(inner[9], 0x22)
+        self.assertEqual(len(_data_field(MANUFACTURER_RECHARGE)), 0x22)
+        self.assertEqual(verify_checksum(inner, 0), (True, "incl_1st68"))
+        self.assertEqual(
+            inner[-2], calculate_outbound_checksum(inner[:-2], "incl_1st68")
+        )
+
+    def test_charge_validation_rejects_malformed_meter_number(self):
+        for meter in ("26030551001", "2603055100123", "26030551001Z", "2603 5510012"):
+            with self.subTest(meter=meter), self.assertRaises(ValueError):
+                build_charge_frame(meter, "recharge", "1", "1.00")
+
+    def test_charge_validation_rejects_bad_order_number(self):
+        for order in ("", "123G", "12408262021241380"):
+            with self.subTest(order=order), self.assertRaises(ValueError):
+                build_charge_frame(METER, "recharge", order, "1.00")
+
+    def test_charge_validation_rejects_invalid_di(self):
+        for operation in ("070103FF", "other"):
+            with self.subTest(operation=operation), self.assertRaises(ValueError):
+                build_charge_frame(METER, operation, "1", "1.00")
+
+    def test_charge_amount_requires_safe_positive_integer_cents(self):
+        self.assertEqual(_amount_to_cents(Decimal("100.00")), 10000)
+        for amount in (Decimal("0"), Decimal("-1"), Decimal("1.001")):
+            with self.subTest(amount=amount), self.assertRaises(ValueError):
+                build_charge_frame(METER, "recharge", "1", amount)
+        with self.assertRaises(TypeError):
+            build_charge_frame(METER, "recharge", "1", 1.00)
+
+    def test_init_security_arguments_remain_required(self):
+        signature = inspect.signature(build_init_amount_frame)
+        for name in ("operator", "mac1", "purchase_count", "mac2", "checksum_mode"):
+            with self.subTest(argument=name):
+                self.assertIs(signature.parameters[name].default, inspect.Parameter.empty)
 
 
 class PrepaidTransportSafetyTests(SimpleTestCase):
@@ -196,17 +254,3 @@ class PrepaidTransportSafetyTests(SimpleTestCase):
         )
         self.assertEqual(_plain_data(frame), expected)
         self.assertEqual(verify_checksum(frame[4:], 0), (True, "incl_1st68"))
-
-    def test_offline_refund_structure(self):
-        frame = build_refund_frame(
-            METER, 1.00, TEST_ORDER,
-            operator=TEST_OPERATOR, mac1=TEST_MAC1,
-            schedule_no=TEST_SCHEDULE, mailing_addr=TEST_MAILING_ADDRESS,
-            mac2=TEST_MAC2, checksum_mode="incl_1st68",
-        )
-        expected = (
-            bytes.fromhex("FF080107") + TEST_OPERATOR + bytes.fromhex("00000100")
-            + TEST_ORDER + TEST_MAC1 + TEST_SCHEDULE + TEST_MAILING_ADDRESS + TEST_MAC2
-        )
-        self.assertEqual(_plain_data(frame), expected)
-        self.assertEqual(verify_checksum(frame, 0), (True, "incl_1st68"))

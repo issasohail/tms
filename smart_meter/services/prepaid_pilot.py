@@ -105,6 +105,8 @@ def guarded_parameter_write(*, meter_id, parameter, value, user, reason, confirm
 
 def prepaid_recharge_disabled_reason():
     return (
-        "DL/T645 recharge is disabled: the supplied project snapshot does not contain the manufacturer documentation "
-        "that defines the exact recharge DI/control code, purchase sequence, authentication/encryption and replay semantics."
+        "DL/T645 recharge remains disabled: the manufacturer charge frame is now "
+        "implemented for offline generation, but initial prepaid activation/configuration, "
+        "acknowledgement and error handling, duplicate/replay rules, balance read-back "
+        "reconciliation, and model/firmware applicability are not yet approved for physical testing."
     )

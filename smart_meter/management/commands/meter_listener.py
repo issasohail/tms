@@ -20,6 +20,8 @@ from django.db.models import Q
 from django.utils import timezone
 
 from smart_meter.dlt645 import parse_frame, verify_checksum
+from smart_meter.dlt645 import relay_state_from_status_word
+from smart_meter.utils.frames import build_read_028011FF
 
 # ==== WINDOWS-SAFE LOGGING (same as before) ====
 from smart_meter.models import (
@@ -886,7 +888,6 @@ class DbCommandPoller(threading.Thread):
             ttl = float(cmd.timeout or 12.0)
             now = timezone.now()
             MeterCommand.objects.filter(pk=cmd.pk).update(
-                status="sent",
                 attempt_count=cmd.attempt_count + 1,
                 last_attempt_at=now,
                 error="",
@@ -942,7 +943,7 @@ class DbCommandPoller(threading.Thread):
                     self._retry_or_fail(cmd, "timeout waiting for reply")
             else:
                 # Transport acknowledgement means sendall() completed on the live
-                # meter socket. It does not prove the meter applied the command.
+                # socket. Non-relay compatibility commands do not request a reply.
                 self._ack(cmd, "")
         except Exception as e:
             self._retry_or_fail(cmd, str(e))
@@ -1006,7 +1007,7 @@ class DbCommandPoller(threading.Thread):
             status_reply_hex=reply.hex().upper(),
         )
         if relay_state is None:
-            self._verification_unconfirmed(cmd, "relay-status response had no valid status word")
+            self._verification_unconfirmed(cmd, "fresh status response had no relay state")
 
     def _verification_unconfirmed(self, cmd, reason):
         MeterCommand.objects.filter(pk=cmd.pk).update(
@@ -1017,6 +1018,8 @@ class DbCommandPoller(threading.Thread):
     def _ack(self, cmd, reply_hex):
         with transaction.atomic():
             cmd = MeterCommand.objects.select_for_update().get(pk=cmd.pk)
+            if cmd.status == "cancelled":
+                return
             cmd.status = "acknowledged" if cmd.status not in ("ok",) else cmd.status
             cmd.reply_hex = reply_hex or ""
             cmd.raw_ack_hex = reply_hex or ""
@@ -1044,6 +1047,8 @@ class DbCommandPoller(threading.Thread):
     def _retry_or_fail(self, cmd, msg):
         with transaction.atomic():
             cmd = MeterCommand.objects.select_for_update().get(pk=cmd.pk)
+            if cmd.status == "cancelled":
+                return
             if cmd.attempt_count >= cmd.max_attempts:
                 cmd.status = "failed"
                 cmd.error = msg
@@ -1072,11 +1077,20 @@ class DbCommandPoller(threading.Thread):
                 ]
             )
 
-    def _fail(self, cmd, msg):
+    def _fail(self, cmd, msg, reply_hex=""):
         with transaction.atomic():
+            cmd = MeterCommand.objects.select_for_update().get(pk=cmd.pk)
+            if cmd.status == "cancelled":
+                return
             cmd.status = "failed"
             cmd.error = msg
-            cmd.save(update_fields=["status", "error", "updated_at"])
+            cmd.raw_ack_hex = reply_hex or ""
+            cmd.reply_hex = reply_hex or ""
+            cmd.save(
+                update_fields=[
+                    "status", "error", "raw_ack_hex", "reply_hex", "updated_at"
+                ]
+            )
 
 
 class MeterTimingSchedulePoller(threading.Thread):

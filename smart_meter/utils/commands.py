@@ -8,21 +8,25 @@ from smart_meter.utils.frames import build_read_028011FF
 import time
 from smart_meter.utils.control_client import send_via_listener
 # builds DL/T645 switch frame
-from smart_meter.vendor.switch_OnOff import frame_command
+from smart_meter.vendor.switch_OnOff import (
+    RELAY_CLOSE_COMMAND,
+    RELAY_OPEN_COMMAND,
+    frame_command,
+)
 
 # DL/T645 power control:
-#   0x1A = OFF (cut-off)   0x1C = ON (restore)
+#   0x1A = OFF (cut-off)   0x1B = ON (restore)
 
 
 def send_cutoff_command(meter_number: str, timeout: float = 12.0) -> dict:
     """Turn power OFF (cut off). Returns control server JSON: {'ok': bool, 'reply': 'HEX', 'error': '...'}"""
-    frame = frame_command(meter_number, 0x1A)
+    frame = frame_command(meter_number, RELAY_OPEN_COMMAND)
     return send_via_listener(meter_number, frame, timeout=timeout)
 
 
 def send_restore_command(meter_number: str, timeout: float = 12.0) -> dict:
     """Turn power ON (restore). Returns control server JSON: {'ok': bool, 'reply': 'HEX', 'error': '...'}"""
-    frame = frame_command(meter_number, 0x1C)
+    frame = frame_command(meter_number, RELAY_CLOSE_COMMAND)
     return send_via_listener(meter_number, frame, timeout=timeout)
 
 

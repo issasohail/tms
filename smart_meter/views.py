@@ -96,7 +96,11 @@ from smart_meter.utils.tenants import (
 )
 from smart_meter.utils.vpn import public_ip, vpn_connected
 from smart_meter.vendor.prepaid import DLT645_2007_Prepaid
-from smart_meter.vendor.switch_OnOff import frame_command as build_switch_frame
+from smart_meter.vendor.switch_OnOff import (
+    RELAY_CLOSE_COMMAND,
+    RELAY_OPEN_COMMAND,
+    frame_command as build_switch_frame,
+)
 
 def _local_date_bounds(day):
     """Return timezone-aware [local midnight, next local midnight) bounds."""
@@ -2175,7 +2179,7 @@ def cutoff_meter(request, meter_id):
     """Cut OFF (open relay) for a single meter — meter-number based, no IP needed."""
     meter = get_object_or_404(Meter, pk=meter_id)
 
-    byCmd = 0x1A  # OFF
+    byCmd = RELAY_OPEN_COMMAND  # OFF
     frame = build_switch_frame(meter.meter_number, byCmd)
     frame_hex = _as_hex(frame)
     cmd_name = "OFF"
@@ -2214,7 +2218,11 @@ def cutoff_meter(request, meter_id):
 
     # Send (honor feature flag if you kept it)
     if DISABLE_CUTOFFS:
-        res = {"ok": True, "error": None, "payload": "skipped:DISABLE_CUTOFFS"}
+        res = {
+            "ok": False,
+            "error": "switching disabled by DISABLE_CUTOFFS",
+            "payload": "skipped:DISABLE_CUTOFFS",
+        }
         logger.info(
             "RESPONSE meter=%s cmd=%s ok=%s error=%s payload=%s",
             meter.meter_number,
@@ -2327,7 +2335,7 @@ def restore_meter(request, meter_id):
     """Restore (close relay) for a single meter — meter-number based, no IP needed."""
     meter = get_object_or_404(Meter, pk=meter_id)
 
-    byCmd = 0x1B  # ON (DL/T645 close/permit-close command)
+    byCmd = RELAY_CLOSE_COMMAND  # ON (DL/T645 close/permit-close command)
     frame = build_switch_frame(meter.meter_number, byCmd)
     frame_hex = _as_hex(frame)
     cmd_name = "ON"
@@ -2350,7 +2358,11 @@ def restore_meter(request, meter_id):
     logger.info("-------------------------------------")
 
     if DISABLE_CUTOFFS:
-        res = {"ok": True, "error": None, "payload": "skipped:DISABLE_CUTOFFS"}
+        res = {
+            "ok": False,
+            "error": "switching disabled by DISABLE_CUTOFFS",
+            "payload": "skipped:DISABLE_CUTOFFS",
+        }
         logger.info(
             "RESPONSE meter=%s cmd=%s ok=%s error=%s payload=%s",
             meter.meter_number,
@@ -3762,7 +3774,7 @@ def meter_switch(request):
     if request.method == "POST" and form.is_valid():
         meter = form.cleaned_data["meter"]
         on = form.cleaned_data["action"] == "on"
-        byCmd = 0x1B if on else 0x1A
+        byCmd = RELAY_CLOSE_COMMAND if on else RELAY_OPEN_COMMAND
         cmd_name = "ON" if on else "OFF"
 
         # Build frame
@@ -3789,7 +3801,11 @@ def meter_switch(request):
 
         # Optional feature flag (set DISABLE_CUTOFFS=False in settings for real switching)
         if DISABLE_CUTOFFS:
-            res = {"ok": True, "error": None, "payload": "skipped:DISABLE_CUTOFFS"}
+            res = {
+                "ok": False,
+                "error": "switching disabled by DISABLE_CUTOFFS",
+                "payload": "skipped:DISABLE_CUTOFFS",
+            }
             ok = True
             logger.info(
                 "RESPONSE view=%s meter=%s cmd=%s ok=%s error=%s payload=%s",
@@ -3985,8 +4001,8 @@ def bulk_power_action(request):
             request.META.get("HTTP_REFERER") or reverse("smart_meter:meter_list")
         )
 
-    byCmd = 0x1B if action == "restore" else 0x1A  # 0x1B=ON, 0x1A=OFF
-    cmd_name = "ON" if byCmd == 0x1B else "OFF"
+    byCmd = RELAY_CLOSE_COMMAND if action == "restore" else RELAY_OPEN_COMMAND
+    cmd_name = "ON" if byCmd == RELAY_CLOSE_COMMAND else "OFF"
     ok_count = 0
     failures = []
 
@@ -4023,7 +4039,11 @@ def bulk_power_action(request):
 
             # optional skip in dev/safety
             if DISABLE_CUTOFFS:
-                res = {"ok": True, "error": None, "payload": "skipped:DISABLE_CUTOFFS"}
+                res = {
+                    "ok": False,
+                    "error": "switching disabled by DISABLE_CUTOFFS",
+                    "payload": "skipped:DISABLE_CUTOFFS",
+                }
                 logger.info(
                     "RESPONSE meter=%s cmd=%s ok=%s error=%s payload=%s",
                     m.meter_number,
@@ -4135,8 +4155,12 @@ def switch_lab(request):
 
     if request.method == "POST" and form.is_valid():
         meter_hex = form.cleaned_data["meter_number"]
-        byCmd = 0x1B if form.cleaned_data["action"] == "on" else 0x1A
-        cmd_name = "ON" if byCmd == 0x1B else "OFF"
+        byCmd = (
+            RELAY_CLOSE_COMMAND
+            if form.cleaned_data["action"] == "on"
+            else RELAY_OPEN_COMMAND
+        )
+        cmd_name = "ON" if byCmd == RELAY_CLOSE_COMMAND else "OFF"
 
         # Build frame via vendor function
         frame = build_switch_frame(meter_hex, byCmd)
@@ -4173,8 +4197,8 @@ def switch_lab(request):
         if not form.cleaned_data.get("preview_only"):
             if DISABLE_CUTOFFS:
                 send_result = {
-                    "ok": True,
-                    "error": None,
+                    "ok": False,
+                    "error": "switching disabled by DISABLE_CUTOFFS",
                     "payload": "skipped:DISABLE_CUTOFFS",
                 }
                 logger.info(
@@ -4190,7 +4214,16 @@ def switch_lab(request):
 
             else:
                 try:
-                    send_result = send_via_db(meter_hex, frame, timeout=32.0)
+                    send_result = send_via_db(
+                        meter_number=meter_hex,
+                        frame_hex=frame_hex,
+                        timeout=32.0,
+                        initiated_by=request.user.get_username(),
+                        reason="manual switch from switch lab",
+                        command_type="relay",
+                        desired_state="on" if cmd_name == "ON" else "off",
+                        source="manual",
+                    )
                     logger.info(
                         "RESPONSE view=%s meter=%s cmd=%s ok=%s error=%s payload=%s",
                         VIEW_NAME,

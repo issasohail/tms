@@ -28,7 +28,7 @@ def send_via_db(
         from smart_meter.services.command_lifecycle import queue_relay_command
         cmd = queue_relay_command(
             meter, desired_state, source=source, initiated_by=initiated_by or "",
-            reason=reason or "", requires_verification=True,
+            reason=reason or "", timeout=float(timeout), requires_verification=True,
         )
         if expect_di and not cmd.expect_di:
             MeterCommand.objects.filter(pk=cmd.pk).update(expect_di=(expect_di or "").upper())
@@ -53,13 +53,24 @@ def send_via_db(
     done = {"verified", "acknowledged", "ok", "failed", "expired", "cancelled", "error", "timeout"}
     while time.time() < deadline:
         time.sleep(0.2)
-        c = MeterCommand.objects.only("status", "reply_hex", "raw_ack_hex", "error").get(pk=cmd.pk)
+        c = MeterCommand.objects.only(
+            "status", "reply_hex", "raw_ack_hex", "error", "command_type"
+        ).get(pk=cmd.pk)
         if c.status in done:
-            ok = c.status in {"verified", "acknowledged", "ok"}
+            ok = c.status in {"verified", "ok"} or (
+                c.command_type != "relay" and c.status == "acknowledged"
+            )
             return {
                 "ok": ok,
                 "reply": c.raw_ack_hex or c.reply_hex or "",
-                "error": "" if ok else (c.error or c.status),
+                "error": "" if ok else (
+                    c.error
+                    or (
+                        "relay command acknowledged but physical state was not verified"
+                        if c.status == "acknowledged"
+                        else c.status
+                    )
+                ),
                 "status": c.status,
                 "command_id": cmd.pk,
             }

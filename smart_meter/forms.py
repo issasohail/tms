@@ -186,7 +186,7 @@ class SwitchLabForm(forms.Form):
             attrs={"class": "form-control", "placeholder": "250619510017"})
     )
     action = forms.ChoiceField(
-        choices=[("on", "Turn ON (0x1C)"), ("off", "Turn OFF (0x1A)")],
+        choices=[("on", "Turn ON (0x1B)"), ("off", "Turn OFF (0x1A)")],
         widget=forms.RadioSelect
     )
     preview_only = forms.BooleanField(

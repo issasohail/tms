@@ -138,21 +138,26 @@ def enforce_meter_timing_schedule(meter: Meter):
         return None
     desired = decision.desired_state
     if desired == "off" and meter.power_status != "off":
-        return queue_relay_command(meter, "off", source="schedule", requested_by=None)
+        return queue_relay_command(meter, "off", source="schedule")
     if desired == "on" and meter.power_status != "on":
         ok, _reason = schedule_restore_allowed(meter)
         if ok:
-            return queue_relay_command(meter, "on", source="schedule", requested_by=None)
+            return queue_relay_command(meter, "on", source="schedule")
     return None
 
 
 def enforce_all_meter_timing_schedules():
-    count = 0
+    return len(enforce_all_timing_schedules())
+
+
+def enforce_all_timing_schedules():
+    queued = []
     meter_ids = MeterTimingEvent.objects.filter(is_enabled=True).values_list("meter_id", flat=True).distinct()
     for meter in Meter.objects.filter(pk__in=meter_ids, is_active=True).iterator():
-        if enforce_meter_timing_schedule(meter):
-            count += 1
-    return count
+        command = enforce_meter_timing_schedule(meter)
+        if command:
+            queued.append(command)
+    return queued
 
 
 def copy_timing_schedule(source: Meter, target: Meter) -> int:

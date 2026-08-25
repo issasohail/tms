@@ -1,4 +1,8 @@
 ﻿
+RELAY_OPEN_COMMAND = 0x1A
+RELAY_CLOSE_COMMAND = 0x1B
+
+
 def frame_command(meter_number, byCmd):
     # Preamble: 4 bytes of 0xFE
     preamble = bytes([0xFE] * 4)
@@ -28,10 +32,10 @@ def frame_command(meter_number, byCmd):
 
 # Example usage
 meter_number = '250619510017'
-byCmd = 0x1B
+byCmd = RELAY_CLOSE_COMMAND
 # request_frame = frame_command(meter_number, byCmd)
 # print(f"ON switch_onOff.py Request frame: {request_frame.hex()}")
 
-byCmd = 0x1A
+byCmd = RELAY_OPEN_COMMAND
 # request_frame = frame_command(meter_number, byCmd)
 # print(f"OFFON switch_onOff.py Request frame: {request_frame.hex()}")

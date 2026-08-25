@@ -4,6 +4,11 @@ import struct
 from datetime import datetime
 import logging
 
+from smart_meter.vendor.switch_OnOff import (
+    RELAY_CLOSE_COMMAND,
+    RELAY_OPEN_COMMAND,
+)
+
 # Use the same logger your views use so it lands in meter_control.log
 logger = logging.getLogger("meter_control")
 
@@ -89,8 +94,8 @@ def build_switch_command(meter_number: str, action: str = "off") -> bytes:
 
     # Control channel bytes (+0x33 encoded) based on action
     channel_bytes = {
-        "off": bytes([0x1A + 0x33, 0x34]),  # OFF
-        "on":  bytes([0x1C + 0x33, 0x34]),  # ON
+        "off": bytes([RELAY_OPEN_COMMAND + 0x33, 0x34]),  # OFF
+        "on": bytes([RELAY_CLOSE_COMMAND + 0x33, 0x34]),  # ON
     }[action]
 
     # Time validity — each byte + 0x33 (device typically ignores exact value)

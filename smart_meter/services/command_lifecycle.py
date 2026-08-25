@@ -19,7 +19,11 @@ from django.db.models import Q
 from django.utils import timezone
 
 from smart_meter.models import LiveReading, Meter, MeterCommand, MeterCreditAccount
-from smart_meter.vendor.switch_OnOff import frame_command
+from smart_meter.vendor.switch_OnOff import (
+    RELAY_CLOSE_COMMAND,
+    RELAY_OPEN_COMMAND,
+    frame_command,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +267,7 @@ def queue_relay_command(
     credit_account: Optional[MeterCreditAccount] = None,
     related_payment=None,
     priority: int = 50,
+    timeout: float = 12.0,
     expires_in: timedelta = timedelta(hours=24),
     requires_verification: Optional[bool] = None,
 ) -> MeterCommand:
@@ -271,9 +276,10 @@ def queue_relay_command(
     if meter.is_check_meter and source != "manual":
         raise ValueError("automatic relay commands are not allowed for audit/check meters")
 
-    # DL/T645 load-switch command types: 0x1A trips (opens) and 0x1B
-    # permits/closes the relay.  0x1C is an alarm command, not relay ON.
-    by_cmd = 0x1B if desired_state == "on" else 0x1A
+    # Device-specific load-switch mapping confirmed by this TMS meter family:
+    # 0x1A opens the relay and 0x1B closes/permits closing it.  The frame's
+    # outer DL/T645 control code remains 0x1C and must not be changed.
+    by_cmd = RELAY_CLOSE_COMMAND if desired_state == "on" else RELAY_OPEN_COMMAND
     frame_hex = frame_command(meter.meter_number, by_cmd).hex().upper()
     account_key = credit_account.pk if credit_account else "none"
     raw_key = f"relay:{meter.pk}:{desired_state}:{source}:{account_key}"
@@ -292,6 +298,20 @@ def queue_relay_command(
             )
         else:
             cancel_obsolete_automatic_commands(meter, desired_state, f"superseded by {desired_state} request: {reason}"[:255])
+            if source == "manual":
+                opposite = "on" if desired_state == "off" else "off"
+                MeterCommand.objects.filter(
+                    meter=meter,
+                    command_type="relay",
+                    desired_state=opposite,
+                    source="manual",
+                    status__in=ACTIVE - {"acknowledged"},
+                ).update(
+                    status="cancelled",
+                    cancelled_at=timezone.now(),
+                    cancelled_reason=f"superseded by manual {desired_state} request: {reason}"[:255],
+                    error="",
+                )
         reusable_statuses = ACTIVE if source != "manual" else ACTIVE - {"acknowledged"}
         existing = MeterCommand.objects.select_for_update().filter(
             meter=meter,
@@ -311,6 +331,7 @@ def queue_relay_command(
             desired_state=desired_state,
             source=source,
             priority=priority,
+            timeout=float(timeout),
             idempotency_key=f"{key}:{timezone.now():%Y%m%d%H%M%S%f}:{uuid.uuid4().hex[:8]}",
             initiated_by=initiated_by,
             reason=reason,

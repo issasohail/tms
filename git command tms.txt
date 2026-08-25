@@ -3,7 +3,7 @@ git add .
 git commit -m "fix"
 git push
 
-
+python manage.py runserver 0.0.0.0:8443
 cd /home/ivs/apps/tms
 source .venv/bin/activate
 

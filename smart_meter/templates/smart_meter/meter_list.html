@@ -146,7 +146,7 @@
                   {% endif %}
                 </a>
               </th>
-              <th class="col-setting-narrow"><span class="th2">Unit<span class="sub">Rate</span></span></th>
+              <th class="col-rate"><span class="th2">Unit<span class="sub">Rate</span></span></th>
               <th class="col-setting-narrow"><span class="th2">Min<span class="sub">Alert</span></span></th>
               <th class="col-setting-narrow"><span class="th2">Min<span class="sub">Cutoff</span></span></th>
               <th class="col-narrow"><span class="th2">Mode</span></th>
@@ -223,11 +223,17 @@
                           data-action="off" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}"
                           data-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
                           {% if m.confirmed_relay_state == 'off' %}disabled{% endif %}>OFF</button>
-                  <small class="d-block text-muted">{% if m.relay_confirmed_at %}Confirmed {{ m.relay_confirmed_at|date:"Y-m-d H:i:s" }}{% else %}Unknown/stale{% endif %}</small>
+                  <small class="d-block text-muted"
+                         title="{% if m.relay_confirmed_at %}Confirmed {{ m.relay_confirmed_at|date:'Y-m-d H:i:s' }}{% else %}Unknown/stale{% endif %}">
+                    {% if m.relay_confirmed_at %}Confirmed {{ m.relay_confirmed_at|date:"Y-m-d H:i:s" }}{% else %}Unknown/stale{% endif %}
+                  </small>
                 </div>
               </td>
 
-              <td class="col-setting-narrow">{{ m.display_electricity_rate.rate|floatformat:2 }} <small class="text-muted">{{ m.display_electricity_rate.source }}</small></td>
+              <td class="col-rate">
+                <span class="rate-value">{{ m.display_electricity_rate.rate|floatformat:2 }}</span>
+                <small class="rate-source text-muted" title="{{ m.display_electricity_rate.source }}">{{ m.display_electricity_rate.source }}</small>
+              </td>
               <td class="col-setting-narrow">{{ m.min_balance_alert|floatformat:0 }}</td>
               <td class="col-setting-narrow">{{ m.min_balance_cutoff|floatformat:0 }}</td>
               <td class="col-narrow">
@@ -247,7 +253,7 @@
 
               <td class="col-date-sm">{% if m.installed_at %}{{ m.installed_at|date:"Y-m-d" }}{% else %}-{% endif %}</td>
               <td class="col-balance fw-semibold">{% if m.balance is not None %}{{ m.balance|floatformat:2 }}{% else %}-{% endif %}</td>
-              <td class="col-date-lg">{% if m.last_ts %}{{ m.last_ts|date:"Y-m-d H:i:s" }}{% else %}-{% endif %}</td>
+              <td class="col-ts">{% if m.last_ts %}{{ m.last_ts|date:"Y-m-d H:i:s" }}{% else %}-{% endif %}</td>
               <td class="col-metric">{% if m.last_voltage_a is not None %}{{ m.last_voltage_a|floatformat:1 }}{% else %}-{% endif %}</td>
               <td class="col-metric">{% if m.last_current_a is not None %}{{ m.last_current_a|floatformat:3 }}{% else %}-{% endif %}</td>
               <td class="col-metric">{% if m.last_total_energy is not None %}{{ m.last_total_energy|floatformat:3 }}{% else %}-{% endif %}</td>
@@ -380,7 +386,7 @@
 .compact-table {
   table-layout: fixed;
   font-size: .88rem;
-  min-width: 1420px;
+  min-width: 1750px;
 }
 .compact-table th,
 .compact-table td {
@@ -404,8 +410,9 @@
 .col-prop { width: 82px; overflow: hidden; text-overflow: ellipsis; }
 .col-unit { width: 124px; overflow: hidden; text-overflow: ellipsis; }
 .col-tenant { width: 130px; overflow: hidden; text-overflow: ellipsis; }
-.col-power { width: 112px; }
+.col-power { width: 132px; }
 .col-narrow { width: 64px; }
+.col-rate { width: 84px; }
 .col-setting-narrow { width: 54px; }
 .col-balance { width: 74px; }
 .col-ts { width: 124px; }
@@ -419,6 +426,45 @@
   align-items: center;
   justify-content: center;
   gap: .28rem;
+}
+.compact-table .power-control {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  justify-content: center;
+  width: 100%;
+  gap: .2rem;
+  position: relative;
+  margin-bottom: .8rem;
+}
+.compact-table .col-power {
+  overflow: visible;
+}
+.compact-table .power-control > small {
+  position: absolute;
+  top: calc(100% + .12rem);
+  left: -130px;
+  display: block;
+  width: 400px;
+  max-width: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.1;
+  text-align: left;
+  pointer-events: none;
+}
+.compact-table .rate-value,
+.compact-table .rate-source {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.15;
+}
+.compact-table .rate-source {
+  font-size: 10px;
 }
 .power-toggle {
   width: 1.8rem;

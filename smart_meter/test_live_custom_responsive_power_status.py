@@ -23,7 +23,9 @@ class LiveCustomResponsivePowerStatusTests(SimpleTestCase):
         self.assertIn("tr[data-meter-row] > td.sno", self.source)
 
     def test_row_has_accessible_power_operation_status_below_tenant(self):
-        tenant_end = self.source.index('<span class="power-operation-status"')
+        tenant_end = self.source.index(
+            '<span class="power-operation-status {{ r.relay_indicator_class }}"'
+        )
         tenant_start = self.source.rfind('<span class="mobile-tenant"', 0, tenant_end)
 
         self.assertGreater(tenant_start, -1)
@@ -40,3 +42,36 @@ class LiveCustomResponsivePowerStatusTests(SimpleTestCase):
         self.assertNotIn("dataset.status", action_source)
         self.assertIn("btn.dataset.action", action_source)
         self.assertIn("setRowOperationStatus", action_source)
+
+    def test_balance_is_visible_and_refreshed_for_desktop_and_mobile(self):
+        self.assertIn('<th data-col="balance">Balance</th>', self.source)
+        self.assertIn('class="mobile-balance"', self.source)
+        self.assertIn('function setBalanceCell(tr, newValue, flash = true)', self.source)
+        self.assertIn('setBalanceCell(tr, r.balance, true);', self.source)
+        self.assertNotIn(
+            'th[data-col="balance"],\n  td[data-col="balance"] {\n    display: none !important;',
+            self.source,
+        )
+
+    def test_desktop_status_moves_beside_billing_and_saves_column_space(self):
+        badges_start = self.source.index('<div class="desktop-meter-badges">')
+        badges_source = self.source[badges_start : badges_start + 600]
+
+        self.assertIn('class="badge bg-success">Billing</span>', badges_source)
+        self.assertIn('class="badge online-badge', badges_source)
+        self.assertIn('@media (min-width: 992px)', self.source)
+        self.assertIn('th.col-status,', self.source)
+        self.assertIn('td.col-power > .power-badge', self.source)
+
+    def test_initial_and_polled_operation_states_use_server_reconciliation(self):
+        self.assertIn(
+            '{{ r.relay_indicator_label }}',
+            self.source,
+        )
+        self.assertIn(
+            "reading.relay_operation_label || (desired === 'on' ? 'Restoring…' : 'Connecting…')",
+            self.source,
+        )
+        self.assertIn("'sent', 'retry'].includes(status)", self.source)
+        self.assertIn("status === 'acknowledged'", self.source)
+        self.assertIn("setRowOperationStatus(tr, '', '');", self.source)

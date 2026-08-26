@@ -72,7 +72,10 @@ from smart_meter.models import (
     MeterSettings,
 )
 from smart_meter.services.billing import generate_bill_for_unit
-from smart_meter.services.relay_status import parse_authoritative_relay_state
+from smart_meter.services.relay_status import (
+    parse_authoritative_relay_state,
+    reconcile_live_relay_command_state,
+)
 from smart_meter.status import online_threshold_minutes
 
 # You will write these
@@ -2074,13 +2077,24 @@ def live_custom(request):
     ).order_by("meter_id", "-created_at"):
         latest_relay_commands.setdefault(command.meter_id, command)
     for reading in rows:
-        reading.confirmed_relay_state = parse_authoritative_relay_state(
-            reading.status_word
+        reading.latest_relay_command = latest_relay_commands.get(reading.meter_id)
+        relay_state = reconcile_live_relay_command_state(
+            reading.meter,
+            reading.latest_relay_command,
+            reading.status_word,
+            reading.ts,
+            is_fresh=reading.is_online,
         )
+        reading.confirmed_relay_state = relay_state["confirmed_state"]
         reading.relay_confirmed_at = (
             reading.ts if reading.confirmed_relay_state else None
         )
-        reading.latest_relay_command = latest_relay_commands.get(reading.meter_id)
+        reading.relay_command_status = relay_state["status"]
+        reading.relay_command_desired_state = relay_state["desired_state"]
+        reading.relay_command_error = relay_state["error"]
+        reading.relay_operation_label = relay_state["operation_label"]
+        reading.relay_indicator_label = relay_state["indicator_label"]
+        reading.relay_indicator_class = relay_state["indicator_class"]
     readings_missing_counts = []
     for reading in rows:
         if reading.meter_id in active_meter_count_by_id:
@@ -4570,8 +4584,15 @@ def live_custom_data(request):
         m = r.meter
         u = m.unit
         p = u.property
-        confirmed_state = parse_authoritative_relay_state(r.status_word)
         latest_command = latest_relay_commands.get(m.id)
+        relay_state = reconcile_live_relay_command_state(
+            m,
+            latest_command,
+            r.status_word,
+            r.ts,
+            is_fresh=is_online,
+        )
+        confirmed_state = relay_state["confirmed_state"]
 
         payload.append(
             {
@@ -4579,10 +4600,14 @@ def live_custom_data(request):
                 "is_online": is_online,
                 "power_status": (m.power_status or "OFF").upper(),
                 "relay_confirmed": bool(confirmed_state),
+                "relay_confirmed_state": confirmed_state or "",
                 "relay_confirmed_at": _ts_iso(r.ts) if confirmed_state else None,
-                "relay_command_status": latest_command.status if latest_command else "",
-                "relay_command_desired_state": latest_command.desired_state if latest_command else "",
-                "relay_command_error": latest_command.error if latest_command else "",
+                "relay_command_status": relay_state["status"],
+                "relay_command_desired_state": relay_state["desired_state"],
+                "relay_command_error": relay_state["error"],
+                "relay_operation_label": relay_state["operation_label"],
+                "relay_indicator_label": relay_state["indicator_label"],
+                "relay_indicator_class": relay_state["indicator_class"],
                 # values that map to your table columns
                 "property_name": p.property_name or "",
                 "property_short": (p.property_name or "")[:8],

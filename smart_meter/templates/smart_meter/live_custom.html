@@ -473,11 +473,9 @@
   /* ===========================
      GLOBAL HIDES
      =========================== */
-  /* Keep Recharge & Balance in DOM but hide always */
+  /* Recharge remains unavailable from this live-reading screen. */
   th.col-recharge,
-  td.col-recharge,
-  th[data-col="balance"],
-  td[data-col="balance"] {
+  td.col-recharge {
     display: none !important;
   }
 
@@ -859,6 +857,7 @@
   // Poll JSON and update only cells (no full page reload)
   const POLL_MS = 15000;
   const DATA_URL = "{% url 'smart_meter:smart_meter_live_custom_data' %}";
+  const LIVE_CURRENCY_SYMBOL = "{{ CURRENCY_SYMBOL|escapejs }}";
 
   function setRowOnlineState(tr, isOnline) {
     tr.classList.toggle("row-online", !!isOnline);
@@ -896,11 +895,11 @@
 
     const status = reading.relay_command_status || '';
     const desired = reading.relay_command_desired_state || '';
-    const operation = desired === 'on' ? 'Restoring…' : 'Connecting…';
-    if (['new', 'pending', 'waiting_online', 'claimed', 'sent'].includes(status)) {
+    const operation = reading.relay_operation_label || (desired === 'on' ? 'Restoring…' : 'Connecting…');
+    if (['new', 'pending', 'waiting_online', 'claimed', 'sent', 'retry'].includes(status)) {
       setRowOperationStatus(tr, operation, 'is-working');
     } else if (status === 'acknowledged') {
-      setRowOperationStatus(tr, operation, 'is-working');
+      setRowOperationStatus(tr, '', '');
     } else if (['failed', 'error', 'timeout', 'expired'].includes(status)) {
       setRowOperationStatus(tr, 'Failed', 'is-error');
     } else {
@@ -910,7 +909,7 @@
     tr.querySelectorAll('.mobile-confirmed-at').forEach(el => {
       if (status === 'acknowledged') {
         el.textContent = 'Acknowledged, not verified';
-      } else if (['new', 'pending', 'waiting_online', 'claimed', 'sent'].includes(status)) {
+      } else if (['new', 'pending', 'waiting_online', 'claimed', 'sent', 'retry'].includes(status)) {
         el.textContent = 'Command pending';
       } else if (['failed', 'error', 'timeout', 'expired'].includes(status)) {
         el.textContent = reading.relay_command_error || 'Command failed';
@@ -969,6 +968,22 @@
     }
   }
 
+  function setBalanceCell(tr, newValue, flash = true) {
+    const value = (newValue ?? "0.00").toString().trim() || "0.00";
+    const next = `${LIVE_CURRENCY_SYMBOL} ${value}`.trim();
+    const desktopCell = tr.querySelector('td[data-col="balance"]');
+    const mobileBalance = tr.querySelector('.mobile-balance');
+
+    if (desktopCell && (desktopCell.textContent || "").trim() !== next) {
+      desktopCell.textContent = next;
+      if (flash) flashCell(desktopCell);
+    }
+    if (mobileBalance && (mobileBalance.textContent || "").trim() !== next) {
+      mobileBalance.textContent = next;
+      if (flash) flashCell(mobileBalance);
+    }
+  }
+
   document.addEventListener("click", async function (event) {
     const button = event.target.closest(".btn-instant-reading");
     if (!button) return;
@@ -990,7 +1005,7 @@
       if (row) {
         setCell(row, "updated", data.updated_ts, data.updated_ts);
         setTotalEnergyCell(row, data.total_energy, data.voltage_a, data.current_a);
-        setCell(row, "balance", data.balance);
+        setBalanceCell(row, data.balance);
         setCell(row, "voltage_a", data.voltage_a);
         setCell(row, "current_a", data.current_a);
         setCell(row, "total_power", data.total_power);
@@ -1028,6 +1043,7 @@
         setNumericCellWithDelta(tr, "current_a", r.current_a, true);
         setNumericCellWithDelta(tr, "total_power", r.total_power, true);
         setNumericCellWithDelta(tr, "pf_total", r.pf_total, true);
+        setBalanceCell(tr, r.balance, true);
 
         setCell(tr, "updated", "", r.updated_ts, false);// no flash for timestamp
       }
@@ -1695,9 +1711,7 @@
               </div>
               <div class="mobile-line mobile-line-two">
                 <div class="mobile-unit-name">{{ m.display_location_name|default:"" }}</div>
-                <span class="power-operation-status mobile-operation" role="status" aria-live="polite" {% if not r.latest_relay_command or r.latest_relay_command.status == 'verified' %}hidden{% endif %}>
-                  {% if r.latest_relay_command.desired_state == 'on' %}Restoring…{% elif r.latest_relay_command %}Connecting…{% endif %}
-                </span>
+                <span class="power-operation-status mobile-operation {{ r.relay_indicator_class }}" role="status" aria-live="polite" {% if not r.relay_indicator_label %}hidden{% endif %}>{{ r.relay_indicator_label }}</span>
                 <div class="mobile-state-badges">
                   <span class="badge rounded-pill online-badge {% if r.is_online %}bg-success{% else %}bg-secondary{% endif %}">{% if r.is_online %}Online{% else %}Offline{% endif %}</span>
                   <span class="badge rounded-pill power-badge {% if m.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">{% if m.power_status|lower == 'on' %}ON{% else %}OFF{% endif %}</span>
@@ -1721,7 +1735,7 @@
                   data-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
                   {% if r.confirmed_relay_state == 'off' %}disabled{% endif %}>Turn OFF</button>
                 <small class="mobile-confirmed-at">
-                  {% if r.relay_confirmed_at %}Confirmed {{ r.relay_confirmed_at|date:"Y-m-d H:i:s" }}{% else %}Unknown relay status{% endif %}
+                  {% if r.relay_command_status == 'acknowledged' %}Acknowledged, not verified{% elif r.relay_operation_label %}Command pending{% elif r.relay_indicator_class == 'is-error' %}{{ r.relay_command_error|default:"Command failed" }}{% elif r.relay_confirmed_at %}Confirmed {{ r.relay_confirmed_at|date:"Y-m-d H:i:s" }}{% else %}Unknown relay status{% endif %}
                 </small>
               </div>
             </td>
@@ -1747,7 +1761,7 @@
                   {{ r.tenant_name|default:"Vacant"|slice:":20" }}
                 {% endif %}
               </span>
-              <span class="power-operation-status" role="status" aria-live="polite" hidden></span>
+              <span class="power-operation-status {{ r.relay_indicator_class }}" role="status" aria-live="polite" {% if not r.relay_indicator_label %}hidden{% endif %}>{{ r.relay_indicator_label }}</span>
             </td>
 
             <td class="sticky-left col-unit text-center" title="{{ m.display_location_name }}">
@@ -1764,12 +1778,15 @@
 
             <td class="sticky-left col-meter text-center" title="{{ m.meter_number }}">
               <a href="{% url 'smart_meter:meter_detail' m.id %}" class="live-detail-link">{{ m.meter_number }}</a>
-              <div>
+              <div class="desktop-meter-badges">
                 {% if m.is_check_meter %}
                   <span class="badge bg-info text-dark">Audit</span>
                 {% else %}
                   <span class="badge bg-success">Billing</span>
                 {% endif %}
+                <span class="badge online-badge {% if r.is_online %}bg-success{% else %}bg-secondary{% endif %}">
+                  {% if r.is_online %}Online{% else %}Offline{% endif %}
+                </span>
               </div>
               <!-- Small-screen: place 3 controls under Meter # -->
               <div class="mobile-actions">
@@ -2256,6 +2273,20 @@
   .mobile-meter-card-v2 { display: none; }
   .explicit-relay-actions { display: flex; justify-content: center; gap: .25rem; margin-top: .25rem; }
   .explicit-relay-actions .btn { padding: .12rem .3rem; font-size: .68rem; }
+  .desktop-meter-badges { display: flex; justify-content: center; align-items: center; gap: .15rem; }
+
+  @media (min-width: 992px) {
+    #captureArea table.table-compact th.col-status,
+    #captureArea table.table-compact td.col-status {
+      display: none !important;
+    }
+    #captureArea table.table-compact td.col-power > .power-badge {
+      display: none !important;
+    }
+    #captureArea table.table-compact td.col-power .explicit-relay-actions {
+      margin-top: 0;
+    }
+  }
 
   @media (max-width: 991.98px) {
     #captureArea table.table-compact tr[data-meter-row] {

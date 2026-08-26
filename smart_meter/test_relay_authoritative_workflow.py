@@ -1,4 +1,6 @@
 import json
+import inspect
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +13,7 @@ from smart_meter.models import LiveReading, Meter, MeterCommand
 from smart_meter.services.command_lifecycle import queue_relay_command
 from smart_meter.services.relay_status import (
     classify_relay_ack,
+    reconcile_live_relay_command_state,
     sync_authoritative_relay_status,
 )
 
@@ -164,6 +167,116 @@ class AuthoritativeRelayStatusTests(TestCase):
         )
         with self.assertRaises(ValueError):
             sync_authoritative_relay_status(self.meter, "0000", command=unrelated)
+
+    def _live_command_state(self, command, status_word, *, reading_at=None, now=None):
+        return reconcile_live_relay_command_state(
+            self.meter,
+            command,
+            status_word,
+            reading_at or timezone.now(),
+            is_fresh=True,
+            now=now,
+        )
+
+    def test_live_acknowledged_on_is_reconciled_by_fresh_matching_status(self):
+        command = queue_relay_command(self.meter, "on", source="manual")
+        MeterCommand.objects.filter(pk=command.pk).update(status="acknowledged")
+        command.refresh_from_db()
+
+        state = self._live_command_state(command, "0000")
+
+        command.refresh_from_db()
+        self.assertEqual(command.status, "verified")
+        self.assertEqual(state["confirmed_state"], "on")
+        self.assertEqual(state["status"], "verified")
+        self.assertEqual(state["operation_label"], "")
+
+    def test_live_acknowledged_off_is_reconciled_by_fresh_matching_status(self):
+        command = queue_relay_command(self.meter, "off", source="manual")
+        MeterCommand.objects.filter(pk=command.pk).update(status="acknowledged")
+        command.refresh_from_db()
+
+        state = self._live_command_state(command, "0910")
+
+        command.refresh_from_db()
+        self.assertEqual(command.status, "verified")
+        self.assertEqual(state["confirmed_state"], "off")
+        self.assertEqual(state["operation_label"], "")
+
+    def test_live_acknowledged_mismatch_remains_unverified_and_not_working(self):
+        command = queue_relay_command(self.meter, "on", source="manual")
+        MeterCommand.objects.filter(pk=command.pk).update(status="acknowledged")
+        command.refresh_from_db()
+
+        state = self._live_command_state(command, "0910")
+
+        command.refresh_from_db()
+        self.assertEqual(command.status, "acknowledged")
+        self.assertIsNone(command.verified_at)
+        self.assertEqual(state["status"], "acknowledged")
+        self.assertEqual(state["operation_label"], "")
+
+    def test_live_pending_and_sent_commands_remain_working(self):
+        for status, desired_state, label in (
+            ("pending", "on", "Restoring…"),
+            ("sent", "off", "Connecting…"),
+        ):
+            command = MeterCommand.objects.create(
+                meter=self.meter,
+                meter_number=self.meter.meter_number,
+                frame_hex="68",
+                command_type="relay",
+                desired_state=desired_state,
+                status=status,
+                expires_at=timezone.now() + timedelta(minutes=5),
+            )
+
+            state = self._live_command_state(command, "0000")
+
+            self.assertEqual(state["status"], status)
+            self.assertEqual(state["operation_label"], label)
+            self.assertEqual(state["indicator_class"], "is-working")
+
+    def test_stale_historical_failure_and_expired_active_command_are_hidden(self):
+        now = timezone.now()
+        failed = MeterCommand.objects.create(
+            meter=self.meter,
+            meter_number=self.meter.meter_number,
+            frame_hex="68",
+            command_type="relay",
+            desired_state="on",
+            status="failed",
+        )
+        MeterCommand.objects.filter(pk=failed.pk).update(
+            updated_at=now - timedelta(minutes=6)
+        )
+        failed.refresh_from_db()
+        sent = MeterCommand.objects.create(
+            meter=self.meter,
+            meter_number=self.meter.meter_number,
+            frame_hex="68",
+            command_type="relay",
+            desired_state="on",
+            status="sent",
+            expires_at=now - timedelta(minutes=6),
+        )
+
+        failed_state = self._live_command_state(failed, "0000", now=now)
+        sent_state = self._live_command_state(sent, "0000", now=now)
+
+        self.assertEqual(failed_state["status"], "")
+        self.assertEqual(failed_state["indicator_label"], "")
+        self.assertEqual(sent_state["status"], "")
+        self.assertEqual(sent_state["indicator_label"], "")
+
+    def test_initial_page_and_json_polling_share_reconciliation_helper(self):
+        initial_source = inspect.getsource(views.live_custom)
+        polling_source = inspect.getsource(views.live_custom_data)
+
+        self.assertIn("reconcile_live_relay_command_state", initial_source)
+        self.assertIn("reconcile_live_relay_command_state", polling_source)
+        self.assertIn('relay_state["indicator_label"]', initial_source)
+        self.assertIn('"relay_indicator_label": relay_state["indicator_label"]', polling_source)
 
 
 class RelayAcknowledgementTests(TestCase):

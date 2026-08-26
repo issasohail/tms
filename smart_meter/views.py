@@ -1052,18 +1052,64 @@ def meter_edit(request, pk):
         if form.is_valid():
             new_role = form.cleaned_data["meter_role"]
             form.instance.meter_role = old_role
-            meter = form.save()
             if new_role != old_role:
-                meter.change_role(
-                    new_role,
-                    effective_date=timezone.localdate(),
-                    user=request.user if request.user.is_authenticated else None,
-                    reason=request.POST.get("notes", ""),
-                )
+                try:
+                    with transaction.atomic():
+                        effective_date = timezone.localdate()
+                        if (
+                            old_role == Meter.METER_ROLE_CHECK
+                            and new_role == Meter.METER_ROLE_BILLING
+                        ):
+                            group = (
+                                MeterCheckGroup.objects.select_for_update()
+                                .filter(check_meter=meter)
+                                .first()
+                            )
+                            if group:
+                                group.check_meter = form.cleaned_data["replacement_check_meter"]
+                                group.save(update_fields=["check_meter"])
+                        elif (
+                            old_role == Meter.METER_ROLE_BILLING
+                            and new_role == Meter.METER_ROLE_CHECK
+                        ):
+                            memberships = list(
+                                meter.check_group_memberships.select_for_update().filter(
+                                    is_active=True,
+                                    end_date__isnull=True,
+                                )
+                            )
+                            for membership in memberships:
+                                membership.close(
+                                    end_date=max(effective_date, membership.start_date),
+                                    notes="Ended automatically because the meter role changed to Audit.",
+                                )
+                        meter.change_role(
+                            new_role,
+                            effective_date=effective_date,
+                            user=request.user if request.user.is_authenticated else None,
+                            reason=request.POST.get("notes", ""),
+                        )
+                except ValidationError as exc:
+                    if hasattr(exc, "message_dict"):
+                        error_messages = [
+                            message
+                            for messages_list in exc.message_dict.values()
+                            for message in messages_list
+                        ]
+                    else:
+                        error_messages = exc.messages
+                    for error_message in error_messages:
+                        form.add_error("meter_role", error_message)
+                    return render(
+                        request,
+                        "smart_meter/meter_form.html",
+                        {"form": form, "edit": True, "original_meter_role": old_role},
+                    )
                 messages.success(
                     request,
                     f"Meter role changed to {meter.get_meter_role_display()} and history recorded.",
                 )
+            meter = form.save()
             if old_unit_id := getattr(old_unit, "id", None):
                 unit_changed = old_unit_id != meter.unit_id
             else:
@@ -1150,7 +1196,11 @@ def meter_edit(request, pk):
             return redirect("smart_meter:meter_detail", pk=meter.pk)
     else:
         form = MeterForm(instance=meter)
-    return render(request, "smart_meter/meter_form.html", {"form": form, "edit": True})
+    return render(
+        request,
+        "smart_meter/meter_form.html",
+        {"form": form, "edit": True, "original_meter_role": old_role},
+    )
 
 
 @require_POST
@@ -1164,12 +1214,28 @@ def meter_role_update(request, pk):
         )
 
     try:
-        meter.change_role(
-            new_role,
-            effective_date=timezone.localdate(),
-            user=request.user,
-            reason="Inline role update.",
-        )
+        with transaction.atomic():
+            if (
+                meter.meter_role == Meter.METER_ROLE_BILLING
+                and new_role == Meter.METER_ROLE_CHECK
+            ):
+                memberships = list(
+                    meter.check_group_memberships.select_for_update().filter(
+                        is_active=True,
+                        end_date__isnull=True,
+                    )
+                )
+                for membership in memberships:
+                    membership.close(
+                        end_date=max(timezone.localdate(), membership.start_date),
+                        notes="Ended automatically by inline role change to Audit.",
+                    )
+            meter.change_role(
+                new_role,
+                effective_date=timezone.localdate(),
+                user=request.user,
+                reason="Inline role update.",
+            )
     except ValidationError as exc:
         if hasattr(exc, "message_dict"):
             error = " ".join(
@@ -1212,7 +1278,7 @@ def meter_check_group_list(request):
     from django.db.models import Count
 
     today = timezone.localdate()
-    groups = (
+    groups = list(
         MeterCheckGroup.objects.select_related(
             "property",
             "check_meter",
@@ -1230,12 +1296,27 @@ def meter_check_group_list(request):
                         | Q(memberships__end_date__gte=today)
                     )
                     & Q(memberships__billing_meter__meter_role=Meter.METER_ROLE_BILLING)
+                    & Q(memberships__billing_meter__is_active=True)
                 ),
                 distinct=True,
             )
         )
         .order_by("property__property_name", "name")
     )
+    coverage_by_group = defaultdict(set)
+    coverage_rows = MeterCheckGroupMembership.objects.filter(
+        group_id__in=[group.pk for group in groups],
+        is_active=True,
+        start_date__lte=today,
+        billing_meter__is_active=True,
+    ).filter(
+        Q(end_date__isnull=True) | Q(end_date__gte=today)
+    ).values_list("group_id", "billing_meter__unit__property__property_name")
+    for group_id, property_name in coverage_rows:
+        if property_name:
+            coverage_by_group[group_id].add(property_name)
+    for group in groups:
+        group.covered_property_names = ", ".join(sorted(coverage_by_group[group.pk]))
     return render(request, "smart_meter/check_group_list.html", {"groups": groups})
 
 
@@ -1301,12 +1382,30 @@ def meter_check_group_detail(request, pk):
     check_labels, check_datasets, check_rows, check_totals = _per_meter_series(
         Meter.objects.filter(pk=group.check_meter_id), start_date, end_date, "daily"
     )
-    billing_meters = group.active_billing_meters()
-    billing_labels, billing_datasets, billing_rows, billing_totals = _per_meter_series(
-        billing_meters, start_date, end_date, "daily"
+    effective_memberships = list(
+        group.memberships.filter(start_date__lte=end_date)
+        .filter(Q(end_date__isnull=True) | Q(end_date__gte=start_date))
+        .select_related("billing_meter", "billing_meter__unit", "billing_meter__unit__property")
+        .order_by("start_date", "billing_meter__meter_number")
+    )
+    billing_rows = []
+    billing_total_kwh = Decimal("0")
+    for membership in effective_memberships:
+        segment_start = max(start_date, membership.start_date)
+        segment_end = min(end_date, membership.end_date or end_date)
+        _labels, _datasets, segment_rows, segment_totals = _per_meter_series(
+            Meter.objects.filter(pk=membership.billing_meter_id),
+            segment_start,
+            segment_end,
+            "daily",
+        )
+        billing_rows.extend(segment_rows)
+        billing_total_kwh += Decimal(str(segment_totals["total_kwh"]))
+    billing_rows.sort(
+        key=lambda row: (row["period_key"], row["property_name"], row["unit_number"], row["meter_number"])
     )
     check_kwh = Decimal(str(check_totals["total_kwh"]))
-    billing_kwh = Decimal(str(billing_totals["total_kwh"]))
+    billing_kwh = billing_total_kwh
     variance_kwh = check_kwh - billing_kwh
     variance_rs = variance_kwh * Decimal(
         str(group.check_meter.effective_unit_rate or 0)
@@ -1315,9 +1414,20 @@ def meter_check_group_detail(request, pk):
         (variance_kwh / check_kwh * Decimal(100)) if check_kwh else Decimal(0)
     )
 
-    memberships = group.memberships.select_related(
+    memberships = list(group.memberships.select_related(
         "billing_meter", "billing_meter__unit", "billing_meter__unit__property"
-    ).order_by("-is_active", "-start_date", "billing_meter__meter_number")
+    ).order_by("-is_active", "-start_date", "billing_meter__meter_number"))
+    attach_active_meter_counts(memberships, lambda membership: membership.billing_meter)
+    covered_property_names = sorted({
+        membership.billing_meter.unit.property.property_name
+        for membership in memberships
+        if membership.is_active
+        and membership.end_date is None
+        and membership.start_date <= today
+        and membership.billing_meter.is_active
+        and membership.billing_meter.unit_id
+        and membership.billing_meter.unit.property_id
+    })
     return render(
         request,
         "smart_meter/check_group_detail.html",
@@ -1334,6 +1444,7 @@ def meter_check_group_detail(request, pk):
             "billing_rows": billing_rows,
             "memberships": memberships,
             "membership_form": membership_form,
+            "covered_property_names": covered_property_names,
         },
     )
 

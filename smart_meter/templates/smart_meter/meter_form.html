@@ -207,6 +207,12 @@
               <a href="{% url 'smart_meter:meter_check_group_list' %}">Check Group</a> to enable leakage/reconciliation reporting.
             </div>
           </div>
+          {% if edit %}
+          <div id="ld-replacement-check-meter" class="meter-field meter-span-2 d-none" data-original-role="{{ original_meter_role }}">
+            {{ form.replacement_check_meter.label_tag }}{{ form.replacement_check_meter }}{{ form.replacement_check_meter.errors }}
+            <div class="form-text">{{ form.replacement_check_meter.help_text }}</div>
+          </div>
+          {% endif %}
           <div class="meter-field meter-span-1">{{ form.power_status.label_tag }}{{ form.power_status }}{{ form.power_status.errors }}</div>
           <div class="meter-field meter-span-1"><label for="{{ form.unit_rate.id_for_label }}">{{ form.unit_rate.label }} <button type="button" class="btn btn-link p-0 border-0 align-baseline" data-bs-toggle="tooltip" title="{{ form.unit_rate.help_text }}" aria-label="Electricity rate override help"><i class="fas fa-question-circle"></i></button></label>{{ form.unit_rate }}{{ form.unit_rate.errors }}</div>
           <div class="meter-field meter-span-1">{{ form.service_charges.label_tag }}{{ form.service_charges }}{{ form.service_charges.errors }}</div>
@@ -245,9 +251,16 @@
 document.addEventListener('DOMContentLoaded', function () {
   const role = document.getElementById('id_meter_role');
   const help = document.getElementById('ld-check-meter-help');
+  const replacement = document.getElementById('ld-replacement-check-meter');
   const syncHelp = () => help?.classList.toggle('d-none', role?.value !== 'check');
+  const syncReplacement = () => replacement?.classList.toggle(
+    'd-none',
+    replacement?.dataset.originalRole !== 'check' || role?.value !== 'billing'
+  );
   role?.addEventListener('change', syncHelp);
+  role?.addEventListener('change', syncReplacement);
   syncHelp();
+  syncReplacement();
 });
 </script>
 {% endblock %}

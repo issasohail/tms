@@ -145,7 +145,7 @@ class Meter(models.Model):
                 MeterCheckGroup.objects.filter(check_meter=self).exists()
             ):
                 raise ValidationError({
-                    "meter_role": "Remove this meter from its Check Group before changing it to Billing."
+                    "meter_role": "Assign a replacement Audit meter to this Check Group before changing it to Billing."
                 })
             if (
                 new_role == self.METER_ROLE_CHECK and
@@ -207,16 +207,10 @@ class Meter(models.Model):
         unit_number = getattr(self.unit, "unit_number", "") if self.unit_id else ""
         active_count = getattr(self, "_active_unit_meter_count", None)
         if active_count is None and self.unit_id:
-            active_meter_ids = set(MeterInstallation.objects.filter(
+            active_count = Meter.objects.filter(
                 unit_id=self.unit_id,
                 is_active=True,
-                end_date__isnull=True,
-            ).values_list("meter_id", flat=True))
-            active_meter_ids.update(Meter.objects.filter(
-                unit_id=self.unit_id,
-                is_active=True,
-            ).values_list("id", flat=True))
-            active_count = len(active_meter_ids)
+            ).count()
         if (active_count or 0) > 1:
             return (self.name or "").strip() or self.meter_number
         return unit_number or (self.name or "").strip() or self.meter_number
@@ -439,8 +433,12 @@ class MeterCheckGroup(models.Model):
     name = models.CharField(max_length=100)
     property = models.ForeignKey(
         "properties.Property",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="meter_check_groups",
+        verbose_name="Reference property",
+        help_text="Optional reference only; actual coverage comes from assigned billing meters.",
     )
     check_meter = models.OneToOneField(
         Meter,
@@ -507,7 +505,7 @@ class MeterCheckGroupMembership(models.Model):
         if self.billing_meter_id:
             clash = MeterCheckGroupMembership.objects.filter(
                 billing_meter=self.billing_meter,
-            ).exclude(group=self.group)
+            )
             if self.pk:
                 clash = clash.exclude(pk=self.pk)
             if self.end_date:
@@ -515,7 +513,7 @@ class MeterCheckGroupMembership(models.Model):
             clash = clash.filter(Q(end_date__isnull=True) | Q(end_date__gte=self.start_date))
             if clash.exists():
                 raise ValidationError(
-                    "This billing meter already has an overlapping membership in another check group."
+                    "This billing meter already has an overlapping Check Group membership."
                 )
 
     def save(self, *args, **kwargs):

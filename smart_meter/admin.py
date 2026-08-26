@@ -52,10 +52,31 @@ class MeterRoleHistoryAdmin(admin.ModelAdmin):
 
 @admin.register(MeterCheckGroup)
 class MeterCheckGroupAdmin(admin.ModelAdmin):
-    list_display = ("name", "property", "check_meter", "is_active", "created_at")
+    list_display = (
+        "name",
+        "property",
+        "covered_properties",
+        "check_meter",
+        "is_active",
+        "created_at",
+    )
     list_filter = ("is_active", "property")
     search_fields = ("name", "property__property_name", "check_meter__meter_number")
     raw_id_fields = ("check_meter",)
+
+    @admin.display(description="Covered properties")
+    def covered_properties(self, obj):
+        names = (
+            obj.memberships.filter(
+                is_active=True,
+                end_date__isnull=True,
+                billing_meter__is_active=True,
+            )
+            .values_list("billing_meter__unit__property__property_name", flat=True)
+            .distinct()
+            .order_by("billing_meter__unit__property__property_name")
+        )
+        return ", ".join(name for name in names if name) or "—"
 
 
 @admin.register(MeterCheckGroupMembership)

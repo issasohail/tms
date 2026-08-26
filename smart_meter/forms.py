@@ -8,7 +8,7 @@ from django.shortcuts import render
 from decimal import Decimal
 from .models import MeterBalance
 from django import forms
-from django.db.models import Q
+from django.db.models import Count, Q
 
 from django import forms
 from smart_meter.models import MeterSettings
@@ -43,6 +43,24 @@ def _unit_choice_label(unit):
     return f"{unit.property.property_name} / Unit {unit.unit_number}"
 
 
+def _meter_choice_label(meter):
+    annotated_count = getattr(meter, "active_unit_meter_count", None)
+    if annotated_count is not None:
+        meter._active_unit_meter_count = annotated_count
+    property_name = getattr(getattr(meter.unit, "property", None), "property_name", "Unassigned")
+    return f"Meter {meter.meter_number} — {property_name} / {meter.display_location_name}"
+
+
+def _with_active_unit_meter_count(queryset):
+    return queryset.annotate(
+        active_unit_meter_count=Count(
+            "unit__current_meters",
+            filter=Q(unit__current_meters__is_active=True),
+            distinct=True,
+        )
+    )
+
+
 class AssignMeterForm(forms.ModelForm):
     class Meta:
         model = Unit
@@ -61,6 +79,14 @@ class MeterSettingsForm(forms.ModelForm):
 
 
 class MeterForm(forms.ModelForm):
+    replacement_check_meter = forms.ModelChoiceField(
+        queryset=Meter.objects.none(),
+        required=False,
+        label="Replacement Audit meter",
+        widget=forms.Select(attrs={"class": "form-select"}),
+        help_text="Required when changing an Audit meter to Billing while it owns a Check Group.",
+    )
+
     class Meta:
         model = Meter
         fields = "__all__"
@@ -77,10 +103,36 @@ class MeterForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.original_meter_role = self.instance.meter_role if self.instance.pk else None
         self.fields["unit_rate"].label = "Meter rate override"
         self.fields["unit_rate"].widget.attrs.update({"step": "0.0001", "min": "0"})
         self.fields["unit"].queryset = _ordered_units()
         self.fields["unit"].label_from_instance = _unit_choice_label
+        replacement_qs = _with_active_unit_meter_count(Meter.objects.filter(
+            meter_role=Meter.METER_ROLE_CHECK,
+            is_active=True,
+            check_group__isnull=True,
+        ).exclude(pk=self.instance.pk).select_related(
+            "unit", "unit__property"
+        )).order_by("unit__property__property_name", "unit__unit_number", "meter_number")
+        self.fields["replacement_check_meter"].queryset = replacement_qs
+        self.fields["replacement_check_meter"].label_from_instance = _meter_choice_label
+
+    def clean(self):
+        cleaned = super().clean()
+        new_role = cleaned.get("meter_role")
+        if (
+            self.instance.pk
+            and self.original_meter_role == Meter.METER_ROLE_CHECK
+            and new_role == Meter.METER_ROLE_BILLING
+            and MeterCheckGroup.objects.filter(check_meter_id=self.instance.pk).exists()
+            and not cleaned.get("replacement_check_meter")
+        ):
+            self.add_error(
+                "replacement_check_meter",
+                "Select another active Audit meter to take over this meter's Check Group.",
+            )
+        return cleaned
 
 
 class MeterCheckGroupForm(forms.ModelForm):
@@ -97,8 +149,13 @@ class MeterCheckGroupForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["property"].required = False
+        self.fields["property"].help_text = (
+            "Optional reference only. Coverage is determined by the billing meters assigned to this group."
+        )
         check_meters = Meter.objects.filter(
             meter_role=Meter.METER_ROLE_CHECK,
+            is_active=True,
         ).select_related("unit", "unit__property").order_by("meter_number")
         if self.instance.pk:
             check_meters = check_meters.filter(
@@ -106,7 +163,8 @@ class MeterCheckGroupForm(forms.ModelForm):
             )
         else:
             check_meters = check_meters.filter(check_group__isnull=True)
-        self.fields["check_meter"].queryset = check_meters
+        self.fields["check_meter"].queryset = _with_active_unit_meter_count(check_meters)
+        self.fields["check_meter"].label_from_instance = _meter_choice_label
 
 
 class MeterCheckGroupMembershipForm(forms.ModelForm):
@@ -127,11 +185,16 @@ class MeterCheckGroupMembershipForm(forms.ModelForm):
         self.group = group
         if group is not None:
             self.instance.group = group
-        self.fields["billing_meter"].queryset = Meter.objects.filter(
+        self.fields["billing_meter"].queryset = _with_active_unit_meter_count(Meter.objects.filter(
             meter_role=Meter.METER_ROLE_BILLING,
+            is_active=True,
+        ).exclude(
+            check_group_memberships__is_active=True,
+            check_group_memberships__end_date__isnull=True,
         ).select_related("unit", "unit__property").order_by(
             "unit__property__property_name", "unit__unit_number", "meter_number"
-        )
+        ).distinct())
+        self.fields["billing_meter"].label_from_instance = _meter_choice_label
 
     def save(self, commit=True):
         membership = super().save(commit=False)

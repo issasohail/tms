@@ -1,24 +1,15 @@
 from collections import defaultdict
 
-from smart_meter.models import Meter, MeterInstallation
+from smart_meter.models import Meter
 
 
 def _active_meter_ids_by_unit(unit_ids):
-    """Return current meter IDs by unit, including legacy cached assignments."""
+    """Return active meter IDs grouped by their current cached unit."""
     unit_ids = {unit_id for unit_id in unit_ids if unit_id}
     meter_ids_by_unit = defaultdict(set)
     if not unit_ids:
         return meter_ids_by_unit
 
-    for unit_id, meter_id in MeterInstallation.objects.filter(
-        unit_id__in=unit_ids,
-        is_active=True,
-        end_date__isnull=True,
-    ).values_list("unit_id", "meter_id"):
-        meter_ids_by_unit[unit_id].add(meter_id)
-
-    # Some older/current assignments pre-date MeterInstallation history. Include
-    # active meters whose cached unit still points at the unit.
     for unit_id, meter_id in Meter.objects.filter(
         unit_id__in=unit_ids,
         is_active=True,
@@ -29,7 +20,7 @@ def _active_meter_ids_by_unit(unit_ids):
 
 
 def attach_active_meter_counts(items, meter_getter=None):
-    """Attach active installation counts to meters with one aggregate query."""
+    """Attach active current-meter counts to meters with one aggregate query."""
     materialized = list(items)
     getter = meter_getter or (lambda item: item)
     meters = []

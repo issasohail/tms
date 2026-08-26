@@ -8,7 +8,10 @@
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
       <h2 class="mb-0">{{ group.name }}</h2>
-      <small class="text-muted">{{ group.property.property_name }} · Audit meter {{ group.check_meter.meter_number }}</small>
+      <small class="text-muted">
+        {% if covered_property_names %}Covered properties: {{ covered_property_names|join:", " }} · {% elif group.property %}Reference property: {{ group.property.property_name }} · {% endif %}
+        Audit meter {{ group.check_meter.meter_number }}
+      </small>
     </div>
     <div class="d-flex gap-2">
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_check_group_list' %}">All Groups</a>
@@ -45,7 +48,7 @@
               {% for membership in memberships %}
                 <tr>
                   <td>{{ membership.billing_meter.meter_number }}</td>
-                  <td>{{ membership.billing_meter.unit.property.property_name }} / {{ membership.billing_meter.display_location_name }}</td>
+                  <td>{% if membership.billing_meter.unit %}{{ membership.billing_meter.unit.property.property_name }} / {{ membership.billing_meter.display_location_name }}{% else %}Unassigned{% endif %}</td>
                   <td>{{ membership.start_date|date:'Y-m-d' }}</td>
                   <td>{{ membership.end_date|date:'Y-m-d'|default:'—' }}</td>
                   <td>{% if membership.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Ended</span>{% endif %}</td>
@@ -69,6 +72,7 @@
             {% csrf_token %}
             {% if membership_form.non_field_errors %}<div class="alert alert-danger py-2">{{ membership_form.non_field_errors }}</div>{% endif %}
             <div class="mb-2">{{ membership_form.billing_meter.label_tag }}{{ membership_form.billing_meter }}{{ membership_form.billing_meter.errors }}</div>
+            <div class="form-text mb-2">Only active, currently unassigned Billing meters are shown. Meters may come from any property.</div>
             <div class="mb-2">{{ membership_form.start_date.label_tag }}{{ membership_form.start_date }}{{ membership_form.start_date.errors }}</div>
             <div class="mb-2">{{ membership_form.notes.label_tag }}{{ membership_form.notes }}{{ membership_form.notes.errors }}</div>
             <button class="btn btn-sm btn-primary" type="submit">Add Membership</button>

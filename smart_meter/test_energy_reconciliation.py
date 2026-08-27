@@ -236,9 +236,10 @@ class EnergyReconciliationTests(TestCase):
         report = build_energy_reconciliation(self.system, self.start, self.end)
         self.assertEqual(report["tenant_energy_revenue"], Decimal("500"))
         self.assertEqual(report["tenant_electricity_collections"], Decimal("300"))
-        self.assertEqual(report["current_cycle_utility_cost"], Decimal("420"))
-        self.assertEqual(report["operating_energy_margin"], Decimal("80"))
+        self.assertEqual(report["current_cycle_utility_cost"], Decimal("400"))
+        self.assertEqual(report["operating_energy_margin"], Decimal("100"))
         self.assertEqual(report["cash_position"], Decimal("50"))
+        self.assertEqual(report["utility_payable_credit"], Decimal("200"))
         self.assertEqual(report["tenant_outstanding"], Decimal("200"))
 
     def test_cash_position_is_withheld_when_utility_payment_is_not_recorded(self):
@@ -246,6 +247,7 @@ class EnergyReconciliationTests(TestCase):
         report = build_energy_reconciliation(self.system, self.start, self.end)
         self.assertIsNone(report["utility_amount_paid"])
         self.assertIsNone(report["cash_position"])
+        self.assertEqual(report["utility_payable_credit"], Decimal("450"))
 
     def test_confirmed_exact_pv_statement_supplies_carefully_labelled_residual(self):
         self._bill()
@@ -556,12 +558,15 @@ class EnergyReconciliationTests(TestCase):
         migration.seed_energy_systems(apps, None)
         migration.seed_energy_systems(apps, None)
 
-        seeded = EnergySystem.objects.filter(name__in=("Photon", "Tesla", "H9"))
-        self.assertEqual(seeded.count(), 3)
-        self.assertEqual(UtilityConnection.objects.filter(energy_system__in=seeded).count(), 3)
+        seeded = EnergySystem.objects.filter(name__in=("Photon", "Tesla"))
+        self.assertEqual(seeded.count(), 2)
+        self.assertFalse(EnergySystem.objects.filter(name="H9").exists())
+        self.assertEqual(UtilityConnection.objects.filter(energy_system__in=seeded).count(), 2)
         self.assertEqual(
             EnergySystemMeterAssignment.objects.filter(energy_system__in=seeded, end_date__isnull=True).count(),
-            5,
+            4,
         )
+        meter_021 = Meter.objects.get(meter_number="260305510021")
+        self.assertEqual(meter_021.measurement_point, Meter.MEASUREMENT_POINT_OTHER_AUDIT)
         self.assertIsNotNone(groups["260305510019"].__class__.objects.get(pk=groups["260305510019"].pk).superseded_by_energy_system_id)
         self.assertIsNotNone(groups["260305510020"].__class__.objects.get(pk=groups["260305510020"].pk).superseded_by_energy_system_id)

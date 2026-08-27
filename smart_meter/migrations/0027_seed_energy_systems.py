@@ -39,14 +39,10 @@ def seed_energy_systems(apps, schema_editor):
             "consumer_id": "1143090754",
             "property_label": "F54",
         },
-        {
-            "name": "H9",
-            "output": "260305510021",
-            "grid": None,
-            "includes_export": None,
-            "consumer_id": "1143791551",
-            "property_label": "H9",
-        },
+        # H9/G10 is intentionally not seeded. Meter 260305510021 is identified
+        # as "G10 Three Phase IN", but its physical Energy System role has not
+        # been confirmed. A reading profile may be assigned independently in
+        # migration 0028; topology must never be inferred from that profile.
     )
 
     for seed in seeds:

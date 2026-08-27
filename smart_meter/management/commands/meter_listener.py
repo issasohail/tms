@@ -261,6 +261,7 @@ def _push_waiter(
     expect_di: str | None,
     expect_controls=None,
     persist_reply: bool = True,
+    accept_negative_without_di: bool = False,
 ):
     with REPLY_LOCK:
         REPLY_WAITERS.setdefault(meter_number, []).append(
@@ -269,6 +270,7 @@ def _push_waiter(
                 "expect_di": (expect_di or "").upper(),
                 "expect_controls": frozenset(expect_controls or ()),
                 "persist_reply": bool(persist_reply),
+                "accept_negative_without_di": bool(accept_negative_without_di),
             }
         )
 
@@ -282,7 +284,12 @@ def _deliver_if_match(meter_number: str, di: str, control_code: int, frame: byte
             controls = item.get("expect_controls") or frozenset()
             if controls and control_code not in controls:
                 continue
-            if exp and exp != di:
+            negative_without_di = (
+                item.get("accept_negative_without_di")
+                and control_code == 0xD1
+                and not di
+            )
+            if exp and exp != di and not negative_without_di:
                 continue
             if exp or controls:
                 lst.pop(i)
@@ -673,7 +680,7 @@ class ClientHandler(threading.Thread):
         logger.info("%s - %s", timezone.localtime().isoformat(timespec="seconds"), msg)
 
         # Deliver to a waiting "send-and-wait" caller (but skip keepalives)
-        if di != "80808080" and ctrl_code in (0x91, 0x83, 0x9C, 0xDC) and meter_number:
+        if di != "80808080" and ctrl_code in (0x91, 0xD1, 0x83, 0x9C, 0xDC) and meter_number:
             matched_waiter = _deliver_if_match(meter_number, di, ctrl_code, frame)
             if not matched_waiter:
                 acknowledge_late_prepaid_reply(meter_number, di, ctrl_code, frame)
@@ -918,8 +925,9 @@ class DbCommandPoller(threading.Thread):
                     meter_no,
                     waiter,
                     cmd.expect_di,
-                    expect_controls={0x83} if is_money else None,
+                    expect_controls={0x83} if is_money else {0x91, 0xD1},
                     persist_reply=getattr(cmd, "source", "") != "energy_probe",
+                    accept_negative_without_di=not is_money,
                 )
             try:
                 frame = bytes.fromhex(cmd.frame_hex.strip())

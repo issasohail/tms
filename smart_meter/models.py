@@ -827,7 +827,9 @@ class UtilityBillCycle(models.Model):
 
     @property
     def current_cycle_utility_cost(self):
-        return (self.current_bill or 0) + (self.total_fpa or 0)
+        # The bill's Current Bill line is the authoritative current-cycle cost.
+        # Total FPA is presented separately and may already be included there.
+        return self.current_bill or Decimal("0.00")
 
     def __str__(self):
         return f"{self.utility_connection.consumer_id} / {self.bill_month}"
@@ -1103,13 +1105,13 @@ class MeterReading(models.Model):
         max_digits=14, decimal_places=3, null=True, blank=True)
 
     total_power = models.DecimalField(
-        max_digits=9, decimal_places=3, null=True, blank=True)
+        max_digits=10, decimal_places=4, null=True, blank=True)
     power_a = models.DecimalField(
-        max_digits=9, decimal_places=3, null=True, blank=True)
+        max_digits=10, decimal_places=4, null=True, blank=True)
     power_b = models.DecimalField(
-        max_digits=9, decimal_places=3, null=True, blank=True)
+        max_digits=10, decimal_places=4, null=True, blank=True)
     power_c = models.DecimalField(
-        max_digits=9, decimal_places=3, null=True, blank=True)
+        max_digits=10, decimal_places=4, null=True, blank=True)
     pf_total = models.DecimalField(
         max_digits=5, decimal_places=3, null=True, blank=True)
 
@@ -1179,13 +1181,13 @@ class LiveReading(models.Model):
         max_digits=8, decimal_places=3, null=True, blank=True)
 
     total_power = models.DecimalField(
-        max_digits=9, decimal_places=3, null=True, blank=True)
+        max_digits=10, decimal_places=4, null=True, blank=True)
     power_a = models.DecimalField(
-        max_digits=9, decimal_places=3, null=True, blank=True)
+        max_digits=10, decimal_places=4, null=True, blank=True)
     power_b = models.DecimalField(
-        max_digits=9, decimal_places=3, null=True, blank=True)
+        max_digits=10, decimal_places=4, null=True, blank=True)
     power_c = models.DecimalField(
-        max_digits=9, decimal_places=3, null=True, blank=True)
+        max_digits=10, decimal_places=4, null=True, blank=True)
 
     pf_total = models.DecimalField(
         max_digits=5, decimal_places=3, null=True, blank=True)

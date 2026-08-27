@@ -365,12 +365,18 @@ def build_energy_reconciliation(system, start_date, end_date):
     operating_margin = tenant_revenue - utility_cost if utility_cost is not None else None
     utility_paid = None
     cash_position = None
-    utility_payable_credit = Decimal(bill.grand_total) if bill and bill.grand_total is not None else None
+    utility_payable_credit = None
     if bill:
         confirmed_payments = bill.payments.filter(confirmed_at__isnull=False)
+        utility_paid = Decimal(
+            confirmed_payments.aggregate(total=Sum("amount"))["total"] or ZERO
+        )
+        if bill.grand_total is not None:
+            utility_payable_credit = Decimal(bill.grand_total) - utility_paid
         if confirmed_payments.exists():
-            utility_paid = Decimal(confirmed_payments.aggregate(total=Sum("amount"))["total"] or ZERO)
             cash_position = tenant_collections - utility_paid
+        else:
+            utility_paid = None
 
     return {
         "system": system,

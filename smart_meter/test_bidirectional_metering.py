@@ -190,6 +190,13 @@ class BidirectionalPersistenceTests(TestCase):
         history = MeterReading.objects.get(meter=self.meter)
         self.assertIsNone(history.power_b)
 
+    def test_four_decimal_power_is_preserved_in_live_and_history(self):
+        self.handler.process_frame(register_reply("02030300", bytes.fromhex("341200")))
+        live = LiveReading.objects.get(meter=self.meter)
+        history = MeterReading.objects.get(meter=self.meter)
+        self.assertEqual(live.power_c, Decimal("0.1234"))
+        self.assertEqual(history.power_c, Decimal("0.1234"))
+
     def test_three_named_meters_are_configured_by_number(self):
         other_numbers = ("260305510019", "260305510021")
         for number in other_numbers:
@@ -219,22 +226,21 @@ class EnergyRegisterCommandTests(TestCase):
         output = StringIO()
         call_command("query_energy_registers", meter=METER_NUMBER, stdout=output)
         rendered = output.getvalue()
-        self.assertIn("TX FEFEFEFE", rendered)
-        self.assertIn("RX FEFEFEFE", rendered)
-        self.assertIn("DI 00010000 Forward Active Energy = 0.00 kWh", rendered)
-        self.assertIn("DI 00020000 Reverse Active Energy = 0.00 kWh", rendered)
+        self.assertIn("raw TX: FEFEFEFE", rendered)
+        self.assertIn("raw RX: FEFEFEFE", rendered)
+        self.assertIn("DI 00010000", rendered)
+        self.assertIn("value: 0.00 kWh", rendered)
+        self.assertIn("zero does not prove accumulation", rendered)
         self.assertTrue(all(call.kwargs["source"] == "energy_probe" for call in send.call_args_list))
 
     @patch("smart_meter.management.commands.query_energy_registers.send_via_db")
     def test_command_persist_flag_and_clean_timeout_failure(self, send):
         send.return_value = {"ok": False, "error": "timeout"}
-        with self.assertRaises(CommandError):
+        with self.assertRaisesMessage(CommandError, "--persist and --confirm-persist"):
             call_command(
                 "query_energy_registers",
                 meter=METER_NUMBER,
                 persist=True,
                 stderr=StringIO(),
             )
-        self.assertTrue(
-            all(call.kwargs["source"] == "energy_probe_persist" for call in send.call_args_list)
-        )
+        send.assert_not_called()

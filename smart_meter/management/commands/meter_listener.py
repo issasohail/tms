@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import os
 import queue
 import socket
+import socketserver
+import stat
 import struct  # for Windows keepalive ioctl
 import threading
 import time
@@ -19,6 +22,11 @@ from django.db import DatabaseError, close_old_connections, connection, transact
 from django.db.models import Q
 from django.utils import timezone
 
+from smart_meter.diagnostic import (
+    build_diagnostic_read_frame,
+    normalize_diagnostic_di,
+    validate_meter_number,
+)
 from smart_meter.dlt645 import DIRECT_REGISTER_SPECS, parse_frame, verify_checksum
 from smart_meter.dlt645 import relay_state_from_status_word
 from smart_meter.utils.frames import build_read_028011FF
@@ -39,6 +47,7 @@ from smart_meter.services.prepaid_money import (
     is_prepaid_money_command,
     mark_prepaid_acknowledged,
     mark_prepaid_definitive_failure,
+    mark_prepaid_reconciliation_uncertain,
     mark_prepaid_uncertain,
     reconcile_prepaid_balance,
 )
@@ -191,6 +200,18 @@ ACTIVE_LOCK = threading.Lock()
 
 REPLY_WAITERS: dict[str, list[dict]] = {}
 REPLY_LOCK = threading.Lock()
+METER_REQUEST_LOCKS: dict[str, threading.Lock] = {}
+METER_REQUEST_LOCKS_LOCK = threading.Lock()
+DIAGNOSTIC_LAST_TX: dict[str, float] = {}
+DIAGNOSTIC_MIN_INTERVAL = 0.5
+DIAGNOSTIC_SOCKET_PATH = str(
+    getattr(settings, "METER_DIAGNOSTIC_SOCKET", "/tmp/tms-meter-diagnostic.sock")
+)
+
+
+def _meter_request_lock(meter_number: str) -> threading.Lock:
+    with METER_REQUEST_LOCKS_LOCK:
+        return METER_REQUEST_LOCKS.setdefault(meter_number, threading.Lock())
 
 
 def _register_handler(meter_number: str, handler: ClientHandler):
@@ -261,6 +282,8 @@ def _push_waiter(
     expect_di: str | None,
     expect_controls=None,
     persist_reply: bool = True,
+    *,
+    consume: bool = False,
     accept_negative_without_di: bool = False,
 ):
     with REPLY_LOCK:
@@ -270,16 +293,26 @@ def _push_waiter(
                 "expect_di": (expect_di or "").upper(),
                 "expect_controls": frozenset(expect_controls or ()),
                 "persist_reply": bool(persist_reply),
+                "consume": bool(consume),
                 "accept_negative_without_di": bool(accept_negative_without_di),
             }
         )
 
 
-def _deliver_if_match(meter_number: str, di: str, control_code: int, frame: bytes):
+def _deliver_if_match(
+    meter_number: str,
+    di: str,
+    control_code: int,
+    frame: bytes,
+    *,
+    consume_only: bool = False,
+):
     di = (di or "").upper()
     with REPLY_LOCK:
         lst = REPLY_WAITERS.get(meter_number) or []
         for i, item in enumerate(lst):
+            if consume_only and not item.get("consume"):
+                continue
             exp = item["expect_di"]
             controls = item.get("expect_controls") or frozenset()
             if controls and control_code not in controls:
@@ -294,6 +327,8 @@ def _deliver_if_match(meter_number: str, di: str, control_code: int, frame: byte
             if exp or controls:
                 lst.pop(i)
                 item["q"].put(frame)
+                if item.get("consume"):
+                    return 2
                 return item
         return None
 
@@ -304,6 +339,131 @@ def _remove_waiter(meter_number: str, q: queue.Queue) -> None:
         REPLY_WAITERS[meter_number] = [item for item in waiters if item["q"] is not q]
         if not REPLY_WAITERS[meter_number]:
             REPLY_WAITERS.pop(meter_number, None)
+
+
+def perform_diagnostic_read(meter_number: str, di: str, timeout: float = 8.0) -> dict:
+    """Send one allowlisted C=0x11 read through an existing active handler.
+
+    The response waiter is consuming: the normal listener persistence pipeline
+    stops after handing this exact address/DI response to the diagnostic caller.
+    """
+    meter_number = validate_meter_number(meter_number)
+    di = normalize_diagnostic_di(di)
+    timeout = float(timeout)
+    if not 1.0 <= timeout <= 30.0:
+        raise ValueError("diagnostic timeout must be between 1 and 30 seconds")
+
+    with _meter_request_lock(meter_number):
+        handler = _get_handler(meter_number)
+        if handler is None or not handler.alive:
+            return {"ok": False, "status": "offline", "error": "meter is not connected"}
+
+        elapsed = time.monotonic() - DIAGNOSTIC_LAST_TX.get(meter_number, 0.0)
+        if elapsed < DIAGNOSTIC_MIN_INTERVAL:
+            time.sleep(DIAGNOSTIC_MIN_INTERVAL - elapsed)
+
+        frame = build_diagnostic_read_frame(meter_number, di)
+        waiter = queue.Queue(maxsize=1)
+        transport_q = queue.Queue(maxsize=1)
+        _push_waiter(
+            meter_number,
+            waiter,
+            di,
+            expect_controls={0x91, 0xD1},
+            consume=True,
+            accept_negative_without_di=True,
+        )
+        handler.enqueue_send(
+            frame,
+            expire_at=time.time() + timeout,
+            transport_q=transport_q,
+        )
+        DIAGNOSTIC_LAST_TX[meter_number] = time.monotonic()
+
+        try:
+            transport_ok, transport_error = transport_q.get(timeout=timeout)
+        except queue.Empty:
+            _remove_waiter(meter_number, waiter)
+            return {
+                "ok": False,
+                "status": "timed_out",
+                "error": "timeout waiting for socket transmission",
+                "tx": frame.hex().upper(),
+            }
+        if not transport_ok:
+            _remove_waiter(meter_number, waiter)
+            return {
+                "ok": False,
+                "status": "invalid_response",
+                "error": transport_error or "socket transmission failed",
+                "tx": frame.hex().upper(),
+            }
+        try:
+            reply = waiter.get(timeout=timeout)
+        except queue.Empty:
+            _remove_waiter(meter_number, waiter)
+            return {
+                "ok": False,
+                "status": "timed_out",
+                "error": "timeout waiting for matching meter/DI response",
+                "tx": frame.hex().upper(),
+            }
+        return {
+            "ok": True,
+            "status": "received",
+            "meter": meter_number,
+            "di": di,
+            "tx": frame.hex().upper(),
+            "rx": reply.hex().upper(),
+        }
+
+
+def process_diagnostic_request(request) -> dict:
+    if not isinstance(request, dict):
+        raise ValueError("diagnostic request must be a JSON object")
+    if set(request) - {"meter", "di", "timeout"}:
+        raise ValueError("diagnostic request contains unsupported fields")
+    return perform_diagnostic_read(
+        request.get("meter", ""),
+        request.get("di", ""),
+        request.get("timeout", 8.0),
+    )
+
+
+class DiagnosticRequestHandler(socketserver.StreamRequestHandler):
+    """Local Unix-socket JSON interface; it never accepts caller-supplied frames."""
+
+    def handle(self):
+        try:
+            raw = self.rfile.readline(4097)
+            if not raw or len(raw) > 4096:
+                raise ValueError("diagnostic request must be one JSON line under 4096 bytes")
+            result = process_diagnostic_request(json.loads(raw.decode("utf-8")))
+        except Exception as exc:
+            result = {"ok": False, "status": "rejected", "error": str(exc)}
+        self.wfile.write((json.dumps(result, separators=(",", ":")) + "\n").encode("utf-8"))
+
+
+class DiagnosticUnixServer(socketserver.ThreadingUnixStreamServer):
+    daemon_threads = True
+
+
+def start_diagnostic_server(path: str = DIAGNOSTIC_SOCKET_PATH):
+    """Start the owner-only local diagnostic IPC endpoint in a daemon thread."""
+    if os.path.lexists(path):
+        mode = os.lstat(path).st_mode
+        if not stat.S_ISSOCK(mode):
+            raise RuntimeError(f"refusing to replace non-socket diagnostic path: {path}")
+        os.unlink(path)
+    server = DiagnosticUnixServer(path, DiagnosticRequestHandler)
+    os.chmod(path, 0o600)
+    threading.Thread(
+        target=server.serve_forever,
+        name="meter-readonly-diagnostic-server",
+        daemon=True,
+    ).start()
+    logger.info("Read-only meter diagnostic socket listening at %s", path)
+    return server
 
 
 def handle_frame(addr, raw_bytes, status):
@@ -656,6 +816,25 @@ class ClientHandler(threading.Thread):
         di = parsed.get("di")
         data = parsed.get("data")
 
+        # Diagnostic replies are intercepted before handler registration or any
+        # model lookup/update. parse_frame has already enforced checksum, address,
+        # control and DI extraction; the caller performs the stricter value decode.
+        if (
+            di != "80808080"
+            and ctrl_code in (0x91, 0xD1)
+            and meter_number
+            and _deliver_if_match(
+                meter_number, di, ctrl_code, frame, consume_only=True
+            ) == 2
+        ):
+            logger.info(
+                "DIAGNOSTIC_RX_CONSUMED meter=%s di=%s frame=%s",
+                meter_number,
+                di or "none",
+                frame.hex().upper(),
+            )
+            return
+
         if not di:
             logger.info(
                 "RAW_UNPARSED_RX meter=%s peer=%s control_code=0x%02X len=%s frame=%s",
@@ -681,13 +860,19 @@ class ClientHandler(threading.Thread):
 
         # Deliver to a waiting "send-and-wait" caller (but skip keepalives)
         if di != "80808080" and ctrl_code in (0x91, 0xD1, 0x83, 0x9C, 0xDC) and meter_number:
-            matched_waiter = _deliver_if_match(meter_number, di, ctrl_code, frame)
+            matched_waiter = _deliver_if_match(
+                meter_number, di, ctrl_code, frame
+            )
             if not matched_waiter:
                 acknowledge_late_prepaid_reply(meter_number, di, ctrl_code, frame)
             if matched_waiter and self.debug:
                 logger.debug(f"📤 Delivered reply to waiter for meter {meter_number}")
 
-            if matched_waiter and not matched_waiter.get("persist_reply", True):
+            if (
+                matched_waiter
+                and matched_waiter != 2
+                and not matched_waiter.get("persist_reply", True)
+            ):
                 logger.info(
                     "VALIDATED_NONPERSISTENT_REPLY meter=%s DI=%s",
                     meter_number,
@@ -886,7 +1071,12 @@ class DbCommandPoller(threading.Thread):
                             cmd.save(update_fields=["status", "updated_at"])
                 for cmd in cmds:
                     if cmd.status == "claimed":
-                        self._process_command(cmd)
+                        meter_no = (cmd.meter_number or "").strip()
+                        if meter_no:
+                            with _meter_request_lock(meter_no):
+                                self._process_command(cmd)
+                        else:
+                            self._process_command(cmd)
             except Exception as e:
                 logger.warning("DbCommandPoller loop error: %s", e)
             finally:
@@ -993,6 +1183,8 @@ class DbCommandPoller(threading.Thread):
                 try:
                     reply = waiter.get(timeout=ttl)
                     self._ack(cmd, reply.hex().upper())
+                    if is_money:
+                        self._verify_prepaid_balance(cmd, h, ttl)
                 except queue.Empty:
                     _remove_waiter(meter_no, waiter)
                     self._retry_or_fail(cmd, "timeout waiting for reply")
@@ -1066,6 +1258,70 @@ class DbCommandPoller(threading.Thread):
         )
         if relay_state is None:
             self._verification_unconfirmed(cmd, "fresh status response had no relay state")
+
+    def _verify_prepaid_balance(self, cmd, handler, ttl):
+        """Fetch one authoritative balance after a prepaid C=83 acknowledgement."""
+        meter_no = (cmd.meter_number or "").strip()
+        status_frame = build_read_028011FF(meter_no)
+        status_hex = status_frame.hex().upper()
+        waiter = queue.Queue()
+        _push_waiter(
+            meter_no,
+            waiter,
+            "028011FF",
+            expect_controls={0x91, 0x83},
+        )
+        MeterCommand.objects.filter(pk=cmd.pk).update(status_query_hex=status_hex)
+
+        transport_q = queue.Queue(maxsize=1)
+        handler.enqueue_send(
+            status_frame,
+            expire_at=time.time() + ttl,
+            transport_q=transport_q,
+        )
+        try:
+            transport_ok, transport_error = transport_q.get(timeout=ttl)
+        except queue.Empty:
+            _remove_waiter(meter_no, waiter)
+            mark_prepaid_reconciliation_uncertain(
+                cmd, "028011FF query socket transmission timed out"
+            )
+            return
+        if not transport_ok:
+            _remove_waiter(meter_no, waiter)
+            mark_prepaid_reconciliation_uncertain(
+                cmd, transport_error or "028011FF query socket transmission failed"
+            )
+            return
+
+        try:
+            reply = waiter.get(timeout=ttl)
+        except queue.Empty:
+            _remove_waiter(meter_no, waiter)
+            mark_prepaid_reconciliation_uncertain(
+                cmd, "028011FF balance verification timed out"
+            )
+            return
+
+        parsed = parse_frame(reply)
+        data = (parsed or {}).get("data") or {}
+        if (
+            not parsed
+            or parsed.get("meter_number") != meter_no
+            or parsed.get("di") != "028011FF"
+            or data.get("balance") is None
+        ):
+            mark_prepaid_reconciliation_uncertain(
+                cmd, "fresh response did not contain the command meter's 028011FF balance"
+            )
+            return
+        meter = Meter.objects.filter(pk=cmd.meter_id, meter_number=meter_no).first()
+        if meter is None:
+            mark_prepaid_reconciliation_uncertain(
+                cmd, "command meter no longer exists"
+            )
+            return
+        reconcile_prepaid_balance(meter, data["balance"])
 
     def _verification_unconfirmed(self, cmd, reason):
         MeterCommand.objects.filter(pk=cmd.pk).update(
@@ -1224,16 +1480,19 @@ class Command(BaseCommand):
             logger.setLevel(logging.DEBUG)
             logger.debug("🔧 Debug logging enabled")
 
-        # ⬇️ Start DB poller (no port 7000 needed)
-        DbCommandPoller(debug=debug).start()
-        MeterTimingSchedulePoller().start()
-
-        logger.info("✅ Listening on %s:%s for DL/T 645 frames...", host, port)
-
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, port))
             s.listen(50)
+
+            # Bind the production meter port before starting any side threads or
+            # touching the diagnostic socket. A mistakenly launched second
+            # listener therefore fails without disrupting the running listener.
+            DbCommandPoller(debug=debug).start()
+            MeterTimingSchedulePoller().start()
+            start_diagnostic_server()
+            logger.info("✅ Listening on %s:%s for DL/T 645 frames...", host, port)
+
             while True:
                 conn, addr = s.accept()
                 # keepalives at accept-time too (belt + suspenders)

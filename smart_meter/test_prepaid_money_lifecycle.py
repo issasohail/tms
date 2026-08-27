@@ -30,6 +30,11 @@ from smart_meter.utils.db_send import send_via_db
 
 
 METER_NUMBER = "260305510012"
+ZERO_BALANCE_028011FF = bytes.fromhex(
+    "681200510503266891453244B3353333333333333333775733333333AC3533333333333333"
+    "6C35336C3533333333333333893689363333333396A7333396A73333333333333333333333"
+    "33333333334116"
+)
 
 
 def money_ack(di: str) -> bytes:
@@ -44,10 +49,11 @@ def money_ack(di: str) -> bytes:
 class ImmediateMoneyHandler:
     peer = "test:6000"
 
-    def __init__(self, meter_number, *, di=None, transport=True):
+    def __init__(self, meter_number, *, di=None, transport=True, status_reply=None):
         self.meter_number = meter_number
         self.di = di
         self.transport = transport
+        self.status_reply = status_reply
         self.frames = []
 
     def enqueue_send(self, frame, expire_at=None, transport_q=None):
@@ -56,9 +62,13 @@ class ImmediateMoneyHandler:
             transport_q.put_nowait((True, ""))
         elif self.transport is False:
             transport_q.put_nowait((False, "socket disconnected during send"))
-        if self.di:
+        if self.di and len(self.frames) == 1:
             _deliver_if_match(
                 self.meter_number, self.di, 0x83, money_ack(self.di)
+            )
+        elif self.status_reply is not None and len(self.frames) == 2:
+            _deliver_if_match(
+                self.meter_number, "028011FF", 0x91, self.status_reply
             )
 
     def close(self, reason="shutdown"):
@@ -74,7 +84,7 @@ class PrepaidMoneyLifecycleTests(TestCase):
         LiveReading.objects.create(meter=self.meter, balance=Decimal("0.00"))
         self.poller = DbCommandPoller(interval=0)
 
-    def queue(self, *, operation="recharge", order="1240826202124141", amount="1.00"):
+    def queue(self, *, operation="recharge", order="1240826202124150", amount="1.00"):
         return queue_prepaid_money_transaction(
             meter=self.meter,
             operation=operation,
@@ -91,7 +101,7 @@ class PrepaidMoneyLifecycleTests(TestCase):
         self.assertEqual(command.command_type, "prepaid_recharge")
         self.assertEqual(command.max_attempts, 1)
         self.assertTrue(command.requires_verification)
-        self.assertEqual(prepaid.transaction_id, "1240826202124141")
+        self.assertEqual(prepaid.transaction_id, "1240826202124150")
 
     def test_c83_recharge_reply_is_meter_acknowledgement_not_reconciliation(self):
         prepaid, command = self.queue()
@@ -107,9 +117,9 @@ class PrepaidMoneyLifecycleTests(TestCase):
         prepaid.refresh_from_db()
         self.assertEqual(command.status, "acknowledged")
         self.assertEqual(command.raw_ack_hex, money_ack("070102FF").hex().upper())
-        self.assertEqual(prepaid.status, "pending")
-        self.assertIn("awaiting", prepaid.reconciliation_note.lower())
-        self.assertEqual(len(handler.frames), 1)
+        self.assertEqual(prepaid.status, "uncertain")
+        self.assertIn("Do not retry", prepaid.reconciliation_note)
+        self.assertEqual(len(handler.frames), 2)
 
     def test_transport_timeout_becomes_uncertain_without_requeue(self):
         prepaid, command = self.queue()
@@ -170,13 +180,17 @@ class PrepaidMoneyLifecycleTests(TestCase):
         self.assertTrue(prepaid.raw_ack)
 
     def test_duplicate_and_physically_consumed_orders_are_rejected(self):
-        self.queue(order="1240826202124141")
+        self.queue(order="1240826202124150")
         with self.assertRaisesMessage(ValueError, "already exists"):
-            self.queue(order="1240826202124141")
+            self.queue(order="1240826202124150")
 
-        consumed = next(iter(CONSUMED_MANUFACTURER_ORDERS))
-        with self.assertRaisesMessage(ValueError, "already been consumed"):
-            self.queue(order=consumed)
+        self.assertEqual(
+            CONSUMED_MANUFACTURER_ORDERS,
+            {"1240826202124140", "1240826202124141"},
+        )
+        for consumed in CONSUMED_MANUFACTURER_ORDERS:
+            with self.assertRaisesMessage(ValueError, "already been consumed"):
+                self.queue(order=consumed)
         self.assertEqual(MeterCommand.objects.count(), 1)
 
     def test_order_generator_checks_persisted_orders_across_processes(self):
@@ -214,7 +228,7 @@ class PrepaidMoneyLifecycleTests(TestCase):
         self.assertEqual(prepaid.after_balance, Decimal("1.00"))
         self.assertEqual(command.status, "verified")
 
-    def test_refund_has_di_architecture_but_is_not_declared_verified(self):
+    def test_acknowledged_refund_reconciles_on_authoritative_balance(self):
         LiveReading.objects.filter(meter=self.meter).update(balance=Decimal("10.00"))
         prepaid, command = self.queue(
             operation="refund", order="1240826202124142", amount="1.00"
@@ -231,9 +245,74 @@ class PrepaidMoneyLifecycleTests(TestCase):
         command.refresh_from_db()
         prepaid.refresh_from_db()
         self.assertEqual(command.expect_di, "070108FF")
+        self.assertEqual(command.status, "verified")
+        self.assertEqual(prepaid.status, "verified")
+        self.assertEqual(prepaid.before_balance, Decimal("10.00"))
+        self.assertEqual(prepaid.after_balance, Decimal("9.00"))
+
+    def test_full_wallet_refund_verifies_only_at_zero(self):
+        LiveReading.objects.filter(meter=self.meter).update(balance=Decimal("10.00"))
+        prepaid, command = self.queue(
+            operation="refund", order="1240826202124144", amount="10.00"
+        )
+        command.status = "acknowledged"
+        command.raw_ack_hex = money_ack("070108FF").hex().upper()
+        command.save(update_fields=["status", "raw_ack_hex", "updated_at"])
+        prepaid.raw_ack = command.raw_ack_hex
+        prepaid.save(update_fields=["raw_ack", "updated_at"])
+
+        reconcile_prepaid_balance(self.meter, Decimal("0.00"))
+
+        command.refresh_from_db()
+        prepaid.refresh_from_db()
+        self.assertEqual(command.status, "verified")
+        self.assertEqual(prepaid.status, "verified")
+        self.assertEqual(prepaid.after_balance, Decimal("0.00"))
+
+    def test_refund_ack_triggers_fresh_balance_read_and_verifies_zero(self):
+        LiveReading.objects.filter(meter=self.meter).update(balance=Decimal("1.00"))
+        prepaid, command = self.queue(
+            operation="refund", order="1240826202124146", amount="1.00"
+        )
+        handler = ImmediateMoneyHandler(
+            METER_NUMBER,
+            di="070108FF",
+            status_reply=ZERO_BALANCE_028011FF,
+        )
+
+        with patch(
+            "smart_meter.management.commands.meter_listener._get_handler",
+            return_value=handler,
+        ):
+            self.poller._process_command(command)
+
+        command.refresh_from_db()
+        prepaid.refresh_from_db()
+        self.assertEqual(len(handler.frames), 2)
+        self.assertTrue(command.status_query_hex)
+        self.assertEqual(command.status, "verified")
+        self.assertEqual(prepaid.status, "verified")
+        self.assertEqual(prepaid.after_balance, Decimal("0.00"))
+
+    def test_refund_balance_mismatch_stays_uncertain_without_retry(self):
+        LiveReading.objects.filter(meter=self.meter).update(balance=Decimal("10.00"))
+        prepaid, command = self.queue(
+            operation="refund", order="1240826202124145", amount="10.00"
+        )
+        command.status = "acknowledged"
+        command.raw_ack_hex = money_ack("070108FF").hex().upper()
+        command.save(update_fields=["status", "raw_ack_hex", "updated_at"])
+        prepaid.raw_ack = command.raw_ack_hex
+        prepaid.save(update_fields=["raw_ack", "updated_at"])
+
+        reconcile_prepaid_balance(self.meter, Decimal("0.01"))
+
+        command.refresh_from_db()
+        prepaid.refresh_from_db()
         self.assertEqual(command.status, "acknowledged")
+        self.assertEqual(command.max_attempts, 1)
         self.assertEqual(prepaid.status, "uncertain")
-        self.assertIn("not yet proven", prepaid.reconciliation_note)
+        self.assertIn("do not retry", prepaid.reconciliation_note)
 
     def test_uncertain_api_result_is_never_presented_as_retryable(self):
         _prepaid, command = self.queue()

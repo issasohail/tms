@@ -27,9 +27,13 @@ MONEY_EXPECTED_DI = {
     "prepaid_recharge": "070102FF",
     "prepaid_refund": "070108FF",
 }
-CONSUMED_MANUFACTURER_ORDERS = frozenset({"1240826202124140"})
+CONSUMED_MANUFACTURER_ORDERS = frozenset({
+    "1240826202124140",
+    "1240826202124141",
+})
+BALANCE_RECONCILIATION_TOLERANCE = Decimal("0.005")
 UNCERTAIN_OPERATOR_MESSAGE = (
-    "Recharge transmission outcome is uncertain. Do not retry. Verify meter balance."
+    "Prepaid money transmission outcome is uncertain. Do not retry. Verify meter balance."
 )
 
 
@@ -244,8 +248,8 @@ def mark_prepaid_acknowledged(command: MeterCommand, reply_hex: str) -> None:
     prepaid.status = "pending"
     if command.command_type == "prepaid_refund":
         prepaid.reconciliation_note = (
-            "C=83 / DI=070108FF response received; refund success semantics remain "
-            "unproven and balance verification is required"
+            "Meter acknowledged refund with C=83 / DI=070108FF; awaiting "
+            "authoritative 028011FF balance reconciliation"
         )
     else:
         prepaid.reconciliation_note = (
@@ -255,6 +259,29 @@ def mark_prepaid_acknowledged(command: MeterCommand, reply_hex: str) -> None:
     prepaid.save(
         update_fields=["raw_ack", "status", "reconciliation_note", "updated_at"]
     )
+
+
+def mark_prepaid_reconciliation_uncertain(
+    command: MeterCommand, detail: str
+) -> None:
+    """Record a post-ACK verification failure without permitting a retry."""
+    message = f"Acknowledged but balance reconciliation is uncertain: {detail}. Do not retry."
+    with transaction.atomic():
+        locked = MeterCommand.objects.select_for_update().get(pk=command.pk)
+        if locked.status == "verified":
+            return
+        locked.status = "acknowledged"
+        locked.error = message
+        locked.next_attempt_at = None
+        locked.max_attempts = 1
+        locked.save(
+            update_fields=["status", "error", "next_attempt_at", "max_attempts", "updated_at"]
+        )
+        prepaid = _transaction_for_command(locked)
+        if prepaid is not None and prepaid.status != "verified":
+            prepaid.status = "uncertain"
+            prepaid.reconciliation_note = message
+            prepaid.save(update_fields=["status", "reconciliation_note", "updated_at"])
 
 
 def mark_prepaid_definitive_failure(
@@ -338,34 +365,33 @@ def reconcile_prepaid_balance(meter: Meter, balance) -> list[MeterPrepaidRecharg
             if command is None or prepaid.before_balance is None:
                 continue
             prepaid.after_balance = actual
-            if command.command_type == "prepaid_refund":
-                prepaid.status = "uncertain"
+            operation = "refund" if command.command_type == "prepaid_refund" else "recharge"
+            direction = Decimal("-1") if operation == "refund" else Decimal("1")
+            expected = (prepaid.before_balance + direction * prepaid.amount).quantize(
+                Decimal("0.01")
+            )
+            difference = abs(actual - expected)
+            if difference <= BALANCE_RECONCILIATION_TOLERANCE:
+                prepaid.status = "verified"
                 prepaid.reconciliation_note = (
-                    "Refund balance observed after C=83 acknowledgement, but physical "
-                    "refund success semantics are not yet proven"
+                    f"Reconciled from {prepaid.before_balance:.2f} to {actual:.2f} "
+                    f"after {operation} {prepaid.amount:.2f}; expected {expected:.2f}"
+                )
+                command.status = "verified"
+                command.verified_at = timezone.now()
+                command.error = ""
+                command.save(
+                    update_fields=["status", "verified_at", "error", "updated_at"]
                 )
             else:
-                expected = (prepaid.before_balance + prepaid.amount).quantize(
-                    Decimal("0.01")
+                message = (
+                    f"Acknowledged {operation} expected balance {expected:.2f}, but "
+                    f"authoritative 028011FF reported {actual:.2f}; do not retry"
                 )
-                if actual == expected:
-                    prepaid.status = "verified"
-                    prepaid.reconciliation_note = (
-                        f"Reconciled from {prepaid.before_balance:.2f} to {actual:.2f} "
-                        f"after recharge {prepaid.amount:.2f}"
-                    )
-                    command.status = "verified"
-                    command.verified_at = timezone.now()
-                    command.error = ""
-                    command.save(
-                        update_fields=["status", "verified_at", "error", "updated_at"]
-                    )
-                else:
-                    prepaid.status = "uncertain"
-                    prepaid.reconciliation_note = (
-                        f"Acknowledged recharge expected balance {expected:.2f}, but "
-                        f"authoritative 028011FF reported {actual:.2f}; do not retry"
-                    )
+                prepaid.status = "uncertain"
+                prepaid.reconciliation_note = message
+                command.error = message
+                command.save(update_fields=["error", "updated_at"])
             prepaid.save(
                 update_fields=[
                     "after_balance", "status", "reconciliation_note", "updated_at"

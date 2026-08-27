@@ -1,16 +1,59 @@
 {% extends "base.html" %}
 
 {% block title %}{{ group.name }} Reconciliation{% endblock %}
+{% block main_container_class %}container ld-check-group-shell{% endblock %}
 
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
+<style>
+  .ld-check-group-shell { width: 100%; max-width: 1720px; }
+  .ld-reconciliation-grid > [class*="col-"] { min-width: 0; }
+  .ld-reconciliation-table { max-height: 52vh; overflow: auto; }
+  .ld-reconciliation-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    white-space: nowrap;
+  }
+  .ld-reconciliation-table tbody td { white-space: nowrap; }
+  .ld-chip-help { color: #6c757d; cursor: help; font-size: .72rem; }
+  .ld-reading-freshness { font-size: .68rem; }
+  .ld-billing-chart { min-height: 320px; position: relative; }
+  .ld-chart-summary { font-size: .72rem; }
+  .ld-chart-summary strong { display: block; font-size: .9rem; }
+  .ld-chart-range strong { font-size: .7rem; white-space: nowrap; }
+  .ld-plain-link, .ld-plain-link:hover, .ld-plain-link:focus {
+    color: inherit;
+    text-decoration: none;
+  }
+  .ld-quick-ranges { flex-wrap: nowrap; }
+  .ld-quick-ranges .btn { font-size: .68rem; white-space: nowrap; padding-inline: .45rem; }
+  #checkGroupAjaxRegion.ld-loading { opacity: .55; pointer-events: none; }
+  @media (min-width: 1200px) {
+    .ld-filter-audit { width: 185px; flex: 0 0 185px; }
+    .ld-filter-date { width: 112px; flex: 0 0 112px; }
+    .ld-filter-meter { width: 230px; flex: 0 0 230px; }
+    .ld-filter-start { width: 128px; flex: 0 0 128px; }
+    .ld-filter-notes { min-width: 170px; }
+    .ld-reconciliation-grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+    }
+    .ld-membership-panel { grid-column: 1 / span 5; grid-row: 1 / span 2; width: auto; }
+    .ld-audit-panel { grid-column: 6 / span 7; width: auto; }
+    .ld-billing-panel { grid-column: 6 / span 7; width: auto; }
+    .ld-reconciliation-grid.ld-detail-layout .ld-membership-panel { grid-column: 1 / span 5; grid-row: 1; }
+    .ld-reconciliation-grid.ld-detail-layout .ld-audit-panel { grid-column: 6 / span 3; grid-row: 1; }
+    .ld-reconciliation-grid.ld-detail-layout .ld-billing-panel { grid-column: 9 / span 4; grid-row: 1; }
+  }
+</style>
 <div class="container-fluid">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
       <h2 class="mb-0">{{ group.name }}</h2>
       <small class="text-muted">
         {% if covered_property_names %}Covered properties: {{ covered_property_names|join:", " }} · {% elif group.property %}Reference property: {{ group.property.property_name }} · {% endif %}
-        Audit meter {{ group.check_meter.meter_number }}
+        Audit meter <a href="{% url 'smart_meter:meter_detail' group.check_meter_id %}" title="Open Audit meter detail">{{ group.check_meter.meter_number }}</a>
       </small>
     </div>
     <div class="d-flex gap-2">
@@ -19,43 +62,87 @@
     </div>
   </div>
 
+  <div id="checkGroupAjaxRegion">
   <div class="card mb-3">
     <div class="card-body py-2">
-      <form method="get" class="row row-cols-lg-auto g-2 align-items-end">
-        <div class="col"><label class="form-label mb-1">Start</label><input class="form-control form-control-sm" type="date" name="start" value="{{ start_date|date:'Y-m-d' }}"></div>
-        <div class="col"><label class="form-label mb-1">End</label><input class="form-control form-control-sm" type="date" name="end" value="{{ end_date|date:'Y-m-d' }}"></div>
-        <div class="col"><button class="btn btn-sm btn-primary" type="submit">Apply</button></div>
-      </form>
+      <div class="d-flex flex-column flex-xl-row gap-2 align-items-xl-end">
+        <div class="flex-shrink-0">
+          <form method="get" class="d-flex flex-wrap flex-xl-nowrap gap-2 align-items-end" id="checkGroupDateFilter">
+            <div class="ld-filter-audit">
+              <label class="form-label mb-1">Audit meter #</label>
+              <select class="form-select form-select-sm" data-audit-group-nav>
+                {% for audit_group in audit_group_options %}<option value="{% url 'smart_meter:meter_check_group_detail' audit_group.pk %}" {% if audit_group.pk == group.pk %}selected{% endif %}>{{ audit_group.check_meter.meter_number }} — {{ audit_group.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="ld-filter-date"><label class="form-label mb-1">Start</label><input class="form-control form-control-sm" type="date" name="start" value="{{ start_date|date:'Y-m-d' }}" data-auto-submit></div>
+            <div class="ld-filter-date"><label class="form-label mb-1">End</label><input class="form-control form-control-sm" type="date" name="end" value="{{ end_date|date:'Y-m-d' }}" data-auto-submit></div>
+            <div>
+              <div class="btn-group btn-group-sm ld-quick-ranges" role="group" aria-label="Quick date ranges">
+                <a class="btn {% if quick_range == 'this_month' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?range=this_month">This Month</a>
+                <a class="btn {% if quick_range == 'last_month' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?range=last_month">Last Month</a>
+                <a class="btn {% if quick_range == 'this_week' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?range=this_week">This Week</a>
+                <a class="btn {% if quick_range == 'last_week' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="?range=last_week">Last Week</a>
+              </div>
+              <noscript><button class="btn btn-sm btn-primary ms-1" type="submit">Apply</button></noscript>
+            </div>
+          </form>
+        </div>
+        <div class="flex-grow-1">
+          <form method="post" class="d-flex flex-wrap flex-xl-nowrap gap-2 align-items-end" novalidate>
+            {% csrf_token %}
+            <div class="ld-filter-meter" title="Only active, currently unassigned Billing meters are shown.">{{ membership_form.billing_meter.label_tag }}{{ membership_form.billing_meter }}{{ membership_form.billing_meter.errors }}</div>
+            <div class="ld-filter-start">{{ membership_form.start_date.label_tag }}{{ membership_form.start_date }}{{ membership_form.start_date.errors }}</div>
+            <div class="ld-filter-notes flex-grow-1">{{ membership_form.notes.label_tag }}{{ membership_form.notes }}{{ membership_form.notes.errors }}</div>
+            <div><button class="btn btn-sm btn-primary" type="submit">Apply</button></div>
+            {% if membership_form.non_field_errors %}<div class="w-100"><div class="alert alert-danger py-1 mb-0">{{ membership_form.non_field_errors }}</div></div>{% endif %}
+          </form>
+        </div>
+      </div>
     </div>
   </div>
 
   <div class="row g-2 mb-3">
-    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Audit kWh</small><div class="fs-4 fw-bold">{{ check_kwh|floatformat:3 }}</div></div></div></div>
-    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Billing-sum kWh</small><div class="fs-4 fw-bold">{{ billing_kwh|floatformat:3 }}</div></div></div></div>
-    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Variance kWh</small><div class="fs-4 fw-bold {% if variance_kwh > 0 %}text-warning{% endif %}">{{ variance_kwh|floatformat:3 }}</div></div></div></div>
-    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Variance {{ CURRENCY_SYMBOL }}</small><div class="fs-4 fw-bold">{{ variance_rs|floatformat:2 }}</div></div></div></div>
-    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Leakage</small><div class="fs-4 fw-bold">{{ leakage_percent|floatformat:2 }}%</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Audit kWh <i class="fas fa-question-circle ld-chip-help" role="button" tabindex="0" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-placement="top" title="Energy used by the Audit meter during the selected period. The shown reading is closest to {{ report_target_at|date:'Y-m-d H:i' }} and may be just before or after it." aria-label="Audit kWh help"></i></small><div class="fs-4 fw-bold">{{ check_kwh|floatformat:3 }}</div><small class="d-block text-muted">Closest: {{ audit_last_reading_at|date:'Y-m-d H:i'|default:'No reading' }} <span class="badge {{ audit_reading_status_class }} ld-reading-freshness">{{ audit_reading_status }}</span></small></div></div></div>
+    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Billing-sum kWh <i class="fas fa-question-circle ld-chip-help" role="button" tabindex="0" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-placement="top" title="Sum of assigned Billing-meter usage during each effective membership period." aria-label="Billing sum help"></i></small><div class="fs-4 fw-bold">{{ billing_kwh|floatformat:3 }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Variance kWh <i class="fas fa-question-circle ld-chip-help" role="button" tabindex="0" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-placement="top" title="Audit kWh minus the sum of Billing-meter kWh." aria-label="Variance kWh help"></i></small><div class="fs-4 fw-bold {% if variance_kwh > 0 %}text-warning{% endif %}">{{ variance_kwh|floatformat:3 }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Variance {{ CURRENCY_SYMBOL }} <i class="fas fa-question-circle ld-chip-help" role="button" tabindex="0" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-placement="top" title="Variance kWh multiplied by the Audit meter's effective unit rate." aria-label="Variance amount help"></i></small><div class="fs-4 fw-bold">{{ variance_rs|floatformat:2 }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card h-100"><div class="card-body py-2"><small class="text-muted">Leakage <i class="fas fa-question-circle ld-chip-help" role="button" tabindex="0" data-bs-toggle="tooltip" data-bs-trigger="hover focus click" data-bs-placement="top" title="Variance as a percentage of Audit-meter usage. Negative means Billing-meter usage exceeds Audit usage." aria-label="Leakage help"></i></small><div class="fs-4 fw-bold">{{ leakage_percent|floatformat:2 }}%</div></div></div></div>
   </div>
 
-  <div class="row g-3 mb-3">
-    <div class="col-lg-7">
+  <div class="row g-3 ld-reconciliation-grid">
+    <div class="col-12 ld-membership-panel">
       <div class="card h-100">
         <div class="card-header py-2 fw-semibold">Billing-meter memberships</div>
-        <div class="table-responsive">
+        <div class="table-responsive ld-reconciliation-table">
           <table class="table table-sm align-middle mb-0">
-            <thead class="table-light"><tr><th>Meter</th><th>Property / Unit</th><th>Start</th><th>End</th><th>Status</th><th></th></tr></thead>
+            <thead class="table-light"><tr><th>S.N#</th><th>Meter</th><th>Property / Unit</th><th title="Reading closest to the Audit meter reference time {{ reconciliation_target_at|date:'Y-m-d H:i' }}">Last Reading</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {% for membership in memberships %}
                 <tr>
-                  <td>{{ membership.billing_meter.meter_number }}</td>
-                  <td>{% if membership.billing_meter.unit %}{{ membership.billing_meter.unit.property.property_name }} / {{ membership.billing_meter.display_location_name }}{% else %}Unassigned{% endif %}</td>
-                  <td>{{ membership.start_date|date:'Y-m-d' }}</td>
-                  <td>{{ membership.end_date|date:'Y-m-d'|default:'—' }}</td>
+                  <td>{{ forloop.counter }}</td>
+                  <td><a href="{% url 'smart_meter:meter_detail' membership.billing_meter_id %}" title="Open meter detail">{{ membership.billing_meter.meter_number }}</a></td>
+                  <td>{% if membership.billing_meter.unit %}<a class="ld-plain-link" href="{% url 'smart_meter:energy_dashboard' %}?meter={{ membership.billing_meter_id }}&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&report_type=daily&role=billing" title="Open this unit's dashboard for the selected range">{{ membership.billing_meter.unit.property.property_name }} / {{ membership.billing_meter.display_location_name }}</a>{% else %}Unassigned{% endif %}</td>
+                  <td>
+                    {% if membership.billing_meter.report_last_reading_at %}<a href="{% url 'smart_meter:reading_list' %}?meter={{ membership.billing_meter_id }}&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&role=billing" title="Open this meter's readings for the selected range">{{ membership.billing_meter.report_last_reading_at|date:'Y-m-d H:i' }}</a>{% else %}&mdash;{% endif %}
+                    <span class="badge {{ membership.billing_meter.report_reading_status_class }} ld-reading-freshness">{{ membership.billing_meter.report_reading_status }}</span>
+                  </td>
                   <td>{% if membership.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Ended</span>{% endif %}</td>
-                  <td class="text-end">
-                    {% if membership.is_active %}
-                      <form method="post" action="{% url 'smart_meter:meter_check_group_membership_end' group.pk membership.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-danger" type="submit">End</button></form>
-                    {% endif %}
+                  <td class="text-end text-nowrap">
+                    <div class="d-inline-flex flex-nowrap gap-1">
+                      <button class="btn btn-sm btn-outline-secondary" type="button"
+                              title="Edit membership" aria-label="Edit membership"
+                              data-membership-edit
+                              data-manage-url="{% url 'smart_meter:meter_check_group_membership_manage' group.pk membership.pk %}"
+                              data-meter-number="{{ membership.billing_meter.meter_number }}"
+                              data-start-date="{{ membership.start_date|date:'Y-m-d' }}"
+                              data-end-date="{{ membership.end_date|date:'Y-m-d' }}"
+                              data-notes="{{ membership.notes }}"><i class="fas fa-pen"></i></button>
+                      <button class="btn btn-sm btn-outline-danger" type="button"
+                              title="Delete membership" aria-label="Delete membership"
+                              data-membership-delete
+                              data-manage-url="{% url 'smart_meter:meter_check_group_membership_manage' group.pk membership.pk %}"
+                              data-meter-number="{{ membership.billing_meter.meter_number }}"><i class="fas fa-trash"></i></button>
+                    </div>
                   </td>
                 </tr>
               {% empty %}<tr><td colspan="6" class="text-center text-muted py-3">No billing meters attached.</td></tr>{% endfor %}
@@ -64,38 +151,431 @@
         </div>
       </div>
     </div>
-    <div class="col-lg-5">
+    <div class="col-12 ld-audit-panel">
+      <div class="card">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2">
+          <span class="fw-semibold">Audit-meter readings</span>
+          <div class="btn-group btn-group-sm" role="group" aria-label="Audit readings view">
+            <button class="btn btn-outline-primary active" type="button" id="auditSummaryButton" aria-pressed="true">Summary</button>
+            <button class="btn btn-outline-primary" type="button" id="auditDetailButton" aria-pressed="false">Detail</button>
+          </div>
+        </div>
+        <div id="auditSummaryView" class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead class="table-light"><tr><th>Period</th><th>Begin</th><th>End</th><th>Usage</th></tr></thead>
+            <tbody><tr><td><a href="{% url 'smart_meter:energy_dashboard' %}?meter={{ group.check_meter_id }}&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&report_type=daily&role=check">{{ start_date|date:'M d, Y' }}–{{ end_date|date:'M d, Y' }}</a></td><td>{{ audit_summary_start_kwh|default_if_none:'—'|floatformat:3 }}</td><td><a href="{% url 'smart_meter:reading_list' %}?meter={{ group.check_meter_id }}&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&role=check">{{ audit_summary_end_kwh|default_if_none:'—'|floatformat:3 }}</a></td><td><a class="ld-plain-link" href="{% url 'smart_meter:energy_dashboard' %}?meter={{ group.check_meter_id }}&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&report_type=daily&role=check">{{ check_kwh|floatformat:3 }}</a></td></tr></tbody>
+          </table>
+        </div>
+        <div id="auditDetailView" class="table-responsive ld-reconciliation-table d-none"><table class="table table-sm mb-0"><thead class="table-light"><tr><th>S.N#</th><th>Period</th><th>Begin</th><th>End</th><th>Usage</th></tr></thead><tbody>{% for row in check_rows %}<tr><td>{{ forloop.counter }}</td><td><a href="{% url 'smart_meter:energy_dashboard' %}?meter={{ group.check_meter_id }}&start={{ row.period_key|date:'Y-m-d' }}&end={{ row.period_key|date:'Y-m-d' }}&report_type=daily&role=check" title="Open Audit-meter dashboard for this period">{{ row.period_label }}</a></td><td>{{ row.start_kwh|floatformat:3 }}</td><td><a href="{% url 'smart_meter:reading_list' %}?meter={{ group.check_meter_id }}&start={{ row.period_key|date:'Y-m-d' }}&end={{ row.period_key|date:'Y-m-d' }}&role=check" title="Open Audit-meter readings for this period">{{ row.end_kwh|floatformat:3 }}</a></td><td><a class="ld-plain-link" href="{% url 'smart_meter:energy_dashboard' %}?meter={{ group.check_meter_id }}&start={{ row.period_key|date:'Y-m-d' }}&end={{ row.period_key|date:'Y-m-d' }}&report_type=daily&role=check" title="Open detailed Audit-meter dashboard">{{ row.usage|floatformat:3 }}</a></td></tr>{% empty %}<tr><td colspan="5" class="text-center text-muted">No readings.</td></tr>{% endfor %}</tbody><tfoot class="table-light"><tr class="fw-bold"><td colspan="4" class="text-end"><a class="ld-plain-link" href="{% url 'smart_meter:energy_dashboard' %}?meter={{ group.check_meter_id }}&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&report_type=daily&role=check" title="Open the Audit-meter dashboard for the selected range">Total usage</a></td><td><a class="ld-plain-link" href="{% url 'smart_meter:energy_dashboard' %}?meter={{ group.check_meter_id }}&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&report_type=daily&role=check" title="Open the Audit-meter dashboard for the selected range">{{ check_kwh|floatformat:3 }}</a></td></tr></tfoot></table></div>
+      </div>
+    </div>
+    <div class="col-12 ld-billing-panel">
       <div class="card h-100">
-        <div class="card-header py-2 fw-semibold">Add billing meter</div>
-        <div class="card-body">
-          <form method="post" novalidate>
-            {% csrf_token %}
-            {% if membership_form.non_field_errors %}<div class="alert alert-danger py-2">{{ membership_form.non_field_errors }}</div>{% endif %}
-            <div class="mb-2">{{ membership_form.billing_meter.label_tag }}{{ membership_form.billing_meter }}{{ membership_form.billing_meter.errors }}</div>
-            <div class="form-text mb-2">Only active, currently unassigned Billing meters are shown. Meters may come from any property.</div>
-            <div class="mb-2">{{ membership_form.start_date.label_tag }}{{ membership_form.start_date }}{{ membership_form.start_date.errors }}</div>
-            <div class="mb-2">{{ membership_form.notes.label_tag }}{{ membership_form.notes }}{{ membership_form.notes.errors }}</div>
-            <button class="btn btn-sm btn-primary" type="submit">Add Membership</button>
-          </form>
+        <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2">
+          <span class="fw-semibold">Billing-meter readings</span>
+          <div class="btn-group btn-group-sm" role="group" aria-label="Billing readings view">
+            <button class="btn btn-outline-primary active" type="button" id="billingSummaryButton" aria-pressed="true"><i class="fas fa-chart-bar me-1"></i>Graph Summary</button>
+            <button class="btn btn-outline-primary" type="button" id="billingTableButton" aria-pressed="false"><i class="fas fa-table me-1"></i>Table</button>
+            <button class="btn btn-outline-secondary" type="button" id="billingJpgButton"><i class="fas fa-file-image me-1"></i>JPG</button>
+          </div>
+        </div>
+        <div id="billingSummaryView" class="card-body p-2">
+          <div class="row g-1 text-center ld-chart-summary mb-2">
+            <div class="col ld-chart-range"><span class="text-dark">Range</span><strong>{{ start_date|date:'M d' }}–{{ end_date|date:'M d' }}</strong></div>
+            <div class="col"><span class="text-dark">Meters</span><strong>{{ billing_meter_count }}</strong></div>
+            <div class="col"><span class="text-dark">Audit</span><strong>{{ check_kwh|floatformat:3 }}</strong></div>
+            <div class="col"><span class="text-dark">Consumption</span><strong>{{ billing_kwh|floatformat:3 }}</strong></div>
+            <div class="col"><span class="text-dark">{{ variance_type }}</span><strong>{{ variance_absolute_kwh|floatformat:3 }}</strong></div>
+          </div>
+          {% if billing_rows %}<div class="ld-billing-chart"><canvas id="billingSummaryChart" aria-label="Total billing usage per meter for the selected range" role="img"></canvas></div>{% else %}<div class="text-center text-muted py-4">No readings to summarize.</div>{% endif %}
+        </div>
+        <div id="billingTableView" class="table-responsive ld-reconciliation-table d-none">
+          <table class="table table-sm mb-0"><thead class="table-light"><tr><th>S.N#</th><th>Unit</th><th>Meter</th><th>Period</th><th>Usage</th></tr></thead><tbody>{% for row in billing_rows %}<tr><td>{{ forloop.counter }}</td><td><a class="ld-plain-link" href="{% url 'smart_meter:energy_dashboard' %}?meter={{ row.meter_id }}&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&report_type=daily&role=billing" title="Open unit dashboard for the selected range">{{ row.unit_number }}</a></td><td><a href="{% url 'smart_meter:meter_detail' row.meter_id %}" title="Open meter detail">{{ row.meter_number }}</a></td><td><a href="{% url 'smart_meter:energy_dashboard' %}?meter={{ row.meter_id }}&start={{ row.period_key|date:'Y-m-d' }}&end={{ row.period_key|date:'Y-m-d' }}&report_type=daily&role=billing" title="Open meter dashboard for this period">{{ row.period_label }}</a></td><td><a href="{% url 'smart_meter:reading_list' %}?meter={{ row.meter_id }}&start={{ row.period_key|date:'Y-m-d' }}&end={{ row.period_key|date:'Y-m-d' }}&role=billing" title="Open meter readings for this period">{{ row.usage|floatformat:3 }}</a></td></tr>{% empty %}<tr><td colspan="5" class="text-center text-muted">No readings.</td></tr>{% endfor %}</tbody><tfoot class="table-light"><tr class="fw-bold"><td colspan="4" class="text-end">Total usage</td><td>{{ billing_kwh|floatformat:3 }}</td></tr></tfoot></table>
         </div>
       </div>
     </div>
   </div>
+</div>
+{{ billing_chart_data|json_script:"billing-chart-data" }}
+</div>
 
-  <div class="row g-3">
-    <div class="col-lg-6">
-      <div class="card"><div class="card-header py-2 fw-semibold">Audit-meter daily readings</div><div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light"><tr><th>Period</th><th>Begin</th><th>End</th><th>Usage</th></tr></thead><tbody>{% for row in check_rows %}<tr><td>{{ row.period_label }}</td><td>{{ row.start_kwh|floatformat:3 }}</td><td>{{ row.end_kwh|floatformat:3 }}</td><td>{{ row.usage|floatformat:3 }}</td></tr>{% empty %}<tr><td colspan="4" class="text-center text-muted">No readings.</td></tr>{% endfor %}</tbody></table></div></div>
-    </div>
-    <div class="col-lg-6">
-      <div class="card"><div class="card-header py-2 fw-semibold">Billing-meter daily readings</div><div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light"><tr><th>Meter</th><th>Period</th><th>Usage</th></tr></thead><tbody>{% for row in billing_rows %}<tr><td>{{ row.meter_number }}</td><td>{{ row.period_label }}</td><td>{{ row.usage|floatformat:3 }}</td></tr>{% empty %}<tr><td colspan="3" class="text-center text-muted">No readings.</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="modal fade" id="membershipEditModal" tabindex="-1" aria-labelledby="membershipEditTitle" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="membershipEditForm">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="membershipEditTitle">Edit Billing-meter Membership</h5>
+            <small class="text-muted" id="membershipEditMeter"></small>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-danger py-2 d-none" id="membershipEditError"></div>
+          <div class="row g-2">
+            <div class="col-sm-6"><label class="form-label" for="membershipEditStart">Start date</label><input class="form-control" id="membershipEditStart" name="start_date" type="date" required></div>
+            <div class="col-sm-6"><label class="form-label" for="membershipEditEnd">End date</label><input class="form-control" id="membershipEditEnd" name="end_date" type="date"><div class="form-text">Leave blank to keep the membership active.</div></div>
+            <div class="col-12"><label class="form-label" for="membershipEditNotes">Notes</label><textarea class="form-control" id="membershipEditNotes" name="notes" rows="3"></textarea></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="membershipEditSave">Save</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function () {
+let checkGroupSummaryChart = null;
+let checkGroupRequestController = null;
+let membershipManageUrl = '';
+
+function checkGroupCsrfToken() {
+  const match = document.cookie.match(new RegExp('(^| )csrftoken=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : '';
+}
+
+async function saveMembershipAction(url, values) {
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-CSRFToken': checkGroupCsrfToken(),
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+    },
+    body: new URLSearchParams(values)
+  });
+  const data = await response.json().catch(function () { return {}; });
+  if (!response.ok || !data.success) throw new Error(data.error || 'The membership could not be saved.');
+  return data;
+}
+
+function checkGroupSelectedDates() {
+  const form = document.getElementById('checkGroupDateFilter');
+  return {
+    start: form?.querySelector('[name="start"]')?.value || '',
+    end: form?.querySelector('[name="end"]')?.value || ''
+  };
+}
+
+function checkGroupMeterUrl(baseUrl, meterId) {
+  const dates = checkGroupSelectedDates();
+  const params = new URLSearchParams({
+    meter: meterId,
+    start: dates.start,
+    end: dates.end,
+    role: 'billing'
+  });
+  return baseUrl + '?' + params.toString();
+}
+
+async function updateCheckGroupReport(url, pushHistory = true) {
+  const region = document.getElementById('checkGroupAjaxRegion');
+  if (!region) return;
+  checkGroupRequestController?.abort();
+  checkGroupRequestController = new AbortController();
+  region.classList.add('ld-loading');
+  try {
+    const response = await fetch(url, {
+      headers: {'X-Requested-With': 'XMLHttpRequest'},
+      credentials: 'same-origin',
+      signal: checkGroupRequestController.signal
+    });
+    if (!response.ok) throw new Error('Report refresh failed');
+    const documentResult = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const replacement = documentResult.getElementById('checkGroupAjaxRegion');
+    if (!replacement) throw new Error('Report content was not returned');
+    checkGroupSummaryChart?.destroy();
+    checkGroupSummaryChart = null;
+    region.replaceWith(replacement);
+    if (pushHistory) window.history.pushState({}, '', url);
+    initializeCheckGroupReport();
+  } catch (error) {
+    if (error.name === 'AbortError') return;
+    window.location.assign(url);
+  }
+}
+
+function loadCheckGroupHtml2Canvas() {
+  if (window.html2canvas) return Promise.resolve(window.html2canvas);
+  return new Promise(function (resolve, reject) {
+    const existing = document.querySelector('script[data-check-group-html2canvas]');
+    if (existing) {
+      existing.addEventListener('load', function () { resolve(window.html2canvas); }, {once: true});
+      existing.addEventListener('error', reject, {once: true});
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+    script.dataset.checkGroupHtml2canvas = '1';
+    script.onload = function () { resolve(window.html2canvas); };
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+async function exportCheckGroupJpg() {
+  const summaryView = document.getElementById('billingSummaryView');
+  const tableView = document.getElementById('billingTableView');
+  const source = tableView && !tableView.classList.contains('d-none') ? tableView : summaryView;
+  if (!source) return;
+  const button = document.getElementById('billingJpgButton');
+  let temporary = null;
+  button?.setAttribute('disabled', 'disabled');
+  try {
+    const html2canvas = await loadCheckGroupHtml2Canvas();
+    let captureTarget = source;
+    if (source === tableView) {
+      temporary = source.cloneNode(true);
+      temporary.classList.remove('d-none', 'ld-reconciliation-table');
+      temporary.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + Math.max(source.scrollWidth, source.clientWidth) + 'px;max-height:none;overflow:visible;background:#fff;';
+      document.body.appendChild(temporary);
+      captureTarget = temporary;
+    }
+    const canvas = await html2canvas(captureTarget, {scale: 2, backgroundColor: '#ffffff'});
+    const dates = checkGroupSelectedDates();
+    const link = document.createElement('a');
+    link.download = 'check-group-{{ group.pk }}-' + dates.start + '-to-' + dates.end + '.jpg';
+    link.href = canvas.toDataURL('image/jpeg', 0.94);
+    link.click();
+  } catch (error) {
+    window.alert('The JPG export could not be created. Please try again.');
+  } finally {
+    temporary?.remove();
+    button?.removeAttribute('disabled');
+  }
+}
+
+function initializeCheckGroupReport() {
+  if (window.bootstrap?.Tooltip) {
+    document.querySelectorAll('#checkGroupAjaxRegion .ld-chip-help[data-bs-toggle="tooltip"]').forEach(function (element) {
+      window.bootstrap.Tooltip.getOrCreateInstance(element, {container: 'body'});
+    });
+  }
   if (window.jQuery?.fn?.select2) {
-    window.jQuery('.ld-billing-meter-select').select2({theme: 'bootstrap-5', width: '100%', allowClear: true, placeholder: 'Search billing meter'});
+    window.jQuery('#checkGroupAjaxRegion .ld-billing-meter-select').select2({theme: 'bootstrap-5', width: '100%', allowClear: true, placeholder: 'Search billing meter'});
+  }
+
+  const dateFilter = document.getElementById('checkGroupDateFilter');
+  document.querySelector('[data-audit-group-nav]')?.addEventListener('change', function (event) {
+    const dates = checkGroupSelectedDates();
+    const url = new URL(event.target.value, window.location.href);
+    url.search = new URLSearchParams({start: dates.start, end: dates.end}).toString();
+    window.location.assign(url.toString());
+  });
+  dateFilter?.addEventListener('submit', function (event) {
+    event.preventDefault();
+    const url = new URL(dateFilter.action || window.location.href, window.location.href);
+    url.search = new URLSearchParams(new FormData(dateFilter)).toString();
+    updateCheckGroupReport(url.toString());
+  });
+  dateFilter?.querySelectorAll('[data-auto-submit]').forEach(function (input) {
+    input.addEventListener('change', function () { dateFilter.requestSubmit(); });
+  });
+  document.querySelectorAll('#checkGroupAjaxRegion .ld-quick-ranges a').forEach(function (link) {
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      updateCheckGroupReport(new URL(link.href, window.location.href).toString());
+    });
+  });
+
+  const auditSummaryButton = document.getElementById('auditSummaryButton');
+  const auditDetailButton = document.getElementById('auditDetailButton');
+  const auditSummaryView = document.getElementById('auditSummaryView');
+  const auditDetailView = document.getElementById('auditDetailView');
+  const reconciliationGrid = document.querySelector('.ld-reconciliation-grid');
+  function showAuditView(view) {
+    const showSummary = view === 'summary';
+    auditSummaryView?.classList.toggle('d-none', !showSummary);
+    auditDetailView?.classList.toggle('d-none', showSummary);
+    reconciliationGrid?.classList.toggle('ld-detail-layout', !showSummary);
+    auditSummaryButton?.classList.toggle('active', showSummary);
+    auditDetailButton?.classList.toggle('active', !showSummary);
+    auditSummaryButton?.setAttribute('aria-pressed', String(showSummary));
+    auditDetailButton?.setAttribute('aria-pressed', String(!showSummary));
+    showBillingView('summary');
+  }
+  auditSummaryButton?.addEventListener('click', function () { showAuditView('summary'); });
+  auditDetailButton?.addEventListener('click', function () { showAuditView('detail'); });
+
+  const summaryButton = document.getElementById('billingSummaryButton');
+  const tableButton = document.getElementById('billingTableButton');
+  const summaryView = document.getElementById('billingSummaryView');
+  const tableView = document.getElementById('billingTableView');
+  function showBillingView(view) {
+    const showSummary = view === 'summary';
+    summaryView?.classList.toggle('d-none', !showSummary);
+    tableView?.classList.toggle('d-none', showSummary);
+    summaryButton?.classList.toggle('active', showSummary);
+    tableButton?.classList.toggle('active', !showSummary);
+    summaryButton?.setAttribute('aria-pressed', String(showSummary));
+    tableButton?.setAttribute('aria-pressed', String(!showSummary));
+    if (showSummary) window.setTimeout(function () { checkGroupSummaryChart?.resize(); }, 0);
+  }
+  summaryButton?.addEventListener('click', function () { showBillingView('summary'); });
+  tableButton?.addEventListener('click', function () { showBillingView('table'); });
+  document.getElementById('billingJpgButton')?.addEventListener('click', exportCheckGroupJpg);
+
+  const summaryCanvas = document.getElementById('billingSummaryChart');
+  const chartDataNode = document.getElementById('billing-chart-data');
+  if (!summaryCanvas || !chartDataNode || !window.Chart) return;
+  const chartData = JSON.parse(chartDataNode.textContent);
+  const palette = ['#0d6efd', '#198754', '#dc3545', '#fd7e14', '#6f42c1', '#20c997', '#d63384', '#0dcaf0', '#6c757d', '#ffc107'];
+  const summaryLabels = chartData.datasets.map(function (dataset) {
+    return [dataset.serial + '. ' + dataset.unitLabel, 'Meter # ' + dataset.meterNumber];
+  });
+  const summaryTotals = chartData.datasets.map(function (dataset) {
+    return dataset.data.reduce(function (total, value) {
+      return total + (value === null ? 0 : Number(value));
+    }, 0);
+  });
+  const chartWrap = summaryCanvas.closest('.ld-billing-chart');
+  if (chartWrap) chartWrap.style.height = Math.max(360, (chartData.datasets.length * 34) + 105) + 'px';
+  const valueLabelPlugin = {
+    id: 'checkGroupValueLabels',
+    afterDatasetsDraw: function (chart) {
+      const context = chart.ctx;
+      const meta = chart.getDatasetMeta(0);
+      chart.$valueLabelBoxes = [];
+      context.save();
+      context.fillStyle = '#000000';
+      context.font = '600 10px sans-serif';
+      context.textBaseline = 'middle';
+      meta.data.forEach(function (bar, index) {
+        const unitText = chartData.datasets[index].unitNumber;
+        const totalText = summaryTotals[index].toFixed(3) + ' kWh';
+        const unitWidth = context.measureText(unitText).width;
+        const totalWidth = context.measureText(totalText).width;
+        const barLeft = Math.min(bar.base, bar.x);
+        const barRight = Math.max(bar.base, bar.x);
+        const unitX = barLeft + 4;
+        const totalX = Math.max(unitX + unitWidth + 8, barRight - totalWidth - 4);
+        context.textAlign = 'left';
+        context.fillText(unitText, unitX, bar.y);
+        context.fillText(totalText, totalX, bar.y);
+        chart.$valueLabelBoxes.push({index: index, left: unitX - 3, right: unitX + unitWidth + 3, top: bar.y - 9, bottom: bar.y + 9});
+        chart.$valueLabelBoxes.push({index: index, left: totalX - 3, right: totalX + totalWidth + 3, top: bar.y - 9, bottom: bar.y + 9});
+      });
+      context.restore();
+    }
+  };
+  const auditReading = chartData.auditLastReading || {};
+  const auditReadingText = auditReading.totalEnergy === null
+    ? 'Audit meter last reading: unavailable'
+    : 'Audit meter last reading: ' + Number(auditReading.totalEnergy).toFixed(3) + ' kWh at ' + auditReading.at;
+  function openMeterTarget(index, target) {
+    const dataset = chartData.datasets[index];
+    if (!dataset) return;
+    const baseUrl = target === 'dashboard'
+      ? "{% url 'smart_meter:energy_dashboard' %}"
+      : "{% url 'smart_meter:reading_list' %}";
+    window.location.assign(checkGroupMeterUrl(baseUrl, dataset.meterId));
+  }
+  checkGroupSummaryChart = new window.Chart(summaryCanvas, {
+    type: 'bar',
+    plugins: [valueLabelPlugin],
+    data: {
+      labels: summaryLabels,
+      datasets: [{
+        label: 'Selected-range usage',
+        data: summaryTotals,
+        backgroundColor: summaryLabels.map(function (_label, index) { return palette[index % palette.length] + 'BF'; }),
+        borderColor: summaryLabels.map(function (_label, index) { return palette[index % palette.length]; }),
+        borderWidth: 1
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      onHover: function (event, elements, chart) {
+        const onValue = (chart.$valueLabelBoxes || []).some(function (box) {
+          return event.x >= box.left && event.x <= box.right && event.y >= box.top && event.y <= box.bottom;
+        });
+        chart.canvas.style.cursor = (onValue || elements.length || event.x < chart.chartArea.left) ? 'pointer' : 'default';
+      },
+      onClick: function (event, elements, chart) {
+        const valueBox = (chart.$valueLabelBoxes || []).find(function (box) {
+          return event.x >= box.left && event.x <= box.right && event.y >= box.top && event.y <= box.bottom;
+        });
+        if (valueBox) return openMeterTarget(valueBox.index, 'dashboard');
+        if (elements.length) return openMeterTarget(elements[0].index, 'readings');
+        if (event.x < chart.chartArea.left && event.y >= chart.chartArea.top && event.y <= chart.chartArea.bottom) {
+          const index = Math.round(chart.scales.y.getValueForPixel(event.y));
+          openMeterTarget(index, 'dashboard');
+        }
+      },
+      plugins: {
+        legend: {display: false},
+        tooltip: {enabled: false}
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {color: '#000000'},
+          title: {display: true, color: '#000000', font: {size: 10}, text: ['Selected-range usage (kWh)', auditReadingText]}
+        },
+        y: {ticks: {color: '#000000', font: {size: 9}}}
+      }
+    }
+  });
+}
+
+window.addEventListener('popstate', function () {
+  updateCheckGroupReport(window.location.href, false);
+});
+document.addEventListener('click', async function (event) {
+  const editButton = event.target.closest('[data-membership-edit]');
+  if (editButton) {
+    membershipManageUrl = editButton.dataset.manageUrl;
+    document.getElementById('membershipEditMeter').textContent = 'Meter # ' + editButton.dataset.meterNumber;
+    document.getElementById('membershipEditStart').value = editButton.dataset.startDate || '';
+    document.getElementById('membershipEditEnd').value = editButton.dataset.endDate || '';
+    document.getElementById('membershipEditNotes').value = editButton.dataset.notes || '';
+    const error = document.getElementById('membershipEditError');
+    error.textContent = '';
+    error.classList.add('d-none');
+    window.bootstrap.Modal.getOrCreateInstance(document.getElementById('membershipEditModal')).show();
+    return;
+  }
+
+  const deleteButton = event.target.closest('[data-membership-delete]');
+  if (!deleteButton) return;
+  if (!window.confirm('Delete the membership for meter ' + deleteButton.dataset.meterNumber + '? This cannot be undone.')) return;
+  deleteButton.disabled = true;
+  try {
+    await saveMembershipAction(deleteButton.dataset.manageUrl, {action: 'delete'});
+    await updateCheckGroupReport(window.location.href, false);
+  } catch (error) {
+    window.alert(error.message || 'The membership could not be deleted.');
+    deleteButton.disabled = false;
   }
 });
+document.addEventListener('DOMContentLoaded', function () {
+  document.getElementById('membershipEditForm')?.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const saveButton = document.getElementById('membershipEditSave');
+    const error = document.getElementById('membershipEditError');
+    saveButton.disabled = true;
+    error.classList.add('d-none');
+    try {
+      const values = new URLSearchParams(new FormData(form));
+      values.set('action', 'update');
+      await saveMembershipAction(membershipManageUrl, values);
+      window.bootstrap.Modal.getOrCreateInstance(document.getElementById('membershipEditModal')).hide();
+      await updateCheckGroupReport(window.location.href, false);
+    } catch (exception) {
+      error.textContent = exception.message || 'The membership could not be saved.';
+      error.classList.remove('d-none');
+    } finally {
+      saveButton.disabled = false;
+    }
+  });
+});
+document.addEventListener('DOMContentLoaded', initializeCheckGroupReport);
 </script>
 {% endblock %}

@@ -142,7 +142,7 @@ class Meter(models.Model):
         if new_role != self.meter_role:
             if (
                 new_role == self.METER_ROLE_BILLING and
-                MeterCheckGroup.objects.filter(check_meter=self).exists()
+                MeterCheckGroup.objects.filter(check_meter=self, is_active=True).exists()
             ):
                 raise ValidationError({
                     "meter_role": "Assign a replacement Audit meter to this Check Group before changing it to Billing."
@@ -451,7 +451,11 @@ class MeterCheckGroup(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def clean(self):
-        if self.check_meter_id and self.check_meter.meter_role != Meter.METER_ROLE_CHECK:
+        if (
+            self.is_active
+            and self.check_meter_id
+            and self.check_meter.meter_role != Meter.METER_ROLE_CHECK
+        ):
             raise ValidationError({"check_meter": "Selected meter is not marked as an Audit meter."})
 
     def active_billing_meters(self, as_of=None):

@@ -398,6 +398,18 @@
     font-size: .68rem;
     line-height: 1.2;
   }
+  .ld-role-display {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: .1rem .2rem;
+    font: inherit;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+  .ld-role-display:hover,
+  .ld-role-display:focus { background: #f1f3f5; border-radius: .25rem; outline: none; }
   @media (max-width: 576px) {
     .ld-role-select {
       min-width: 0;
@@ -463,8 +475,8 @@
     endInp.value   = e;
   }
 
-  // fill dates if a preset already selected on first load
-  if (rangeSel) applyRange(rangeSel.value);
+  // Preserve explicit start/end values supplied by dashboard and report links.
+  if (rangeSel?.value) applyRange(rangeSel.value);
 
   function submitSoon(){ clearTimeout(form._t); form._t=setTimeout(()=>form.submit(),60); }
 
@@ -535,18 +547,48 @@
       document.querySelectorAll(`[data-meter-role][data-meter-id="${data.meter_id}"]`).forEach(roleSelect => {
         roleSelect.value = data.role;
         roleSelect.dataset.previous = data.role;
+        roleSelect.classList.add('d-none');
+      });
+      document.querySelectorAll(`[data-role-display][data-meter-id="${data.meter_id}"]`).forEach(roleDisplay => {
+        roleDisplay.textContent = data.label;
+        roleDisplay.classList.remove('d-none');
       });
     } catch (error) {
       select.value = previous;
       alert(error.message || 'Role update failed.');
     } finally {
       select.disabled = false;
+      select.classList.add('d-none');
+      select.parentElement?.querySelector('[data-role-display]')?.classList.remove('d-none');
     }
   }
+
+  document.addEventListener('click', event => {
+    const display = event.target.closest('[data-role-display]');
+    if (!display) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const select = display.parentElement?.querySelector('[data-meter-role]');
+    if (!select) return;
+    display.classList.add('d-none');
+    select.classList.remove('d-none');
+    select.focus();
+  });
 
   document.addEventListener('change', event => {
     const select = event.target.closest('[data-meter-role]');
     if (select) updateMeterRole(select);
+  });
+
+  document.addEventListener('focusout', event => {
+    const select = event.target.closest('[data-meter-role]');
+    if (!select || select.disabled) return;
+    window.setTimeout(() => {
+      if (select.disabled || document.activeElement === select) return;
+      select.value = select.dataset.previous || 'billing';
+      select.classList.add('d-none');
+      select.parentElement?.querySelector('[data-role-display]')?.classList.remove('d-none');
+    }, 0);
   });
 
   // inline edit + dblclick
@@ -577,6 +619,14 @@
 
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    const roleSelect = e.target.closest?.('[data-meter-role]');
+    if (roleSelect) {
+      roleSelect.value = roleSelect.dataset.previous || 'billing';
+      roleSelect.classList.add('d-none');
+      roleSelect.parentElement?.querySelector('[data-role-display]')?.classList.remove('d-none');
+      roleSelect.parentElement?.querySelector('[data-role-display]')?.focus();
+      return;
+    }
     document.querySelectorAll('tr[id$="-edit"]:not(.d-none)').forEach(tr => {
       const id = tr.id.match(/^r(\d+)-edit$/)?.[1];
       if (id) window.toggleInlineEdit(id, false);

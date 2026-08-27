@@ -125,7 +125,12 @@ class MeterForm(forms.ModelForm):
             self.instance.pk
             and self.original_meter_role == Meter.METER_ROLE_CHECK
             and new_role == Meter.METER_ROLE_BILLING
-            and MeterCheckGroup.objects.filter(check_meter_id=self.instance.pk).exists()
+            and MeterCheckGroup.objects.filter(
+                check_meter_id=self.instance.pk,
+                is_active=True,
+                memberships__is_active=True,
+                memberships__end_date__isnull=True,
+            ).exists()
             and not cleaned.get("replacement_check_meter")
         ):
             self.add_error(
@@ -153,16 +158,22 @@ class MeterCheckGroupForm(forms.ModelForm):
         self.fields["property"].help_text = (
             "Optional reference only. Coverage is determined by the billing meters assigned to this group."
         )
-        check_meters = Meter.objects.filter(
-            meter_role=Meter.METER_ROLE_CHECK,
-            is_active=True,
-        ).select_related("unit", "unit__property").order_by("meter_number")
         if self.instance.pk:
-            check_meters = check_meters.filter(
+            check_meters = Meter.objects.filter(
+                Q(pk=self.instance.check_meter_id)
+                | Q(meter_role=Meter.METER_ROLE_CHECK, is_active=True)
+            ).filter(
                 Q(check_group__isnull=True) | Q(check_group=self.instance)
             )
         else:
-            check_meters = check_meters.filter(check_group__isnull=True)
+            check_meters = Meter.objects.filter(
+                meter_role=Meter.METER_ROLE_CHECK,
+                is_active=True,
+                check_group__isnull=True,
+            )
+        check_meters = check_meters.select_related(
+            "unit", "unit__property"
+        ).order_by("meter_number")
         self.fields["check_meter"].queryset = _with_active_unit_meter_count(check_meters)
         self.fields["check_meter"].label_from_instance = _meter_choice_label
 

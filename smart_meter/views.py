@@ -1066,8 +1066,16 @@ def meter_edit(request, pk):
                                 .first()
                             )
                             if group:
-                                group.check_meter = form.cleaned_data["replacement_check_meter"]
-                                group.save(update_fields=["check_meter"])
+                                has_active_memberships = group.memberships.filter(
+                                    is_active=True,
+                                    end_date__isnull=True,
+                                ).exists()
+                                if has_active_memberships:
+                                    group.check_meter = form.cleaned_data["replacement_check_meter"]
+                                    group.save(update_fields=["check_meter"])
+                                elif group.is_active:
+                                    group.is_active = False
+                                    group.save(update_fields=["is_active"])
                         elif (
                             old_role == Meter.METER_ROLE_BILLING
                             and new_role == Meter.METER_ROLE_CHECK
@@ -1216,6 +1224,21 @@ def meter_role_update(request, pk):
     try:
         with transaction.atomic():
             if (
+                meter.meter_role == Meter.METER_ROLE_CHECK
+                and new_role == Meter.METER_ROLE_BILLING
+            ):
+                group = (
+                    MeterCheckGroup.objects.select_for_update()
+                    .filter(check_meter=meter, is_active=True)
+                    .first()
+                )
+                if group and not group.memberships.filter(
+                    is_active=True,
+                    end_date__isnull=True,
+                ).exists():
+                    group.is_active = False
+                    group.save(update_fields=["is_active"])
+            if (
                 meter.meter_role == Meter.METER_ROLE_BILLING
                 and new_role == Meter.METER_ROLE_CHECK
             ):
@@ -1286,6 +1309,7 @@ def meter_check_group_list(request):
             "check_meter__unit__property",
         )
         .annotate(
+            membership_record_count=Count("memberships", distinct=True),
             active_billing_meter_count=Count(
                 "memberships",
                 filter=(
@@ -1318,6 +1342,204 @@ def meter_check_group_list(request):
     for group in groups:
         group.covered_property_names = ", ".join(sorted(coverage_by_group[group.pk]))
     return render(request, "smart_meter/check_group_list.html", {"groups": groups})
+
+
+@require_POST
+@login_required
+def meter_check_group_name_update(request, pk):
+    name = (request.POST.get("name") or "").strip()
+    if not name:
+        return JsonResponse(
+            {"success": False, "error": "Check Group name is required."}, status=400
+        )
+    if len(name) > MeterCheckGroup._meta.get_field("name").max_length:
+        return JsonResponse(
+            {"success": False, "error": "Check Group name cannot exceed 100 characters."},
+            status=400,
+        )
+
+    with transaction.atomic():
+        group = get_object_or_404(
+            MeterCheckGroup.objects.select_for_update(), pk=pk
+        )
+        group.name = name
+        group.save(update_fields=["name"])
+    return JsonResponse({"success": True, "name": group.name})
+
+
+def _check_group_active_membership_count(group_id, as_of=None):
+    as_of = as_of or timezone.localdate()
+    return (
+        MeterCheckGroupMembership.objects.filter(
+            group_id=group_id,
+            is_active=True,
+            start_date__lte=as_of,
+            billing_meter__is_active=True,
+            billing_meter__meter_role=Meter.METER_ROLE_BILLING,
+        )
+        .filter(Q(end_date__isnull=True) | Q(end_date__gte=as_of))
+        .count()
+    )
+
+
+def _check_group_delete_info(group):
+    memberships = list(
+        group.memberships.select_related(
+            "billing_meter",
+            "billing_meter__unit",
+            "billing_meter__unit__property",
+        ).order_by(
+            "billing_meter__unit__property__property_name",
+            "billing_meter__unit__unit_number",
+            "billing_meter__meter_number",
+            "start_date",
+        )
+    )
+    attach_active_meter_counts(memberships, lambda membership: membership.billing_meter)
+    targets = (
+        MeterCheckGroup.objects.filter(
+            is_active=True,
+            check_meter__is_active=True,
+            check_meter__meter_role=Meter.METER_ROLE_CHECK,
+        )
+        .exclude(pk=group.pk)
+        .select_related("check_meter")
+        .order_by("check_meter__meter_number", "name")
+    )
+    return {
+        "group": {"id": group.pk, "name": group.name},
+        "memberships": [
+            {
+                "id": membership.pk,
+                "meter_number": membership.billing_meter.meter_number,
+                "location": (
+                    f"{membership.billing_meter.unit.property.property_name} / "
+                    f"{membership.billing_meter.display_location_name}"
+                    if membership.billing_meter.unit_id
+                    else "Unassigned"
+                ),
+                "start_date": membership.start_date.isoformat(),
+                "end_date": membership.end_date.isoformat() if membership.end_date else None,
+                "status": "Active" if membership.is_active else "Ended",
+            }
+            for membership in memberships
+        ],
+        "targets": [
+            {
+                "id": target.pk,
+                "label": f"{target.check_meter.meter_number} — {target.name}",
+            }
+            for target in targets
+        ],
+        "membership_count": len(memberships),
+        "active_membership_count": _check_group_active_membership_count(group.pk),
+    }
+
+
+@login_required
+def meter_check_group_delete_manage(request, pk):
+    group = get_object_or_404(MeterCheckGroup, pk=pk)
+    if request.method == "GET":
+        return JsonResponse({"success": True, **_check_group_delete_info(group)})
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "Unsupported request."}, status=405)
+
+    action = (request.POST.get("action") or "").strip().lower()
+    if action == "delete":
+        with transaction.atomic():
+            locked_group = MeterCheckGroup.objects.select_for_update().get(pk=group.pk)
+            membership_ids = list(
+                locked_group.memberships.select_for_update().values_list("pk", flat=True)
+            )
+            if membership_ids:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": (
+                            f"Reassign all {len(membership_ids)} membership record(s) "
+                            "before deleting this Check Group."
+                        ),
+                    },
+                    status=409,
+                )
+            group_name = locked_group.name
+            locked_group.delete()
+        return JsonResponse(
+            {"success": True, "deleted": True, "message": f'Check Group "{group_name}" was permanently deleted.'}
+        )
+
+    if action not in {"reassign", "reassign_all"}:
+        return JsonResponse({"success": False, "error": "Select a valid action."}, status=400)
+
+    try:
+        target_group_id = int(request.POST.get("target_group_id") or 0)
+    except (TypeError, ValueError):
+        target_group_id = 0
+    if not target_group_id or target_group_id == group.pk:
+        return JsonResponse(
+            {"success": False, "error": "Select another Audit meter."}, status=400
+        )
+
+    try:
+        with transaction.atomic():
+            source_group = MeterCheckGroup.objects.select_for_update().get(pk=group.pk)
+            target_group = MeterCheckGroup.objects.select_for_update().get(
+                pk=target_group_id,
+                is_active=True,
+                check_meter__is_active=True,
+                check_meter__meter_role=Meter.METER_ROLE_CHECK,
+            )
+            memberships = source_group.memberships.select_for_update()
+            if action == "reassign":
+                try:
+                    membership_id = int(request.POST.get("membership_id") or 0)
+                except (TypeError, ValueError):
+                    membership_id = 0
+                memberships = memberships.filter(pk=membership_id)
+            memberships = list(memberships.order_by("start_date", "pk"))
+            if not memberships:
+                return JsonResponse(
+                    {"success": False, "error": "The selected membership no longer exists."},
+                    status=404,
+                )
+            for membership in memberships:
+                membership.group = target_group
+                audit_note = (
+                    f"Reassigned from Check Group {source_group.name} to "
+                    f"{target_group.name} by {request.user} on {timezone.localdate().isoformat()}."
+                )
+                membership.notes = (membership.notes + "\n" + audit_note).strip()
+                membership.save(update_fields=["group", "notes"])
+    except MeterCheckGroup.DoesNotExist:
+        return JsonResponse(
+            {"success": False, "error": "The selected target Audit meter is unavailable."},
+            status=400,
+        )
+    except ValidationError as exc:
+        if hasattr(exc, "message_dict"):
+            error = " ".join(
+                message
+                for field_messages in exc.message_dict.values()
+                for message in field_messages
+            )
+        else:
+            error = " ".join(exc.messages)
+        return JsonResponse({"success": False, "error": error}, status=400)
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": (
+                f"{len(memberships)} membership record(s) reassigned to "
+                f"Audit meter {target_group.check_meter.meter_number}."
+            ),
+            "counts": {
+                str(source_group.pk): _check_group_active_membership_count(source_group.pk),
+                str(target_group.pk): _check_group_active_membership_count(target_group.pk),
+            },
+            **_check_group_delete_info(source_group),
+        }
+    )
 
 
 @login_required
@@ -1355,13 +1577,26 @@ def meter_check_group_detail(request, pk):
     today = timezone.localdate()
     start_date = today.replace(day=1)
     end_date = today
-    try:
-        if request.GET.get("start"):
-            start_date = date.fromisoformat(request.GET["start"])
-        if request.GET.get("end"):
-            end_date = date.fromisoformat(request.GET["end"])
-    except ValueError:
-        messages.warning(request, "Invalid date range; the current month is shown.")
+    quick_range = (request.GET.get("range") or "").strip().lower()
+    if quick_range == "this_month":
+        start_date = today.replace(day=1)
+    elif quick_range == "last_month":
+        end_date = today.replace(day=1) - timedelta(days=1)
+        start_date = end_date.replace(day=1)
+    elif quick_range == "this_week":
+        start_date = today - timedelta(days=today.weekday())
+    elif quick_range == "last_week":
+        end_date = today - timedelta(days=today.weekday() + 1)
+        start_date = end_date - timedelta(days=6)
+    else:
+        quick_range = ""
+        try:
+            if request.GET.get("start"):
+                start_date = date.fromisoformat(request.GET["start"])
+            if request.GET.get("end"):
+                end_date = date.fromisoformat(request.GET["end"])
+        except ValueError:
+            messages.warning(request, "Invalid date range; the current month is shown.")
     if end_date < start_date:
         start_date, end_date = end_date, start_date
 
@@ -1382,6 +1617,8 @@ def meter_check_group_detail(request, pk):
     check_labels, check_datasets, check_rows, check_totals = _per_meter_series(
         Meter.objects.filter(pk=group.check_meter_id), start_date, end_date, "daily"
     )
+    audit_summary_start_kwh = check_rows[0]["start_kwh"] if check_rows else None
+    audit_summary_end_kwh = check_rows[-1]["end_kwh"] if check_rows else None
     effective_memberships = list(
         group.memberships.filter(start_date__lte=end_date)
         .filter(Q(end_date__isnull=True) | Q(end_date__gte=start_date))
@@ -1402,7 +1639,12 @@ def meter_check_group_detail(request, pk):
         billing_rows.extend(segment_rows)
         billing_total_kwh += Decimal(str(segment_totals["total_kwh"]))
     billing_rows.sort(
-        key=lambda row: (row["period_key"], row["property_name"], row["unit_number"], row["meter_number"])
+        key=lambda row: (
+            row["period_key"],
+            row["unit_number"],
+            row["property_name"],
+            row["meter_number"],
+        )
     )
     check_kwh = Decimal(str(check_totals["total_kwh"]))
     billing_kwh = billing_total_kwh
@@ -1416,8 +1658,222 @@ def meter_check_group_detail(request, pk):
 
     memberships = list(group.memberships.select_related(
         "billing_meter", "billing_meter__unit", "billing_meter__unit__property"
-    ).order_by("-is_active", "-start_date", "billing_meter__meter_number"))
+    ).order_by(
+        "billing_meter__unit__property__property_name",
+        "billing_meter__unit__unit_number",
+        "billing_meter__meter_number",
+        "-is_active",
+    ))
     attach_active_meter_counts(memberships, lambda membership: membership.billing_meter)
+    _report_start, report_end_exclusive = _local_date_bounds(end_date)
+    report_target_at = report_end_exclusive - timedelta(microseconds=1)
+
+    def closest_reading_at(target_at, previous_at, next_at):
+        candidates = [value for value in (previous_at, next_at) if value is not None]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda value: abs(value - target_at))
+
+    audit_previous_reading_at = (
+        MeterReading.objects.filter(
+            meter_id=group.check_meter_id,
+            ts__lte=report_target_at,
+        )
+        .order_by("-ts", "-id")
+        .values_list("ts", flat=True)
+        .first()
+    )
+    audit_next_reading_at = (
+        MeterReading.objects.filter(
+            meter_id=group.check_meter_id,
+            ts__gt=report_target_at,
+        )
+        .order_by("ts", "id")
+        .values_list("ts", flat=True)
+        .first()
+    )
+    audit_last_reading_at = closest_reading_at(
+        report_target_at, audit_previous_reading_at, audit_next_reading_at
+    )
+    audit_last_total_energy = None
+    if audit_last_reading_at:
+        audit_last_total_energy = (
+            MeterReading.objects.filter(
+                meter_id=group.check_meter_id,
+                ts=audit_last_reading_at,
+            )
+            .order_by("-id")
+            .values_list("total_energy", flat=True)
+            .first()
+        )
+    reconciliation_target_at = audit_last_reading_at or report_target_at
+    previous_ts_subquery = (
+        MeterReading.objects.filter(
+            meter_id=OuterRef("pk"),
+            ts__lte=reconciliation_target_at,
+        )
+        .order_by("-ts", "-id")
+        .values("ts")[:1]
+    )
+    next_ts_subquery = (
+        MeterReading.objects.filter(
+            meter_id=OuterRef("pk"),
+            ts__gt=reconciliation_target_at,
+        )
+        .order_by("ts", "id")
+        .values("ts")[:1]
+    )
+    membership_meter_ids = {
+        membership.billing_meter_id for membership in memberships
+    }
+    reading_candidate_rows = (
+        Meter.objects.filter(pk__in=membership_meter_ids)
+        .annotate(
+            report_previous_reading_at=Subquery(previous_ts_subquery),
+            report_next_reading_at=Subquery(next_ts_subquery),
+        )
+        .values_list(
+            "pk", "report_previous_reading_at", "report_next_reading_at"
+        )
+    )
+    reading_candidates_by_meter = {
+        meter_id: (previous_at, next_at)
+        for meter_id, previous_at, next_at in reading_candidate_rows
+    }
+
+    def reading_freshness(reading_at, target_at):
+        if reading_at is None:
+            return "No reading", "bg-danger"
+        delta_seconds = (reading_at - target_at).total_seconds()
+        absolute_minutes = max(0, round(abs(delta_seconds) / 60))
+        if absolute_minutes == 0:
+            label = "On target"
+        elif absolute_minutes < 60:
+            label = f"{absolute_minutes}m"
+        elif absolute_minutes < 1440:
+            hours, minutes = divmod(absolute_minutes, 60)
+            label = f"{hours}h" + (f" {minutes}m" if minutes else "")
+        else:
+            days, remaining_minutes = divmod(absolute_minutes, 1440)
+            hours = remaining_minutes // 60
+            label = f"{days}d" + (f" {hours}h" if hours else "")
+        if absolute_minutes:
+            label = f"{label} {'after' if delta_seconds > 0 else 'before'}"
+        if absolute_minutes <= 60:
+            css_class = "bg-success"
+        elif absolute_minutes <= 1440:
+            css_class = "bg-warning text-dark"
+        else:
+            css_class = "bg-danger"
+        return label, css_class
+
+    for membership in memberships:
+        reading_at = closest_reading_at(
+            reconciliation_target_at,
+            *reading_candidates_by_meter.get(membership.billing_meter_id, (None, None)),
+        )
+        membership.billing_meter.report_last_reading_at = reading_at
+        membership.billing_meter.report_last_reading_date = (
+            timezone.localtime(reading_at).date() if reading_at else None
+        )
+        (
+            membership.billing_meter.report_reading_status,
+            membership.billing_meter.report_reading_status_class,
+        ) = reading_freshness(reading_at, reconciliation_target_at)
+
+    audit_reading_status, audit_reading_status_class = reading_freshness(
+        audit_last_reading_at, report_target_at
+    )
+
+    chart_periods = sorted({row["period_key"] for row in billing_rows})
+    chart_meter_rows = {}
+    sorted_chart_memberships = sorted(
+        effective_memberships,
+        key=lambda membership: (
+            getattr(
+                getattr(membership.billing_meter.unit, "property", None),
+                "property_name",
+                "",
+            ),
+            membership.billing_meter.display_location_name,
+            membership.billing_meter.meter_number,
+        ),
+    )
+    for membership in sorted_chart_memberships:
+        meter = membership.billing_meter
+        property_name = getattr(
+            getattr(meter.unit, "property", None), "property_name", ""
+        )
+        chart_meter_rows.setdefault(
+            meter.pk,
+            {
+                "unit_label": f"{property_name[:8]} / {meter.display_location_name}",
+                "unit_number": meter.display_location_name,
+                "meter_number": meter.meter_number,
+                "usage_by_period": defaultdict(lambda: Decimal("0")),
+            },
+        )
+    for row in billing_rows:
+        meter_row = chart_meter_rows.setdefault(
+            row["meter_id"],
+            {
+                "unit_label": f'{row["property_name"][:8]} / {row["unit_number"]}',
+                "unit_number": row["unit_number"],
+                "meter_number": row["meter_number"],
+                "usage_by_period": defaultdict(lambda: Decimal("0")),
+            },
+        )
+        meter_row["usage_by_period"][row["period_key"]] += Decimal(str(row["usage"]))
+    billing_chart_data = {
+        "labels": [period.isoformat() for period in chart_periods],
+        "datasets": [
+            {
+                "serial": serial,
+                "meterId": meter_id,
+                "unitLabel": meter_row["unit_label"],
+                "unitNumber": meter_row["unit_number"],
+                "meterNumber": meter_row["meter_number"],
+                "label": meter_row["unit_label"],
+                "data": [
+                    (
+                        float(meter_row["usage_by_period"][period])
+                        if period in meter_row["usage_by_period"]
+                        else None
+                    )
+                    for period in chart_periods
+                ],
+            }
+            for serial, (meter_id, meter_row) in enumerate(
+                chart_meter_rows.items(), start=1
+            )
+        ],
+        "auditLastReading": {
+            "totalEnergy": (
+                float(audit_last_total_energy)
+                if audit_last_total_energy is not None
+                else None
+            ),
+            "at": (
+                timezone.localtime(audit_last_reading_at).strftime("%Y-%m-%d %H:%M")
+                if audit_last_reading_at
+                else ""
+            ),
+        },
+    }
+    billing_meter_count = len(chart_meter_rows)
+    average_billing_kwh = (
+        billing_kwh / billing_meter_count if billing_meter_count else Decimal("0")
+    )
+    variance_type = "Loss" if variance_kwh >= 0 else "Gain"
+    audit_group_options = (
+        MeterCheckGroup.objects.filter(
+            is_active=True,
+            check_meter__is_active=True,
+            check_meter__meter_role=Meter.METER_ROLE_CHECK,
+        )
+        .select_related("check_meter", "check_meter__unit", "check_meter__unit__property")
+        .order_by("check_meter__meter_number", "name")
+    )
     covered_property_names = sorted({
         membership.billing_meter.unit.property.property_name
         for membership in memberships
@@ -1435,16 +1891,31 @@ def meter_check_group_detail(request, pk):
             "group": group,
             "start_date": start_date,
             "end_date": end_date,
+            "quick_range": quick_range,
             "check_kwh": check_kwh,
             "billing_kwh": billing_kwh,
             "variance_kwh": variance_kwh,
             "variance_rs": variance_rs,
             "leakage_percent": leakage_percent,
             "check_rows": check_rows,
+            "audit_summary_start_kwh": audit_summary_start_kwh,
+            "audit_summary_end_kwh": audit_summary_end_kwh,
             "billing_rows": billing_rows,
             "memberships": memberships,
             "membership_form": membership_form,
             "covered_property_names": covered_property_names,
+            "audit_last_reading_at": audit_last_reading_at,
+            "audit_last_total_energy": audit_last_total_energy,
+            "audit_reading_status": audit_reading_status,
+            "audit_reading_status_class": audit_reading_status_class,
+            "report_target_at": report_target_at,
+            "reconciliation_target_at": reconciliation_target_at,
+            "billing_chart_data": billing_chart_data,
+            "billing_meter_count": billing_meter_count,
+            "average_billing_kwh": average_billing_kwh,
+            "variance_type": variance_type,
+            "variance_absolute_kwh": abs(variance_kwh),
+            "audit_group_options": audit_group_options,
         },
     )
 
@@ -1465,6 +1936,72 @@ def meter_check_group_membership_end(request, pk, membership_id):
     )
     messages.success(request, "Billing-meter membership ended.")
     return redirect("smart_meter:meter_check_group_detail", pk=group.pk)
+
+
+@require_POST
+@login_required
+def meter_check_group_membership_manage(request, pk, membership_id):
+    group = get_object_or_404(MeterCheckGroup, pk=pk)
+    action = (request.POST.get("action") or "").strip().lower()
+    if action not in {"update", "delete"}:
+        return JsonResponse(
+            {"success": False, "error": "Select a valid action."}, status=400
+        )
+
+    try:
+        with transaction.atomic():
+            membership = get_object_or_404(
+                MeterCheckGroupMembership.objects.select_for_update(),
+                pk=membership_id,
+                group=group,
+            )
+            meter_number = membership.billing_meter.meter_number
+            if action == "delete":
+                membership.delete()
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "deleted": True,
+                        "message": f"Membership for meter {meter_number} was deleted.",
+                    }
+                )
+
+            try:
+                start_date = date.fromisoformat((request.POST.get("start_date") or "").strip())
+            except ValueError:
+                return JsonResponse(
+                    {"success": False, "error": "Enter a valid start date."}, status=400
+                )
+            end_date_value = (request.POST.get("end_date") or "").strip()
+            try:
+                end_date = date.fromisoformat(end_date_value) if end_date_value else None
+            except ValueError:
+                return JsonResponse(
+                    {"success": False, "error": "Enter a valid end date."}, status=400
+                )
+
+            membership.start_date = start_date
+            membership.end_date = end_date
+            membership.is_active = end_date is None
+            membership.notes = (request.POST.get("notes") or "").strip()
+            membership.save()
+    except ValidationError as exc:
+        if hasattr(exc, "message_dict"):
+            error = " ".join(
+                str(message)
+                for field_messages in exc.message_dict.values()
+                for message in field_messages
+            )
+        else:
+            error = " ".join(str(message) for message in exc.messages)
+        return JsonResponse({"success": False, "error": error}, status=400)
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": f"Membership for meter {meter_number} was updated.",
+        }
+    )
 
 
 def meter_delete(request, pk):

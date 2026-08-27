@@ -52,9 +52,24 @@ urlpatterns = [
     path('check-groups/<int:pk>/', views.meter_check_group_detail, name='meter_check_group_detail'),
     path('check-groups/<int:pk>/edit/', views.meter_check_group_form, name='meter_check_group_edit'),
     path(
+        'check-groups/<int:pk>/name/',
+        views.meter_check_group_name_update,
+        name='meter_check_group_name_update',
+    ),
+    path(
+        'check-groups/<int:pk>/delete-manage/',
+        views.meter_check_group_delete_manage,
+        name='meter_check_group_delete_manage',
+    ),
+    path(
         'check-groups/<int:pk>/memberships/<int:membership_id>/end/',
         views.meter_check_group_membership_end,
         name='meter_check_group_membership_end',
+    ),
+    path(
+        'check-groups/<int:pk>/memberships/<int:membership_id>/manage/',
+        views.meter_check_group_membership_manage,
+        name='meter_check_group_membership_manage',
     ),
     path("units/<int:unit_id>/meters/install/",
          views.install_meter_to_unit, name="install_meter_to_unit"),

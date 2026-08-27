@@ -59,12 +59,22 @@ class MeterRoleUpdateTests(TestCase):
         self.user = get_user_model().objects.create_user(username="meter-admin", password="test-pass")
         self.user.user_permissions.add(
             Permission.objects.get(codename="change_meter"),
+            Permission.objects.get(codename="view_meterreading"),
             Permission.objects.get(
                 content_type__app_label="accounts",
                 codename="access_all_properties",
             ),
         )
-        self.meter = Meter.objects.create(meter_number="ROLE-UPDATE-1")
+        property_obj = Property.objects.create(
+            property_name="Role Property",
+            owner_name="Owner",
+            owner_cnic="1234599999999",
+            type="apartment",
+            property_type="apartment",
+            total_units=1,
+        )
+        unit = Unit.objects.create(property=property_obj, unit_number="Role Unit")
+        self.meter = Meter.objects.create(meter_number="ROLE-UPDATE-1", unit=unit)
         MeterRoleHistory.objects.create(
             meter=self.meter,
             role=Meter.METER_ROLE_BILLING,
@@ -85,6 +95,30 @@ class MeterRoleUpdateTests(TestCase):
         self.meter.refresh_from_db()
         self.assertEqual(self.meter.meter_role, Meter.METER_ROLE_CHECK)
         self.assertEqual(self.meter.role_history.filter(is_active=True, end_date__isnull=True).count(), 1)
+
+    def test_reading_role_is_plain_text_until_clicked_and_dates_are_preserved(self):
+        MeterReading.objects.create(
+            meter=self.meter,
+            ts=timezone.make_aware(datetime(2026, 8, 25, 12, 0)),
+            total_energy=Decimal("100"),
+        )
+
+        response = self.client.get(
+            reverse("smart_meter:reading_list"),
+            {
+                "meter": self.meter.pk,
+                "start": "2026-08-24",
+                "end": "2026-08-26",
+                "role": "billing",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-role-display')
+        self.assertContains(response, 'ld-role-select d-none')
+        self.assertContains(response, 'value="2026-08-24"')
+        self.assertContains(response, 'value="2026-08-26"')
+        self.assertContains(response, 'if (rangeSel?.value) applyRange(rangeSel.value);')
 
 
 class EnergyDashboardMeterRoleTests(TestCase):

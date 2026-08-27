@@ -39,9 +39,16 @@
         </thead>
         <tbody>
           {% for group in groups %}
-            <tr>
+            <tr data-group-row="{{ group.pk }}">
               <td>{{ forloop.counter }}</td>
-              <td class="fw-semibold">{{ group.name }}</td>
+              <td class="fw-semibold">
+                <span data-group-name-display
+                      data-update-url="{% url 'smart_meter:meter_check_group_name_update' group.pk %}"
+                      title="Double-click to edit">{{ group.name }}</span>
+                <input class="form-control form-control-sm d-none" type="text"
+                       maxlength="100" value="{{ group.name }}"
+                       aria-label="Check Group name" data-group-name-input>
+              </td>
               <td>
                 {% if group.covered_property_names %}
                   {{ group.covered_property_names }}
@@ -55,13 +62,22 @@
                 <span class="badge bg-info text-dark">{{ group.check_meter.meter_number }}</span>
                 {% if group.check_meter.unit %}<small class="text-muted ms-1">{{ group.check_meter.display_location_name }}</small>{% endif %}
               </td>
-              <td>{{ group.active_billing_meter_count }}</td>
+              <td data-active-count="{{ group.pk }}">{{ group.active_billing_meter_count }}</td>
               <td>
                 {% if group.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
               </td>
-              <td class="text-end">
-                <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:meter_check_group_detail' group.pk %}">Assign Meters</a>
-                <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_check_group_edit' group.pk %}">Edit</a>
+              <td class="text-end text-nowrap">
+                <div class="d-inline-flex flex-nowrap gap-1">
+                  <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:meter_check_group_detail' group.pk %}">Assign Meters</a>
+                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_check_group_edit' group.pk %}" title="Edit Check Group" aria-label="Edit Check Group"><i class="fas fa-pen"></i></a>
+                  <button class="btn btn-sm btn-danger" type="button"
+                          title="Delete Check Group" aria-label="Delete Check Group"
+                          data-hard-delete-group
+                          data-group-id="{{ group.pk }}"
+                          data-group-name="{{ group.name }}"
+                          data-membership-count="{{ group.membership_record_count }}"
+                          data-manage-url="{% url 'smart_meter:meter_check_group_delete_manage' group.pk %}"><i class="fas fa-trash"></i></button>
+                </div>
               </td>
             </tr>
           {% empty %}
@@ -72,4 +88,300 @@
     </div>
   </div>
 </div>
+
+<div class="modal fade" id="checkGroupDeleteModal" tabindex="-1" aria-labelledby="checkGroupDeleteTitle" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title" id="checkGroupDeleteTitle">Delete Check Group</h5>
+          <small class="text-muted" id="checkGroupDeleteName"></small>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="checkGroupDeleteMessage" class="alert d-none py-2"></div>
+        <div class="alert alert-warning py-2">
+          Delete is permanent. Existing membership records must first be reassigned to another Audit meter.
+        </div>
+        <div id="checkGroupBulkReassign" class="card mb-3">
+          <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+              <div class="col">
+                <label class="form-label mb-1">Apply one Audit meter to all listed memberships</label>
+                <select class="form-select form-select-sm" id="checkGroupBulkTarget"></select>
+              </div>
+              <div class="col-auto"><button class="btn btn-sm btn-primary" type="button" id="checkGroupBulkApply">Apply to All</button></div>
+            </div>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th>S.N#</th><th>Billing Meter</th><th>Property / Unit</th><th>Period</th><th>Status</th><th>Reassign to Audit Meter</th></tr></thead>
+            <tbody id="checkGroupMembershipRows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <small class="text-muted" id="checkGroupDeleteRequirement"></small>
+        <div>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="checkGroupDeleteConfirm">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const modalElement = document.getElementById('checkGroupDeleteModal');
+  if (!modalElement || !window.bootstrap?.Modal) return;
+  const modal = window.bootstrap.Modal.getOrCreateInstance(modalElement);
+  const nameElement = document.getElementById('checkGroupDeleteName');
+  const messageElement = document.getElementById('checkGroupDeleteMessage');
+  const rowsElement = document.getElementById('checkGroupMembershipRows');
+  const bulkCard = document.getElementById('checkGroupBulkReassign');
+  const bulkTarget = document.getElementById('checkGroupBulkTarget');
+  const bulkApply = document.getElementById('checkGroupBulkApply');
+  const requirement = document.getElementById('checkGroupDeleteRequirement');
+  const deleteButton = document.getElementById('checkGroupDeleteConfirm');
+  let manageUrl = '';
+  let currentGroupId = '';
+  let currentGroupName = '';
+  let currentData = null;
+
+  function csrfToken() {
+    const match = document.cookie.match(new RegExp('(^| )csrftoken=([^;]+)'));
+    return match ? decodeURIComponent(match[2]) : '';
+  }
+
+  document.querySelectorAll('[data-group-name-display]').forEach(function (display) {
+    const input = display.parentElement.querySelector('[data-group-name-input]');
+    if (!input) return;
+
+    function showDisplay() {
+      input.classList.add('d-none');
+      display.classList.remove('d-none');
+    }
+
+    display.addEventListener('dblclick', function () {
+      input.value = display.textContent.trim();
+      display.classList.add('d-none');
+      input.classList.remove('d-none');
+      input.focus();
+      input.select();
+    });
+
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        input.blur();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        input.dataset.cancelEdit = '1';
+        input.blur();
+      }
+    });
+
+    input.addEventListener('blur', async function () {
+      const originalName = display.textContent.trim();
+      if (input.dataset.cancelEdit === '1') {
+        delete input.dataset.cancelEdit;
+        input.value = originalName;
+        showDisplay();
+        return;
+      }
+
+      const newName = input.value.trim();
+      showDisplay();
+      if (!newName || newName === originalName) {
+        input.value = originalName;
+        if (!newName) window.alert('Check Group name is required.');
+        return;
+      }
+
+      display.textContent = newName;
+      try {
+        const response = await fetch(display.dataset.updateUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': csrfToken(),
+            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+          },
+          body: new URLSearchParams({name: newName})
+        });
+        const data = await response.json().catch(function () { return {}; });
+        if (!response.ok || !data.success) throw new Error(data.error || 'The name could not be saved.');
+        display.textContent = data.name;
+        input.value = data.name;
+        const row = display.closest('[data-group-row]');
+        const deleteControl = row?.querySelector('[data-hard-delete-group]');
+        if (deleteControl) deleteControl.dataset.groupName = data.name;
+      } catch (error) {
+        display.textContent = originalName;
+        input.value = originalName;
+        window.alert(error.message || 'The name could not be saved.');
+      }
+    });
+  });
+
+  function showMessage(text, type) {
+    messageElement.textContent = text || '';
+    messageElement.className = 'alert py-2 ' + (type === 'success' ? 'alert-success' : 'alert-danger');
+    messageElement.classList.toggle('d-none', !text);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, function (character) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'}[character];
+    });
+  }
+
+  function targetOptions(targets) {
+    return '<option value="">Select another Audit meter</option>' + targets.map(function (target) {
+      return '<option value="' + target.id + '">' + escapeHtml(target.label) + '</option>';
+    }).join('');
+  }
+
+  function render(data) {
+    currentData = data;
+    nameElement.textContent = data.group.name;
+    const options = targetOptions(data.targets);
+    bulkTarget.innerHTML = options;
+    bulkCard.classList.toggle('d-none', data.membership_count === 0);
+    bulkApply.disabled = !data.targets.length;
+    rowsElement.innerHTML = data.memberships.map(function (membership, index) {
+      const period = membership.start_date + ' to ' + (membership.end_date || 'current');
+      const statusClass = membership.status === 'Active' ? 'bg-success' : 'bg-secondary';
+      return '<tr data-membership-row="' + membership.id + '">' +
+        '<td>' + (index + 1) + '</td>' +
+        '<td>' + escapeHtml(membership.meter_number) + '</td>' +
+        '<td>' + escapeHtml(membership.location) + '</td>' +
+        '<td>' + escapeHtml(period) + '</td>' +
+        '<td><span class="badge ' + statusClass + '">' + membership.status + '</span></td>' +
+        '<td><select class="form-select form-select-sm" data-membership-target="' + membership.id + '">' + options + '</select></td>' +
+        '</tr>';
+    }).join('') || '<tr><td colspan="6" class="text-center text-muted py-3">No membership records remain. This group can now be permanently deleted.</td></tr>';
+    deleteButton.disabled = data.membership_count > 0;
+    requirement.textContent = data.membership_count
+      ? data.membership_count + ' membership record(s) must be reassigned before deletion.'
+      : 'No membership records remain.';
+  }
+
+  function updateCounts(counts) {
+    Object.entries(counts || {}).forEach(function (entry) {
+      const element = document.querySelector('[data-active-count="' + entry[0] + '"]');
+      if (element) element.textContent = entry[1];
+    });
+  }
+
+  async function loadInfo() {
+    showMessage('', 'success');
+    rowsElement.innerHTML = '<tr><td colspan="6" class="text-center py-3"><i class="fas fa-spinner fa-spin me-1"></i>Loading memberships…</td></tr>';
+    const response = await fetch(manageUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'});
+    const data = await response.json().catch(function () { return {}; });
+    if (!response.ok || !data.success) throw new Error(data.error || 'Could not load Check Group memberships.');
+    render(data);
+  }
+
+  async function postAction(values) {
+    deleteButton.disabled = true;
+    bulkApply.disabled = true;
+    try {
+      const response = await fetch(manageUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': csrfToken(),
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+        },
+        body: new URLSearchParams(values)
+      });
+      const data = await response.json().catch(function () { return {}; });
+      if (!response.ok || !data.success) throw new Error(data.error || 'The request could not be saved.');
+      if (data.deleted) {
+        document.querySelector('[data-group-row="' + currentGroupId + '"]')?.remove();
+        modal.hide();
+        return;
+      }
+      updateCounts(data.counts);
+      render(data);
+      showMessage(data.message, 'success');
+    } catch (error) {
+      showMessage(error.message || 'The request could not be saved.', 'error');
+      if (currentData) render(currentData);
+    }
+  }
+
+  async function deleteEmptyGroup(button) {
+    button.disabled = true;
+    try {
+      const response = await fetch(manageUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': csrfToken(),
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+        },
+        body: new URLSearchParams({action: 'delete'})
+      });
+      const data = await response.json().catch(function () { return {}; });
+      if (!response.ok || !data.success || !data.deleted) {
+        throw new Error(data.error || 'The Check Group could not be deleted.');
+      }
+      document.querySelector('[data-group-row="' + currentGroupId + '"]')?.remove();
+    } catch (error) {
+      modal.show();
+      try {
+        await loadInfo();
+        showMessage(error.message || 'The Check Group could not be deleted.', 'error');
+      } catch (loadError) {
+        showMessage(loadError.message || error.message, 'error');
+      }
+      button.disabled = false;
+    }
+  }
+
+  document.querySelectorAll('[data-hard-delete-group]').forEach(function (button) {
+    button.addEventListener('click', async function () {
+      manageUrl = button.dataset.manageUrl;
+      currentGroupId = button.dataset.groupId;
+      currentGroupName = button.dataset.groupName;
+      nameElement.textContent = currentGroupName;
+      if (Number(button.dataset.membershipCount || 0) === 0) {
+        await deleteEmptyGroup(button);
+        return;
+      }
+      modal.show();
+      try {
+        await loadInfo();
+      } catch (error) {
+        showMessage(error.message, 'error');
+      }
+    });
+  });
+
+  rowsElement.addEventListener('change', function (event) {
+    const select = event.target.closest('[data-membership-target]');
+    if (!select || !select.value) return;
+    postAction({action: 'reassign', membership_id: select.dataset.membershipTarget, target_group_id: select.value});
+  });
+
+  bulkApply.addEventListener('click', function () {
+    if (!bulkTarget.value) return showMessage('Select a target Audit meter first.', 'error');
+    postAction({action: 'reassign_all', target_group_id: bulkTarget.value});
+  });
+
+  deleteButton.addEventListener('click', function () {
+    if (deleteButton.disabled) return;
+    if (!window.confirm('Permanently delete Check Group "' + currentGroupName + '"? This cannot be undone.')) return;
+    postAction({action: 'delete'});
+  });
+});
+</script>
 {% endblock %}

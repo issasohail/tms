@@ -44,7 +44,12 @@
   </td>
 
   <td class="ld-col-role">
-    <select class="form-select form-select-sm ld-role-select"
+    <button type="button"
+            class="ld-role-display"
+            data-role-display
+            data-meter-id="{{ r.meter.id }}"
+            title="Click to change this meter's role">{{ r.meter.get_meter_role_display }}</button>
+    <select class="form-select form-select-sm ld-role-select d-none"
             data-meter-role
             data-meter-id="{{ r.meter.id }}"
             data-update-url="{% url 'smart_meter:meter_role_update' r.meter.id %}"

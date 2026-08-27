@@ -16,9 +16,12 @@ from smart_meter.forms_reconciliation import (
     UtilityBillCycleForm,
     UtilityBillPaymentForm,
 )
+from smart_meter.forms import MeterReadingProfileForm
 from smart_meter.models import (
     EnergySystem,
     InverterPeriodStatement,
+    LiveReading,
+    MeterReading,
     UtilityBillCycle,
     UtilityBillPayment,
     UtilityConnection,
@@ -74,6 +77,32 @@ def energy_system_detail(request, pk):
         today = timezone.localdate()
         start, end = today.replace(day=1), today
     report = build_energy_reconciliation(system, start, end)
+    grid_reading = None
+    if system.grid_interface_meter_id:
+        grid_reading = LiveReading.objects.filter(
+            meter_id=system.grid_interface_meter_id
+        ).first()
+        if grid_reading is None:
+            grid_reading = MeterReading.objects.filter(
+                meter_id=system.grid_interface_meter_id
+            ).order_by("-ts", "-id").first()
+    grid_forward_total = (
+        getattr(grid_reading, "forward_active_energy_kwh", None)
+        if grid_reading
+        else None
+    )
+    if grid_forward_total is None and grid_reading:
+        grid_forward_total = grid_reading.total_energy
+    grid_reverse_total = (
+        getattr(grid_reading, "reverse_active_energy_kwh", None)
+        if grid_reading
+        else None
+    )
+    grid_net_total = (
+        grid_forward_total - grid_reverse_total
+        if grid_forward_total is not None and grid_reverse_total is not None
+        else None
+    )
     reassign_form = EnergySystemReassignmentForm(
         energy_system=system,
         initial={"effective_date": timezone.localdate()},
@@ -81,7 +110,20 @@ def energy_system_detail(request, pk):
     return render(
         request,
         "smart_meter/energy_system_detail.html",
-        {"system": system, "report": report, "reassign_form": reassign_form},
+        {
+            "system": system,
+            "report": report,
+            "reassign_form": reassign_form,
+            "grid_reading": grid_reading,
+            "grid_forward_total": grid_forward_total,
+            "grid_reverse_total": grid_reverse_total,
+            "grid_net_total": grid_net_total,
+            "grid_profile_form": (
+                MeterReadingProfileForm(instance=system.grid_interface_meter)
+                if system.grid_interface_meter_id
+                else None
+            ),
+        },
     )
 
 
@@ -156,6 +198,8 @@ def inverter_statement_edit(request, pk):
 @transaction.atomic
 def inverter_statement_confirm(request, pk):
     statement = get_object_or_404(InverterPeriodStatement.objects.select_for_update(), pk=pk)
+    if statement.confirmed_at is not None:
+        return HttpResponseBadRequest("This inverter statement is already confirmed.")
     statement.confirmed_at = timezone.now()
     statement.updated_by = request.user
     statement.save(update_fields=["confirmed_at", "updated_by", "updated_at"])
@@ -329,6 +373,8 @@ def utility_bill_payment_edit(request, pk):
 @transaction.atomic
 def utility_bill_payment_confirm(request, pk):
     payment = get_object_or_404(UtilityBillPayment.objects.select_for_update(), pk=pk)
+    if payment.confirmed_at is not None:
+        return HttpResponseBadRequest("This utility payment is already confirmed.")
     payment.confirmed_at = timezone.now()
     payment.updated_by = request.user
     payment.save(update_fields=["confirmed_at", "updated_by", "updated_at"])

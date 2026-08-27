@@ -79,6 +79,11 @@ class MeterSettingsForm(forms.ModelForm):
 
 
 class MeterForm(forms.ModelForm):
+    reading_profile = forms.ChoiceField(
+        choices=Meter.READING_PROFILE_CHOICES,
+        required=False,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
     replacement_check_meter = forms.ModelChoiceField(
         queryset=Meter.objects.none(),
         required=False,
@@ -120,6 +125,11 @@ class MeterForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        if not cleaned.get("reading_profile"):
+            cleaned["reading_profile"] = (
+                self.instance.reading_profile
+                or Meter.READING_PROFILE_AUTO
+            )
         new_role = cleaned.get("meter_role")
         if (
             self.instance.pk
@@ -138,6 +148,15 @@ class MeterForm(forms.ModelForm):
                 "Select another active Audit meter to take over this meter's Check Group.",
             )
         return cleaned
+
+
+class MeterReadingProfileForm(forms.ModelForm):
+    class Meta:
+        model = Meter
+        fields = ["reading_profile"]
+        widgets = {
+            "reading_profile": forms.Select(attrs={"class": "form-select form-select-sm"}),
+        }
 
 
 class MeterCheckGroupForm(forms.ModelForm):
@@ -224,8 +243,9 @@ class MeterReadingForm(forms.ModelForm):
         model = MeterReading
         fields = [
             "meter", "ts",
-            "total_energy", "peak_total_energy", "valley_total_consumption", "flat_total_consumption",
-            "total_power", "pf_total",
+            "total_energy", "forward_active_energy_kwh", "reverse_active_energy_kwh",
+            "peak_total_energy", "valley_total_consumption", "flat_total_consumption",
+            "total_power", "power_a", "power_b", "power_c", "pf_total",
             "voltage_a", "voltage_b", "voltage_c",
             "current_a", "current_b", "current_c",
         ]

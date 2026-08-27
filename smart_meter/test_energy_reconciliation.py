@@ -38,6 +38,7 @@ from smart_meter.services.reconciliation import (
     tolerance_status,
 )
 from smart_meter.services.utility_bill_parser import parse_utility_bill
+from smart_meter.forms_reconciliation import UtilityBillCycleForm
 from tenants.models import Tenant
 
 
@@ -157,6 +158,45 @@ class EnergyReconciliationTests(TestCase):
         self.assertEqual(tolerance_status(timedelta(hours=24)), "warning")
         self.assertEqual(tolerance_status(timedelta(hours=24, seconds=1)), "invalid")
         self.assertEqual(tolerance_status(None), "invalid")
+
+    def test_grid_register_deltas_use_forward_reverse_and_report_net(self):
+        grid_readings = list(self.grid_meter.readings.order_by("ts", "id"))
+        grid_readings[0].forward_active_energy_kwh = Decimal("500")
+        grid_readings[0].reverse_active_energy_kwh = Decimal("10")
+        grid_readings[0].save(update_fields=[
+            "forward_active_energy_kwh", "reverse_active_energy_kwh"
+        ])
+        grid_readings[1].forward_active_energy_kwh = Decimal("530")
+        grid_readings[1].reverse_active_energy_kwh = Decimal("15")
+        grid_readings[1].save(update_fields=[
+            "forward_active_energy_kwh", "reverse_active_energy_kwh"
+        ])
+
+        report = build_energy_reconciliation(self.system, self.start, self.end)
+
+        self.assertEqual(report["grid_import_kwh"], Decimal("30"))
+        self.assertEqual(report["grid_export_kwh"], Decimal("5"))
+        self.assertEqual(report["net_grid_energy_kwh"], Decimal("25"))
+        self.assertEqual(report["billing_total_kwh"], Decimal("80"))
+
+    def test_register_decrease_is_a_discontinuity_not_zero_clamped(self):
+        grid_readings = list(self.grid_meter.readings.order_by("ts", "id"))
+        grid_readings[0].reverse_active_energy_kwh = Decimal("10")
+        grid_readings[0].save(update_fields=["reverse_active_energy_kwh"])
+        MeterReading.objects.create(
+            meter=self.grid_meter,
+            ts=self._at(date(2026, 8, 15)),
+            total_energy=Decimal("515"),
+            reverse_active_energy_kwh=Decimal("8"),
+        )
+        grid_readings[1].reverse_active_energy_kwh = Decimal("15")
+        grid_readings[1].save(update_fields=["reverse_active_energy_kwh"])
+
+        report = build_energy_reconciliation(self.system, self.start, self.end)
+
+        self.assertIsNone(report["grid_export_kwh"])
+        self.assertIsNone(report["net_grid_energy_kwh"])
+        self.assertTrue(any("decreased" in reason for reason in report["withheld_reasons"]))
 
     def test_financials_use_invoice_items_explicit_payment_allocation_and_utility_payments(self):
         tenant = Tenant.objects.create(
@@ -285,6 +325,56 @@ class EnergyReconciliationTests(TestCase):
         with self.assertRaises(ValidationError):
             reopen_record(statement, self.user, "")
 
+    def test_invalid_duplicate_or_out_of_order_transitions_are_rejected(self):
+        bill = self._bill(confirmed=False)
+        with self.assertRaises(ValidationError):
+            finalize_bill(bill, self.user)
+        confirm_bill(bill, self.user)
+        with self.assertRaises(ValidationError):
+            confirm_bill(bill, self.user)
+        finalize_bill(bill, self.user)
+        with self.assertRaises(ValidationError):
+            finalize_bill(bill, self.user)
+
+        draft_statement = InverterPeriodStatement.objects.create(
+            energy_system=self.system,
+            period_start=self.start,
+            period_end=self.end,
+            pv_reading_start_kwh=1,
+            pv_reading_end_kwh=2,
+        )
+        with self.assertRaises(ValidationError):
+            reopen_record(draft_statement, self.user, "No transition occurred")
+
+    def test_utility_bill_upload_rejects_spoofed_or_non_pdf_files(self):
+        base = {
+            "utility_connection": self.connection.pk,
+            "bill_month": "AUG 2026",
+            "period_start": self.start,
+            "period_end": self.end,
+        }
+        wrong_extension = UtilityBillCycleForm(
+            data=base,
+            files={
+                "attachment": SimpleUploadedFile(
+                    "bill.txt", b"%PDF-1.4\n%%EOF", content_type="application/pdf"
+                )
+            },
+        )
+        self.assertFalse(wrong_extension.is_valid())
+        self.assertIn("attachment", wrong_extension.errors)
+
+        spoofed_pdf = UtilityBillCycleForm(
+            data=base,
+            files={
+                "attachment": SimpleUploadedFile(
+                    "bill.pdf", b"not a pdf", content_type="application/pdf"
+                )
+            },
+        )
+        self.assertFalse(spoofed_pdf.is_valid())
+        self.assertIn("attachment", spoofed_pdf.errors)
+
     def test_legacy_characterization_values_match_service_and_view_after_refactor(self):
         result = calculate_check_group_period(self.group, self.start, self.end)
         self.assertEqual(result["check_kwh"], Decimal("100"))
@@ -343,6 +433,7 @@ class EnergyReconciliationTests(TestCase):
             with self.subTest(route=route_name):
                 self.assertEqual(self.client.get(reverse(f"smart_meter:{route_name}", args=args)).status_code, 200)
         post_only_routes = (
+            ("meter_reading_profile_update", (self.grid_meter.pk,)),
             ("energy_system_reassign_meter", (self.system.pk,)),
             ("inverter_statement_confirm", (statement.pk,)),
             ("inverter_statement_reopen", (statement.pk,)),
@@ -354,6 +445,73 @@ class EnergyReconciliationTests(TestCase):
         for route_name, args in post_only_routes:
             with self.subTest(route=route_name):
                 self.assertEqual(self.client.get(reverse(f"smart_meter:{route_name}", args=args)).status_code, 405)
+
+    def test_reading_profile_update_requires_change_meter_permission(self):
+        url = reverse("smart_meter:meter_reading_profile_update", args=[self.grid_meter.pk])
+        limited_user = get_user_model().objects.create_user(
+            username="energy-viewer", password="test-pass"
+        )
+        self.client.force_login(limited_user)
+        response = self.client.post(
+            url,
+            {"reading_profile": Meter.READING_PROFILE_TOTAL_AND_PER_PHASE},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.grid_meter.refresh_from_db()
+        self.assertEqual(self.grid_meter.reading_profile, Meter.READING_PROFILE_AUTO)
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            url,
+            {"reading_profile": Meter.READING_PROFILE_TOTAL_AND_PER_PHASE},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.grid_meter.refresh_from_db()
+        self.assertEqual(
+            self.grid_meter.reading_profile,
+            Meter.READING_PROFILE_TOTAL_AND_PER_PHASE,
+        )
+
+    def test_every_reconciliation_endpoint_rejects_authenticated_user_without_permission(self):
+        bill = self._bill(confirmed=False)
+        statement = InverterPeriodStatement.objects.create(
+            energy_system=self.system,
+            period_start=self.start,
+            period_end=self.end,
+            pv_reading_start_kwh=1,
+            pv_reading_end_kwh=2,
+        )
+        payment = UtilityBillPayment.objects.create(
+            bill_cycle=bill, amount=10, paid_at=timezone.now()
+        )
+        limited_user = get_user_model().objects.create_user(
+            username="reconciliation-no-perms", password="test-pass"
+        )
+        self.client.force_login(limited_user)
+        routes = (
+            ("get", "energy_system_list", ()),
+            ("get", "energy_system_detail", (self.system.pk,)),
+            ("post", "energy_system_reassign_meter", (self.system.pk,)),
+            ("get", "inverter_statement_add", (self.system.pk,)),
+            ("get", "inverter_statement_edit", (statement.pk,)),
+            ("post", "inverter_statement_confirm", (statement.pk,)),
+            ("post", "inverter_statement_reopen", (statement.pk,)),
+            ("get", "utility_bill_upload", ()),
+            ("get", "utility_bill_detail", (bill.pk,)),
+            ("get", "utility_bill_edit", (bill.pk,)),
+            ("post", "utility_bill_confirm", (bill.pk,)),
+            ("post", "utility_bill_finalize", (bill.pk,)),
+            ("post", "utility_bill_reopen", (bill.pk,)),
+            ("get", "utility_bill_payment_add", (bill.pk,)),
+            ("get", "utility_bill_payment_edit", (payment.pk,)),
+            ("post", "utility_bill_payment_confirm", (payment.pk,)),
+        )
+        for method, route_name, args in routes:
+            with self.subTest(route=route_name):
+                response = getattr(self.client, method)(
+                    reverse(f"smart_meter:{route_name}", args=args)
+                )
+                self.assertEqual(response.status_code, 403)
 
     def test_linked_check_groups_hidden_by_default_and_available_by_toggle(self):
         archived_meter = self._meter("ARCHIVED-GRID", Meter.MEASUREMENT_POINT_GRID_INTERFACE)

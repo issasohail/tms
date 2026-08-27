@@ -78,6 +78,8 @@ class UtilityBillCycleForm(forms.ModelForm):
         upload = self.cleaned_data.get("attachment")
         if not upload or not hasattr(upload, "read"):
             return upload
+        if not str(getattr(upload, "name", "")).lower().endswith(".pdf"):
+            raise forms.ValidationError("Upload a file with a .pdf extension.")
         if upload.size > self.MAX_UPLOAD_BYTES:
             raise forms.ValidationError("PDF files may not exceed 10 MB.")
         header = upload.read(5)

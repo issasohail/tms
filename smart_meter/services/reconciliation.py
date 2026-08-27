@@ -118,14 +118,24 @@ def _aware_midnight(day):
     return timezone.make_aware(datetime.combine(day, time.min), timezone.get_current_timezone())
 
 
-def closest_boundary_reading(meter, target_at):
+def _register_value(reading, field_name, fallback_field=None):
+    value = getattr(reading, field_name, None)
+    if value is None and fallback_field:
+        value = getattr(reading, fallback_field, None)
+    return Decimal(str(value)) if value is not None else None
+
+
+def closest_boundary_reading(meter, target_at, field_name="total_energy", fallback_field=None):
+    available = Q(**{f"{field_name}__isnull": False})
+    if fallback_field:
+        available |= Q(**{f"{fallback_field}__isnull": False})
     before = (
-        MeterReading.objects.filter(meter=meter, ts__lte=target_at, total_energy__isnull=False)
+        MeterReading.objects.filter(meter=meter, ts__lte=target_at).filter(available)
         .order_by("-ts", "-id")
         .first()
     )
     after = (
-        MeterReading.objects.filter(meter=meter, ts__gt=target_at, total_energy__isnull=False)
+        MeterReading.objects.filter(meter=meter, ts__gt=target_at).filter(available)
         .order_by("ts", "id")
         .first()
     )
@@ -135,23 +145,64 @@ def closest_boundary_reading(meter, target_at):
     reading = min(candidates, key=lambda row: abs(row.ts - target_at))
     distance = abs(reading.ts - target_at)
     return BoundaryReading(
-        Decimal(str(reading.total_energy)),
+        _register_value(reading, field_name, fallback_field),
         reading.ts,
         distance,
         tolerance_status(distance),
     )
 
 
-def meter_period_delta(meter, start_date, end_date):
-    start = closest_boundary_reading(meter, _aware_midnight(start_date))
-    end = closest_boundary_reading(meter, _aware_midnight(end_date))
+def meter_period_delta(
+    meter,
+    start_date,
+    end_date,
+    *,
+    field_name="total_energy",
+    fallback_field=None,
+):
+    start = closest_boundary_reading(
+        meter, _aware_midnight(start_date), field_name, fallback_field
+    )
+    end = closest_boundary_reading(
+        meter, _aware_midnight(end_date), field_name, fallback_field
+    )
     valid = start.status != "invalid" and end.status != "invalid"
+    reason = ""
+    if not valid:
+        reason = "A period-boundary reading is missing or more than 24 hours away"
+    elif end.timestamp <= start.timestamp:
+        valid = False
+        reason = "Period boundary readings are not in chronological order"
+    else:
+        available = Q(**{f"{field_name}__isnull": False})
+        if fallback_field:
+            available |= Q(**{f"{fallback_field}__isnull": False})
+        readings = (
+            MeterReading.objects.filter(
+                meter=meter,
+                ts__gte=start.timestamp,
+                ts__lte=end.timestamp,
+            )
+            .filter(available)
+            .order_by("ts", "id")
+        )
+        previous = None
+        for reading in readings:
+            current = _register_value(reading, field_name, fallback_field)
+            if previous is not None and current < previous:
+                valid = False
+                reason = (
+                    f"{field_name} decreased between period boundaries; "
+                    "rollover/reset continuity is unconfirmed"
+                )
+                break
+            previous = current
     return {
         "start": start,
         "end": end,
         "kwh": end.value - start.value if valid else None,
         "valid": valid,
-        "reason": "A period-boundary reading is missing or more than 24 hours away" if not valid else "",
+        "reason": reason,
     }
 
 
@@ -227,7 +278,23 @@ def build_energy_reconciliation(system, start_date, end_date):
             billing_reasons.append(membership.billing_meter.meter_number)
 
     grid_import = (
-        meter_period_delta(system.grid_interface_meter, start_date, end_date)
+        meter_period_delta(
+            system.grid_interface_meter,
+            start_date,
+            end_date,
+            field_name="forward_active_energy_kwh",
+            fallback_field="total_energy",
+        )
+        if system.grid_interface_meter_id
+        else {"kwh": None, "valid": False, "reason": "No grid-interface meter is assigned"}
+    )
+    grid_export = (
+        meter_period_delta(
+            system.grid_interface_meter,
+            start_date,
+            end_date,
+            field_name="reverse_active_energy_kwh",
+        )
         if system.grid_interface_meter_id
         else {"kwh": None, "valid": False, "reason": "No grid-interface meter is assigned"}
     )
@@ -235,6 +302,12 @@ def build_energy_reconciliation(system, start_date, end_date):
     export_kwh = Decimal(bill.export_kwh) if bill else None
     output_kwh = output["kwh"]
     import_kwh = grid_import["kwh"]
+    grid_export_kwh = grid_export["kwh"]
+    net_grid_kwh = (
+        import_kwh - grid_export_kwh
+        if import_kwh is not None and grid_export_kwh is not None
+        else None
+    )
     topology = system.output_meter_includes_grid_export
 
     building_consumption = None
@@ -246,6 +319,10 @@ def build_energy_reconciliation(system, start_date, end_date):
         withheld.append(output["reason"])
     if not billing_valid:
         withheld.append("Invalid boundary readings for billing meters: " + ", ".join(billing_reasons))
+    if system.grid_interface_meter_id and not grid_import["valid"]:
+        withheld.append("Grid forward energy: " + grid_import["reason"])
+    if system.grid_interface_meter_id and not grid_export["valid"]:
+        withheld.append("Grid reverse energy: " + grid_export["reason"])
 
     if output_kwh is not None and billing_valid:
         if topology is True:
@@ -304,6 +381,9 @@ def build_energy_reconciliation(system, start_date, end_date):
         "billing_total_kwh": billing_total if billing_valid else None,
         "grid_import_kwh": import_kwh,
         "grid_import_readings": grid_import,
+        "grid_export_kwh": grid_export_kwh,
+        "grid_export_readings": grid_export,
+        "net_grid_energy_kwh": net_grid_kwh,
         "export_kwh": export_kwh,
         "exact_bill": bill,
         "building_consumption_kwh": building_consumption,
@@ -374,6 +454,10 @@ def validate_bill_confirmation(cycle):
 @transaction.atomic
 def confirm_bill(cycle, user=None):
     cycle = UtilityBillCycle.objects.select_for_update().get(pk=cycle.pk)
+    if cycle.finalized_at is not None or cycle.status == "final":
+        raise ValidationError("A finalized bill must be reopened before it can transition again.")
+    if cycle.confirmed_at is not None:
+        raise ValidationError("This utility bill is already confirmed.")
     validate_bill_confirmation(cycle)
     cycle.confirmed_at = timezone.now()
     if cycle.status == "draft":
@@ -387,6 +471,10 @@ def confirm_bill(cycle, user=None):
 @transaction.atomic
 def finalize_bill(cycle, user=None):
     cycle = UtilityBillCycle.objects.select_for_update().get(pk=cycle.pk)
+    if cycle.finalized_at is not None or cycle.status == "final":
+        raise ValidationError("This utility bill is already final.")
+    if cycle.confirmed_at is None:
+        raise ValidationError("Confirm the utility bill before finalizing it.")
     validate_bill_confirmation(cycle)
     required = (
         cycle.import_off_peak_kwh,
@@ -397,7 +485,6 @@ def finalize_bill(cycle, user=None):
     )
     if any(value is None for value in required):
         raise ValidationError("A final bill requires all four energy totals and Grand Total.")
-    cycle.confirmed_at = cycle.confirmed_at or timezone.now()
     cycle.finalized_at = timezone.now()
     cycle.status = "final"
     cycle.updated_by = user
@@ -412,6 +499,10 @@ def reopen_record(instance, user, reason):
     if not reason:
         raise ValidationError("A reason is required to reopen this record.")
     instance = instance.__class__.objects.select_for_update().get(pk=instance.pk)
+    if getattr(instance, "confirmed_at", None) is None and getattr(
+        instance, "finalized_at", None
+    ) is None:
+        raise ValidationError("Only a confirmed or finalized record can be reopened.")
     if isinstance(instance, UtilityBillCycle):
         instance.finalized_at = None
         instance.confirmed_at = None

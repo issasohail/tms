@@ -120,6 +120,7 @@ from .forms import (
     MeterCheckGroupForm,
     MeterCheckGroupMembershipForm,
     MeterForm,
+    MeterReadingProfileForm,
     MeterReadingForm,
     MeterSettingsForm,
     MoveLeaseUnitForm,
@@ -2044,6 +2045,30 @@ def meter_detail(request, pk):
 
     latest_reading = MeterReading.objects.filter(meter=meter).order_by("-ts").first()
     latest_live = meter.latest_live
+    display_reading = latest_live or latest_reading
+    display_forward_energy = (
+        getattr(display_reading, "forward_active_energy_kwh", None)
+        if display_reading
+        else None
+    )
+    if display_forward_energy is None and display_reading:
+        display_forward_energy = display_reading.total_energy
+    display_reverse_energy = (
+        getattr(display_reading, "reverse_active_energy_kwh", None)
+        if display_reading
+        else None
+    )
+    display_net_grid_energy = (
+        display_forward_energy - display_reverse_energy
+        if display_forward_energy is not None and display_reverse_energy is not None
+        else None
+    )
+    display_reading_is_fresh = bool(
+        display_reading
+        and display_reading.ts
+        and display_reading.ts
+        >= timezone.now() - timedelta(minutes=online_threshold_minutes())
+    )
     current_energy = (
         getattr(latest_live, "total_energy", None)
         if latest_live and getattr(latest_live, "total_energy", None) is not None
@@ -2316,6 +2341,7 @@ def meter_detail(request, pk):
         "smart_meter/meter_detail.html",
         {
             "meter": meter,
+            "reading_profile_form": MeterReadingProfileForm(instance=meter),
             "electricity_rate": electricity_rate,
             "current_installation": current_installation,
             "current_lease": current_lease,
@@ -2323,6 +2349,11 @@ def meter_detail(request, pk):
             "installation_history": display_installation_history,
             "latest_reading": latest_reading,
             "latest_live": latest_live,
+            "display_reading": display_reading,
+            "display_forward_energy": display_forward_energy,
+            "display_reverse_energy": display_reverse_energy,
+            "display_net_grid_energy": display_net_grid_energy,
+            "display_reading_is_fresh": display_reading_is_fresh,
             "recent_daily_readings": recent_daily_readings,
             "credit_account": credit_account,
             "recent_commands": recent_commands,
@@ -2330,6 +2361,29 @@ def meter_detail(request, pk):
             "meter_feature_flags": meter_feature_flags,
         },
     )
+
+
+@require_POST
+@login_required
+@permission_required("smart_meter.change_meter", raise_exception=True)
+def meter_reading_profile_update(request, pk):
+    meter = get_object_or_404(Meter, pk=pk)
+    form = MeterReadingProfileForm(request.POST, instance=meter)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Meter reading profile updated.")
+    else:
+        messages.error(request, "; ".join(
+            message for errors in form.errors.values() for message in errors
+        ))
+
+    system_id = request.POST.get("energy_system_id")
+    if system_id:
+        from smart_meter.models import EnergySystem
+
+        if EnergySystem.objects.filter(pk=system_id, grid_interface_meter=meter).exists():
+            return redirect("smart_meter:energy_system_detail", pk=system_id)
+    return redirect("smart_meter:meter_detail", pk=meter.pk)
 
 
 def install_meter_to_unit(request, unit_id):

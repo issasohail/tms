@@ -58,6 +58,14 @@ class Meter(models.Model):
         (MEASUREMENT_POINT_GRID_INTERFACE, "Grid Interface"),
         (MEASUREMENT_POINT_OTHER_AUDIT, "Other Audit"),
     ]
+    READING_PROFILE_AUTO = "auto"
+    READING_PROFILE_TOTAL_ONLY = "total_only"
+    READING_PROFILE_TOTAL_AND_PER_PHASE = "total_and_per_phase"
+    READING_PROFILE_CHOICES = [
+        (READING_PROFILE_AUTO, "Auto"),
+        (READING_PROFILE_TOTAL_ONLY, "Total only"),
+        (READING_PROFILE_TOTAL_AND_PER_PHASE, "Total + per-phase"),
+    ]
 
     unit = models.ForeignKey(
         "properties.Unit",
@@ -89,6 +97,15 @@ class Meter(models.Model):
         choices=MEASUREMENT_POINT_CHOICES,
         blank=True,
         default="",
+    )
+    reading_profile = models.CharField(
+        max_length=24,
+        choices=READING_PROFILE_CHOICES,
+        default=READING_PROFILE_AUTO,
+        help_text=(
+            "Controls whether direct polling requests only cumulative totals or also "
+            "retains phase A/B/C measurements. Auto preserves existing meter behavior."
+        ),
     )
     power_status = models.CharField(
         max_length=10, choices=[("on", "On"), ("off", "Off")], default="on")
@@ -1064,6 +1081,20 @@ class MeterReading(models.Model):
     source_port = models.PositiveIntegerField(null=True, blank=True)
     total_energy = models.DecimalField(
         max_digits=14, decimal_places=3, null=True, blank=True)
+    forward_active_energy_kwh = models.DecimalField(
+        max_digits=14,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        help_text="Cumulative forward/import active-energy register; mirrors total_energy when read.",
+    )
+    reverse_active_energy_kwh = models.DecimalField(
+        max_digits=14,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        help_text="Cumulative reverse/export active-energy register; never used for tenant billing.",
+    )
     peak_total_energy = models.DecimalField(
         max_digits=14, decimal_places=3, null=True, blank=True)
     valley_total_consumption = models.DecimalField(
@@ -1072,6 +1103,12 @@ class MeterReading(models.Model):
         max_digits=14, decimal_places=3, null=True, blank=True)
 
     total_power = models.DecimalField(
+        max_digits=9, decimal_places=3, null=True, blank=True)
+    power_a = models.DecimalField(
+        max_digits=9, decimal_places=3, null=True, blank=True)
+    power_b = models.DecimalField(
+        max_digits=9, decimal_places=3, null=True, blank=True)
+    power_c = models.DecimalField(
         max_digits=9, decimal_places=3, null=True, blank=True)
     pf_total = models.DecimalField(
         max_digits=5, decimal_places=3, null=True, blank=True)
@@ -1161,6 +1198,20 @@ class LiveReading(models.Model):
 
     total_energy = models.DecimalField(
         max_digits=14, decimal_places=3, null=True, blank=True)
+    forward_active_energy_kwh = models.DecimalField(
+        max_digits=14,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        help_text="Cumulative forward/import active-energy register; mirrors total_energy when read.",
+    )
+    reverse_active_energy_kwh = models.DecimalField(
+        max_digits=14,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        help_text="Cumulative reverse/export active-energy register; never used for tenant billing.",
+    )
     peak_total_energy = models.DecimalField(
         max_digits=14, decimal_places=3, null=True, blank=True)
     valley_total_consumption = models.DecimalField(
@@ -1538,6 +1589,8 @@ class MeterCommand(models.Model):
         ("prepaid", "Prepaid Pilot"),
         ("system", "System"),
         ("schedule", "Timing Schedule"),
+        ("energy_probe", "Energy Probe (No Persistence)"),
+        ("energy_probe_persist", "Energy Probe (Persist)"),
     ]
 
     meter = models.ForeignKey(

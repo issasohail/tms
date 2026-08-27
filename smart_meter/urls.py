@@ -63,6 +63,7 @@ urlpatterns = [
     path('meters/<int:pk>/', views.meter_detail, name='meter_detail'),
     path('meters/<int:pk>/credit-control/', views_credit_control.credit_control, name='credit_control'),
     path('meters/<int:pk>/edit/', views.meter_edit, name='meter_edit'),
+    path('meters/<int:pk>/reading-profile/', views.meter_reading_profile_update, name='meter_reading_profile_update'),
     path('meters/<int:pk>/role/', views.meter_role_update, name='meter_role_update'),
     path('meters/<int:pk>/delete/', views.meter_delete, name='meter_delete'),
     path('check-groups/', views.meter_check_group_list, name='meter_check_group_list'),

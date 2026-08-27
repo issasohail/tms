@@ -19,7 +19,7 @@ from django.db import DatabaseError, close_old_connections, connection, transact
 from django.db.models import Q
 from django.utils import timezone
 
-from smart_meter.dlt645 import parse_frame, verify_checksum
+from smart_meter.dlt645 import DIRECT_REGISTER_SPECS, parse_frame, verify_checksum
 from smart_meter.dlt645 import relay_state_from_status_word
 from smart_meter.utils.frames import build_read_028011FF
 
@@ -260,6 +260,7 @@ def _push_waiter(
     q: queue.Queue,
     expect_di: str | None,
     expect_controls=None,
+    persist_reply: bool = True,
 ):
     with REPLY_LOCK:
         REPLY_WAITERS.setdefault(meter_number, []).append(
@@ -267,11 +268,12 @@ def _push_waiter(
                 "q": q,
                 "expect_di": (expect_di or "").upper(),
                 "expect_controls": frozenset(expect_controls or ()),
+                "persist_reply": bool(persist_reply),
             }
         )
 
 
-def _deliver_if_match(meter_number: str, di: str, control_code: int, frame: bytes) -> bool:
+def _deliver_if_match(meter_number: str, di: str, control_code: int, frame: bytes):
     di = (di or "").upper()
     with REPLY_LOCK:
         lst = REPLY_WAITERS.get(meter_number) or []
@@ -285,8 +287,8 @@ def _deliver_if_match(meter_number: str, di: str, control_code: int, frame: byte
             if exp or controls:
                 lst.pop(i)
                 item["q"].put(frame)
-                return True
-        return False
+                return item
+        return None
 
 
 def _remove_waiter(meter_number: str, q: queue.Queue) -> None:
@@ -672,11 +674,19 @@ class ClientHandler(threading.Thread):
 
         # Deliver to a waiting "send-and-wait" caller (but skip keepalives)
         if di != "80808080" and ctrl_code in (0x91, 0x83, 0x9C, 0xDC) and meter_number:
-            delivered = _deliver_if_match(meter_number, di, ctrl_code, frame)
-            if not delivered:
+            matched_waiter = _deliver_if_match(meter_number, di, ctrl_code, frame)
+            if not matched_waiter:
                 acknowledge_late_prepaid_reply(meter_number, di, ctrl_code, frame)
-            if delivered and self.debug:
+            if matched_waiter and self.debug:
                 logger.debug(f"📤 Delivered reply to waiter for meter {meter_number}")
+
+            if matched_waiter and not matched_waiter.get("persist_reply", True):
+                logger.info(
+                    "VALIDATED_NONPERSISTENT_REPLY meter=%s DI=%s",
+                    meter_number,
+                    di,
+                )
+                return
 
         if not data:
             return
@@ -716,42 +726,22 @@ class ClientHandler(threading.Thread):
         # 0x028011FF response may replace the last confirmed relay status.
         status_word = data.get("status_word") if di == "028011FF" else None
         relay_state = parse_authoritative_relay_state(status_word)
+        if data.get("forward_active_energy_kwh") is not None:
+            # ``total_energy`` remains the authoritative tenant-billing register.
+            # Reverse energy is deliberately never netted into this value.
+            data["total_energy"] = data["forward_active_energy_kwh"]
+        elif di == "028011FF" and data.get("total_energy") is not None:
+            data["forward_active_energy_kwh"] = data["total_energy"]
+
+        live_field_names = {
+            field.name for field in LiveReading._meta.concrete_fields
+        } - {"id", "meter", "ts"}
         live_defaults = {
-            "balance": data.get("balance"),
-            "overdraft": data.get("overdraft"),
-            "voltage_a": data.get("voltage_a"),
-            "voltage_b": data.get("voltage_b"),
-            "voltage_c": data.get("voltage_c"),
-            "current_a": data.get("current_a"),
-            "current_b": data.get("current_b"),
-            "current_c": data.get("current_c"),
-            "total_power": data.get("total_power"),
-            "power_a": data.get("power_a"),
-            "power_b": data.get("power_b"),
-            "power_c": data.get("power_c"),
-            "pf_total": data.get("pf_total"),
-            "pf_a": data.get("pf_a"),
-            "pf_b": data.get("pf_b"),
-            "pf_c": data.get("pf_c"),
-            "total_energy": data.get("total_energy"),
-            "peak_total_energy": data.get("peak_total_energy"),
-            "valley_total_consumption": data.get("valley_total_consumption"),
-            "flat_total_consumption": data.get("flat_total_consumption"),
-            "source_ip": self.addr[0],
-            "source_port": self.addr[1],
-            "prev1_day_energy": data.get("prev1_day_energy"),
-            "prev1_day_peak_energy": data.get("prev1_day_peak_energy"),
-            "prev1_day_valley_energy": data.get("prev1_day_valley_energy"),
-            "prev1_day_flat_energy": data.get("prev1_day_flat_energy"),
-            "last2_days_energy": data.get("last2_days_energy"),
-            "last2_days_peak_energy": data.get("last2_days_peak_energy"),
-            "last2_days_valley_energy": data.get("last2_days_valley_energy"),
-            "last2_days_flat_energy": data.get("last2_days_flat_energy"),
-            "last3_days_energy": data.get("last3_days_energy"),
-            "last3_days_peak_energy": data.get("last3_days_peak_energy"),
-            "last3_days_valley_energy": data.get("last3_days_valley_energy"),
-            "last3_days_flat_energy": data.get("last3_days_flat_energy"),
+            key: value
+            for key, value in data.items()
+            if key in live_field_names and key != "status_word" and value is not None
         }
+        live_defaults.update(source_ip=self.addr[0], source_port=self.addr[1])
         if relay_state is not None:
             live_defaults["status_word"] = status_word
         with transaction.atomic():
@@ -769,29 +759,36 @@ class ClientHandler(threading.Thread):
         take_snapshot = (not last) or (
             (now - last.ts).total_seconds() >= SNAPSHOT_MINUTES * 60
         )
+        history_field_names = {
+            field.name for field in MeterReading._meta.concrete_fields
+        } - {"id", "meter", "ts"}
+        history_values = {
+            key: value
+            for key, value in data.items()
+            if key in history_field_names and value is not None
+        }
+        history_values.update(source_ip=self.addr[0], source_port=self.addr[1])
         if take_snapshot:
             with transaction.atomic():
                 MeterReading.objects.create(
                     meter=meter,
                     ts=now,
-                    total_energy=data.get("total_energy"),
-                    peak_total_energy=data.get("peak_total_energy"),
-                    valley_total_consumption=data.get("valley_total_consumption"),
-                    flat_total_consumption=data.get("flat_total_consumption"),
-                    total_power=data.get("total_power"),
-                    pf_total=data.get("pf_total"),
-                    voltage_a=data.get("voltage_a"),
-                    voltage_b=data.get("voltage_b"),
-                    voltage_c=data.get("voltage_c"),
-                    current_a=data.get("current_a"),
-                    current_b=data.get("current_b"),
-                    current_c=data.get("current_c"),
-                    source_ip=self.addr[0],
-                    source_port=self.addr[1],
+                    **history_values,
                 )
             logger.info(
                 "%s ✅ Stored live reading for meter %s",
                 timezone.localtime().isoformat(timespec="seconds"),
+                meter_number,
+            )
+        elif di in DIRECT_REGISTER_SPECS and last is not None:
+            # Direct polling returns one DI per frame. Merge the cycle into the
+            # current cadence row so the two energy totals and phases correlate.
+            for key, value in history_values.items():
+                setattr(last, key, value)
+            last.save(update_fields=list(history_values))
+            logger.info(
+                "Merged DI=%s into current snapshot for meter %s",
+                di,
                 meter_number,
             )
         else:
@@ -922,6 +919,7 @@ class DbCommandPoller(threading.Thread):
                     waiter,
                     cmd.expect_di,
                     expect_controls={0x83} if is_money else None,
+                    persist_reply=getattr(cmd, "source", "") != "energy_probe",
                 )
             try:
                 frame = bytes.fromhex(cmd.frame_hex.strip())

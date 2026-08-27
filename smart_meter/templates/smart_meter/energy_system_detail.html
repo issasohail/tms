@@ -18,6 +18,25 @@
     </div>
   </form>
 
+  <div class="card mb-3">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <span class="fw-semibold">Grid-interface meter snapshot</span>
+      {% if system.grid_interface_meter %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_detail' system.grid_interface_meter.pk %}">{{ system.grid_interface_meter.meter_number }}</a>{% endif %}
+    </div>
+    {% if grid_reading %}<div class="card-body py-2">
+      <div class="row g-2 small">
+        <div class="col-md-4"><strong>Total Forward Energy:</strong> {% if grid_forward_total is not None %}{{ grid_forward_total }} kWh{% else %}Unavailable{% endif %}</div>
+        <div class="col-md-4"><strong>Total Reverse Energy:</strong> {% if grid_reverse_total is not None %}{{ grid_reverse_total }} kWh{% else %}Unavailable{% endif %}</div>
+        <div class="col-md-4"><strong>Net Grid Energy (Forward - Reverse):</strong> {% if grid_net_total is not None %}{{ grid_net_total }} kWh{% else %}Unavailable{% endif %}</div>
+        <div class="col-md-4"><strong>Voltage A / B / C:</strong> {% if grid_reading.voltage_a is not None %}{{ grid_reading.voltage_a }} V{% else %}Unavailable{% endif %} / {% if grid_reading.voltage_b is not None %}{{ grid_reading.voltage_b }} V{% else %}Unavailable{% endif %} / {% if grid_reading.voltage_c is not None %}{{ grid_reading.voltage_c }} V{% else %}Unavailable{% endif %}</div>
+        <div class="col-md-4"><strong>Current A / B / C:</strong> {% if grid_reading.current_a is not None %}{{ grid_reading.current_a }} A{% else %}Unavailable{% endif %} / {% if grid_reading.current_b is not None %}{{ grid_reading.current_b }} A{% else %}Unavailable{% endif %} / {% if grid_reading.current_c is not None %}{{ grid_reading.current_c }} A{% else %}Unavailable{% endif %}</div>
+        <div class="col-md-4"><strong>Power A / B / C:</strong> {% if grid_reading.power_a is not None %}{{ grid_reading.power_a }}{% else %}Unavailable{% endif %} / {% if grid_reading.power_b is not None %}{{ grid_reading.power_b }}{% else %}Unavailable{% endif %} / {% if grid_reading.power_c is not None %}{{ grid_reading.power_c }}{% else %}Unavailable{% endif %}; <strong>Total:</strong> {% if grid_reading.total_power is not None %}{{ grid_reading.total_power }}{% else %}Unavailable{% endif %}</div>
+        <div class="col-12"><strong>Reading timestamp / freshness:</strong> {{ grid_reading.ts|date:"M d, Y H:i:s" }} ({{ grid_reading.ts|timesince }} ago)</div>
+        {% if perms.smart_meter.change_meter %}<div class="col-md-6"><form method="post" action="{% url 'smart_meter:meter_reading_profile_update' system.grid_interface_meter.pk %}" class="d-flex gap-2 align-items-center">{% csrf_token %}<input type="hidden" name="energy_system_id" value="{{ system.pk }}"><label class="text-nowrap">Reading profile</label>{{ grid_profile_form.reading_profile }}<button class="btn btn-sm btn-outline-primary">Save</button></form></div>{% endif %}
+      </div>
+    </div>{% else %}<div class="card-body py-2 text-muted">No grid-interface reading is available.</div>{% endif %}
+  </div>
+
   {% if report.withheld_reasons %}
     <div class="alert alert-warning py-2"><strong>Withheld inputs:</strong><ul class="mb-0">{% for reason in report.withheld_reasons %}<li>{{ reason }}</li>{% endfor %}</ul></div>
   {% endif %}
@@ -26,8 +45,10 @@
     <div class="col-lg-6"><div class="card h-100"><div class="card-header fw-semibold">Energy balance</div><div class="table-responsive"><table class="table table-sm mb-0">
       <tr><th>Output</th><td class="text-end">{{ report.output_kwh|default_if_none:"Unavailable" }}</td></tr>
       <tr><th>Billing total</th><td class="text-end">{{ report.billing_total_kwh|default_if_none:"Unavailable" }}</td></tr>
-      <tr><th>Grid import</th><td class="text-end">{{ report.grid_import_kwh|default_if_none:"Unavailable" }}</td></tr>
-      <tr><th>Utility export</th><td class="text-end">{{ report.export_kwh|default_if_none:"Unavailable for this period" }}</td></tr>
+      <tr><th>Grid Import Delta (Forward register)</th><td class="text-end">{{ report.grid_import_kwh|default_if_none:"Unavailable" }}</td></tr>
+      <tr><th>Grid Export Delta (Reverse register)</th><td class="text-end">{{ report.grid_export_kwh|default_if_none:"Unavailable" }}</td></tr>
+      <tr><th>Net Grid Energy (Import - Export)</th><td class="text-end">{{ report.net_grid_energy_kwh|default_if_none:"Unavailable" }}</td></tr>
+      <tr><th>Utility-bill Export</th><td class="text-end">{{ report.export_kwh|default_if_none:"Unavailable for this period" }}</td></tr>
       <tr><th>Building consumption</th><td class="text-end fw-semibold">{{ report.building_consumption_kwh|default_if_none:"Withheld" }}</td></tr>
       {% if system.output_meter_includes_grid_export == None %}<tr><th>Raw Output-to-Billing Difference</th><td class="text-end fw-semibold">{{ report.raw_output_to_billing_difference_kwh|default_if_none:"Withheld" }}</td></tr>
       {% else %}<tr><th>Distribution variance</th><td class="text-end fw-semibold">{{ report.distribution_variance_kwh|default_if_none:"Withheld" }}</td></tr>{% endif %}

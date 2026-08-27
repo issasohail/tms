@@ -21,13 +21,13 @@ from typing import Tuple, Optional, Dict
 # ----------------------------
 
 
-def _decode_bcd(raw: bytes, decimals: int = 2) -> float:
+def _decode_bcd(raw: bytes, decimals: int = 2) -> Decimal:
     """
     Decode DL/T645-style BCD bytes where each raw byte has +0x33 offset.
-    Returns float rounded by string placement of decimal point.
+    Returns an exact Decimal using string placement of the decimal point.
     """
     if not raw:
-        return 0.0
+        return Decimal("0")
     # undo +0x33
     decoded = [(b - 0x33) & 0xFF for b in raw]
     digits = []
@@ -43,10 +43,33 @@ def _decode_bcd(raw: bytes, decimals: int = 2) -> float:
         digits.append(str(lo))
     num = "".join(digits).lstrip("0") or "0"
     if decimals <= 0:
-        return float(num)
+        return Decimal(num)
     if len(num) <= decimals:
-        return float("0." + num.zfill(decimals))
-    return float(num[:-decimals] + "." + num[-decimals:])
+        return Decimal("0." + num.zfill(decimals))
+    return Decimal(num[:-decimals] + "." + num[-decimals:])
+
+
+def _decode_bcd_decimal(raw: bytes, decimals: int) -> Decimal:
+    """Strictly decode a +0x33, little-endian BCD register as ``Decimal``.
+
+    Direct cumulative-energy and phase-register replies must never turn malformed
+    nibbles into zero or pass through binary floating point.  The older bulk
+    summary decoder remains tolerant for backward compatibility.
+    """
+    if not raw:
+        raise ValueError("register payload is empty")
+    decoded = bytes(((byte - 0x33) & 0xFF) for byte in raw)
+    digit_pairs = []
+    for byte in reversed(decoded):
+        high, low = (byte >> 4) & 0x0F, byte & 0x0F
+        if high > 9 or low > 9:
+            raise ValueError("register payload contains non-BCD data")
+        digit_pairs.append(f"{high}{low}")
+    digits = "".join(digit_pairs)
+    if decimals:
+        digits = digits.zfill(decimals + 1)
+        digits = f"{digits[:-decimals]}.{digits[-decimals:]}"
+    return Decimal(digits)
 
 
 def _decode_hex_no33(raw: bytes) -> str:
@@ -247,6 +270,37 @@ def parse_bulk_summary_frame(frame: bytes, start_idx: int) -> Dict:
 
     return out
 
+
+DIRECT_REGISTER_SPECS = {
+    "00010000": ("forward_active_energy_kwh", 4, 2),
+    "00020000": ("reverse_active_energy_kwh", 4, 2),
+    "02010100": ("voltage_a", 2, 1),
+    "02010200": ("voltage_b", 2, 1),
+    "02010300": ("voltage_c", 2, 1),
+    "02020100": ("current_a", 3, 3),
+    "02020200": ("current_b", 3, 3),
+    "02020300": ("current_c", 3, 3),
+    "02030000": ("total_power", 3, 4),
+    "02030100": ("power_a", 3, 4),
+    "02030200": ("power_b", 3, 4),
+    "02030300": ("power_c", 3, 4),
+}
+
+
+def parse_direct_register(di: str, payload: bytes) -> Optional[Dict[str, Decimal]]:
+    """Decode one supported direct-read reply, rejecting short/extra/non-BCD data."""
+    spec = DIRECT_REGISTER_SPECS.get(di)
+    if spec is None:
+        return None
+    field_name, byte_count, decimals = spec
+    if len(payload) != byte_count:
+        return None
+    try:
+        value = _decode_bcd_decimal(payload, decimals)
+    except (InvalidOperation, ValueError):
+        return None
+    return {field_name: value}
+
 # ----------------------------
 # Top-level frame parsing
 # ----------------------------
@@ -300,6 +354,10 @@ def parse_frame(frame: bytes, accept_bad_checksum: bool = False) -> Optional[dic
     # Bulk summary with extended counters
     if di == "028011FF":
         parsed["data"] = parse_bulk_summary_frame(frame, start_idx=start)
+        return parsed
+
+    if di in DIRECT_REGISTER_SPECS:
+        parsed["data"] = parse_direct_register(di, data[4:])
         return parsed
 
     # Unknown DI: still return header info

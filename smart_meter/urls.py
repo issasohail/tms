@@ -5,6 +5,7 @@ from .views import generate_bill_view, view_bills
 from .views import recharge_balance, meter_status
 from smart_meter.views import meter_settings, refund_balance, toggle_power
 from . import views
+from . import views_reconciliation
 from . import views_schedule
 from . import views_credit_control
 from .views_dashboard import energy_dashboard
@@ -26,6 +27,23 @@ from .views_invoice import (
 app_name = 'smart_meter'
 
 urlpatterns = [
+
+    path("energy-systems/", views_reconciliation.energy_system_list, name="energy_system_list"),
+    path("energy-systems/<int:pk>/", views_reconciliation.energy_system_detail, name="energy_system_detail"),
+    path("energy-systems/<int:pk>/reassign-meter/", views_reconciliation.energy_system_reassign_meter, name="energy_system_reassign_meter"),
+    path("energy-systems/<int:system_id>/inverter-statements/add/", views_reconciliation.inverter_statement_add, name="inverter_statement_add"),
+    path("inverter-statements/<int:pk>/edit/", views_reconciliation.inverter_statement_edit, name="inverter_statement_edit"),
+    path("inverter-statements/<int:pk>/confirm/", views_reconciliation.inverter_statement_confirm, name="inverter_statement_confirm"),
+    path("inverter-statements/<int:pk>/reopen/", views_reconciliation.inverter_statement_reopen, name="inverter_statement_reopen"),
+    path("utility-bills/upload/", views_reconciliation.utility_bill_upload, name="utility_bill_upload"),
+    path("utility-bills/<int:pk>/", views_reconciliation.utility_bill_detail, name="utility_bill_detail"),
+    path("utility-bills/<int:pk>/edit/", views_reconciliation.utility_bill_edit, name="utility_bill_edit"),
+    path("utility-bills/<int:pk>/confirm/", views_reconciliation.utility_bill_confirm, name="utility_bill_confirm"),
+    path("utility-bills/<int:pk>/finalize/", views_reconciliation.utility_bill_finalize, name="utility_bill_finalize"),
+    path("utility-bills/<int:pk>/reopen/", views_reconciliation.utility_bill_reopen, name="utility_bill_reopen"),
+    path("utility-bills/<int:bill_id>/payments/add/", views_reconciliation.utility_bill_payment_add, name="utility_bill_payment_add"),
+    path("utility-bill-payments/<int:pk>/edit/", views_reconciliation.utility_bill_payment_edit, name="utility_bill_payment_edit"),
+    path("utility-bill-payments/<int:pk>/confirm/", views_reconciliation.utility_bill_payment_confirm, name="utility_bill_payment_confirm"),
 
     path("assign/", assign_meter, name="assign_meter"),
     path("dashboard/<int:unit_id>/", meter_dashboard, name="meter_dashboard"),

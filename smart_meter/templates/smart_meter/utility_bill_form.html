@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Utility Bill{% endblock %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<div class="container-fluid"><div class="card"><div class="card-header"><h3 class="h5 mb-0">Upload utility bill</h3><small class="text-muted">PDF text is extracted for review. The saved draft remains excluded from calculations until confirmed.</small></div><div class="card-body">
+  <form method="post" enctype="multipart/form-data">{% csrf_token %}<div class="row g-3">{% for field in form %}<div class="col-md-6"><label class="form-label">{{ field.label }}</label>{{ field }}{% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}</div><button class="btn btn-primary mt-3">Extract and save draft</button></form>
+</div></div></div>
+{% endblock %}

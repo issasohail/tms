@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}{{ system.name }} Energy Reconciliation{% endblock %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<div class="container-fluid">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div><h2 class="mb-0">{{ system.name }} — Energy Reconciliation</h2><small class="text-muted">Only confirmed, exact-period source records feed calculations.</small></div>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:energy_system_list' %}">All systems</a>
+  </div>
+
+  <form method="get" class="card card-body py-2 mb-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-sm-4"><label class="form-label small mb-1">Period start</label><input class="form-control form-control-sm" type="date" name="start" value="{{ report.period_start|date:'Y-m-d' }}"></div>
+      <div class="col-sm-4"><label class="form-label small mb-1">Period end (exclusive)</label><input class="form-control form-control-sm" type="date" name="end" value="{{ report.period_end|date:'Y-m-d' }}"></div>
+      <div class="col-sm-4"><button class="btn btn-sm btn-primary w-100">Reconcile</button></div>
+    </div>
+  </form>
+
+  {% if report.withheld_reasons %}
+    <div class="alert alert-warning py-2"><strong>Withheld inputs:</strong><ul class="mb-0">{% for reason in report.withheld_reasons %}<li>{{ reason }}</li>{% endfor %}</ul></div>
+  {% endif %}
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-6"><div class="card h-100"><div class="card-header fw-semibold">Energy balance</div><div class="table-responsive"><table class="table table-sm mb-0">
+      <tr><th>Output</th><td class="text-end">{{ report.output_kwh|default_if_none:"Unavailable" }}</td></tr>
+      <tr><th>Billing total</th><td class="text-end">{{ report.billing_total_kwh|default_if_none:"Unavailable" }}</td></tr>
+      <tr><th>Grid import</th><td class="text-end">{{ report.grid_import_kwh|default_if_none:"Unavailable" }}</td></tr>
+      <tr><th>Utility export</th><td class="text-end">{{ report.export_kwh|default_if_none:"Unavailable for this period" }}</td></tr>
+      <tr><th>Building consumption</th><td class="text-end fw-semibold">{{ report.building_consumption_kwh|default_if_none:"Withheld" }}</td></tr>
+      {% if system.output_meter_includes_grid_export == None %}<tr><th>Raw Output-to-Billing Difference</th><td class="text-end fw-semibold">{{ report.raw_output_to_billing_difference_kwh|default_if_none:"Withheld" }}</td></tr>
+      {% else %}<tr><th>Distribution variance</th><td class="text-end fw-semibold">{{ report.distribution_variance_kwh|default_if_none:"Withheld" }}</td></tr>{% endif %}
+      <tr><th>Net Non-Grid Contribution</th><td class="text-end">{{ report.net_non_grid_contribution_kwh|default_if_none:"Withheld" }}</td></tr>
+      <tr><th>{{ report.pv_storage_residual_label }}</th><td class="text-end">{{ report.pv_storage_residual_kwh|default_if_none:"Unavailable" }}</td></tr>
+    </table></div></div></div>
+    <div class="col-lg-6"><div class="card h-100"><div class="card-header fw-semibold">Financial (not full solar profit)</div><div class="table-responsive"><table class="table table-sm mb-0">
+      <tr><th>Tenant Energy Revenue</th><td class="text-end">{{ report.tenant_energy_revenue }}</td></tr>
+      <tr><th>Current-Cycle Utility Cost</th><td class="text-end">{{ report.current_cycle_utility_cost|default_if_none:"Unavailable" }}</td></tr>
+      <tr><th>Operating Energy Margin</th><td class="text-end fw-semibold">{{ report.operating_energy_margin|default_if_none:"Withheld" }}</td></tr>
+      <tr><th>Tenant Electricity Collections</th><td class="text-end">{{ report.tenant_electricity_collections }}</td></tr>
+      <tr><th>Utility Amount Paid</th><td class="text-end">{{ report.utility_amount_paid|default_if_none:"Not recorded" }}</td></tr>
+      <tr><th>Cash Position</th><td class="text-end fw-semibold">{{ report.cash_position|default_if_none:"Withheld" }}</td></tr>
+      <tr><th>Utility Payable/Credit</th><td class="text-end">{{ report.utility_payable_credit|default_if_none:"Unavailable" }}</td></tr>
+      <tr><th>Tenant Outstanding</th><td class="text-end">{{ report.tenant_outstanding }}</td></tr>
+    </table></div><div class="card-footer small text-muted">Operating Energy Margin excludes depreciation, financing, battery replacement, and other investment costs.</div></div></div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6"><div class="card"><div class="card-header d-flex justify-content-between"><span class="fw-semibold">Inverter statements</span>{% if perms.smart_meter.add_inverterperiodstatement %}<a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:inverter_statement_add' system.pk %}">Add</a>{% endif %}</div><div class="list-group list-group-flush">
+      {% for statement in system.inverter_statements.all %}<div class="list-group-item d-flex justify-content-between align-items-center"><span>{{ statement.period_start }} to {{ statement.period_end }} — {{ statement.pv_generation_kwh }} kWh</span><span>{% if statement.confirmed_at %}<span class="badge bg-success">Confirmed</span><form method="post" action="{% url 'smart_meter:inverter_statement_reopen' statement.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="reason" value="Correction required"><button class="btn btn-sm btn-outline-warning">Reopen</button></form>{% else %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:inverter_statement_edit' statement.pk %}">Edit</a><form method="post" action="{% url 'smart_meter:inverter_statement_confirm' statement.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-success">Confirm</button></form>{% endif %}</span></div>{% empty %}<div class="list-group-item text-muted">No inverter statements.</div>{% endfor %}
+    </div></div></div>
+    {% if perms.smart_meter.change_energysystem %}<div class="col-lg-6"><div class="card"><div class="card-header fw-semibold">Reassign meter</div><div class="card-body"><form method="post" action="{% url 'smart_meter:energy_system_reassign_meter' system.pk %}">{% csrf_token %}{{ reassign_form.as_p }}<button class="btn btn-sm btn-primary">Apply assignment</button></form></div></div></div>{% endif %}
+  </div>
+</div>
+{% endblock %}

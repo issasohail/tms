@@ -11,6 +11,11 @@
       <small class="text-muted">Compare each audit meter with its downstream billing meters.</small>
     </div>
     <div class="d-flex gap-2">
+      {% if show_linked %}
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_check_group_list' %}">Hide linked/archived</a>
+      {% else %}
+        <a class="btn btn-sm btn-outline-secondary" href="?show_linked=1">Show linked/archived groups</a>
+      {% endif %}
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_list' %}">Meters</a>
       <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:meter_check_group_add' %}">
         <i class="fas fa-plus me-1"></i>New Check Group

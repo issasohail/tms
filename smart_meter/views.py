@@ -1301,8 +1301,12 @@ def meter_check_group_list(request):
     from django.db.models import Count
 
     today = timezone.localdate()
+    show_linked = request.GET.get("show_linked") == "1"
+    group_queryset = MeterCheckGroup.objects.all()
+    if not show_linked:
+        group_queryset = group_queryset.filter(superseded_by_energy_system__isnull=True)
     groups = list(
-        MeterCheckGroup.objects.select_related(
+        group_queryset.select_related(
             "property",
             "check_meter",
             "check_meter__unit",
@@ -1341,7 +1345,11 @@ def meter_check_group_list(request):
             coverage_by_group[group_id].add(property_name)
     for group in groups:
         group.covered_property_names = ", ".join(sorted(coverage_by_group[group.pk]))
-    return render(request, "smart_meter/check_group_list.html", {"groups": groups})
+    return render(
+        request,
+        "smart_meter/check_group_list.html",
+        {"groups": groups, "show_linked": show_linked},
+    )
 
 
 @require_POST
@@ -1612,49 +1620,19 @@ def meter_check_group_detail(request, pk):
             initial={"start_date": today},
         )
 
-    from smart_meter.views_dashboard import _per_meter_series
+    from smart_meter.services.reconciliation import calculate_check_group_period
 
-    check_labels, check_datasets, check_rows, check_totals = _per_meter_series(
-        Meter.objects.filter(pk=group.check_meter_id), start_date, end_date, "daily"
-    )
-    audit_summary_start_kwh = check_rows[0]["start_kwh"] if check_rows else None
-    audit_summary_end_kwh = check_rows[-1]["end_kwh"] if check_rows else None
-    effective_memberships = list(
-        group.memberships.filter(start_date__lte=end_date)
-        .filter(Q(end_date__isnull=True) | Q(end_date__gte=start_date))
-        .select_related("billing_meter", "billing_meter__unit", "billing_meter__unit__property")
-        .order_by("start_date", "billing_meter__meter_number")
-    )
-    billing_rows = []
-    billing_total_kwh = Decimal("0")
-    for membership in effective_memberships:
-        segment_start = max(start_date, membership.start_date)
-        segment_end = min(end_date, membership.end_date or end_date)
-        _labels, _datasets, segment_rows, segment_totals = _per_meter_series(
-            Meter.objects.filter(pk=membership.billing_meter_id),
-            segment_start,
-            segment_end,
-            "daily",
-        )
-        billing_rows.extend(segment_rows)
-        billing_total_kwh += Decimal(str(segment_totals["total_kwh"]))
-    billing_rows.sort(
-        key=lambda row: (
-            row["period_key"],
-            row["unit_number"],
-            row["property_name"],
-            row["meter_number"],
-        )
-    )
-    check_kwh = Decimal(str(check_totals["total_kwh"]))
-    billing_kwh = billing_total_kwh
-    variance_kwh = check_kwh - billing_kwh
-    variance_rs = variance_kwh * Decimal(
-        str(group.check_meter.effective_unit_rate or 0)
-    )
-    leakage_percent = (
-        (variance_kwh / check_kwh * Decimal(100)) if check_kwh else Decimal(0)
-    )
+    reconciliation = calculate_check_group_period(group, start_date, end_date)
+    check_rows = reconciliation["check_rows"]
+    billing_rows = reconciliation["billing_rows"]
+    effective_memberships = reconciliation["effective_memberships"]
+    audit_summary_start_kwh = reconciliation["audit_summary_start_kwh"]
+    audit_summary_end_kwh = reconciliation["audit_summary_end_kwh"]
+    check_kwh = reconciliation["check_kwh"]
+    billing_kwh = reconciliation["billing_kwh"]
+    variance_kwh = reconciliation["variance_kwh"]
+    variance_rs = reconciliation["variance_rs"]
+    leakage_percent = reconciliation["leakage_percent"]
 
     memberships = list(group.memberships.select_related(
         "billing_meter", "billing_meter__unit", "billing_meter__unit__property"

@@ -53,6 +53,11 @@
         </a>
       </li>
       <li>
+        <a class="nav-link" href="{% url 'smart_meter:energy_system_list' %}" aria-label="Energy Reconciliation">
+          <span class="d-sm-none">Solar</span><span class="d-none d-sm-inline">Energy<BR>Recon</span>
+        </a>
+      </li>
+      <li>
         <a class="nav-link" href="{% url 'smart_meter:billing_summary' %}?month={{ start_date|date:'Y-m' }}" aria-label="Dashboard">
           <span class="d-sm-none">Billing</span><span class="d-none d-sm-inline">Monthly<BR>Billing</span>
         </a>

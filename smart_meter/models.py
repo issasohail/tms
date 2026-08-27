@@ -50,6 +50,14 @@ class Meter(models.Model):
         (METER_ROLE_BILLING, "Billing"),
         (METER_ROLE_CHECK, "Audit"),
     ]
+    MEASUREMENT_POINT_INVERTER_OUTPUT = "inverter_output"
+    MEASUREMENT_POINT_GRID_INTERFACE = "grid_interface"
+    MEASUREMENT_POINT_OTHER_AUDIT = "other_audit"
+    MEASUREMENT_POINT_CHOICES = [
+        (MEASUREMENT_POINT_INVERTER_OUTPUT, "Inverter Output"),
+        (MEASUREMENT_POINT_GRID_INTERFACE, "Grid Interface"),
+        (MEASUREMENT_POINT_OTHER_AUDIT, "Other Audit"),
+    ]
 
     unit = models.ForeignKey(
         "properties.Unit",
@@ -75,6 +83,12 @@ class Meter(models.Model):
         max_length=10,
         choices=METER_ROLE_CHOICES,
         default=METER_ROLE_BILLING,
+    )
+    measurement_point = models.CharField(
+        max_length=24,
+        choices=MEASUREMENT_POINT_CHOICES,
+        blank=True,
+        default="",
     )
     power_status = models.CharField(
         max_length=10, choices=[("on", "On"), ("off", "Off")], default="on")
@@ -146,6 +160,13 @@ class Meter(models.Model):
             ):
                 raise ValidationError({
                     "meter_role": "Assign a replacement Audit meter to this Check Group before changing it to Billing."
+                })
+            if (
+                new_role == self.METER_ROLE_BILLING and
+                self.energy_system_assignments.filter(end_date__isnull=True).exists()
+            ):
+                raise ValidationError({
+                    "meter_role": "Remove this meter from its active Energy System assignment before changing it to Billing."
                 })
             if (
                 new_role == self.METER_ROLE_CHECK and
@@ -233,6 +254,15 @@ class Meter(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=['meter_number']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(meter_role="check")
+                    | Q(measurement_point="")
+                ),
+                name="billing_meter_measurement_point_blank",
+            ),
         ]
 
 
@@ -449,6 +479,13 @@ class MeterCheckGroup(models.Model):
     notes = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    superseded_by_energy_system = models.ForeignKey(
+        "EnergySystem",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="superseded_input_groups",
+    )
 
     def clean(self):
         if (
@@ -534,6 +571,407 @@ class MeterCheckGroupMembership(models.Model):
     def __str__(self):
         end = self.end_date or "current"
         return f"{self.billing_meter.meter_number} in {self.group.name} ({self.start_date} to {end})"
+
+
+class EnergySystem(models.Model):
+    name = models.CharField(max_length=80)
+    output_group = models.OneToOneField(
+        MeterCheckGroup,
+        on_delete=models.PROTECT,
+        related_name="energy_system",
+    )
+    grid_interface_meter = models.ForeignKey(
+        Meter,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={
+            "meter_role": Meter.METER_ROLE_CHECK,
+            "measurement_point": Meter.MEASUREMENT_POINT_GRID_INTERFACE,
+        },
+        related_name="energy_systems_as_grid_interface",
+    )
+    output_meter_includes_grid_export = models.BooleanField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def reassign_meter(self, role, new_meter, changed_by=None, effective_date=None):
+        """Atomically replace an Energy System meter using exclusive end dates."""
+        if role not in dict(EnergySystemMeterAssignment.ROLE_CHOICES):
+            raise ValidationError({"role": "Select a valid Energy System meter role."})
+        effective_date = effective_date or timezone.localdate()
+        expected_point = {
+            EnergySystemMeterAssignment.ROLE_GRID_INTERFACE: Meter.MEASUREMENT_POINT_GRID_INTERFACE,
+            EnergySystemMeterAssignment.ROLE_OUTPUT: Meter.MEASUREMENT_POINT_INVERTER_OUTPUT,
+        }[role]
+        if new_meter.meter_role != Meter.METER_ROLE_CHECK:
+            raise ValidationError({"meter": "Energy System meters must have the Audit role."})
+        if new_meter.measurement_point != expected_point:
+            raise ValidationError({
+                "meter": f"This role requires the {dict(Meter.MEASUREMENT_POINT_CHOICES)[expected_point]} measurement point."
+            })
+        if EnergySystemMeterAssignment.objects.filter(
+            meter=new_meter,
+            end_date__isnull=True,
+        ).exclude(energy_system=self).exists():
+            raise ValidationError({"meter": "This meter is already actively assigned to another Energy System."})
+
+        with transaction.atomic():
+            locked = EnergySystem.objects.select_for_update().get(pk=self.pk)
+            Meter.objects.select_for_update().get(pk=new_meter.pk)
+            if EnergySystemMeterAssignment.objects.select_for_update().filter(
+                meter=new_meter,
+                end_date__isnull=True,
+            ).exclude(energy_system=locked).exists():
+                raise ValidationError({"meter": "This meter is already actively assigned to another Energy System."})
+            current = (
+                EnergySystemMeterAssignment.objects.select_for_update()
+                .filter(energy_system=locked, role=role, end_date__isnull=True)
+                .first()
+            )
+            if current and current.meter_id == new_meter.pk:
+                return current
+            if current:
+                if effective_date <= current.start_date:
+                    raise ValidationError({"effective_date": "The effective date must be after the current assignment start date."})
+                current.end_date = effective_date
+                current.save(update_fields=["end_date"])
+            assignment = EnergySystemMeterAssignment.objects.create(
+                energy_system=locked,
+                role=role,
+                meter=new_meter,
+                start_date=effective_date,
+                changed_by=changed_by,
+            )
+            if role == EnergySystemMeterAssignment.ROLE_GRID_INTERFACE:
+                locked.grid_interface_meter = new_meter
+                locked.save(update_fields=["grid_interface_meter", "updated_at"])
+            else:
+                locked.output_group.check_meter = new_meter
+                locked.output_group.full_clean()
+                locked.output_group.save(update_fields=["check_meter"])
+            self.grid_interface_meter_id = locked.grid_interface_meter_id
+            return assignment
+
+    def __str__(self):
+        return self.name
+
+
+class EnergySystemMeterAssignment(models.Model):
+    ROLE_GRID_INTERFACE = "grid_interface"
+    ROLE_OUTPUT = "output"
+    ROLE_CHOICES = [
+        (ROLE_GRID_INTERFACE, "Grid Interface"),
+        (ROLE_OUTPUT, "Inverter Output"),
+    ]
+
+    energy_system = models.ForeignKey(
+        EnergySystem,
+        on_delete=models.CASCADE,
+        related_name="meter_assignments",
+    )
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    meter = models.ForeignKey(
+        Meter,
+        on_delete=models.PROTECT,
+        related_name="energy_system_assignments",
+    )
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(end_date__isnull=True) | Q(end_date__gt=models.F("start_date")),
+                name="energy_system_assignment_end_after_start",
+            ),
+            models.UniqueConstraint(
+                fields=["energy_system", "role"],
+                condition=Q(end_date__isnull=True),
+                name="one_open_energy_system_assignment_per_role",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        # MySQL cannot materialize the conditional unique constraint, so enforce
+        # the same rule on every ordinary application save as well as in the
+        # row-locked reassignment service.
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.energy_system}: {self.get_role_display()} / {self.meter.meter_number}"
+
+
+class UtilityConnection(models.Model):
+    energy_system = models.OneToOneField(
+        EnergySystem,
+        on_delete=models.CASCADE,
+        related_name="utility_connection",
+    )
+    consumer_id = models.CharField(max_length=30, unique=True, db_index=True)
+    reference_no = models.CharField(max_length=30, blank=True)
+    dg_capacity_kw = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    property_label = models.CharField(max_length=80, blank=True)
+
+    def __str__(self):
+        return f"{self.consumer_id} — {self.property_label or self.energy_system.name}"
+
+
+class UtilityBillCycle(models.Model):
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("incomplete", "Incomplete"),
+        ("reconciled", "Reconciled"),
+        ("final", "Final"),
+    ]
+
+    utility_connection = models.ForeignKey(
+        UtilityConnection,
+        on_delete=models.PROTECT,
+        related_name="bill_cycles",
+    )
+    bill_month = models.CharField(max_length=10)
+    period_start = models.DateField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True)
+    reading_date = models.DateField(null=True, blank=True)
+    issue_date = models.DateField(null=True, blank=True)
+    due_date = models.DateField(null=True, blank=True)
+
+    import_off_peak_previous = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    import_off_peak_current = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    import_off_peak_kwh = models.DecimalField(max_digits=10, decimal_places=3, default=0)
+    import_peak_previous = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    import_peak_current = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    import_peak_kwh = models.DecimalField(max_digits=10, decimal_places=3, default=0)
+    export_off_peak_previous = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    export_off_peak_current = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    export_off_peak_kwh = models.DecimalField(max_digits=10, decimal_places=3, default=0)
+    export_peak_previous = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    export_peak_current = models.DecimalField(max_digits=12, decimal_places=3, null=True, blank=True)
+    export_peak_kwh = models.DecimalField(max_digits=10, decimal_places=3, default=0)
+
+    total_electricity_charges = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    taxes = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    current_bill = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    arrears = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_fpa = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    grand_total = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="draft")
+    attachment = models.FileField(upload_to="utility_bills/%Y/%m/")
+    extracted_raw = models.JSONField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    finalized_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(period_end__gt=models.F("period_start")) | Q(period_start__isnull=True),
+                name="bill_cycle_period_end_after_start",
+            ),
+            models.UniqueConstraint(
+                fields=["utility_connection", "period_start", "period_end"],
+                name="unique_bill_cycle_per_connection_and_period",
+            ),
+        ]
+
+    @property
+    def import_kwh(self):
+        return self.import_off_peak_kwh + self.import_peak_kwh
+
+    @property
+    def export_kwh(self):
+        return self.export_off_peak_kwh + self.export_peak_kwh
+
+    @property
+    def current_cycle_utility_cost(self):
+        return (self.current_bill or 0) + (self.total_fpa or 0)
+
+    def __str__(self):
+        return f"{self.utility_connection.consumer_id} / {self.bill_month}"
+
+
+class UtilityBillPayment(models.Model):
+    bill_cycle = models.ForeignKey(
+        UtilityBillCycle,
+        on_delete=models.PROTECT,
+        related_name="payments",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    paid_at = models.DateTimeField()
+    reference = models.CharField(max_length=100, blank=True)
+    proof = models.FileField(upload_to="utility_bill_payments/%Y/%m/", null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(amount__gt=0),
+                name="utility_bill_payment_amount_positive",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.bill_cycle} / {self.amount}"
+
+
+class InverterPeriodStatement(models.Model):
+    energy_system = models.ForeignKey(
+        EnergySystem,
+        on_delete=models.CASCADE,
+        related_name="inverter_statements",
+    )
+    period_start = models.DateField()
+    period_end = models.DateField()
+    pv_reading_start_kwh = models.DecimalField(max_digits=12, decimal_places=3)
+    pv_reading_end_kwh = models.DecimalField(max_digits=12, decimal_places=3)
+    start_screenshot = models.ImageField(upload_to="inverter_statements/%Y/%m/", null=True, blank=True)
+    end_screenshot = models.ImageField(upload_to="inverter_statements/%Y/%m/", null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(period_end__gt=models.F("period_start")),
+                name="inverter_statement_end_after_start",
+            ),
+            models.CheckConstraint(
+                condition=Q(pv_reading_end_kwh__gte=models.F("pv_reading_start_kwh")),
+                name="inverter_statement_pv_end_not_before_start",
+            ),
+            models.UniqueConstraint(
+                fields=["energy_system", "period_start", "period_end"],
+                name="unique_inverter_statement_period",
+            ),
+        ]
+
+    @property
+    def pv_generation_kwh(self):
+        return self.pv_reading_end_kwh - self.pv_reading_start_kwh
+
+    def __str__(self):
+        return f"{self.energy_system} / {self.period_start} to {self.period_end}"
+
+
+class EnergyReconciliationAuditEvent(models.Model):
+    ACTION_CHOICES = [
+        ("created", "Created"),
+        ("confirmed", "Confirmed"),
+        ("finalized", "Finalized"),
+        ("reopened", "Reopened"),
+        ("edited", "Edited"),
+    ]
+    utility_bill_cycle = models.ForeignKey(
+        UtilityBillCycle,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="audit_events",
+    )
+    inverter_statement = models.ForeignKey(
+        InverterPeriodStatement,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="audit_events",
+    )
+    utility_bill_payment = models.ForeignKey(
+        UtilityBillPayment,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="audit_events",
+    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    reason = models.TextField(blank=True)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+    )
+    changed_at = models.DateTimeField(auto_now_add=True)
+    snapshot = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        utility_bill_cycle__isnull=False,
+                        inverter_statement__isnull=True,
+                        utility_bill_payment__isnull=True,
+                    )
+                    | Q(
+                        utility_bill_cycle__isnull=True,
+                        inverter_statement__isnull=False,
+                        utility_bill_payment__isnull=True,
+                    )
+                    | Q(
+                        utility_bill_cycle__isnull=True,
+                        inverter_statement__isnull=True,
+                        utility_bill_payment__isnull=False,
+                    )
+                ),
+                name="audit_event_exactly_one_target",
+            ),
+        ]
 
 
 class MeterAssignmentHistory(models.Model):

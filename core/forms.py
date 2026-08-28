@@ -373,6 +373,10 @@ class BackupSettingsForm(forms.Form):
         max_value=200,
         widget=forms.NumberInput(attrs={"class": "form-control form-control-sm"}),
     )
+    auto_delete_old_backups = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
     mysqldump_path = forms.CharField(
         required=False,
         widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}),
@@ -440,7 +444,6 @@ class BackupUploadForm(forms.Form):
     backup_file = forms.FileField(
         widget=forms.ClearableFileInput(attrs={"class": "form-control form-control-sm"}),
     )
-
     def clean_backup_file(self):
         upload = self.cleaned_data["backup_file"]
         name = upload.name.lower()

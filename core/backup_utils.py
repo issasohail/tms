@@ -1,4 +1,5 @@
 import json
+import gzip
 import os
 import shutil
 import sqlite3
@@ -22,7 +23,8 @@ def default_backup_settings():
     root = getattr(settings, "TMS_BACKUP_ROOT", settings.BASE_DIR / "tms_backups")
     return {
         "backup_root": str(root),
-        "retention_count": 10,
+        "retention_count": 3,
+        "auto_delete_old_backups": True,
         "mysqldump_path": getattr(settings, "MYSQLDUMP_PATH", "mysqldump"),
         "mysql_path": getattr(settings, "MYSQL_PATH", "mysql"),
         "include_db_in_full": True,
@@ -181,17 +183,16 @@ def choices_for(backups, backup_type):
     return choices
 
 
-def protected_backup_ids(backups, keep_per_type=MIN_PROTECTED_BACKUPS):
-    protected = set()
-    counts = {}
-    for backup in backups:
-        if not backup.file_exists:
-            continue
-        count = counts.get(backup.backup_type, 0)
-        if count < keep_per_type:
-            protected.add(backup.id)
-            counts[backup.backup_type] = count + 1
-    return protected
+def retention_count(config):
+    return max(int(config.get("retention_count") or MIN_PROTECTED_BACKUPS), 1)
+
+
+def protected_backup_ids(backups, keep_count=MIN_PROTECTED_BACKUPS):
+    """Protect the newest existing backup files, regardless of backup type."""
+    return {
+        backup.id
+        for backup in [item for item in backups if item.file_exists][:max(int(keep_count), 1)]
+    }
 
 
 def backup_storage_summary(config):
@@ -208,10 +209,11 @@ def backup_storage_summary(config):
     }
 
 
-def purge_old_backups(config, keep_per_type=MIN_PROTECTED_BACKUPS):
+def purge_old_backups(config, keep_count=None):
     root = ensure_backup_root(config)
     backups = list_backups(config)
-    protected = protected_backup_ids(backups, keep_per_type=keep_per_type)
+    keep_count = retention_count(config) if keep_count is None else max(int(keep_count), 1)
+    protected = protected_backup_ids(backups, keep_count=keep_count)
     deleted = []
     reclaimed_bytes = 0
     for backup in backups:
@@ -233,7 +235,7 @@ def _timestamp():
 
 def detect_uploaded_backup_type(uploaded_file):
     suffix = Path(uploaded_file.name).suffix.lower()
-    if suffix in {".sql", ".sqlite3"}:
+    if suffix in {".sql", ".sqlite3", ".gz"}:
         return "db"
     if suffix != ".zip":
         raise RuntimeError("Backup uploads must be .sql, .sqlite3, or .zip files.")
@@ -253,7 +255,8 @@ def detect_uploaded_backup_type(uploaded_file):
 
 def save_uploaded_backup(config, backup_type, uploaded_file):
     root = ensure_backup_root(config)
-    suffix = Path(uploaded_file.name).suffix.lower()
+    lower_name = uploaded_file.name.lower()
+    suffix = ".sql.gz" if lower_name.endswith(".sql.gz") else Path(lower_name).suffix
     prefixes = {
         "db": "tms_db_backup",
         "media": "tms_media_backup",
@@ -261,8 +264,8 @@ def save_uploaded_backup(config, backup_type, uploaded_file):
     }
     if backup_type not in prefixes:
         raise RuntimeError("Invalid backup type.")
-    if backup_type == "db" and suffix not in {".sql", ".sqlite3"}:
-        raise RuntimeError("Database backup uploads must be .sql or .sqlite3.")
+    if backup_type == "db" and suffix not in {".sql", ".sql.gz", ".sqlite3"}:
+        raise RuntimeError("Database backup uploads must be .sql, .sql.gz, or .sqlite3.")
     if backup_type in {"media", "full"} and suffix != ".zip":
         raise RuntimeError("Media and full backup uploads must be .zip files.")
     target = root / f"{prefixes[backup_type]}_uploaded_{_timestamp()}{suffix}"
@@ -386,7 +389,8 @@ def create_db_backup(config):
         "mysqldump",
         "mysqldump path",
     )
-    target = root / f"tms_db_backup_{ts}.sql"
+    compress = bool(config.get("compress_backups", True))
+    target = root / f"tms_db_backup_{ts}.sql{'.gz' if compress else ''}"
     cmd = [
         mysqldump_path,
         "--single-transaction",
@@ -399,7 +403,12 @@ def create_db_backup(config):
     cmd.append(db["NAME"])
     for attempt in range(1, MYSQL_CONCURRENT_DDL_RETRY_ATTEMPTS + 1):
         try:
-            with target.open("w", encoding="utf-8") as output:
+            output_context = (
+                gzip.open(target, "wt", encoding="utf-8", compresslevel=6)
+                if compress
+                else target.open("w", encoding="utf-8")
+            )
+            with output_context as output:
                 _run_mysql_command(
                     cmd,
                     operation="Database backup",
@@ -428,7 +437,13 @@ def create_db_backup(config):
 def _zip_directory(target, source, skip_names=None):
     source = Path(source)
     skip_names = set(skip_names or ())
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(
+        target,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=6,
+        allowZip64=True,
+    ) as archive:
         for path in source.rglob("*"):
             if any(part in skip_names for part in path.parts):
                 continue
@@ -466,9 +481,20 @@ def create_full_backup(config):
         pieces.append(create_media_backup({**config, "enable_media_backup": True}))
     if config.get("include_code_in_full"):
         pieces.append(create_code_backup({**config, "enable_code_backup": True}))
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+    try:
+        with zipfile.ZipFile(target, "w", allowZip64=True) as archive:
+            for piece in pieces:
+                # ZIP/GZIP pieces are already compressed. Storing them avoids wasting CPU
+                # trying to compress the same bytes a second time.
+                compression = (
+                    zipfile.ZIP_STORED
+                    if piece.suffix.lower() in {".zip", ".gz"}
+                    else zipfile.ZIP_DEFLATED
+                )
+                archive.write(piece, f"full/{piece.name}", compress_type=compression)
+    finally:
         for piece in pieces:
-            archive.write(piece, f"full/{piece.name}")
+            piece.unlink(missing_ok=True)
     return target
 
 
@@ -502,7 +528,12 @@ def restore_database(config, backup_id):
         f"--user={db.get('USER') or ''}",
     ]
     cmd.append(db["NAME"])
-    with path.open("r", encoding="utf-8") as input_sql:
+    input_context = (
+        gzip.open(path, "rt", encoding="utf-8")
+        if path.suffix.lower() == ".gz"
+        else path.open("r", encoding="utf-8")
+    )
+    with input_context as input_sql:
         _run_mysql_command(
             cmd,
             operation="Database restore",
@@ -542,9 +573,11 @@ def delete_backup(config, backup_id):
     item = next((backup for backup in backups if backup.id == backup_id), None)
     if not item:
         raise RuntimeError("Selected backup was not found.")
-    protected_ids = protected_backup_ids(backups)
+    protected_ids = protected_backup_ids(backups, keep_count=retention_count(config))
     if item.id in protected_ids:
-        raise RuntimeError("The latest 3 backups are protected and cannot be deleted.")
+        raise RuntimeError(
+            f"The latest {retention_count(config)} backups are protected and cannot be deleted."
+        )
     root = ensure_backup_root(config).resolve()
     path = Path(item.display_path).resolve()
     if root not in path.parents or not path.is_file():
@@ -555,11 +588,6 @@ def delete_backup(config, backup_id):
 
 
 def prune_old_backups(config):
-    retention = max(int(config.get("retention_count") or 10), MIN_PROTECTED_BACKUPS)
-    backups = list_backups(config)
-    for item in backups[retention:]:
-        try:
-            Path(item.display_path).unlink()
-            _remove_manifest_entry(ensure_backup_root(config), item.id)
-        except OSError:
-            pass
+    if not config.get("auto_delete_old_backups", True):
+        return {"deleted": [], "reclaimed_bytes": 0}
+    return purge_old_backups(config, keep_count=retention_count(config))

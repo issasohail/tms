@@ -73,7 +73,8 @@
               <label class="form-check">{{ backup_settings_form.include_db_in_full }} <span class="form-check-label small">Include DB in Full</span></label>
               <label class="form-check">{{ backup_settings_form.include_media_in_full }} <span class="form-check-label small">Include Media in Full</span></label>
               <label class="form-check">{{ backup_settings_form.include_code_in_full }} <span class="form-check-label small">Include Code in Full</span></label>
-              <label class="form-check">{{ backup_settings_form.compress_backups }} <span class="form-check-label small">Compress into ZIP</span></label>
+              <label class="form-check">{{ backup_settings_form.compress_backups }} <span class="form-check-label small">Compress DB Backups (GZIP)</span></label>
+              <label class="form-check">{{ backup_settings_form.auto_delete_old_backups }} <span class="form-check-label small">Delete Old Backups Automatically</span></label>
               <label class="form-check">{{ backup_settings_form.enable_db_backup }} <span class="form-check-label small">Enable DB Backup</span></label>
               <label class="form-check">{{ backup_settings_form.enable_media_backup }} <span class="form-check-label small">Enable Media Backup</span></label>
               <label class="form-check">{{ backup_settings_form.enable_code_backup }} <span class="form-check-label small">Enable Code Backup</span></label>
@@ -220,7 +221,7 @@
 .backup-control-item .form-select { width: 100%; min-width: 0; }
 .backup-upload-control { grid-column: 5; grid-row: 1; }
 #restore-backup { grid-column: 6; grid-row: 1; }
-.backup-option-grid { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: .35rem; align-items: center; border-top: 1px solid #dee2e6; padding-top: .65rem; }
+.backup-option-grid { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: .35rem; align-items: center; border-top: 1px solid #dee2e6; padding-top: .65rem; }
 .backup-option-grid .form-check { margin: 0; min-width: 0; }
 .backup-save-settings { width: 100%; }
 .backup-help { border: 0; background: transparent; color: #0d6efd; padding: 0; line-height: 1; }

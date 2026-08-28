@@ -27,6 +27,7 @@ from core.backup_utils import (
     create_db_backup,
     detect_uploaded_backup_type,
     list_backups,
+    prune_old_backups,
     purge_old_backups,
 )
 from core.views import _pending_approval_filter_state
@@ -360,6 +361,7 @@ class BackupMySQLCommandTests(SimpleTestCase):
             )
 
             self.assertTrue(result.exists())
+            self.assertEqual(result.suffix, ".gz")
         self.assertEqual(run_mysql_command.call_count, 2)
         sleep.assert_called_once_with(2)
 
@@ -394,6 +396,10 @@ class BackupUploadDetectionTests(SimpleTestCase):
         upload = SimpleUploadedFile("backup.sql", b"SELECT 1;")
         self.assertEqual(detect_uploaded_backup_type(upload), "db")
 
+    def test_gzip_database_file_is_detected_from_extension(self):
+        upload = SimpleUploadedFile("backup.sql.gz", b"gzip-placeholder")
+        self.assertEqual(detect_uploaded_backup_type(upload), "db")
+
     def test_regular_zip_is_detected_as_media(self):
         upload = self._zip_upload("backup.zip", ["tenant_photos/photo.jpg"])
         self.assertEqual(detect_uploaded_backup_type(upload), "media")
@@ -402,7 +408,7 @@ class BackupUploadDetectionTests(SimpleTestCase):
         upload = self._zip_upload("backup.zip", ["full/tms_db_backup_test.sql"])
         self.assertEqual(detect_uploaded_backup_type(upload), "full")
 
-    def test_purge_keeps_three_files_of_each_backup_type(self):
+    def test_purge_keeps_three_newest_files_overall(self):
         with TemporaryDirectory() as backup_root:
             root = Path(backup_root)
             for index in range(5):
@@ -418,9 +424,25 @@ class BackupUploadDetectionTests(SimpleTestCase):
             result = purge_old_backups({"backup_root": backup_root})
             remaining = [backup for backup in list_backups({"backup_root": backup_root}) if backup.file_exists]
 
-            self.assertEqual(len(result["deleted"]), 3)
-            self.assertEqual(sum(backup.backup_type == "db" for backup in remaining), 3)
+            self.assertEqual(len(result["deleted"]), 6)
+            self.assertEqual(len(remaining), 3)
+            self.assertEqual(sum(backup.backup_type == "db" for backup in remaining), 0)
             self.assertEqual(sum(backup.backup_type == "media" for backup in remaining), 3)
+
+    def test_automatic_pruning_can_be_disabled(self):
+        with TemporaryDirectory() as backup_root:
+            root = Path(backup_root)
+            for index in range(4):
+                (root / f"tms_db_backup_{index}.sql").write_text(str(index), encoding="utf-8")
+
+            result = prune_old_backups({
+                "backup_root": backup_root,
+                "retention_count": 1,
+                "auto_delete_old_backups": False,
+            })
+
+            self.assertEqual(result["deleted"], [])
+            self.assertEqual(len([item for item in list_backups({"backup_root": backup_root}) if item.file_exists]), 4)
 
 
 class BackupRestoreViewTests(TestCase):

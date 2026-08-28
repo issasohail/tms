@@ -2981,7 +2981,8 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
         backups = list_backups(config)
         for serial_number, backup in enumerate(backups, start=1):
             backup.serial_number = serial_number
-        protected_ids = protected_backup_ids(backups)
+        keep_count = max(int(config.get("retention_count") or 3), 1)
+        protected_ids = protected_backup_ids(backups, keep_count=keep_count)
         for backup in backups:
             backup.is_protected = backup.id in protected_ids
         selected_backup = (
@@ -3013,7 +3014,7 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
                 (
                     "retentionHelpModal",
                     "Retention Count",
-                    "Automatic pruning keeps this many newest backups overall after a new backup is created. The Purge button separately keeps the newest three files of each backup type.",
+                    "How many newest backup files to keep overall. Automatic deletion and the Purge button both use this number.",
                 ),
                 (
                     "mysqldumpHelpModal",
@@ -3096,7 +3097,7 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
                         request,
                         f"Purged {len(result['deleted'])} old backup file(s). "
                         f"Reclaimed {result['reclaimed_bytes'] / (1024 * 1024):.2f} MB. "
-                        "The newest 3 files of each backup type were kept.",
+                        f"The newest {max(int(config.get('retention_count') or 3), 1)} backup file(s) were kept.",
                     )
             elif action == "restore_smart":
                 backups = list_backups(config)

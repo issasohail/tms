@@ -3,8 +3,6 @@
     [string]$OutputDir = "",
     [ValidateSet("Ask", "Yes", "No")][string]$DataMode = "Ask",
     [ValidateSet("Ask", "Yes", "No")][string]$VenvMode = "Ask",
-    [ValidateSet("Ask", "Yes", "No")][string]$AutoDeleteMode = "Ask",
-    [ValidateRange(1, 200)][int]$KeepLatest = 3,
     [ValidateSet("Fastest", "Optimal")][string]$CompressionLevel = "Fastest",
     [string]$LiveContainer = "tms_db",
     [string]$DbName = "tenant_management",
@@ -14,6 +12,10 @@
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+# BACKUP RETENTION: Change 3 below to the number of latest TMS backup ZIPs to keep.
+# Older TMS_*.zip files are deleted only after a new backup ZIP is created successfully.
+[ValidateRange(1, 200)][int]$KeepLatestBackups = 3
 
 function Write-Step([string]$Message) {
     Write-Host ""
@@ -229,7 +231,6 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 $IncludeSanitizedData = Resolve-Choice -Mode $DataMode -Prompt "Include SANITIZED database data in this ZIP?" -Default $false
 $IncludeVenv = Resolve-Choice -Mode $VenvMode -Prompt "Include the Windows .venv in this ZIP? (larger/slower)" -Default $false
-$AutoDeleteOldBackups = Resolve-Choice -Mode $AutoDeleteMode -Prompt "Delete older TMS backup ZIPs after this backup succeeds?" -Default $true
 
 $DataTag = if ($IncludeSanitizedData) { "DATA" } else { "NODATA" }
 $VenvTag = if ($IncludeVenv) { "VENV" } else { "NOVENV" }
@@ -256,10 +257,7 @@ Write-Host "Commit          : $Commit"
 Write-Host "Sanitized data  : $IncludeSanitizedData"
 Write-Host "Include .venv   : $IncludeVenv"
 Write-Host "Compression     : $CompressionLevel"
-Write-Host "Delete old ZIPs : $AutoDeleteOldBackups"
-if ($AutoDeleteOldBackups) {
-    Write-Host "Keep latest     : $KeepLatest"
-}
+Write-Host "Keep latest ZIPs: $KeepLatestBackups (automatic)"
 Write-Host "Output          : $ZipPath"
 Write-Host ""
 
@@ -779,24 +777,22 @@ print("Project safety scan passed: no obvious API/private-key patterns found out
 
     $DeletedBackups = @()
     $ReclaimedBytes = 0L
-    if ($AutoDeleteOldBackups) {
-        Write-Step "[10] Applying backup retention (keeping latest $KeepLatest)"
-        $OldBackups = @(
-            Get-ChildItem -LiteralPath $OutputDir -File -Filter "TMS_*.zip" |
-                Sort-Object LastWriteTimeUtc -Descending |
-                Select-Object -Skip $KeepLatest
-        )
-        foreach ($OldBackup in $OldBackups) {
-            $ReclaimedBytes += $OldBackup.Length
-            $DeletedBackups += $OldBackup.Name
-            Remove-Item -LiteralPath $OldBackup.FullName -Force
-        }
-        Write-Host (
-            "    Deleted {0} old ZIP(s); reclaimed {1:N2} MB." -f
-            $DeletedBackups.Count,
-            ($ReclaimedBytes / 1MB)
-        ) -ForegroundColor Green
+    Write-Step "[10] Applying backup retention (keeping latest $KeepLatestBackups)"
+    $OldBackups = @(
+        Get-ChildItem -LiteralPath $OutputDir -File -Filter "TMS_*.zip" |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -Skip $KeepLatestBackups
+    )
+    foreach ($OldBackup in $OldBackups) {
+        $ReclaimedBytes += $OldBackup.Length
+        $DeletedBackups += $OldBackup.Name
+        Remove-Item -LiteralPath $OldBackup.FullName -Force
     }
+    Write-Host (
+        "    Deleted {0} old ZIP(s); reclaimed {1:N2} MB." -f
+        $DeletedBackups.Count,
+        ($ReclaimedBytes / 1MB)
+    ) -ForegroundColor Green
 
     $SizeMB = [math]::Round((Get-Item -LiteralPath $ZipPath).Length / 1MB, 2)
     $TotalElapsed = Format-Elapsed ((Get-Date) - $StartedAll)
@@ -807,9 +803,7 @@ print("Project safety scan passed: no obvious API/private-key patterns found out
     Write-Host "Size : $SizeMB MB"
     Write-Host "Mode : $DataTag / $VenvTag"
     Write-Host "Time : $TotalElapsed"
-    if ($AutoDeleteOldBackups) {
-        Write-Host "Retention: kept latest $KeepLatest ZIP(s); deleted $($DeletedBackups.Count)"
-    }
+    Write-Host "Retention: kept latest $KeepLatestBackups ZIP(s); deleted $($DeletedBackups.Count)"
     if ($IncludeSanitizedData) {
         Write-Host "Test login: admin / $SharedDjangoPassword" -ForegroundColor Yellow
     }

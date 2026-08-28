@@ -214,7 +214,6 @@ class Command(BaseCommand):
             ("02020200", "current_b", "A"), ("02020300", "current_c", "A"),
             ("02030000", "total_power", "kW"), ("02030100", "power_a", "kW"),
             ("02030200", "power_b", "kW"), ("02030300", "power_c", "kW"),
-            ("00010000", "total_energy", "kWh"),
         )
         compared = False
         for di, bulk_name, unit in pairs:
@@ -226,6 +225,21 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"    {di} vs bulk {bulk_name}: {direct['value']} vs "
                 f"{bulk_values[bulk_name]} {unit}; delta {delta} {unit}"
+            )
+        forward = outcomes.get("00010000", {})
+        reverse = outcomes.get("00020000", {})
+        if (
+            forward.get("status") == "supported"
+            and reverse.get("status") == "supported"
+            and bulk_values.get("total_energy") is not None
+        ):
+            compared = True
+            combined = forward["value"] + reverse["value"]
+            delta = combined - bulk_values["total_energy"]
+            self.stdout.write(
+                "    00010000 + 00020000 vs bulk combined total_energy: "
+                f"{combined} vs {bulk_values['total_energy']} kWh; "
+                f"delta {delta} kWh"
             )
         if not compared:
             self.stdout.write("    direct versus 028011FF: insufficient data")

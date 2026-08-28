@@ -48,3 +48,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 
 # Disaster-recovery backup including the Windows environment
 .\backup_tms_for_chatgpt.ps1 -VenvMode Yes
+
+#to change backup files #
+# BACKUP RETENTION: Change 3 below to the number of latest TMS backup ZIPs to keep.
+[ValidateRange(1, 200)][int]$KeepLatestBackups = 3

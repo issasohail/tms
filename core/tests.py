@@ -1,5 +1,7 @@
 import subprocess
 import zipfile
+import gzip
+import sys
 import os
 from io import BytesIO
 from datetime import date, datetime, timedelta
@@ -24,6 +26,7 @@ from core.backup_utils import (
     _mysql_client_environment,
     _mysqldump_compatibility_args,
     _run_mysql_command,
+    _run_mysql_dump_to_gzip,
     create_db_backup,
     detect_uploaded_backup_type,
     list_backups,
@@ -297,6 +300,23 @@ class PendingApprovalLeaseScopeTests(TestCase):
 
 
 class BackupMySQLCommandTests(SimpleTestCase):
+    def test_streaming_gzip_dump_is_a_valid_gzip_file(self):
+        payload = b"-- SQL dump\nINSERT INTO test VALUES (1);\n" * 1000
+        with TemporaryDirectory() as backup_root:
+            target = Path(backup_root) / "backup.sql.gz"
+            _run_mysql_dump_to_gzip(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.stdout.buffer.write(b'-- SQL dump\\nINSERT INTO test VALUES (1);\\n' * 1000)",
+                ],
+                target,
+            )
+
+            self.assertEqual(target.read_bytes()[:2], b"\x1f\x8b")
+            with gzip.open(target, "rb") as source:
+                self.assertEqual(source.read(), payload)
+
     @patch("core.backup_utils.subprocess.run")
     def test_compatibility_options_follow_installed_client_help(self, run):
         run.return_value = subprocess.CompletedProcess(
@@ -357,11 +377,12 @@ class BackupMySQLCommandTests(SimpleTestCase):
                     "enable_db_backup": True,
                     "backup_root": backup_root,
                     "mysqldump_path": "mysqldump",
+                    "compress_backups": False,
                 }
             )
 
             self.assertTrue(result.exists())
-            self.assertEqual(result.suffix, ".gz")
+            self.assertEqual(result.suffix, ".sql")
         self.assertEqual(run_mysql_command.call_count, 2)
         sleep.assert_called_once_with(2)
 

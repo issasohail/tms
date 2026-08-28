@@ -4,6 +4,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import tempfile
 import time
 import zipfile
 from dataclasses import dataclass
@@ -366,6 +367,43 @@ def _run_mysql_command(cmd, *, operation, stdin=None, stdout=None, env=None):
         raise RuntimeError(f"{operation} failed: {detail}") from exc
 
 
+def _run_mysql_dump_to_gzip(cmd, target, *, env=None):
+    """Stream mysqldump stdout through gzip without buffering the dump in memory."""
+    target = Path(target)
+    with tempfile.TemporaryFile(mode="w+b") as stderr_file:
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=stderr_file,
+                env=env,
+            )
+        except OSError as exc:
+            raise RuntimeError(f"Database backup failed: {exc}") from exc
+
+        try:
+            if process.stdout is None:
+                raise RuntimeError("Database backup failed: mysqldump stdout was unavailable.")
+            with process.stdout, gzip.open(target, "wb", compresslevel=6) as output:
+                shutil.copyfileobj(process.stdout, output, length=1024 * 1024)
+            return_code = process.wait()
+        except Exception:
+            process.kill()
+            process.wait()
+            target.unlink(missing_ok=True)
+            raise
+
+        if return_code != 0:
+            target.unlink(missing_ok=True)
+            stderr_file.seek(0)
+            detail = " ".join(
+                stderr_file.read().decode("utf-8", errors="replace").strip().split()
+            )
+            if not detail:
+                detail = f"MySQL client exited with code {return_code}."
+            raise RuntimeError(f"Database backup failed: {detail}")
+
+
 def _is_mysql_concurrent_ddl_error(exc):
     detail = str(exc).lower()
     return "concurrent ddl" in detail or "(1684)" in detail or " 1684" in detail
@@ -403,18 +441,20 @@ def create_db_backup(config):
     cmd.append(db["NAME"])
     for attempt in range(1, MYSQL_CONCURRENT_DDL_RETRY_ATTEMPTS + 1):
         try:
-            output_context = (
-                gzip.open(target, "wt", encoding="utf-8", compresslevel=6)
-                if compress
-                else target.open("w", encoding="utf-8")
-            )
-            with output_context as output:
-                _run_mysql_command(
+            if compress:
+                _run_mysql_dump_to_gzip(
                     cmd,
-                    operation="Database backup",
-                    stdout=output,
+                    target,
                     env=_mysql_client_environment(db),
                 )
+            else:
+                with target.open("w", encoding="utf-8") as output:
+                    _run_mysql_command(
+                        cmd,
+                        operation="Database backup",
+                        stdout=output,
+                        env=_mysql_client_environment(db),
+                    )
             break
         except RuntimeError as exc:
             target.unlink(missing_ok=True)

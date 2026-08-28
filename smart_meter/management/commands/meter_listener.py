@@ -542,11 +542,79 @@ class ClientHandler(threading.Thread):
     ):
         self.tx.put((frame, float(expire_at or 0.0), transport_q))
 
+    def _sender_loop(self):
+        """Serialize queued writes independently of the blocking receive loop."""
+        while self.alive:
+            try:
+                item = self.tx.get(timeout=0.5)
+            except queue.Empty:
+                continue
+
+            if item is None:
+                return
+
+            if isinstance(item, tuple):
+                if len(item) == 3:
+                    frame, expire_at, transport_q = item
+                else:
+                    frame, expire_at = item
+                    transport_q = None
+            else:
+                frame, expire_at = item, 0.0
+                transport_q = None
+
+            now = time.time()
+            if expire_at and now > expire_at:
+                logger.warning(
+                    "DROP_STALE_TX peer=%s meter=%s age=%.1fs frame=%s",
+                    self.peer,
+                    getattr(self, "meter_number", None),
+                    now - expire_at,
+                    frame.hex().upper(),
+                )
+                if transport_q is not None:
+                    try:
+                        transport_q.put_nowait(
+                            (False, "frame expired before socket send")
+                        )
+                    except queue.Full:
+                        pass
+                continue
+
+            logger.info(
+                "TX_TO_METER peer=%s meter=%s len=%s frame=%s",
+                self.peer,
+                getattr(self, "meter_number", None),
+                len(frame),
+                frame.hex().upper(),
+            )
+            try:
+                self.conn.sendall(frame)
+            except Exception as send_exc:
+                if transport_q is not None:
+                    try:
+                        transport_q.put_nowait(
+                            (False, f"socket send failed: {send_exc}")
+                        )
+                    except queue.Full:
+                        pass
+                logger.warning("Send error to %s: %s", self.addr, send_exc)
+                self.close(reason="send_error")
+                return
+
+            if transport_q is not None:
+                try:
+                    transport_q.put_nowait((True, ""))
+                except queue.Full:
+                    pass
+            self.last_seen = now
+
     # UPDATED: clean close that other code can call
     def close(self, reason="shutdown"):
         self.disconnect_reason = reason
         self.alive = False
         self._hb_stop.set()
+        self.tx.put(None)
         try:
             self.conn.shutdown(socket.SHUT_RDWR)
         except Exception:
@@ -582,6 +650,11 @@ class ClientHandler(threading.Thread):
         threading.Thread(
             target=self._heartbeat_loop,
             name=f"hb@{self.addr[0]}:{self.addr[1]}",
+            daemon=True,
+        ).start()
+        threading.Thread(
+            target=self._sender_loop,
+            name=f"tx@{self.addr[0]}:{self.addr[1]}",
             daemon=True,
         ).start()
         try:
@@ -659,71 +732,6 @@ class ClientHandler(threading.Thread):
 
                         self.process_frame(frame)
 
-                # ---- Transmit any queued frames ----
-                try:
-                    while True:
-                        item = self.tx.get_nowait()
-                        if isinstance(item, tuple):
-                            if len(item) == 3:
-                                frame, expire_at, transport_q = item
-                            else:
-                                frame, expire_at = item
-                                transport_q = None
-                        else:
-                            frame, expire_at = item, 0.0
-                            transport_q = None
-
-                        now = time.time()
-                        if expire_at and now > expire_at:
-                            logger.warning(
-                                "DROP_STALE_TX peer=%s meter=%s age=%.1fs frame=%s",
-                                self.peer,
-                                getattr(self, "meter_number", None),
-                                now - expire_at,
-                                frame.hex().upper(),
-                            )
-                            if transport_q is not None:
-                                try:
-                                    transport_q.put_nowait(
-                                        (False, "frame expired before socket send")
-                                    )
-                                except queue.Full:
-                                    pass
-                            continue
-
-                        logger.info(
-                            "TX_TO_METER peer=%s meter=%s len=%s frame=%s",
-                            self.peer,
-                            getattr(self, "meter_number", None),
-                            len(frame),
-                            frame.hex().upper(),
-                        )
-                        try:
-                            self.conn.sendall(frame)
-                        except Exception as send_exc:
-                            if transport_q is not None:
-                                try:
-                                    transport_q.put_nowait(
-                                        (False, f"socket send failed: {send_exc}")
-                                    )
-                                except queue.Full:
-                                    pass
-                            raise
-                        if transport_q is not None:
-                            try:
-                                transport_q.put_nowait((True, ""))
-                            except queue.Full:
-                                pass
-                        self.last_seen = now
-
-                except queue.Empty:
-                    pass
-                except Exception as e:
-                    if self.alive:
-                        self.disconnect_reason = "send_error"
-                    logger.warning(f"Send error to {self.addr}: {e}")
-                    break
-
                 # UPDATED: removed idle-close block entirely.
                 # We only exit on explicit peer close or I/O error.
 
@@ -738,6 +746,8 @@ class ClientHandler(threading.Thread):
             )
             logger.exception(f"ClientHandler error for {self.addr}: {e}")
         finally:
+            self._hb_stop.set()
+            self.tx.put(None)
             try:
                 self.conn.close()
             except Exception:

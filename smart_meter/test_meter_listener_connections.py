@@ -1,4 +1,5 @@
 import queue
+import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -46,6 +47,21 @@ class FakeSocket:
 
     def close(self):
         self.close_calls += 1
+
+
+class BlockingReceiveSocket(FakeSocket):
+    def __init__(self):
+        super().__init__()
+        self.recv_entered = threading.Event()
+        self.release_recv = threading.Event()
+
+    def recv(self, _size):
+        self.recv_entered.set()
+        self.release_recv.wait(timeout=2)
+        return b""
+
+    def shutdown(self, _how):
+        self.release_recv.set()
 
 
 class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
@@ -178,13 +194,14 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
     def test_expired_frame_reports_transport_failure(
         self, _close_connections, _start
     ):
-        handler = self.make_handler([TimeoutError(), b""])
+        handler = self.make_handler()
         transport_q = queue.Queue(maxsize=1)
         handler.enqueue_send(
             b"\x68", expire_at=time.time() - 1, transport_q=transport_q
         )
 
-        handler.run()
+        handler.tx.put(None)
+        handler._sender_loop()
 
         self.assertEqual(
             transport_q.get_nowait(),
@@ -202,7 +219,8 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         transport_q = queue.Queue(maxsize=1)
         handler.enqueue_send(b"\x68", transport_q=transport_q)
 
-        handler.run()
+        handler.tx.put(None)
+        handler._sender_loop()
 
         self.assertEqual(
             transport_q.get_nowait(),
@@ -213,12 +231,33 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
     @patch("smart_meter.management.commands.meter_listener.threading.Thread.start")
     @patch("smart_meter.management.commands.meter_listener.close_old_connections")
     def test_legacy_two_tuple_tx_item_still_sends(self, _close_connections, _start):
-        handler = self.make_handler([TimeoutError(), b""])
+        handler = self.make_handler()
         handler.tx.put((b"\x68", 0.0))
+        handler.tx.put(None)
 
-        handler.run()
+        handler._sender_loop()
 
         self.assertEqual(handler.conn.sent_frames, [b"\x68"])
+
+    @patch("smart_meter.management.commands.meter_listener.close_old_connections")
+    def test_queued_frame_sends_while_receive_is_blocked(self, _close_connections):
+        conn = BlockingReceiveSocket()
+        handler = ClientHandler(conn, ("127.0.0.1", 12345))
+        handler.start()
+        self.assertTrue(conn.recv_entered.wait(timeout=1))
+
+        transport_q = queue.Queue(maxsize=1)
+        handler.enqueue_send(
+            b"\x68",
+            expire_at=time.time() + 1,
+            transport_q=transport_q,
+        )
+
+        self.assertEqual(transport_q.get(timeout=0.5), (True, ""))
+        self.assertEqual(conn.sent_frames, [b"\x68"])
+        handler.close(reason="test_complete")
+        handler.join(timeout=1)
+        self.assertFalse(handler.is_alive())
 
     @patch("smart_meter.management.commands.meter_listener.parse_frame")
     @patch("smart_meter.management.commands.meter_listener._register_handler")

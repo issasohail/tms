@@ -17,6 +17,7 @@ from smart_meter.management.commands.meter_listener import (
     _deliver_if_match,
     _push_waiter,
     process_diagnostic_request,
+    start_diagnostic_server,
 )
 
 
@@ -57,6 +58,43 @@ class DiagnosticFrameTests(SimpleTestCase):
         self.assertEqual(inner[8], 0x11)
         self.assertEqual(inner[9], 4)
         validate_diagnostic_request_frame(frame, meter_number=METER, di="00010000")
+
+    def test_meter_019_request_is_not_rejected_when_checksum_styles_coincide(self):
+        meter = "260305510019"
+        frame = build_diagnostic_read_frame(meter, "00010000")
+        self.assertEqual(
+            frame.hex().upper(),
+            "FEFEFEFE68190051050326681104333334334A16",
+        )
+        validate_diagnostic_request_frame(frame, meter_number=meter, di="00010000")
+
+    def test_captured_direction_flagged_currents_decode_as_bcd_magnitude(self):
+        cases = (
+            (
+                METER,
+                "02020100",
+                "68200051050326689107333435354C48B42016",
+                Decimal("11.519"),
+            ),
+            (
+                "260305510021",
+                "02020200",
+                "6821005105032668910733353535598AB47116",
+                Decimal("15.726"),
+            ),
+            (
+                "260305510021",
+                "02020300",
+                "68210051050326689107333635354B85B45F16",
+                Decimal("15.218"),
+            ),
+        )
+        for meter, di, raw, expected in cases:
+            with self.subTest(meter=meter, di=di):
+                result = decode_diagnostic_response(
+                    bytes.fromhex(raw), expected_meter=meter, expected_di=di
+                )
+                self.assertEqual(result["value"], expected)
 
     def test_non_allowlisted_and_write_identifiers_are_rejected(self):
         self.assertNotIn("070102FF", DIAGNOSTIC_DI_ALLOWLIST)
@@ -136,6 +174,14 @@ class DiagnosticFrameTests(SimpleTestCase):
 
 
 class DiagnosticListenerRoutingTests(SimpleTestCase):
+    @patch(
+        "smart_meter.management.commands.meter_listener.DiagnosticUnixServer",
+        None,
+    )
+    def test_unsupported_platform_can_import_but_cannot_start_unix_socket(self):
+        with self.assertRaisesMessage(RuntimeError, "not supported"):
+            start_diagnostic_server()
+
     @patch("smart_meter.management.commands.meter_listener.perform_diagnostic_read")
     def test_ipc_rejects_caller_supplied_frames_before_dispatch(self, perform):
         with self.assertRaisesMessage(ValueError, "unsupported fields"):

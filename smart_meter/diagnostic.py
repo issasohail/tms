@@ -13,6 +13,7 @@ import re
 from smart_meter.dlt645 import (
     _add_33,
     build_frame,
+    calculate_outbound_checksum,
     parse_bulk_summary_frame,
     verify_checksum,
 )
@@ -25,6 +26,7 @@ class DiagnosticRegister:
     decimals: int | None
     unit: str
     signed: bool = False
+    direction_flag: bool = False
 
 
 DIAGNOSTIC_REGISTERS = {
@@ -33,9 +35,9 @@ DIAGNOSTIC_REGISTERS = {
     "02010100": DiagnosticRegister("Phase A Voltage", 2, 1, "V"),
     "02010200": DiagnosticRegister("Phase B Voltage", 2, 1, "V"),
     "02010300": DiagnosticRegister("Phase C Voltage", 2, 1, "V"),
-    "02020100": DiagnosticRegister("Phase A Current", 3, 3, "A"),
-    "02020200": DiagnosticRegister("Phase B Current", 3, 3, "A"),
-    "02020300": DiagnosticRegister("Phase C Current", 3, 3, "A"),
+    "02020100": DiagnosticRegister("Phase A Current", 3, 3, "A", direction_flag=True),
+    "02020200": DiagnosticRegister("Phase B Current", 3, 3, "A", direction_flag=True),
+    "02020300": DiagnosticRegister("Phase C Current", 3, 3, "A", direction_flag=True),
     "02030000": DiagnosticRegister("Total Active Power", 3, 4, "kW", signed=True),
     "02030100": DiagnosticRegister("Phase A Active Power", 3, 4, "kW", signed=True),
     "02030200": DiagnosticRegister("Phase B Active Power", 3, 4, "kW", signed=True),
@@ -107,17 +109,24 @@ def validate_diagnostic_request_frame(
     decoded_di = bytes(((b - 0x33) & 0xFF) for b in inner[10:14])[::-1].hex().upper()
     if address != meter_number or decoded_di != di:
         raise ValueError("diagnostic request address or DI does not match the request")
-    if verify_checksum(inner, 0) != (True, "incl_1st68") or inner[-1] != 0x16:
+    expected_checksum = calculate_outbound_checksum(inner[:-2], "incl_1st68")
+    if inner[-2] != expected_checksum or inner[-1] != 0x16:
         raise ValueError("diagnostic request checksum or terminator is invalid")
 
 
-def _strict_bcd_decimal(encoded: bytes, decimals: int, *, signed: bool = False) -> Decimal:
+def _strict_bcd_decimal(
+    encoded: bytes,
+    decimals: int,
+    *,
+    signed: bool = False,
+    direction_flag: bool = False,
+) -> Decimal:
     if not encoded:
         raise ValueError("empty BCD payload")
     plain = bytearray(((byte - 0x33) & 0xFF) for byte in encoded)
     negative = False
-    if signed and plain[-1] & 0x80:
-        negative = True
+    if (signed or direction_flag) and plain[-1] & 0x80:
+        negative = signed
         plain[-1] &= 0x7F
     digits = []
     for byte in reversed(plain):
@@ -229,6 +238,11 @@ def decode_diagnostic_response(
         raise ValueError(
             f"DI {expected_di} payload length {len(payload)} != {register.byte_length}"
         )
-    value = _strict_bcd_decimal(payload, register.decimals or 0, signed=register.signed)
+    value = _strict_bcd_decimal(
+        payload,
+        register.decimals or 0,
+        signed=register.signed,
+        direction_flag=register.direction_flag,
+    )
     base.update(status="supported", value=value, unit=register.unit, error="")
     return base

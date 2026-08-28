@@ -444,12 +444,24 @@ class DiagnosticRequestHandler(socketserver.StreamRequestHandler):
         self.wfile.write((json.dumps(result, separators=(",", ":")) + "\n").encode("utf-8"))
 
 
-class DiagnosticUnixServer(socketserver.ThreadingUnixStreamServer):
-    daemon_threads = True
+_ThreadingUnixStreamServer = getattr(
+    socketserver, "ThreadingUnixStreamServer", None
+)
+
+if _ThreadingUnixStreamServer is not None:
+    class DiagnosticUnixServer(_ThreadingUnixStreamServer):
+        daemon_threads = True
+else:
+    # AF_UNIX stream servers are unavailable on some Python/Windows builds.
+    # Keeping the module importable allows local checks and tests to exercise
+    # the protocol code; production Linux still uses the real Unix server.
+    DiagnosticUnixServer = None
 
 
 def start_diagnostic_server(path: str = DIAGNOSTIC_SOCKET_PATH):
     """Start the owner-only local diagnostic IPC endpoint in a daemon thread."""
+    if DiagnosticUnixServer is None:
+        raise RuntimeError("diagnostic Unix socket is not supported on this platform")
     if os.path.lexists(path):
         mode = os.lstat(path).st_mode
         if not stat.S_ISSOCK(mode):

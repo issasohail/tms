@@ -120,6 +120,16 @@ class BidirectionalParserTests(SimpleTestCase):
             with self.subTest(di=di):
                 self.assertEqual(parse_frame(register_reply(di, payload))["data"][field], expected)
 
+    def test_direction_flagged_current_and_signed_power_decode_exactly(self):
+        current = register_reply("02020200", bytes.fromhex("265781"))
+        power = register_reply("02030000", bytes.fromhex("787483"))
+        self.assertEqual(
+            parse_frame(current)["data"]["current_b"], Decimal("15.726")
+        )
+        self.assertEqual(
+            parse_frame(power)["data"]["total_power"], Decimal("-3.7478")
+        )
+
 
 class BidirectionalPersistenceTests(TestCase):
     def setUp(self):

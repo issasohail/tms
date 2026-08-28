@@ -49,7 +49,13 @@ def _decode_bcd(raw: bytes, decimals: int = 2) -> Decimal:
     return Decimal(num[:-decimals] + "." + num[-decimals:])
 
 
-def _decode_bcd_decimal(raw: bytes, decimals: int) -> Decimal:
+def _decode_bcd_decimal(
+    raw: bytes,
+    decimals: int,
+    *,
+    signed: bool = False,
+    direction_flag: bool = False,
+) -> Decimal:
     """Strictly decode a +0x33, little-endian BCD register as ``Decimal``.
 
     Direct cumulative-energy and phase-register replies must never turn malformed
@@ -58,7 +64,11 @@ def _decode_bcd_decimal(raw: bytes, decimals: int) -> Decimal:
     """
     if not raw:
         raise ValueError("register payload is empty")
-    decoded = bytes(((byte - 0x33) & 0xFF) for byte in raw)
+    decoded = bytearray(((byte - 0x33) & 0xFF) for byte in raw)
+    negative = False
+    if (signed or direction_flag) and decoded[-1] & 0x80:
+        negative = signed
+        decoded[-1] &= 0x7F
     digit_pairs = []
     for byte in reversed(decoded):
         high, low = (byte >> 4) & 0x0F, byte & 0x0F
@@ -69,7 +79,8 @@ def _decode_bcd_decimal(raw: bytes, decimals: int) -> Decimal:
     if decimals:
         digits = digits.zfill(decimals + 1)
         digits = f"{digits[:-decimals]}.{digits[-decimals:]}"
-    return Decimal(digits)
+    value = Decimal(digits)
+    return -value if negative else value
 
 
 def _decode_hex_no33(raw: bytes) -> str:
@@ -272,18 +283,18 @@ def parse_bulk_summary_frame(frame: bytes, start_idx: int) -> Dict:
 
 
 DIRECT_REGISTER_SPECS = {
-    "00010000": ("forward_active_energy_kwh", 4, 2),
-    "00020000": ("reverse_active_energy_kwh", 4, 2),
-    "02010100": ("voltage_a", 2, 1),
-    "02010200": ("voltage_b", 2, 1),
-    "02010300": ("voltage_c", 2, 1),
-    "02020100": ("current_a", 3, 3),
-    "02020200": ("current_b", 3, 3),
-    "02020300": ("current_c", 3, 3),
-    "02030000": ("total_power", 3, 4),
-    "02030100": ("power_a", 3, 4),
-    "02030200": ("power_b", 3, 4),
-    "02030300": ("power_c", 3, 4),
+    "00010000": ("forward_active_energy_kwh", 4, 2, "unsigned"),
+    "00020000": ("reverse_active_energy_kwh", 4, 2, "unsigned"),
+    "02010100": ("voltage_a", 2, 1, "unsigned"),
+    "02010200": ("voltage_b", 2, 1, "unsigned"),
+    "02010300": ("voltage_c", 2, 1, "unsigned"),
+    "02020100": ("current_a", 3, 3, "direction"),
+    "02020200": ("current_b", 3, 3, "direction"),
+    "02020300": ("current_c", 3, 3, "direction"),
+    "02030000": ("total_power", 3, 4, "signed"),
+    "02030100": ("power_a", 3, 4, "signed"),
+    "02030200": ("power_b", 3, 4, "signed"),
+    "02030300": ("power_c", 3, 4, "signed"),
 }
 
 
@@ -292,11 +303,16 @@ def parse_direct_register(di: str, payload: bytes) -> Optional[Dict[str, Decimal
     spec = DIRECT_REGISTER_SPECS.get(di)
     if spec is None:
         return None
-    field_name, byte_count, decimals = spec
+    field_name, byte_count, decimals, sign_policy = spec
     if len(payload) != byte_count:
         return None
     try:
-        value = _decode_bcd_decimal(payload, decimals)
+        value = _decode_bcd_decimal(
+            payload,
+            decimals,
+            signed=sign_policy == "signed",
+            direction_flag=sign_policy == "direction",
+        )
     except (InvalidOperation, ValueError):
         return None
     return {field_name: value}

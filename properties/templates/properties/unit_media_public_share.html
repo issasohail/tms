@@ -10,7 +10,9 @@
   <main class="container py-4">
     <div class="mb-4">
       <h2 class="mb-1">{{ owner_label }}</h2>
-      <div class="text-muted small">This secure link expires after 48 hours.</div>
+      <div class="text-muted small">
+        {% if expires_at %}This secure link expires {{ expires_at|date:"d M Y, h:i A T" }}.{% else %}This secure link expires after 48 hours.{% endif %}
+      </div>
     </div>
 
     <div class="row g-3">
@@ -18,16 +20,16 @@
       <div class="col-md-4 col-lg-3">
         <div class="card h-100">
           {% if media.file_type == "image" %}
-            <a href="{% url 'properties:media_public_file' token media.pk %}" target="_blank" rel="noopener">
-              <img src="{% url 'properties:media_public_file' token media.pk %}?variant=thumbnail" class="card-img-top" alt="{{ media.visible_description|default:media.display_filename }}" style="height:220px; object-fit:cover;">
+            <a href="{% if compact_token %}{% url 'public_photo_file' compact_token media.pk %}{% else %}{% url 'properties:media_public_file' token media.pk %}{% endif %}" target="_blank" rel="noopener">
+              <img src="{% if compact_token %}{% url 'public_photo_file' compact_token media.pk %}{% else %}{% url 'properties:media_public_file' token media.pk %}{% endif %}?variant=thumbnail" class="card-img-top" alt="{{ media.visible_description|default:media.display_filename }}" style="height:220px; object-fit:cover;">
             </a>
           {% elif media.file_type == "video" %}
             <video class="card-img-top" controls style="height:220px; object-fit:cover;">
-              <source src="{% url 'properties:media_public_file' token media.pk %}">
+              <source src="{% if compact_token %}{% url 'public_photo_file' compact_token media.pk %}{% else %}{% url 'properties:media_public_file' token media.pk %}{% endif %}">
             </video>
           {% else %}
             <div class="d-flex align-items-center justify-content-center bg-white" style="height:220px;">
-              <a href="{% url 'properties:media_public_file' token media.pk %}" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener">Open File</a>
+              <a href="{% if compact_token %}{% url 'public_photo_file' compact_token media.pk %}{% else %}{% url 'properties:media_public_file' token media.pk %}{% endif %}" class="btn btn-outline-primary btn-sm" target="_blank" rel="noopener">Open File</a>
             </div>
           {% endif %}
           <div class="card-body p-3">

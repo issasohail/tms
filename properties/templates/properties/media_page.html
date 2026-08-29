@@ -88,7 +88,7 @@
                 <button type="button" class="btn btn-primary js-copy-share-link" data-share-url="{{ share_url }}" title="Copy public gallery link" aria-label="Copy 48-hour public gallery link">
                     <i class="fas fa-copy"></i>
                 </button>
-                <a href="https://wa.me/?text={{ share_url|urlencode }}" target="_blank" rel="noopener" class="btn btn-success" title="Share public gallery on WhatsApp" aria-label="Share 48-hour public gallery on WhatsApp">
+                <a href="https://wa.me/?text={{ share_whatsapp_text|default:share_url|urlencode }}" target="_blank" rel="noopener" class="btn btn-success" title="Share public gallery on WhatsApp" aria-label="Share 48-hour public gallery on WhatsApp">
                     <i class="fab fa-whatsapp"></i>
                 </a>
             </div>

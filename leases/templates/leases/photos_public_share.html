@@ -18,22 +18,24 @@
     <div class="mb-4">
       <h2 class="mb-1">Lease Photos</h2>
       <div class="text-muted">{{ lease.tenant }} · {{ lease.property_name }} · {{ lease.unit_number }}</div>
-      <div class="small text-muted mt-1">This secure public link expires after 48 hours.</div>
+      <div class="small text-muted mt-1">
+        {% if expires_at %}This secure public link expires {{ expires_at|date:"d M Y, h:i A T" }}.{% else %}This secure public link expires after 48 hours.{% endif %}
+      </div>
     </div>
     <div class="share-grid">
       {% for p in media %}
       <div class="share-card">
         {% if p.media_type == "image" %}
-          <a href="{% url 'leases:photos_public_file' token p.pk %}" target="_blank" rel="noopener">
-            <img src="{% url 'leases:photos_public_file' token p.pk %}" class="share-thumb" alt="{{ p.title|default:'Lease photo' }}" loading="lazy">
+          <a href="{% if compact_token %}{% url 'public_photo_file' compact_token p.pk %}{% else %}{% url 'leases:photos_public_file' token p.pk %}{% endif %}" target="_blank" rel="noopener">
+            <img src="{% if compact_token %}{% url 'public_photo_file' compact_token p.pk %}{% else %}{% url 'leases:photos_public_file' token p.pk %}{% endif %}" class="share-thumb" alt="{{ p.title|default:'Lease photo' }}" loading="lazy">
           </a>
         {% elif p.media_type == "video" %}
           <video class="share-thumb" controls preload="metadata">
-            <source src="{% url 'leases:photos_public_file' token p.pk %}">
+            <source src="{% if compact_token %}{% url 'public_photo_file' compact_token p.pk %}{% else %}{% url 'leases:photos_public_file' token p.pk %}{% endif %}">
           </video>
         {% else %}
           <div class="share-file">
-            <a class="btn btn-outline-primary btn-sm" href="{% url 'leases:photos_public_file' token p.pk %}" target="_blank" rel="noopener">Open File</a>
+            <a class="btn btn-outline-primary btn-sm" href="{% if compact_token %}{% url 'public_photo_file' compact_token p.pk %}{% else %}{% url 'leases:photos_public_file' token p.pk %}{% endif %}" target="_blank" rel="noopener">Open File</a>
           </div>
         {% endif %}
         <div class="p-3">

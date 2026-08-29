@@ -6193,6 +6193,16 @@ def process_inbound_whatsapp_message(message_log):
 
     if handle_whatsapp_password_reset_request(message_log):
         return
+    # Staff approval/rejection is operational control traffic, not AI chat. It
+    # must remain available when the AI assistant is disabled.
+    from properties.services.photo_link_renewal import handle_staff_photo_link_command
+    from whatsapp.services.whatsapp import WhatsAppService
+
+    command_response = handle_staff_photo_link_command(message_log)
+    if command_response is not None:
+        if command_response:
+            WhatsAppService().send_text(message_log.phone_number, command_response)
+        return
     if not get_whatsapp_ai_config().enabled:
         return
     # Meta delivers album items as independent webhooks. Serializing each phone's

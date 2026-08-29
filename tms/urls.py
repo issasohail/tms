@@ -16,6 +16,7 @@ from core.views import SettingsView
 from accounts.views import LogoutView as AccountsLogoutView
 from accounts.password_reset import PublicPasswordResetForm
 from whatsapp.views import webhook as whatsapp_webhook
+from properties import views as property_views
 
 
 def plain_include(module_path):
@@ -126,6 +127,16 @@ app_patterns = [
 # Legacy `/tms/` compatibility URLs are intentionally not namespaced. Canonical
 # namespaced reversing uses the root application routes in `app_patterns`.
 root_app_patterns = [
+    path(
+        "p/<str:token>/",
+        property_views.public_photo_link,
+        name="public_photo_link_legacy",
+    ),
+    path(
+        "p/<str:token>/<int:media_id>/",
+        property_views.public_photo_file,
+        name="public_photo_file_legacy",
+    ),
     path('', plain_include('core.urls')),
     path('', plain_include('dashboard.urls')),
 
@@ -169,6 +180,14 @@ root_app_patterns = [
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    # Public capability URLs must precede the marketing root catch-all.
+    path("p/<str:token>/", property_views.public_photo_link, name="public_photo_link"),
+    path(
+        "p/<str:token>/<int:media_id>/",
+        property_views.public_photo_file,
+        name="public_photo_file",
+    ),
 
     # Login / Logout
     path(

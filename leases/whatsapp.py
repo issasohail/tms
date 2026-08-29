@@ -262,13 +262,28 @@ def unit_whatsapp_context(unit, request=None):
         "METER_NUMBERS": _meter_numbers(unit),
         "BANK_ACCOUNT": _lease_bank_account(type("LeaseLike", (), {"unit": unit})()),
         "UNIT_PHOTO_LINK": "",
+        "UNIT_PHOTO_MESSAGE": "",
     }
     if request is not None and unit is not None:
-        from properties.views import _sign_unit_media_token
-        token = _sign_unit_media_token(unit.pk)
-        context["UNIT_PHOTO_LINK"] = build_public_url(
-            "properties:unit_media_public_share", args=[token]
+        from properties.models import PublicPhotoLink
+        from properties.services.photo_link_renewal import (
+            public_link_share_text,
+            public_link_url,
+            reusable_public_photo_link,
         )
+
+        link = reusable_public_photo_link(
+            PublicPhotoLink.GALLERY_UNIT,
+            property_obj=unit.property,
+            unit=unit,
+            created_by=(
+                request.user
+                if getattr(request.user, "is_authenticated", False)
+                else None
+            ),
+        )
+        context["UNIT_PHOTO_LINK"] = public_link_url(link)
+        context["UNIT_PHOTO_MESSAGE"] = public_link_share_text(link)
 
     for placeholder in AgreementPlaceholder.objects.filter(is_active=True):
         context.setdefault(placeholder.key, placeholder.default_value or "")
@@ -302,6 +317,13 @@ def render_unit_whatsapp_template(template_type, unit, request=None):
     body = template.body if template else ""
     context = unit_whatsapp_context(unit, request=request)
     rendered = body or ""
+    if template_type == WhatsAppTemplate.TEMPLATE_VACANCY and rendered.strip():
+        photo_message = context.get("UNIT_PHOTO_MESSAGE", "")
+        if photo_message and "[UNIT_PHOTO_MESSAGE]" not in rendered:
+            if "[UNIT_PHOTO_LINK]" in rendered:
+                rendered = rendered.replace("[UNIT_PHOTO_LINK]", photo_message)
+            else:
+                rendered = f"{rendered.rstrip()}\n\n{photo_message}"
     for key, value in context.items():
         rendered = rendered.replace(f"[{key}]", str(value or ""))
     return template, rendered

@@ -1,5 +1,6 @@
 import builtins
 import os
+import secrets
 from decimal import Decimal
 
 from django.conf import settings
@@ -173,6 +174,142 @@ class Property(models.Model):
     class Meta:
         ordering = ["property_name"]
         verbose_name_plural = "Properties"
+
+
+class PublicPhotoLink(models.Model):
+    """Opaque, revocable capability for one public photo gallery."""
+
+    GALLERY_PROPERTY = "property"
+    GALLERY_UNIT = "unit"
+    GALLERY_LEASE = "lease"
+    GALLERY_LEASE_HISTORY = "lease_history"
+    GALLERY_CHOICES = (
+        (GALLERY_PROPERTY, "Property photos"),
+        (GALLERY_UNIT, "Unit photos"),
+        (GALLERY_LEASE, "Lease photos"),
+        (GALLERY_LEASE_HISTORY, "Lease history photos"),
+    )
+
+    token = models.CharField(max_length=64, unique=True, editable=False)
+    gallery_type = models.CharField(max_length=20, choices=GALLERY_CHOICES)
+    property = models.ForeignKey(
+        "properties.Property", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="public_photo_links",
+    )
+    unit = models.ForeignKey(
+        "properties.Unit", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="public_photo_links",
+    )
+    lease = models.ForeignKey(
+        "leases.Lease", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="public_photo_links",
+    )
+    lease_history = models.ForeignKey(
+        "leases.LeaseRenewal", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="public_photo_links",
+    )
+    expires_at = models.DateTimeField(db_index=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="created_public_photo_links",
+    )
+    renewal_request = models.ForeignKey(
+        "properties.PhotoLinkRenewalRequest", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="issued_links",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["gallery_type", "is_active", "expires_at"],
+                name="photo_link_type_active_exp_idx",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            # 24 random bytes = 192 bits of entropy; target IDs never enter the URL.
+            self.token = secrets.token_urlsafe(24)
+        super().save(*args, **kwargs)
+
+    @builtins.property
+    def is_valid(self):
+        return self.is_active and self.expires_at > timezone.now()
+
+
+class PhotoLinkRenewalRequest(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+    STATUS_EXPIRED = "expired"
+    STATUS_CHOICES = (
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
+        (STATUS_EXPIRED, "Expired"),
+    )
+
+    reference = models.CharField(max_length=20, unique=True, db_index=True, editable=False)
+    gallery_type = models.CharField(max_length=20, choices=PublicPhotoLink.GALLERY_CHOICES)
+    property = models.ForeignKey(
+        "properties.Property", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="photo_link_renewal_requests",
+    )
+    unit = models.ForeignKey(
+        "properties.Unit", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="photo_link_renewal_requests",
+    )
+    lease = models.ForeignKey(
+        "leases.Lease", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="photo_link_renewal_requests",
+    )
+    lease_history = models.ForeignKey(
+        "leases.LeaseRenewal", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="photo_link_renewal_requests",
+    )
+    requester_name = models.CharField(max_length=120)
+    requester_phone = NormalizedPhoneField(max_length=32, db_index=True)
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True,
+    )
+    original_expires_at = models.DateTimeField(null=True, blank=True)
+    request_ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    assigned_staff = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="assigned_photo_link_renewals",
+    )
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="decided_photo_link_renewals",
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    fresh_link = models.ForeignKey(
+        PublicPhotoLink, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="renewal_requests",
+    )
+    whatsapp_status = models.CharField(max_length=24, blank=True)
+    whatsapp_error = models.TextField(blank=True)
+    notified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="photo_req_status_created_idx"),
+            models.Index(
+                fields=["requester_phone", "created_at"],
+                name="photo_req_phone_created_idx",
+            ),
+            models.Index(fields=["request_ip", "created_at"], name="photo_req_ip_created_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.reference:
+            self.reference = "PLR-" + secrets.token_hex(4).upper()
+        super().save(*args, **kwargs)
 
 
 class PropertyBankAccount(models.Model):

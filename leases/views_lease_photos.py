@@ -8,7 +8,6 @@ from django.core.files.storage import default_storage
 from django.core import signing
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse, FileResponse, Http404
 from django.shortcuts import get_object_or_404, render, redirect
-from core.public_urls import build_public_url
 from django.template.loader import render_to_string
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_POST
@@ -27,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 LEASE_MEDIA_SHARE_SALT = "leases.lease-media-share"
 LEASE_MEDIA_SHARE_MAX_AGE = 48 * 60 * 60
+_DEFAULT_LEASE_SHARE_MAX_AGE = object()
 
 
 def _sign_lease_media_token(lease_id, history_id=None):
@@ -38,13 +38,19 @@ def _sign_lease_media_token(lease_id, history_id=None):
 
 def _lease_media_from_share_token(token):
     try:
-        raw = signing.TimestampSigner(salt=LEASE_MEDIA_SHARE_SALT).unsign(
-            token, max_age=LEASE_MEDIA_SHARE_MAX_AGE
-        )
+        return _legacy_lease_media_from_share_token(token)
     except signing.SignatureExpired:
         raise Http404("This lease photo link has expired.")
     except signing.BadSignature:
         raise Http404("Invalid lease photo link.")
+
+
+def _legacy_lease_media_from_share_token(token, max_age=_DEFAULT_LEASE_SHARE_MAX_AGE):
+    if max_age is _DEFAULT_LEASE_SHARE_MAX_AGE:
+        max_age = LEASE_MEDIA_SHARE_MAX_AGE
+    raw = signing.TimestampSigner(salt=LEASE_MEDIA_SHARE_SALT).unsign(
+        token, max_age=max_age
+    )
     try:
         lease_id, history_id = raw.split(":", 1)
     except ValueError:
@@ -273,12 +279,28 @@ def history_media_grid(request, lease_id, renewal_id):
 @login_required
 def photos_page(request, lease_id):
     lease = get_object_or_404(Lease.objects.select_related("tenant", "unit__property"), pk=lease_id)
-    token = _sign_lease_media_token(lease.pk)
-    share_url = build_public_url("leases:photos_public_share", args=[token])
+    from properties.models import PublicPhotoLink
+    from properties.services.photo_link_renewal import (
+        public_link_share_text,
+        public_link_url,
+        reusable_public_photo_link,
+    )
+
+    link = reusable_public_photo_link(
+        PublicPhotoLink.GALLERY_LEASE,
+        property_obj=lease.unit.property,
+        lease=lease,
+        created_by=request.user,
+    )
+    share_url = public_link_url(link)
     return render(
         request,
         "leases/photos_page.html",
-        {"lease": lease, "photo_share_url": share_url},
+        {
+            "lease": lease,
+            "photo_share_url": share_url,
+            "photo_share_whatsapp_text": public_link_share_text(link),
+        },
     )
 
 
@@ -286,17 +308,42 @@ def photos_page(request, lease_id):
 def history_media_page(request, lease_id, renewal_id):
     lease = get_object_or_404(Lease.objects.select_related("tenant", "unit__property"), pk=lease_id)
     history = get_object_or_404(LeaseRenewal, pk=renewal_id, lease=lease)
-    token = _sign_lease_media_token(lease.pk, history.pk)
-    share_url = build_public_url("leases:photos_public_share", args=[token])
+    from properties.models import PublicPhotoLink
+    from properties.services.photo_link_renewal import (
+        public_link_share_text,
+        public_link_url,
+        reusable_public_photo_link,
+    )
+
+    link = reusable_public_photo_link(
+        PublicPhotoLink.GALLERY_LEASE_HISTORY,
+        property_obj=lease.unit.property,
+        lease=lease,
+        lease_history=history,
+        created_by=request.user,
+    )
+    share_url = public_link_url(link)
     return render(
         request,
         "leases/photos_page.html",
-        {"lease": lease, "history": history, "photo_share_url": share_url},
+        {
+            "lease": lease,
+            "history": history,
+            "photo_share_url": share_url,
+            "photo_share_whatsapp_text": public_link_share_text(link),
+        },
     )
 
 
 def photos_public_share(request, token):
-    lease, history = _lease_media_from_share_token(token)
+    try:
+        lease, history = _legacy_lease_media_from_share_token(token)
+    except signing.SignatureExpired:
+        return _expired_legacy_lease_link(request, token)
+    except (signing.BadSignature, Http404):
+        from properties.views import _invalid_photo_link_page
+
+        return _invalid_photo_link_page(request)
     media = _media_queryset(lease, history)
     return render(
         request,
@@ -307,6 +354,33 @@ def photos_public_share(request, token):
             "media": media,
             "token": token,
         },
+    )
+
+
+def _expired_legacy_lease_link(request, token):
+    # Decode without an age only after max_age validation proved this exact
+    # signature is genuine but expired.
+    try:
+        lease, history = _legacy_lease_media_from_share_token(token, max_age=None)
+    except (signing.BadSignature, Http404):
+        from properties.views import _invalid_photo_link_page
+
+        return _invalid_photo_link_page(request)
+
+    from properties.models import PublicPhotoLink
+    from properties.views import _renewal_form_response
+
+    return _renewal_form_response(
+        request,
+        gallery_type=(
+            PublicPhotoLink.GALLERY_LEASE_HISTORY
+            if history
+            else PublicPhotoLink.GALLERY_LEASE
+        ),
+        property_obj=lease.unit.property,
+        unit=lease.unit,
+        lease=lease,
+        lease_history=history,
     )
 
 

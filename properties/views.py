@@ -66,6 +66,7 @@ from .filters import UnitFilter
 from .forms import PropertyBankAccountForm, PropertyForm, UnitForm
 from .models import (
     BuildingType,
+    PublicPhotoLink,
     Property,
     PropertyBankAccount,
     PropertyMedia,
@@ -77,6 +78,23 @@ from .tables import PropertyTable, UnitTable
 logger = logging.getLogger(__name__)
 UNIT_MEDIA_SHARE_MAX_AGE = 60 * 60 * 48
 UNIT_MEDIA_SHARE_SALT = "properties.unit-media-share"
+_DEFAULT_SHARE_MAX_AGE = object()
+
+
+def _compact_photo_link(gallery_type, request_user=None, **targets):
+    from properties.services.photo_link_renewal import reusable_public_photo_link
+
+    creator = request_user if getattr(request_user, "is_authenticated", False) else None
+    return reusable_public_photo_link(
+        gallery_type, created_by=creator, **targets
+    )
+
+
+def _masked_phone(value):
+    digits = "".join(character for character in str(value or "") if character.isdigit())
+    if len(digits) < 4:
+        return "****"
+    return f"+{digits[:2]}{'*' * max(4, len(digits) - 6)}{digits[-4:]}"
 
 
 class PropertyListView(SingleTableView):
@@ -818,7 +836,9 @@ def _default_unit_interest_type(unit):
     return TenantInterestType.objects.filter(code=code, is_active=True).first()
 
 
-def _vacant_notice_message(request, unit, tenant, photos_link=""):
+def _vacant_notice_message(
+    request, unit, tenant, photos_link="", photo_share_text=""
+):
     details_link = photos_link or build_public_url(
         "properties:unit_detail", args=[unit.pk]
     )
@@ -835,9 +855,11 @@ def _vacant_notice_message(request, unit, tenant, photos_link=""):
         f"Agreement Fee: {getattr(unit, 'agreement_fee', None) or getattr(unit, 'agreement_charges', None) or '-'}",
         f"Notes: {unit.comments or '-'}",
         "",
-        "Photos/Details:",
-        details_link,
     ]
+    if photo_share_text:
+        lines.extend([photo_share_text])
+    else:
+        lines.extend(["Photos/Details:", details_link])
     lines.extend(["", "Please contact us if interested."])
     return "\n".join(lines)
 
@@ -888,11 +910,21 @@ def unit_vacant_notice_leads(request, pk):
     country_code = getattr(settings_obj, "country_code", "+92")
     has_photos = unit.media_files.filter(is_active=True).exists()
     photos_link = ""
+    photo_share_text = ""
     if has_photos:
-        photos_link = build_public_url(
-            "properties:unit_media_public_share",
-            args=[_sign_unit_media_token(unit.pk)],
+        from properties.services.photo_link_renewal import (
+            public_link_share_text,
+            public_link_url,
         )
+
+        photo_link = _compact_photo_link(
+            PublicPhotoLink.GALLERY_UNIT,
+            request.user,
+            property_obj=unit.property,
+            unit=unit,
+        )
+        photos_link = public_link_url(photo_link)
+        photo_share_text = public_link_share_text(photo_link)
 
     tenants = (
         Tenant.objects.prefetch_related("interested_in")
@@ -910,7 +942,13 @@ def unit_vacant_notice_leads(request, pk):
         interests = [
             {"id": item.pk, "name": item.name} for item in tenant.interested_in.all()
         ]
-        message = _vacant_notice_message(request, unit, tenant, photos_link=photos_link)
+        message = _vacant_notice_message(
+            request,
+            unit,
+            tenant,
+            photos_link=photos_link,
+            photo_share_text=photo_share_text,
+        )
         rows.append(
             {
                 "id": tenant.pk,
@@ -1727,10 +1765,18 @@ def unit_media_page(request, pk):
     media_files = unit.media_files.filter(is_active=True).order_by(
         "sort_order", "uploaded_at", "pk"
     )
-    share_token = _sign_unit_media_token(unit.pk)
-    share_url = build_public_url(
-        "properties:unit_media_public_share", args=[share_token]
+    from properties.services.photo_link_renewal import (
+        public_link_share_text,
+        public_link_url,
     )
+
+    share_link = _compact_photo_link(
+        PublicPhotoLink.GALLERY_UNIT,
+        request.user,
+        property_obj=unit.property,
+        unit=unit,
+    )
+    share_url = public_link_url(share_link)
     return render(
         request,
         "properties/media_page.html",
@@ -1756,6 +1802,7 @@ def unit_media_page(request, pk):
                 "properties:unit_media_share_link", args=[unit.pk]
             ),
             "share_url": share_url,
+            "share_whatsapp_text": public_link_share_text(share_link),
         },
     )
 
@@ -1769,8 +1816,17 @@ def property_media_page(request, pk):
     media_files = property_obj.media_files.filter(is_active=True).order_by(
         "sort_order", "uploaded_at", "pk"
     )
-    share_token = _sign_media_token("property", property_obj.pk)
-    share_url = build_public_url("properties:media_public_share", args=[share_token])
+    from properties.services.photo_link_renewal import (
+        public_link_share_text,
+        public_link_url,
+    )
+
+    share_link = _compact_photo_link(
+        PublicPhotoLink.GALLERY_PROPERTY,
+        request.user,
+        property_obj=property_obj,
+    )
+    share_url = public_link_url(share_link)
     return render(
         request,
         "properties/media_page.html",
@@ -1798,6 +1854,7 @@ def property_media_page(request, pk):
                 "properties:property_media_share_link", args=[property_obj.pk]
             ),
             "share_url": share_url,
+            "share_whatsapp_text": public_link_share_text(share_link),
         },
     )
 
@@ -2044,16 +2101,12 @@ def _sign_unit_media_token(unit_id):
     return _sign_media_token("unit", unit_id)
 
 
-def _owner_from_share_token(token):
-    try:
-        signed_value = signing.TimestampSigner(salt=UNIT_MEDIA_SHARE_SALT).unsign(
-            token,
-            max_age=UNIT_MEDIA_SHARE_MAX_AGE,
-        )
-    except signing.SignatureExpired:
-        raise Http404("This photo link has expired.")
-    except signing.BadSignature:
-        raise Http404("Invalid photo link.")
+def _legacy_owner_from_share_token(token, max_age=_DEFAULT_SHARE_MAX_AGE):
+    if max_age is _DEFAULT_SHARE_MAX_AGE:
+        max_age = UNIT_MEDIA_SHARE_MAX_AGE
+    signed_value = signing.TimestampSigner(salt=UNIT_MEDIA_SHARE_SALT).unsign(
+        token, max_age=max_age
+    )
     try:
         owner_kind, owner_id = signed_value.split(":", 1)
     except ValueError:
@@ -2067,6 +2120,15 @@ def _owner_from_share_token(token):
     raise Http404("Invalid photo link.")
 
 
+def _owner_from_share_token(token):
+    try:
+        return _legacy_owner_from_share_token(token)
+    except signing.SignatureExpired:
+        raise Http404("This photo link has expired.")
+    except signing.BadSignature:
+        raise Http404("Invalid photo link.")
+
+
 def _unit_from_share_token(token):
     owner_kind, owner = _owner_from_share_token(token)
     if owner_kind != "unit":
@@ -2077,16 +2139,21 @@ def _unit_from_share_token(token):
 @login_required
 def unit_media_share_link(request, pk):
     unit = get_object_or_404(Unit.objects.select_related("property"), pk=pk)
-    token = _sign_unit_media_token(unit.pk)
-    share_url = build_public_url(
-        "properties:unit_media_public_share", args=[token]
+    from properties.services.photo_link_renewal import public_link_url
+
+    link = _compact_photo_link(
+        PublicPhotoLink.GALLERY_UNIT,
+        request.user,
+        property_obj=unit.property,
+        unit=unit,
     )
+    share_url = public_link_url(link)
     return render(
         request,
         "properties/unit_media_share_link.html",
         {
             "owner_label": f"{unit.property.property_name} - Unit {unit.unit_number}",
-            "token": token,
+            "token": link.token,
             "share_url": share_url,
             "expires_hours": 48,
             "back_url": reverse("properties:unit_media", args=[unit.pk]),
@@ -2097,14 +2164,20 @@ def unit_media_share_link(request, pk):
 @login_required
 def property_media_share_link(request, pk):
     property_obj = get_object_or_404(Property, pk=pk)
-    token = _sign_media_token("property", property_obj.pk)
-    share_url = build_public_url("properties:media_public_share", args=[token])
+    from properties.services.photo_link_renewal import public_link_url
+
+    link = _compact_photo_link(
+        PublicPhotoLink.GALLERY_PROPERTY,
+        request.user,
+        property_obj=property_obj,
+    )
+    share_url = public_link_url(link)
     return render(
         request,
         "properties/unit_media_share_link.html",
         {
             "owner_label": property_obj.property_name,
-            "token": token,
+            "token": link.token,
             "share_url": share_url,
             "expires_hours": 48,
             "back_url": reverse("properties:property_media", args=[property_obj.pk]),
@@ -2113,7 +2186,12 @@ def property_media_share_link(request, pk):
 
 
 def unit_media_public_share(request, token):
-    owner_kind, owner = _owner_from_share_token(token)
+    try:
+        owner_kind, owner = _legacy_owner_from_share_token(token)
+    except signing.SignatureExpired:
+        return _legacy_media_renewal_page(request, token)
+    except (signing.BadSignature, Http404):
+        return _invalid_photo_link_page(request)
     media_files = owner.media_files.filter(is_active=True).order_by(
         "sort_order", "uploaded_at", "pk"
     )
@@ -2164,6 +2242,257 @@ def unit_media_public_file(request, token, media_id):
         as_attachment=request.GET.get("download") == "1",
         filename=download_name,
     )
+
+
+def _public_photo_link_has_valid_target(link):
+    if link.gallery_type == PublicPhotoLink.GALLERY_PROPERTY:
+        return bool(
+            link.property_id
+            and not link.unit_id
+            and not link.lease_id
+            and not link.lease_history_id
+        )
+    if link.gallery_type == PublicPhotoLink.GALLERY_UNIT:
+        return bool(
+            link.property_id
+            and link.unit_id
+            and not link.lease_id
+            and not link.lease_history_id
+            and link.unit.property_id == link.property_id
+        )
+    if link.gallery_type == PublicPhotoLink.GALLERY_LEASE:
+        return bool(
+            link.property_id
+            and link.unit_id
+            and link.lease_id
+            and not link.lease_history_id
+            and link.lease.unit_id == link.unit_id
+            and link.unit.property_id == link.property_id
+        )
+    if link.gallery_type == PublicPhotoLink.GALLERY_LEASE_HISTORY:
+        return bool(
+            link.property_id
+            and link.unit_id
+            and link.lease_id
+            and link.lease_history_id
+            and link.lease.unit_id == link.unit_id
+            and link.unit.property_id == link.property_id
+            and link.lease_history.lease_id == link.lease_id
+        )
+    return False
+
+
+def _photo_link_queryset():
+    return PublicPhotoLink.objects.select_related(
+        "property", "unit", "lease__unit__property", "lease_history"
+    )
+
+
+def _invalid_photo_link_page(request):
+    return render(
+        request,
+        "properties/photo_link_renewal.html",
+        {"invalid_link": True},
+        status=404,
+    )
+
+
+def _renewal_form_response(
+    request,
+    *,
+    gallery_type,
+    property_obj,
+    unit=None,
+    lease=None,
+    lease_history=None,
+    original_expires_at=None,
+):
+    context = {"expired_link": True}
+    if request.method == "POST":
+        from properties.services.photo_link_renewal import create_renewal_request
+        from whatsapp.services.identity.phone_normalizer import normalize_phone_number
+
+        name = request.POST.get("full_name", "")
+        phone = request.POST.get("phone", "")
+        try:
+            create_renewal_request(
+                gallery_type=gallery_type,
+                property_obj=property_obj,
+                unit=unit,
+                lease=lease,
+                lease_history=lease_history,
+                requester_name=name,
+                requester_phone=phone,
+                original_expires_at=original_expires_at,
+                request_ip=request.META.get("REMOTE_ADDR") or None,
+                user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            )
+        except ValueError as exc:
+            context.update(
+                {
+                    "form_error": str(exc),
+                    "full_name": name,
+                    "phone": phone,
+                }
+            )
+            return render(
+                request,
+                "properties/photo_link_renewal.html",
+                context,
+                status=400,
+            )
+        context.update(
+            {
+                "submitted": True,
+                "masked_phone": _masked_phone(normalize_phone_number(phone)),
+            }
+        )
+    return render(request, "properties/photo_link_renewal.html", context)
+
+
+def _legacy_media_renewal_page(request, token):
+    # This unsign-without-age operation is deliberately reachable only after the
+    # same token has first raised SignatureExpired with max_age enforced.
+    try:
+        owner_kind, owner = _legacy_owner_from_share_token(token, max_age=None)
+    except (signing.BadSignature, Http404):
+        return _invalid_photo_link_page(request)
+    if owner_kind == "unit":
+        return _renewal_form_response(
+            request,
+            gallery_type=PublicPhotoLink.GALLERY_UNIT,
+            property_obj=owner.property,
+            unit=owner,
+        )
+    return _renewal_form_response(
+        request,
+        gallery_type=PublicPhotoLink.GALLERY_PROPERTY,
+        property_obj=owner,
+    )
+
+
+def public_photo_link(request, token):
+    link = _photo_link_queryset().filter(token=token).first()
+    if not link or not _public_photo_link_has_valid_target(link):
+        return _invalid_photo_link_page(request)
+    if not link.is_valid:
+        return _renewal_form_response(
+            request,
+            gallery_type=link.gallery_type,
+            property_obj=link.property,
+            unit=link.unit,
+            lease=link.lease,
+            lease_history=link.lease_history,
+            original_expires_at=link.expires_at,
+        )
+
+    if link.gallery_type in {
+        PublicPhotoLink.GALLERY_PROPERTY,
+        PublicPhotoLink.GALLERY_UNIT,
+    }:
+        owner = (
+            link.property
+            if link.gallery_type == PublicPhotoLink.GALLERY_PROPERTY
+            else link.unit
+        )
+        media_files = owner.media_files.filter(is_active=True).order_by(
+            "sort_order", "uploaded_at", "pk"
+        )
+        owner_label = (
+            link.property.property_name
+            if link.gallery_type == PublicPhotoLink.GALLERY_PROPERTY
+            else f"{link.property.property_name} - Unit {link.unit.unit_number}"
+        )
+        return render(
+            request,
+            "properties/unit_media_public_share.html",
+            {
+                "owner_label": owner_label,
+                "compact_token": link.token,
+                "media_files": media_files,
+                "expires_at": link.expires_at,
+            },
+        )
+
+    from leases.views_lease_photos import _media_queryset
+
+    return render(
+        request,
+        "leases/photos_public_share.html",
+        {
+            "lease": link.lease,
+            "history": link.lease_history,
+            "media": _media_queryset(link.lease, link.lease_history),
+            "compact_token": link.token,
+            "expires_at": link.expires_at,
+        },
+    )
+
+
+def public_photo_file(request, token, media_id):
+    link = _photo_link_queryset().filter(token=token).first()
+    if (
+        not link
+        or not link.is_valid
+        or not _public_photo_link_has_valid_target(link)
+    ):
+        raise Http404("Invalid or expired photo link.")
+
+    if link.gallery_type in {
+        PublicPhotoLink.GALLERY_PROPERTY,
+        PublicPhotoLink.GALLERY_UNIT,
+    }:
+        model = (
+            PropertyMedia
+            if link.gallery_type == PublicPhotoLink.GALLERY_PROPERTY
+            else UnitMedia
+        )
+        lookup = (
+            {"property": link.property}
+            if link.gallery_type == PublicPhotoLink.GALLERY_PROPERTY
+            else {"unit": link.unit}
+        )
+        media = get_object_or_404(model, pk=media_id, is_active=True, **lookup)
+        variant = request.GET.get("variant", "")
+        if variant == "original":
+            media_file = media.file
+        elif variant == "thumbnail":
+            media_file = media.thumbnail or media.stamped_file or media.file
+        else:
+            media_file = (
+                media.stamped_file
+                if media.file_type == "image" and media.stamped_file
+                else media.file
+            )
+        if not media_file or not media_file.name:
+            raise Http404("File not found.")
+        try:
+            if not media_file.storage.exists(media_file.name):
+                raise Http404("File not found.")
+            media_file.open("rb")
+        except (FileNotFoundError, OSError, ValueError):
+            raise Http404("File not found.")
+        download_name = os.path.basename(
+            (media.original_filename or media.file.name or "download").replace("\\", "/")
+        )
+        return FileResponse(
+            media_file,
+            as_attachment=request.GET.get("download") == "1",
+            filename=download_name,
+        )
+
+    from leases.views_lease_photos import _media_queryset
+
+    photo = get_object_or_404(
+        _media_queryset(link.lease, link.lease_history), pk=media_id
+    )
+    if not photo.file or not photo.file_exists:
+        raise Http404("Photo file not found.")
+    try:
+        photo.file.open("rb")
+    except (FileNotFoundError, OSError, ValueError):
+        raise Http404("Photo file not found.")
+    return FileResponse(photo.file)
 
 
 def public_unit_photo_upload(request, token):

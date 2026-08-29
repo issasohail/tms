@@ -313,7 +313,7 @@
           <button type="button" class="btn btn-primary" id="lease-photo-copy-link" data-share-url="{{ photo_share_url }}" title="Copy the 48-hour public link" aria-label="Copy 48-hour public photo link">
             <i class="ti ti-copy"></i>
           </button>
-          <a href="https://wa.me/?text={{ photo_share_url|urlencode }}" target="_blank" rel="noopener" class="btn btn-success" title="Share the photo gallery on WhatsApp" aria-label="Share 48-hour public photo gallery on WhatsApp">
+          <a href="https://wa.me/?text={{ photo_share_whatsapp_text|default:photo_share_url|urlencode }}" target="_blank" rel="noopener" class="btn btn-success" title="Share the photo gallery on WhatsApp" aria-label="Share 48-hour public photo gallery on WhatsApp">
             <i class="ti ti-brand-whatsapp"></i>
           </a>
         </div>

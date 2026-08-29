@@ -23,6 +23,7 @@
           <div class="alert alert-warning">
             This photo link has expired. For your security, photo links remain active for 48 hours. Please request a new link below.
           </div>
+          <p class="small text-muted"><strong>Property:</strong> {{ property_obj.property_name }}{% if unit %}<br><strong>Unit:</strong> {{ unit.unit_number }}{% endif %}</p>
           {% if form_error %}<div class="alert alert-danger">{{ form_error }}</div>{% endif %}
           <form method="post" novalidate>
             {% csrf_token %}
@@ -33,6 +34,12 @@
             <div class="mb-3">
               <label for="id_phone" class="form-label">WhatsApp number</label>
               <input id="id_phone" name="phone" value="{{ phone|default:'' }}" maxlength="32" autocomplete="tel" inputmode="tel" class="form-control" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Interested building type</label>
+              {% for interest in interest_types %}
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="interest_type" value="{{ interest.pk }}" id="interest_{{ interest.pk }}" {% if interest.pk|stringformat:'s' in selected_interest_ids %}checked{% endif %}><label class="form-check-label" for="interest_{{ interest.pk }}">{{ interest.name }}</label></div>
+              {% endfor %}
             </div>
             <button class="btn btn-primary w-100" type="submit">Request a new link</button>
           </form>

@@ -2307,7 +2307,15 @@ def _renewal_form_response(
     lease_history=None,
     original_expires_at=None,
 ):
-    context = {"expired_link": True}
+    from tenants.models import TenantInterestType
+
+    context = {
+        "expired_link": True,
+        "property_obj": property_obj,
+        "unit": unit,
+        "interest_types": TenantInterestType.objects.filter(is_active=True).order_by("sort_order", "name"),
+        "selected_interest_ids": request.POST.getlist("interest_type") if request.method == "POST" else [],
+    }
     if request.method == "POST":
         from properties.services.photo_link_renewal import create_renewal_request
         from whatsapp.services.identity.phone_normalizer import normalize_phone_number
@@ -2326,6 +2334,7 @@ def _renewal_form_response(
                 original_expires_at=original_expires_at,
                 request_ip=request.META.get("REMOTE_ADDR") or None,
                 user_agent=request.META.get("HTTP_USER_AGENT", ""),
+                interest_type_ids=request.POST.getlist("interest_type"),
             )
         except ValueError as exc:
             context.update(
@@ -2333,6 +2342,7 @@ def _renewal_form_response(
                     "form_error": str(exc),
                     "full_name": name,
                     "phone": phone,
+                    "selected_interest_ids": request.POST.getlist("interest_type"),
                 }
             )
             return render(

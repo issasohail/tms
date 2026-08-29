@@ -32,7 +32,7 @@ from properties.services.photo_link_renewal import (
     reusable_public_photo_link,
 )
 from properties.views import _sign_media_token
-from tenants.models import Tenant
+from tenants.models import Tenant, TenantInterestType
 from whatsapp.models import (
     WhatsAppMessageLog,
     WhatsAppStaffActionLog,
@@ -216,6 +216,36 @@ class SecurePhotoLinkTests(TestCase):
         self.assertContains(response, renewal.requester_phone[-4:])
         self.assertEqual(renewal.requester_phone, "923001234567")
         notify.assert_called_once_with(renewal)
+
+    @patch("properties.services.photo_link_renewal.notify_staff_of_renewal_request")
+    def test_request_creates_one_inactive_prospect_and_records_interest(self, notify):
+        interest = TenantInterestType.objects.create(
+            name="Apartment", code="apartment-interest"
+        )
+        first, created = create_renewal_request(
+            gallery_type=PublicPhotoLink.GALLERY_UNIT,
+            property_obj=self.property,
+            unit=self.unit,
+            requester_name="Visitor Name",
+            requester_phone="0300 123 4567",
+            interest_type_ids=[str(interest.pk)],
+        )
+        second, second_created = create_renewal_request(
+            gallery_type=PublicPhotoLink.GALLERY_PROPERTY,
+            property_obj=self.property,
+            requester_name="Visitor Changed Name",
+            requester_phone="923001234567",
+            interest_type_ids=[str(interest.pk)],
+        )
+        self.assertTrue(created)
+        self.assertTrue(second_created)
+        self.assertEqual(first.tenant_id, second.tenant_id)
+        prospect = Tenant.objects.get(pk=first.tenant_id)
+        self.assertFalse(prospect.is_active)
+        self.assertEqual(prospect.phone, "923001234567")
+        self.assertQuerySetEqual(first.interested_in.all(), [interest])
+        self.assertQuerySetEqual(prospect.interested_in.all(), [interest])
+        self.assertEqual(notify.call_count, 2)
 
     @patch("properties.services.photo_link_renewal.notify_staff_of_renewal_request")
     def test_validation_duplicate_cooldown_and_ip_throttle(self, notify):

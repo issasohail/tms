@@ -809,6 +809,7 @@ def pending_approval_delete(request, kind, pk):
 @login_required
 def pending_approval_detail(request, kind, pk):
     from handyman.models import HandymanProfile
+    from properties.models import Unit
 
     item = _pending_item_for_kind(kind, pk)
     media_items = []
@@ -868,6 +869,10 @@ def pending_approval_detail(request, kind, pk):
             ),
             "whatsapp_api_number": (
                 _whatsapp_api_display_number() if kind == "maintenance" else ""
+            ),
+            "media_reassignment_units": (
+                Unit.objects.select_related("property").order_by("property__property_name", "unit_number")
+                if kind == "media" else Unit.objects.none()
             ),
         },
     )
@@ -1750,10 +1755,31 @@ def pending_approval_approve(request, kind, pk):
                     approval_items = batch_items
                 approved_count = 0
                 missing_count = 0
+                reassigned_unit_id = request.POST.get("reassign_unit", "")
+                reassigned_unit = None
+                if reassigned_unit_id:
+                    try:
+                        reassigned_unit = Unit.objects.select_related("property").get(pk=reassigned_unit_id)
+                    except Unit.DoesNotExist as exc:
+                        raise ValueError("The selected property / unit is no longer available.") from exc
+                elif not request.POST.get("media_destination", ""):
+                    raise ValueError("Choose a media destination or reassign this media to a property / unit.")
                 for batch_item in approval_items:
-                    _apply_pending_media_destination(
-                        batch_item, request.POST.get("media_destination", "")
-                    )
+                    if reassigned_unit:
+                        old_destination = _property_unit_label(batch_item)
+                        batch_item.property = reassigned_unit.property
+                        batch_item.unit = reassigned_unit
+                        batch_item.lease = None
+                        batch_item.tenant = None
+                        _apply_pending_media_destination(batch_item, f"unit_photo:{reassigned_unit.pk}")
+                        batch_item.ai_notes = "\n".join(part for part in (
+                            batch_item.ai_notes.strip(),
+                            f"Reassigned by {request.user.get_username()} from {old_destination} to {reassigned_unit.property.property_name} - Unit {reassigned_unit.unit_number}.",
+                        ) if part)
+                    else:
+                        _apply_pending_media_destination(
+                            batch_item, request.POST.get("media_destination", "")
+                        )
                     if _pending_media_source_exists(batch_item):
                         _attach_pending_media_from_core(batch_item, request.user)
                     else:
@@ -1770,7 +1796,7 @@ def pending_approval_approve(request, kind, pk):
                     batch_item.approved_by = request.user
                     batch_item.approved_at = timezone.now()
                     batch_item.save(update_fields=[
-                        "purpose", "target_kind", "ai_notes", "status", "approved_by", "approved_at", "updated_at"
+                        "purpose", "target_kind", "tenant", "lease", "property", "unit", "ai_notes", "status", "approved_by", "approved_at", "updated_at"
                     ])
                     approved_count += 1
                 if explicit_selection:

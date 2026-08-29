@@ -271,6 +271,13 @@ class PhotoLinkRenewalRequest(models.Model):
     )
     requester_name = models.CharField(max_length=120)
     requester_phone = NormalizedPhoneField(max_length=32, db_index=True)
+    tenant = models.ForeignKey(
+        "tenants.Tenant", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="photo_link_requests",
+    )
+    interested_in = models.ManyToManyField(
+        "tenants.TenantInterestType", blank=True, related_name="photo_link_requests",
+    )
     status = models.CharField(
         max_length=12, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True,
     )

@@ -18,7 +18,7 @@
           {% csrf_token %}
           {% if kind == "media" %}
             {% if has_extracted_video_frames %}<input type="hidden" name="media_selection" value="explicit">{% endif %}
-            <select name="media_destination" class="form-select form-select-sm" style="width:auto;max-width:240px;" required aria-label="Media destination">
+            <select name="media_destination" class="form-select form-select-sm" style="width:auto;max-width:240px;" aria-label="Media destination">
               <option value="">Choose category / destination</option>
               <option value="payment_receipt" {% if item.purpose == "payment" %}selected{% endif %}>Payment Receipt â€” Pending Verification</option>
               {% if item.lease %}
@@ -32,6 +32,12 @@
               {% if item.unit %}
                 <option value="unit_photo:{{ item.unit_id }}" {% if item.target_kind == "unit_photo" or item.purpose == "unit" %}selected{% endif %}>Unit Photo — {{ item.unit }}</option>
               {% endif %}
+            </select>
+            <select name="reassign_unit" class="form-select form-select-sm" style="width:auto;max-width:300px;" aria-label="Reassign property and unit">
+              <option value="">Or reassign property / unit</option>
+              {% for destination_unit in media_reassignment_units %}
+                <option value="{{ destination_unit.pk }}" {% if item.unit_id == destination_unit.pk %}selected{% endif %}>{{ destination_unit.property.property_name }} — Unit {{ destination_unit.unit_number }}</option>
+              {% endfor %}
             </select>
           {% endif %}
           {% if kind == "payment" %}

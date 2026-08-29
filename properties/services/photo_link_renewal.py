@@ -19,6 +19,7 @@ from whatsapp.services.identity.sender_resolver import resolve_sender
 from whatsapp.services.whatsapp import WhatsAppService
 
 from properties.models import PhotoLinkRenewalRequest, PublicPhotoLink
+from tenants.models import Tenant, TenantInterestType
 
 
 logger = logging.getLogger(__name__)
@@ -193,6 +194,7 @@ def create_renewal_request(
     original_expires_at=None,
     request_ip=None,
     user_agent="",
+    interest_type_ids=(),
 ):
     name = (requester_name or "").strip()
     phone = normalize_phone_number(requester_phone)
@@ -209,6 +211,13 @@ def create_renewal_request(
         lease=lease,
         lease_history=lease_history,
     )
+    selected_interest_ids = [value for value in interest_type_ids if str(value).isdigit()]
+    interests = list(TenantInterestType.objects.filter(
+        pk__in=selected_interest_ids,
+        is_active=True,
+    ).order_by("sort_order", "name"))
+    if len(interests) != len(set(map(int, selected_interest_ids))):
+        raise ValueError("Please select a valid building type.")
     now = timezone.now()
     if request_ip and PhotoLinkRenewalRequest.objects.filter(
         request_ip=request_ip,
@@ -230,6 +239,21 @@ def create_renewal_request(
     if duplicate:
         return duplicate, False
 
+    tenant = (
+        Tenant.objects.filter(Q(phone=phone) | Q(phone2=phone) | Q(phone3=phone))
+        .order_by("-is_active", "pk")
+        .first()
+    )
+    if tenant is None:
+        name_parts = name.split(None, 1)
+        tenant = Tenant.objects.create(
+            first_name=name_parts[0],
+            last_name=name_parts[1] if len(name_parts) > 1 else "Prospect",
+            phone=phone,
+            cnic="",
+            is_active=False,
+            notes="Created from an expired public photo-link request.",
+        )
     renewal = PhotoLinkRenewalRequest.objects.create(
         gallery_type=gallery_type,
         requester_name=name[:120],
@@ -237,8 +261,12 @@ def create_renewal_request(
         original_expires_at=original_expires_at,
         request_ip=request_ip,
         user_agent=(user_agent or "")[:500],
+        tenant=tenant,
         **values,
     )
+    if interests:
+        tenant.interested_in.add(*interests)
+        renewal.interested_in.add(*interests)
     notify_staff_of_renewal_request(renewal)
     return renewal, True
 
@@ -336,11 +364,16 @@ def notify_staff_of_renewal_request(renewal):
 
     staff = recipients[0]
     renewal.assigned_staff = staff
+    target = renewal.property.property_name
+    if renewal.unit_id:
+        target = f"{target} — Unit {renewal.unit.unit_number}"
+    interests = ", ".join(renewal.interested_in.values_list("name", flat=True)) or "Not selected"
     body = (
         "Photo-link renewal request\n"
         f"Reference: {renewal.reference}\n"
-        f"Property: {renewal.property.property_name}\n"
+        f"Property / unit: {target}\n"
         f"Requester: {renewal.requester_name} ({renewal.requester_phone})\n\n"
+        f"Interested in: {interests}\n\n"
         f"Reply APPROVE {renewal.reference} or REJECT {renewal.reference}."
     )
     try:

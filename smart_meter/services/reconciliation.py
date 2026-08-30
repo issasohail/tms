@@ -15,6 +15,7 @@ from smart_meter.models import (
     EnergySystem,
     EnergySystemMeterLink,
     InverterPeriodStatement,
+    LiveReading,
     Meter,
     MeterReading,
     UtilityBillCycle,
@@ -27,6 +28,82 @@ ZERO = Decimal("0")
 UNCONFIRMED_EXPORT_REASON = "Output meter's export path is not confirmed"
 NO_EXACT_BILL_REASON = "No confirmed utility bill exactly matches this period; export is not prorated"
 PV_RESIDUAL_LABEL = "PV/Storage Residual — battery movement unavailable"
+PROVISIONAL_SYNC_TOLERANCE = timedelta(minutes=15)
+
+
+def _latest_reading_for_meter(meter):
+    """Return the newest live or stored reading without using it in confirmed totals."""
+    live = LiveReading.objects.filter(meter=meter).order_by("-ts", "-id").first()
+    stored = MeterReading.objects.filter(meter=meter).order_by("-ts", "-id").first()
+    candidates = [reading for reading in (live, stored) if reading is not None]
+    return max(candidates, key=lambda reading: reading.ts) if candidates else None
+
+
+def _timing_difference_label(delta):
+    total_seconds = int(delta.total_seconds())
+    minutes, seconds = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    parts = []
+    if hours:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    if minutes or not parts:
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+    parts.append(f"{seconds} second{'s' if seconds != 1 else ''}")
+    return " ".join(parts)
+
+
+def build_latest_linked_meter_snapshot(system):
+    """Latest configured source readings for display only; never feeds confirmed reconciliation."""
+    links = list(
+        system.meter_links.select_related("meter").order_by("side", "meter__meter_number")
+    )
+    if not links:
+        return {"inputs": [], "outputs": [], "status": "incomplete", "provisional_balance": None}
+
+    rows = {EnergySystemMeterLink.SIDE_INPUT: [], EnergySystemMeterLink.SIDE_OUTPUT: []}
+    for link in links:
+        reading = _latest_reading_for_meter(link.meter)
+        forward = (
+            _register_value(reading, "forward_active_energy_kwh", "total_energy")
+            if reading else None
+        )
+        reverse = _register_value(reading, "reverse_active_energy_kwh") if reading else None
+        rows[link.side].append({
+            "meter": link.meter,
+            "reading": reading,
+            "forward": forward,
+            "reverse": reverse,
+            "net": forward - reverse if forward is not None and reverse is not None else None,
+            "timing_difference": None,
+            "timing_difference_label": "",
+        })
+
+    inputs, outputs = rows[EnergySystemMeterLink.SIDE_INPUT], rows[EnergySystemMeterLink.SIDE_OUTPUT]
+    reference = next((row for row in inputs if row["reading"] is not None), None)
+    if reference:
+        for row in inputs + outputs:
+            if row["reading"] is not None:
+                difference = abs(reference["reading"].ts - row["reading"].ts)
+                row["timing_difference"] = difference
+                row["timing_difference_label"] = _timing_difference_label(difference)
+
+    all_rows = inputs + outputs
+    all_have_forward = bool(inputs and outputs) and all(row["forward"] is not None for row in all_rows)
+    all_in_sync = reference is not None and all(
+        row["timing_difference"] is not None and row["timing_difference"] <= PROVISIONAL_SYNC_TOLERANCE
+        for row in all_rows
+    )
+    provisional_balance = None
+    if all_have_forward:
+        provisional_balance = sum(row["forward"] for row in outputs) - sum(row["forward"] for row in inputs)
+    return {
+        "inputs": inputs,
+        "outputs": outputs,
+        "reference_meter": reference["meter"] if reference else None,
+        "sync_tolerance_minutes": int(PROVISIONAL_SYNC_TOLERANCE.total_seconds() // 60),
+        "status": "provisional" if provisional_balance is not None and all_in_sync else "out_of_sync" if provisional_balance is not None else "incomplete",
+        "provisional_balance": provisional_balance,
+    }
 
 
 def calculate_variance(check_kwh, billing_kwh, rate):

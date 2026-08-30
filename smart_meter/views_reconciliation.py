@@ -31,6 +31,7 @@ from smart_meter.models import (
 )
 from smart_meter.services.reconciliation import (
     build_energy_reconciliation,
+    build_latest_linked_meter_snapshot,
     confirm_bill,
     finalize_bill,
     log_audit,
@@ -111,6 +112,7 @@ def energy_system_detail(request, pk):
         today = timezone.localdate()
         start, end = today.replace(day=1), today
     report = build_energy_reconciliation(system, start, end)
+    latest_snapshot = build_latest_linked_meter_snapshot(system)
     grid_reading = None
     if system.grid_interface_meter_id:
         grid_reading = LiveReading.objects.filter(
@@ -147,6 +149,7 @@ def energy_system_detail(request, pk):
         {
             "system": system,
             "report": report,
+            "latest_snapshot": latest_snapshot,
             "reassign_form": reassign_form,
             "grid_reading": grid_reading,
             "grid_forward_total": grid_forward_total,

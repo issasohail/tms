@@ -3912,6 +3912,12 @@ def reading_list(request):
     page_items = list(readings[offset : offset + page_size + 1])
     has_next = len(page_items) > page_size
     rows = page_items[:page_size]
+    total_results = readings.count()
+    total_pages = max(1, (total_results + page_size - 1) // page_size)
+    page_numbers = range(
+        max(1, page_number - 2),
+        min(total_pages, page_number + 2) + 1,
+    )
     for reading in rows:
         reading.display_forward_energy = (
             reading.forward_active_energy_kwh
@@ -3992,6 +3998,8 @@ def reading_list(request):
         current_role=role,
         rows=rows,
         page_obj=ReadingPage(rows, page_number, page_size, has_next),
+        page_numbers=page_numbers,
+        total_pages=total_pages,
         range=range_key,  # keeps the dropdown state
         # still dates for the template's value="{{ start|date:'Y-m-d' }}"
         start=start_date,

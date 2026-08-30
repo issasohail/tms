@@ -149,21 +149,27 @@
         </tbody>
     </table>
 
-    {% if page_obj.has_previous or page_obj.has_next %}
+    {% if total_pages > 1 %}
       <nav aria-label="Readings pages" class="p-2 small">
         <ul class="pagination pagination-sm mb-0 justify-content-end">
           <li class="page-item {% if page_obj.number == 1 %}disabled{% endif %}">
-            {% if page_obj.number == 1 %}<span class="page-link">&laquo;</span>
-            {% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page=1" aria-label="First">&laquo;</a>{% endif %}
+            {% if page_obj.number == 1 %}<span class="page-link">First</span>
+            {% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page=1">First</a>{% endif %}
           </li>
           <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
             {% if page_obj.has_previous %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ page_obj.previous_page_number }}">Prev</a>
             {% else %}<span class="page-link">Prev</span>{% endif %}
           </li>
-          <li class="page-item active"><span class="page-link">{{ page_obj.number }}</span></li>
+          {% if page_numbers.0 > 1 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+          {% for number in page_numbers %}<li class="page-item {% if number == page_obj.number %}active{% endif %}">{% if number == page_obj.number %}<span class="page-link">{{ number }}</span>{% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ number }}">{{ number }}</a>{% endif %}</li>{% endfor %}
+          {% if page_numbers|last < total_pages %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
           <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
             {% if page_obj.has_next %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
             {% else %}<span class="page-link">Next</span>{% endif %}
+          </li>
+          <li class="page-item {% if page_obj.number == total_pages %}disabled{% endif %}">
+            {% if page_obj.number == total_pages %}<span class="page-link">Last</span>
+            {% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ total_pages }}">Last</a>{% endif %}
           </li>
         </ul>
       </nav>

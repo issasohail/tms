@@ -163,7 +163,7 @@
               </th>
               <th class="col-metric" title="Voltage A (Volts)"><span class="th2">Voltage<span class="sub">(V)</span></span></th>
               <th class="col-metric" title="Current A (Amps)"><span class="th2">Current<span class="sub">A</span></span></th>
-              <th class="col-metric" title="Forward and reverse active energy (kWh)"><span class="th2">Energy<span class="sub">F / R</span></span></th>
+              <th class="col-metric col-energy-metric" title="Forward and reverse active energy (kWh)"><span class="th2">Energy<span class="sub">F / R</span></span></th>
               <th class="col-actions no-export">Actions</th>
             </tr>
           </thead>
@@ -256,7 +256,7 @@
               <td class="col-ts">{% if m.last_ts %}{{ m.last_ts|date:"Y-m-d H:i:s" }}{% else %}-{% endif %}</td>
               <td class="col-metric">{% if m.last_voltage_a is not None %}{{ m.last_voltage_a|floatformat:1 }}{% else %}-{% endif %}</td>
               <td class="col-metric">{% if m.last_current_a is not None %}{{ m.last_current_a|floatformat:3 }}{% else %}-{% endif %}</td>
-              <td class="col-metric">
+              <td class="col-metric col-energy-metric">
                 <div title="Forward active energy">F: {% if m.last_forward_energy is not None %}{{ m.last_forward_energy|floatformat:3 }}{% elif m.last_total_energy is not None %}{{ m.last_total_energy|floatformat:3 }}{% else %}-{% endif %}</div>
                 {% if m.last_reverse_energy is not None %}<small class="text-muted" title="Reverse/export active energy">R: {{ m.last_reverse_energy|floatformat:3 }}</small>{% endif %}
               </td>
@@ -422,6 +422,7 @@
 .col-date-sm { width: 86px; font-size: 12px; }
 .col-date-lg { width: 122px; font-size: 12px; }
 .col-metric { width: 72px; }
+.col-energy-metric { width: 122px; }
 .col-actions { width: 140px; }
 
 .power-control {

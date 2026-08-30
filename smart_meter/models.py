@@ -729,6 +729,38 @@ class EnergySystemMeterAssignment(models.Model):
         return f"{self.energy_system}: {self.get_role_display()} / {self.meter.meter_number}"
 
 
+class EnergySystemMeterLink(models.Model):
+    """A source meter included in a multi-meter Energy System side."""
+
+    SIDE_INPUT = "input"
+    SIDE_OUTPUT = "output"
+    SIDE_CHOICES = [
+        (SIDE_INPUT, "Input / grid side"),
+        (SIDE_OUTPUT, "Output / load side"),
+    ]
+
+    energy_system = models.ForeignKey(
+        EnergySystem, on_delete=models.CASCADE, related_name="meter_links"
+    )
+    meter = models.ForeignKey(
+        Meter, on_delete=models.PROTECT, related_name="energy_system_links"
+    )
+    side = models.CharField(max_length=10, choices=SIDE_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["energy_system", "meter", "side"],
+                name="unique_energy_system_meter_link",
+            ),
+        ]
+        ordering = ["side", "meter__meter_number"]
+
+    def __str__(self):
+        return f"{self.energy_system}: {self.get_side_display()} / {self.meter.meter_number}"
+
+
 class UtilityConnection(models.Model):
     energy_system = models.OneToOneField(
         EnergySystem,

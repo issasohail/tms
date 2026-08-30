@@ -29,6 +29,7 @@ app_name = 'smart_meter'
 urlpatterns = [
 
     path("energy-systems/", views_reconciliation.energy_system_list, name="energy_system_list"),
+    path("energy-systems/setup/<int:group_id>/", views_reconciliation.energy_system_setup, name="energy_system_setup"),
     path("energy-systems/<int:pk>/", views_reconciliation.energy_system_detail, name="energy_system_detail"),
     path("energy-systems/<int:pk>/reassign-meter/", views_reconciliation.energy_system_reassign_meter, name="energy_system_reassign_meter"),
     path("energy-systems/<int:system_id>/inverter-statements/add/", views_reconciliation.inverter_statement_add, name="inverter_statement_add"),

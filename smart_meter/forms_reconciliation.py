@@ -43,6 +43,48 @@ class EnergySystemReassignmentForm(forms.Form):
         self.fields["meter"].queryset = queryset.order_by("meter_number")
 
 
+class EnergySystemSetupForm(forms.Form):
+    name = forms.CharField(max_length=80, widget=forms.TextInput(attrs=BOOTSTRAP_INPUT))
+    input_meters = forms.ModelMultipleChoiceField(
+        queryset=Meter.objects.none(),
+        widget=forms.SelectMultiple(attrs={"class": "form-select", "size": 6}),
+        help_text="One or more Audit meters on the grid/input side.",
+    )
+    output_meters = forms.ModelMultipleChoiceField(
+        queryset=Meter.objects.none(),
+        widget=forms.SelectMultiple(attrs={"class": "form-select", "size": 8}),
+        help_text="One or more output/load meters. Billing meters keep their normal tenant billing.",
+    )
+    output_meter_includes_grid_export = forms.ChoiceField(
+        required=False,
+        choices=[("", "Not yet confirmed"), ("false", "Grid splits before output"), ("true", "Grid export included in output")],
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    def __init__(self, *args, group=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["input_meters"].queryset = Meter.objects.filter(
+            meter_role=Meter.METER_ROLE_CHECK, is_active=True
+        ).order_by("meter_number")
+        self.fields["output_meters"].queryset = Meter.objects.filter(
+            meter_type=Meter.METER_TYPE_ELECTRIC, is_active=True
+        ).order_by("meter_number")
+        if group and not self.is_bound:
+            self.initial.setdefault("name", group.name)
+            self.initial.setdefault("input_meters", [group.check_meter_id])
+            self.initial.setdefault(
+                "output_meters", list(group.memberships.filter(is_active=True).values_list("billing_meter_id", flat=True))
+            )
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("input_meters"):
+            self.add_error("input_meters", "Select at least one input meter.")
+        if not cleaned.get("output_meters"):
+            self.add_error("output_meters", "Select at least one output meter.")
+        return cleaned
+
+
 class UtilityBillCycleForm(forms.ModelForm):
     MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 

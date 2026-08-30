@@ -12,6 +12,7 @@ from django.views.decorators.http import require_POST
 
 from smart_meter.forms_reconciliation import (
     EnergySystemReassignmentForm,
+    EnergySystemSetupForm,
     InverterPeriodStatementForm,
     UtilityBillCycleForm,
     UtilityBillPaymentForm,
@@ -19,9 +20,11 @@ from smart_meter.forms_reconciliation import (
 from smart_meter.forms import MeterReadingProfileForm
 from smart_meter.models import (
     EnergySystem,
+    EnergySystemMeterLink,
     InverterPeriodStatement,
     LiveReading,
     MeterReading,
+    MeterCheckGroup,
     UtilityBillCycle,
     UtilityBillPayment,
     UtilityConnection,
@@ -59,6 +62,37 @@ def energy_system_list(request):
         "output_group", "output_group__check_meter", "grid_interface_meter"
     ).order_by("name")
     return render(request, "smart_meter/energy_system_list.html", {"systems": systems})
+
+
+@login_required
+@permission_required("smart_meter.add_energysystem", raise_exception=True)
+def energy_system_setup(request, group_id):
+    group = get_object_or_404(
+        MeterCheckGroup.objects.select_related("check_meter"), pk=group_id
+    )
+    if hasattr(group, "energy_system"):
+        return redirect("smart_meter:energy_system_detail", pk=group.energy_system.pk)
+    form = EnergySystemSetupForm(request.POST or None, group=group)
+    if request.method == "POST" and form.is_valid():
+        export_path = form.cleaned_data["output_meter_includes_grid_export"]
+        with transaction.atomic():
+            system = EnergySystem.objects.create(
+                name=form.cleaned_data["name"],
+                output_group=group,
+                output_meter_includes_grid_export=(
+                    None if export_path == "" else export_path == "true"
+                ),
+            )
+            EnergySystemMeterLink.objects.bulk_create([
+                EnergySystemMeterLink(energy_system=system, meter=meter, side=EnergySystemMeterLink.SIDE_INPUT)
+                for meter in form.cleaned_data["input_meters"]
+            ] + [
+                EnergySystemMeterLink(energy_system=system, meter=meter, side=EnergySystemMeterLink.SIDE_OUTPUT)
+                for meter in form.cleaned_data["output_meters"]
+            ])
+        messages.success(request, "Energy System created with linked input and output meters.")
+        return redirect("smart_meter:energy_system_detail", pk=system.pk)
+    return render(request, "smart_meter/energy_system_setup.html", {"form": form, "group": group})
 
 
 @login_required

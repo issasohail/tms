@@ -13,6 +13,7 @@ from django.utils import timezone
 from smart_meter.models import (
     EnergyReconciliationAuditEvent,
     EnergySystem,
+    EnergySystemMeterLink,
     InverterPeriodStatement,
     Meter,
     MeterReading,
@@ -206,6 +207,31 @@ def meter_period_delta(
     }
 
 
+def linked_meter_period_delta(system, side, start_date, end_date, *, field_name="total_energy", fallback_field=None):
+    """Sum a configured side of an Energy System; every source needs valid boundaries."""
+    meter_ids = list(
+        EnergySystemMeterLink.objects.filter(energy_system=system, side=side)
+        .values_list("meter_id", flat=True)
+    )
+    if not meter_ids:
+        return None
+    total = ZERO
+    reasons = []
+    for meter in Meter.objects.filter(pk__in=meter_ids).order_by("meter_number"):
+        result = meter_period_delta(
+            meter, start_date, end_date, field_name=field_name, fallback_field=fallback_field
+        )
+        if result["valid"]:
+            total += result["kwh"]
+        else:
+            reasons.append(f"{meter.meter_number}: {result['reason']}")
+    return {
+        "kwh": total if not reasons else None,
+        "valid": not reasons,
+        "reason": "; ".join(reasons),
+    }
+
+
 def _exact_bill(system, start_date, end_date):
     try:
         connection = system.utility_connection
@@ -261,7 +287,9 @@ def _tenant_financials(system, start_date, end_date):
 
 
 def build_energy_reconciliation(system, start_date, end_date):
-    output = meter_period_delta(system.output_group.check_meter, start_date, end_date)
+    output = linked_meter_period_delta(
+        system, EnergySystemMeterLink.SIDE_OUTPUT, start_date, end_date
+    ) or meter_period_delta(system.output_group.check_meter, start_date, end_date)
     billing_total = ZERO
     billing_valid = True
     billing_reasons = []
@@ -277,7 +305,15 @@ def build_energy_reconciliation(system, start_date, end_date):
             billing_valid = False
             billing_reasons.append(membership.billing_meter.meter_number)
 
-    grid_import = (
+    linked_grid_import = linked_meter_period_delta(
+        system,
+        EnergySystemMeterLink.SIDE_INPUT,
+        start_date,
+        end_date,
+        field_name="forward_active_energy_kwh",
+        fallback_field="total_energy",
+    )
+    grid_import = linked_grid_import or (
         meter_period_delta(
             system.grid_interface_meter,
             start_date,
@@ -288,7 +324,14 @@ def build_energy_reconciliation(system, start_date, end_date):
         if system.grid_interface_meter_id
         else {"kwh": None, "valid": False, "reason": "No grid-interface meter is assigned"}
     )
-    grid_export = (
+    linked_grid_export = linked_meter_period_delta(
+        system,
+        EnergySystemMeterLink.SIDE_INPUT,
+        start_date,
+        end_date,
+        field_name="reverse_active_energy_kwh",
+    )
+    grid_export = linked_grid_export or (
         meter_period_delta(
             system.grid_interface_meter,
             start_date,

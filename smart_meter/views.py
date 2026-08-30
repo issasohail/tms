@@ -1312,6 +1312,7 @@ def meter_check_group_list(request):
             "check_meter",
             "check_meter__unit",
             "check_meter__unit__property",
+            "superseded_by_energy_system",
         )
         .annotate(
             membership_record_count=Count("memberships", distinct=True),

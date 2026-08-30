@@ -61,7 +61,7 @@ def _parse_period(request):
 def energy_system_list(request):
     systems = EnergySystem.objects.select_related(
         "output_group", "output_group__check_meter", "grid_interface_meter"
-    ).order_by("name")
+    ).prefetch_related("meter_links__meter").order_by("name")
     return render(request, "smart_meter/energy_system_list.html", {"systems": systems})
 
 
@@ -94,6 +94,33 @@ def energy_system_setup(request, group_id):
         messages.success(request, "Energy System created with linked input and output meters.")
         return redirect("smart_meter:energy_system_detail", pk=system.pk)
     return render(request, "smart_meter/energy_system_setup.html", {"form": form, "group": group})
+
+
+@login_required
+@permission_required("smart_meter.change_energysystem", raise_exception=True)
+def energy_system_edit(request, pk):
+    system = get_object_or_404(
+        EnergySystem.objects.select_related("output_group", "output_group__check_meter"), pk=pk
+    )
+    group = system.output_group
+    form = EnergySystemSetupForm(request.POST or None, group=group, energy_system=system)
+    if request.method == "POST" and form.is_valid():
+        export_path = form.cleaned_data["output_meter_includes_grid_export"]
+        with transaction.atomic():
+            system.name = form.cleaned_data["name"]
+            system.output_meter_includes_grid_export = None if export_path == "" else export_path == "true"
+            system.save(update_fields=["name", "output_meter_includes_grid_export"])
+            system.meter_links.all().delete()
+            EnergySystemMeterLink.objects.bulk_create([
+                EnergySystemMeterLink(energy_system=system, meter=meter, side=EnergySystemMeterLink.SIDE_INPUT)
+                for meter in form.cleaned_data["input_meters"]
+            ] + [
+                EnergySystemMeterLink(energy_system=system, meter=meter, side=EnergySystemMeterLink.SIDE_OUTPUT)
+                for meter in form.cleaned_data["output_meters"]
+            ])
+        messages.success(request, "Energy System meter links updated.")
+        return redirect("smart_meter:energy_system_detail", pk=system.pk)
+    return render(request, "smart_meter/energy_system_setup.html", {"form": form, "group": group, "system": system, "is_edit": True})
 
 
 @login_required

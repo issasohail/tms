@@ -3,6 +3,7 @@ from django.db.models import Q
 
 from smart_meter.models import (
     EnergySystemMeterAssignment,
+    EnergySystemMeterLink,
     InverterPeriodStatement,
     Meter,
     UtilityBillCycle,
@@ -61,7 +62,7 @@ class EnergySystemSetupForm(forms.Form):
         widget=forms.Select(attrs={"class": "form-select"}),
     )
 
-    def __init__(self, *args, group=None, **kwargs):
+    def __init__(self, *args, group=None, energy_system=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["input_meters"].queryset = Meter.objects.filter(
             meter_role=Meter.METER_ROLE_CHECK, is_active=True
@@ -69,12 +70,23 @@ class EnergySystemSetupForm(forms.Form):
         self.fields["output_meters"].queryset = Meter.objects.filter(
             meter_type=Meter.METER_TYPE_ELECTRIC, is_active=True
         ).order_by("meter_number")
-        if group and not self.is_bound:
+        if not self.is_bound and energy_system:
+            links = energy_system.meter_links.all()
+            input_ids = list(links.filter(side=EnergySystemMeterLink.SIDE_INPUT).values_list("meter_id", flat=True))
+            output_ids = list(links.filter(side=EnergySystemMeterLink.SIDE_OUTPUT).values_list("meter_id", flat=True))
+            self.initial.update({
+                "name": energy_system.name,
+                "input_meters": input_ids or ([group.check_meter_id] if group else []),
+                "output_meters": output_ids or list(group.memberships.filter(is_active=True).values_list("billing_meter_id", flat=True)),
+                "output_meter_includes_grid_export": (
+                    "true" if energy_system.output_meter_includes_grid_export is True
+                    else "false" if energy_system.output_meter_includes_grid_export is False else ""
+                ),
+            })
+        elif group and not self.is_bound:
             self.initial.setdefault("name", group.name)
             self.initial.setdefault("input_meters", [group.check_meter_id])
-            self.initial.setdefault(
-                "output_meters", list(group.memberships.filter(is_active=True).values_list("billing_meter_id", flat=True))
-            )
+            self.initial.setdefault("output_meters", list(group.memberships.filter(is_active=True).values_list("billing_meter_id", flat=True)))
 
     def clean(self):
         cleaned = super().clean()

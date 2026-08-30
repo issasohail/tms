@@ -17,20 +17,20 @@
   <div class="card">
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0">
-        <thead class="table-light"><tr><th>System</th><th>Output meter</th><th>Grid interface</th><th>Export path</th><th>Status</th><th></th></tr></thead>
+        <thead class="table-light"><tr><th>System</th><th>Input meter serials</th><th>Output meter serials</th><th>Export path</th><th>Status</th><th></th></tr></thead>
         <tbody>
           {% for system in systems %}
             <tr>
               <td class="fw-semibold">{{ system.name }}</td>
-              <td>{{ system.output_group.check_meter.meter_number }}</td>
-              <td>{{ system.grid_interface_meter.meter_number|default:"Not assigned" }}</td>
+              <td>{% for link in system.meter_links.all %}{% if link.side == "input" %}<span class="badge bg-secondary me-1">{{ link.meter.meter_number }}</span>{% endif %}{% empty %}{% endfor %}{% if not system.meter_links.all %}{{ system.grid_interface_meter.meter_number|default:"Not assigned" }}{% endif %}</td>
+              <td>{% for link in system.meter_links.all %}{% if link.side == "output" %}<span class="badge bg-primary me-1">{{ link.meter.meter_number }}</span>{% endif %}{% empty %}{% endfor %}{% if not system.meter_links.all %}{{ system.output_group.check_meter.meter_number }}{% endif %}</td>
               <td>
                 {% if system.output_meter_includes_grid_export == True %}Included in output
                 {% elif system.output_meter_includes_grid_export == False %}Splits before output
                 {% else %}<span class="text-warning">Unconfirmed</span>{% endif %}
               </td>
               <td>{% if system.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td>
-              <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:energy_system_detail' system.pk %}">Open</a></td>
+              <td class="text-end text-nowrap"><a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:energy_system_detail' system.pk %}">Open</a>{% if perms.smart_meter.change_energysystem %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:energy_system_edit' system.pk %}">Edit</a>{% endif %}</td>
             </tr>
           {% empty %}
             <tr><td colspan="6" class="text-center text-muted py-4">No Energy Systems have been configured.</td></tr>

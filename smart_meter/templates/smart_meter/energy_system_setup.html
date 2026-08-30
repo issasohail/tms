@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Set up Energy Reconciliation{% endblock %}
+{% block title %}{% if is_edit %}Edit Energy Reconciliation{% else %}Set up Energy Reconciliation{% endif %}{% endblock %}
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
 <div class="container-fluid" style="max-width: 980px;">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <div><h2 class="mb-0">Set up Energy Reconciliation</h2><small class="text-muted">{{ group.name }} — use any number of input and output meters.</small></div>
-    <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_check_group_list' %}">Cancel</a>
+    <div><h2 class="mb-0">{% if is_edit %}Edit Energy Reconciliation{% else %}Set up Energy Reconciliation{% endif %}</h2><small class="text-muted">{{ group.name }} — use any number of input and output meters.</small></div>
+    <a class="btn btn-sm btn-outline-secondary" href="{% if system %}{% url 'smart_meter:energy_system_detail' system.pk %}{% else %}{% url 'smart_meter:meter_check_group_list' %}{% endif %}">Cancel</a>
   </div>
   <div class="alert alert-info">Output meters may remain Billing meters. Linking them here is read-only for reconciliation and does not change tenant billing.</div>
   <form method="post" class="card card-body">{% csrf_token %}
     {% for field in form %}<div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
-    <button class="btn btn-primary">Create and link meters</button>
+    <button class="btn btn-primary">{% if is_edit %}Save linked meters{% else %}Create and link meters{% endif %}</button>
   </form>
 </div>
 {% endblock %}

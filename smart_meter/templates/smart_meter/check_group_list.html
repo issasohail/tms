@@ -81,6 +81,9 @@
               </td>
               <td class="text-end text-nowrap">
                 <div class="d-inline-flex flex-nowrap gap-1">
+                  {% if group.energy_system_id %}
+                    <a class="btn btn-sm btn-outline-info" href="{% url 'smart_meter:energy_system_detail' group.energy_system_id %}" title="Open {{ group.energy_system.name }} energy reconciliation">Meter Recon</a>
+                  {% endif %}
                   <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:meter_check_group_detail' group.pk %}">Assign Meters</a>
                   <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_check_group_edit' group.pk %}" title="Edit Check Group" aria-label="Edit Check Group"><i class="fas fa-pen"></i></a>
                   <button class="btn btn-sm btn-danger" type="button"

@@ -807,20 +807,21 @@
     return suffix ? `${text} ${suffix}` : text;
   }
 
-  function setTotalEnergyCell(tr, energy, voltage, current, flash = true) {
+  function setTotalEnergyCell(tr, energy, reverse, voltage, current, flash = true) {
     const td = tr.querySelector('td[data-col="total_energy"]');
     if (!td) return;
 
     const prevNum = toNum(td.dataset.prevNum);
     const nextNum = toNum(energy);
-    const energyText = fmtLiveMetric(energy, "kWh");
+    const energyText = `F: ${fmtLiveMetric(energy, "kWh")}`;
+    const reverseText = reverse === null || reverse === undefined || reverse === "" ? "" : `R: ${fmtLiveMetric(reverse, "kWh")}`;
     const voltageText = `V: ${fmtLiveMetric(voltage, "V")}`;
     const currentText = `I: ${fmtLiveMetric(current, "A")}`;
 
     const mainNode = td.querySelector(".total-energy-main");
     const prevText = mainNode ? mainNode.textContent.trim() : (td.childNodes[0]?.textContent || td.textContent || "").trim();
 
-    if (prevText !== energyText || td.querySelector(".mobile-voltage")?.textContent !== voltageText || td.querySelector(".mobile-current")?.textContent !== currentText) {
+    if (prevText !== energyText || td.querySelector(".mobile-reverse")?.textContent !== reverseText || td.querySelector(".mobile-voltage")?.textContent !== voltageText || td.querySelector(".mobile-current")?.textContent !== currentText) {
       let dir = null;
       if (prevNum !== null && nextNum !== null) {
         if (nextNum > prevNum) dir = "up";
@@ -844,6 +845,13 @@
       currentSpan.className = "mobile-current";
       currentSpan.textContent = currentText;
       td.appendChild(currentSpan);
+
+      if (reverseText) {
+        const reverseSpan = document.createElement("span");
+        reverseSpan.className = "mobile-reverse";
+        reverseSpan.textContent = reverseText;
+        td.appendChild(reverseSpan);
+      }
 
       if (nextNum !== null) td.dataset.prevNum = String(nextNum);
       else td.dataset.prevNum = "";
@@ -1004,7 +1012,7 @@
       button.textContent = "Fresh";
       if (row) {
         setCell(row, "updated", data.updated_ts, data.updated_ts);
-        setTotalEnergyCell(row, data.total_energy, data.voltage_a, data.current_a);
+        setTotalEnergyCell(row, data.forward_energy, data.reverse_energy, data.voltage_a, data.current_a);
         setBalanceCell(row, data.balance);
         setCell(row, "voltage_a", data.voltage_a);
         setCell(row, "current_a", data.current_a);
@@ -1038,7 +1046,7 @@
 
         setCell(tr, "source_ip", r.source_ip);
         setCell(tr, "port", r.port);
-        setTotalEnergyCell(tr, r.total_energy, r.voltage_a, r.current_a, true);
+        setTotalEnergyCell(tr, r.forward_energy, r.reverse_energy, r.voltage_a, r.current_a, true);
         setNumericCellWithDelta(tr, "voltage_a", r.voltage_a, true);
         setNumericCellWithDelta(tr, "current_a", r.current_a, true);
         setNumericCellWithDelta(tr, "total_power", r.total_power, true);
@@ -1687,7 +1695,7 @@
 
             <th data-col="updated">Updated</th>
             <th data-col="balance">Balance</th>
-            <th data-col="total_energy">Total Energy</th>
+            <th data-col="total_energy">Energy F / R</th>
             <th data-col="source_ip">Source IP</th>
             <th data-col="port">Port</th>
 
@@ -1719,7 +1727,7 @@
               </div>
               <div class="mobile-line mobile-line-three">
                 <div class="mobile-full-tenant">{% if r.tenant_id %}<a href="{% url 'tenants:tenant_detail' r.tenant_id %}" class="live-detail-link">{{ r.tenant_name|default:"Vacant" }}</a>{% else %}{{ r.tenant_name|default:"Vacant" }}{% endif %}</div>
-                <a href="{% url 'smart_meter:energy_dashboard' %}?meter={{ m.id }}&start={{ energy_start_date|date:'Y-m-d' }}&end={{ energy_end_date|date:'Y-m-d' }}" class="mobile-fixed-energy live-detail-link">{{ r.total_energy|default:"—" }} kWh</a>
+                <a href="{% url 'smart_meter:energy_dashboard' %}?meter={{ m.id }}&start={{ energy_start_date|date:'Y-m-d' }}&end={{ energy_end_date|date:'Y-m-d' }}" class="mobile-fixed-energy live-detail-link">F {{ r.forward_active_energy_kwh|default_if_none:r.total_energy|default:"—" }}{% if r.reverse_active_energy_kwh is not None %} · R {{ r.reverse_active_energy_kwh }}{% endif %} kWh</a>
               </div>
               <div class="mobile-line mobile-line-four">
                 <div class="mobile-date-time">{{ r.ts|date:"Y-m-d" }} · {{ r.ts|date:"H:i:s" }}</div>
@@ -1839,7 +1847,8 @@
 
             <!-- Total Energy stays visible; add Voltage/Current beneath on small -->
             <td class="text-right" data-col="total_energy" data-energy-url="{% url 'smart_meter:energy_dashboard' %}?meter={{ m.id }}&start={{ energy_start_date|date:'Y-m-d' }}&end={{ energy_end_date|date:'Y-m-d' }}">
-              <a href="{% url 'smart_meter:energy_dashboard' %}?meter={{ m.id }}&start={{ energy_start_date|date:'Y-m-d' }}&end={{ energy_end_date|date:'Y-m-d' }}" class="total-energy-main live-detail-link">{{ r.total_energy|default:"—" }} kWh</a>
+              <a href="{% url 'smart_meter:energy_dashboard' %}?meter={{ m.id }}&start={{ energy_start_date|date:'Y-m-d' }}&end={{ energy_end_date|date:'Y-m-d' }}" class="total-energy-main live-detail-link">F: {{ r.forward_active_energy_kwh|default_if_none:r.total_energy|default:"—" }} kWh</a>
+              {% if r.reverse_active_energy_kwh is not None %}<span class="mobile-reverse">R: {{ r.reverse_active_energy_kwh }} kWh</span>{% endif %}
               <span class="mobile-voltage">V: {{ r.voltage_a|default:"—" }} V</span>
               <span class="mobile-current">I: {{ r.current_a|default:"—" }} A</span>
             </td>

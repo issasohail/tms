@@ -29,7 +29,7 @@ from smart_meter.diagnostic import (
 )
 from smart_meter.dlt645 import DIRECT_REGISTER_SPECS, parse_frame, verify_checksum
 from smart_meter.dlt645 import relay_state_from_status_word
-from smart_meter.utils.frames import build_read_028011FF
+from smart_meter.utils.frames import build_read_028011FF, build_read_register
 
 # ==== WINDOWS-SAFE LOGGING (same as before) ====
 from smart_meter.models import (
@@ -191,6 +191,7 @@ CONTROL_HOST = "127.0.0.1"
 CONTROL_PORT = 7000
 
 SNAPSHOT_MINUTES = 15  # unchanged
+BIDIRECTIONAL_ENERGY_METERS = {"260305510019", "260305510020", "260305510021"}
 
 # =========================
 # Connection registry & waiter management
@@ -1014,6 +1015,28 @@ class ClientHandler(threading.Thread):
                 timezone.localtime().isoformat(timespec="seconds"),
                 meter_number,
             )
+
+        # Bulk frames do not reliably contain the separate reverse register.
+        # Queue confirmed direct forward/reverse reads once per snapshot period.
+        if di == "028011FF" and meter_number in BIDIRECTIONAL_ENERGY_METERS:
+            poll_after = now - datetime.timedelta(minutes=SNAPSHOT_MINUTES)
+            if not MeterCommand.objects.filter(
+                meter=meter, source="energy_auto_poll", created_at__gte=poll_after
+            ).exists():
+                cycle_key = now.strftime("%Y%m%d%H") + str(now.minute // SNAPSHOT_MINUTES)
+                for register, label in (("00010000", "Forward active energy"), ("00020000", "Reverse active energy")):
+                    MeterCommand.objects.get_or_create(
+                        idempotency_key=f"energy-auto:{meter_number}:{register}:{cycle_key}",
+                        defaults={
+                            "meter": meter, "meter_number": meter_number,
+                            "frame_hex": build_read_register(meter_number, register).hex().upper(),
+                            "expect_di": register, "timeout": 12.0,
+                            "command_type": "read", "source": "energy_auto_poll",
+                            "priority": 70, "max_attempts": 2,
+                            "reason": f"Automatic {label} collection",
+                            "initiated_by": "meter_listener",
+                        },
+                    )
 
         # Credit-control observation is intentionally fail-open and occurs only
         # after normal live/history persistence has completed.  It only debounces

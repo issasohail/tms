@@ -1654,6 +1654,7 @@ class MeterCommand(models.Model):
         ("schedule", "Timing Schedule"),
         ("energy_probe", "Energy Probe (No Persistence)"),
         ("energy_probe_persist", "Energy Probe (Persist)"),
+        ("energy_auto_poll", "Automatic Bidirectional Energy Poll"),
     ]
 
     meter = models.ForeignKey(

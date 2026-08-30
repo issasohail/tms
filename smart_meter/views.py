@@ -604,6 +604,8 @@ def _meters_annotated_qs(request, online_minutes: int = 10):
         last_voltage_a=Subquery(live_qs.values("voltage_a")[:1]),
         last_current_a=Subquery(live_qs.values("current_a")[:1]),
         last_total_energy=Subquery(live_qs.values("total_energy")[:1]),
+        last_forward_energy=Subquery(live_qs.values("forward_active_energy_kwh")[:1]),
+        last_reverse_energy=Subquery(live_qs.values("reverse_active_energy_kwh")[:1]),
         last_status_word=Subquery(live_qs.values("status_word")[:1]),
     )
 
@@ -2689,6 +2691,8 @@ def live_custom(request):
             "source_port",
             "balance",
             "total_energy",
+            "forward_active_energy_kwh",
+            "reverse_active_energy_kwh",
             "voltage_a",
             "current_a",
             "total_power",
@@ -3864,6 +3868,8 @@ def reading_list(request):
         "source_ip",
         "source_port",
         "total_energy",
+        "forward_active_energy_kwh",
+        "reverse_active_energy_kwh",
         "total_power",
         "pf_total",
         "voltage_a",
@@ -3906,6 +3912,18 @@ def reading_list(request):
     page_items = list(readings[offset : offset + page_size + 1])
     has_next = len(page_items) > page_size
     rows = page_items[:page_size]
+    for reading in rows:
+        reading.display_forward_energy = (
+            reading.forward_active_energy_kwh
+            if reading.forward_active_energy_kwh is not None
+            else reading.total_energy
+        )
+        reading.display_net_energy = (
+            reading.display_forward_energy - reading.reverse_active_energy_kwh
+            if reading.display_forward_energy is not None
+            and reading.reverse_active_energy_kwh is not None
+            else None
+        )
     attach_active_meter_counts(rows, lambda reading: reading.meter)
     attach_tenant_names_for_dates(
         rows,
@@ -5155,6 +5173,11 @@ def instant_live_reading(request, meter_id):
             "meter_number": meter.meter_number,
             "updated_ts": _ts_iso(reading.ts),
             "total_energy": _fmt(reading.total_energy, 3),
+            "forward_energy": _fmt(
+                reading.forward_active_energy_kwh
+                if reading.forward_active_energy_kwh is not None else reading.total_energy, 3
+            ),
+            "reverse_energy": _fmt(reading.reverse_active_energy_kwh, 3),
             "balance": _fmt(reading.balance, 2),
             "voltage_a": _fmt(reading.voltage_a, 1),
             "current_a": _fmt(reading.current_a, 3),
@@ -5203,6 +5226,8 @@ def live_custom_data(request):
             "source_port",
             "balance",
             "total_energy",
+            "forward_active_energy_kwh",
+            "reverse_active_energy_kwh",
             "voltage_a",
             "current_a",
             "total_power",
@@ -5307,6 +5332,11 @@ def live_custom_data(request):
                 "port": r.source_port or "",
                 "balance": _fmt(r.balance, 2),
                 "total_energy": _fmt(r.total_energy, 3),
+                "forward_energy": _fmt(
+                    r.forward_active_energy_kwh
+                    if r.forward_active_energy_kwh is not None else r.total_energy, 3
+                ),
+                "reverse_energy": _fmt(r.reverse_active_energy_kwh, 3),
                 "voltage_a": _fmt(r.voltage_a, 1),
                 "current_a": _fmt(r.current_a, 3),
                 "total_power": _fmt(r.total_power, 3),

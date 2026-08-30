@@ -17,6 +17,7 @@ def send_via_db(
     desired_state: str = "",
     command_type: str = "other",
     source: str = "manual",
+    max_attempts: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Compatibility API backed by the durable MeterCommand queue.
 
@@ -66,6 +67,7 @@ def send_via_db(
                 reason=reason or "",
                 source=source,
                 command_type=command_type,
+                max_attempts=max_attempts if max_attempts is not None else 5,
                 desired_state=desired_state,
                 status="pending",
                 expires_at=timezone.now() + timedelta(hours=24),

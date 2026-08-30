@@ -653,32 +653,27 @@ def _decode_bcd_33(raw: bytes, decimals: int) -> float:
 
 
 def parse_070104ff_prices(reply_frame: bytes) -> dict:
-    """
-    Minimal parser: assumes reply is 0x91 with DI=070104FF and that the last
-    16 bytes of DATA correspond to:
-      - rate1_price (4B, 4dp)
-      - rate2_price (4B, 4dp)
-      - rate1_kwh   (4B, 4dp)
-      - rate2_kwh   (4B, 4dp)
-    If your device orders differently, adjust the slicing.
-    """
+    """Decode the full audited 143-byte Parameter 1 read response."""
+    from smart_meter.services.prepaid_parameters import PAYLOAD_LENGTH, decode_parameter_payload
+
     start = reply_frame.find(b'\x68')
-    if start < 0 or len(reply_frame) < start + 12:
-        return {}
-    L = reply_frame[start+9]
-    data = reply_frame[start+10:start+10+L]
-    # verify DI
-    di = bytes(((b - 0x33) & 0xFF) for b in data[:4])[::-1].hex().upper()
+    if start < 0 or len(reply_frame) < start + 12 or reply_frame[start + 7] != 0x68:
+        raise ValueError("invalid DL/T645 frame")
+    if reply_frame[start + 8] != 0x91:
+        raise ValueError("Parameter 1 read response must use control 0x91")
+    valid, _style = verify_checksum(reply_frame[start:], 0)
+    if not valid:
+        raise ValueError("invalid DL/T645 checksum")
+    length = reply_frame[start + 9]
+    data = reply_frame[start + 10:start + 10 + length]
+    if len(data) != 4 + PAYLOAD_LENGTH:
+        raise ValueError("Parameter 1 read response has an invalid payload length")
+    di = bytes(((byte - 0x33) & 0xFF) for byte in data[:4])[::-1].hex().upper()
     if di != "070104FF":
-        return {}
-    if len(data) < 4 + 16:
-        return {"di": di}  # payload too short
-    tail = data[-16:]  # last 4 fields
-    r1p = _decode_bcd_33(tail[0:4], 4)
-    r2p = _decode_bcd_33(tail[4:8], 4)
-    r1k = _decode_bcd_33(tail[8:12], 4)
-    r2k = _decode_bcd_33(tail[12:16], 4)
-    return {"di": di, "rate1_price": r1p, "rate2_price": r2p, "rate1_kwh": r1k, "rate2_kwh": r2k}
+        raise ValueError("response DI is not 070104FF")
+    decoded = decode_parameter_payload(data[4:])
+    decoded.update({"di": di, "meter_number": _extract_meter_number(reply_frame, start), "control_code": 0x91})
+    return decoded
 
 
 # ---- Generic READ for any DI (e.g., 028011FF, 070104FF, etc.) ----

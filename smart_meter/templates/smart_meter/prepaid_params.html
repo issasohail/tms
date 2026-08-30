@@ -3,32 +3,31 @@
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
 <div class="container py-4">
-  <h1 class="mb-3">Prepaid Parameters-test</h1>
+  <h1 class="mb-3">Prepaid Meter Parameters</h1>
   <form method="post" class="card p-3 shadow-sm">
     {% csrf_token %}
     <div class="row g-3">
       <div class="col-12 col-md-4">{{ form.meter.label_tag }} {{ form.meter }}</div>
 
-      <div class="col-12"><h5 class="mt-3">Prices (Rs/kWh)</h5></div>
-      <div class="col-6 col-md-3">{{ form.rate1_price_1.label_tag }} {{ form.rate1_price_1 }}</div>
-      <div class="col-6 col-md-3">{{ form.rate2_price_1.label_tag }} {{ form.rate2_price_1 }}</div>
+      <div class="col-12"><h5 class="mt-3">Alerts, credit and limits (Rs)</h5></div>
+      {% for field in form %}{% if field.name in 'alarm_amount_1,alarm_amount_2,overdraft_limit,maximum_balance,reconnect_amount,max_load,load_delay' %}
+      <div class="col-6 col-md-3">{{ field.label_tag }} {{ field }} {{ field.errors }}</div>{% endif %}{% endfor %}
 
-      <div class="col-12"><h5 class="mt-3">Alerts & Limits (Rs)</h5></div>
-      <div class="col-6 col-md-3">{{ form.alarm_amount_1.label_tag }} {{ form.alarm_amount_1 }}</div>
-      <div class="col-6 col-md-3">{{ form.alarm_amount_2.label_tag }} {{ form.alarm_amount_2 }}</div>
-      <div class="col-6 col-md-3">{{ form.overdraft_limit.label_tag }} {{ form.overdraft_limit }}</div>
+      <div class="col-12"><h5 class="mt-3">Tariffs (Rs/kWh)</h5></div>
+      {% for field in form %}{% if field.name in 'rate1_price_1,rate1_price_2,rate1_price_3,rate1_price_4,rate2_price_1,rate2_price_2,rate2_price_3,rate2_price_4' %}
+      <div class="col-6 col-md-3">{{ field.label_tag }} {{ field }} {{ field.errors }}</div>{% endif %}{% endfor %}
 
-      <div class="col-12"><h5 class="mt-3">Switch Times (yymmddhhmm)</h5></div>
-      <div class="col-6 col-md-3">{{ form.rate_switch_time.label_tag }} {{ form.rate_switch_time }}</div>
-      <div class="col-6 col-md-3">{{ form.step_switch_time.label_tag }} {{ form.step_switch_time }}</div>
+      <div class="col-12"><h5 class="mt-3">Tier values and prices</h5></div>
+      {% for field in form %}{% if 'step1_' in field.name or 'step2_' in field.name or field.name == 'step_count' %}
+      <div class="col-6 col-md-3">{{ field.label_tag }} {{ field }} {{ field.errors }}</div>{% endif %}{% endfor %}
 
-      <div class="col-12"><h5 class="mt-3">Steps (optional)</h5></div>
-      <div class="col-6 col-md-3">{{ form.step1_value_1.label_tag }} {{ form.step1_value_1 }}</div>
-      <div class="col-6 col-md-3">{{ form.step2_value_1.label_tag }} {{ form.step2_value_1 }}</div>
+      <div class="col-12"><h5 class="mt-3">Counts, ratios and switch dates</h5></div>
+      {% for field in form %}{% if field.name in 'timezone_count,schedule_count,time_period_count,rate_count,voltage_ratio,current_ratio,rate_switch_time,step_switch_time,timezone_switch_time,schedule_switch_time' %}
+      <div class="col-6 col-md-3">{{ field.label_tag }} {{ field }} {{ field.errors }}</div>{% endif %}{% endfor %}
     </div>
 
     <div class="mt-4">
-      <button class="btn btn-primary">Save & Send to Meter</button>
+      <button class="btn btn-primary">Save & Queue Single Parameter Write</button>
       <a class="btn btn-secondary" href="{% url 'smart_meter:meter_switch' %}">Switch Power</a>
     </div>
   </form>
@@ -38,6 +37,6 @@
     </p>
     {% endif %}
 
-  <p class="text-muted mt-3">Tip: leave switch times as 0 to send “no schedule”.</p>
+  <p class="text-muted mt-3">Use human values (for example, 50 means Rs 50/kWh). A parameter write is sent at most once; an uncertain result must be reviewed before trying again.</p>
 </div>
 {% endblock %}

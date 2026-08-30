@@ -98,7 +98,7 @@ from smart_meter.utils.tenants import (
     attach_tenant_names_for_dates,
 )
 from smart_meter.utils.vpn import public_ip, vpn_connected
-from smart_meter.vendor.prepaid import DLT645_2007_Prepaid
+from smart_meter.services.prepaid_parameters import build_parameter_frame
 from smart_meter.vendor.switch_OnOff import (
     RELAY_CLOSE_COMMAND,
     RELAY_OPEN_COMMAND,
@@ -4615,9 +4615,9 @@ def prepaid_params(request):
         form = MeterPrepaidSettingsForm(request.POST, instance=instance)
         if form.is_valid():
             pps = form.save()  # don't shadow django settings
-            prepaid = DLT645_2007_Prepaid()
-            params = pps.to_vendor_parameters()
-            frame = prepaid.build_frame(pps.meter.meter_number, params)
+            frame = build_parameter_frame(
+                pps.meter.meter_number, pps.to_vendor_parameters()
+            )["frame"]
             frame_hex = _as_hex(frame)
 
             secret = getattr(
@@ -4641,8 +4641,10 @@ def prepaid_params(request):
                 initiated_by=getattr(
                     request.user, "get_username", lambda: "anonymous"
                 )(),
-                reason="manual switch from UI",
+                reason="manual prepaid Parameter 1 update",
                 auth=secret,
+                command_type="prepaid_write",
+                max_attempts=1,
             )
             if res.get("ok"):
                 messages.success(

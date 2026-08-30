@@ -93,7 +93,7 @@ def mock_meter_config():
 # make070104FF
 # --------------------------------------------------------------------------
 
-def make070104ff(meter_id, n_chl, tbuf):
+def make070104ff(meter_id, n_chl, tbuf, config=None):
     """Build the 070104FF (send prepaid meter parameters) payload.
 
     Args:
@@ -106,7 +106,9 @@ def make070104ff(meter_id, n_chl, tbuf):
     """
     # Original Java returns 0 when the joined query is empty
     # ("meter user type is not configured"). Kept as a guard so the contract matches.
-    config = mock_meter_config()
+    # ``config`` is injected by TMS's production wrapper.  Retaining the
+    # original mock fallback keeps this vendor reference executable on its own.
+    config = mock_meter_config() if config is None else config
     if config is None:
         print("send prepaid: meter has no user type configured")
         return 0

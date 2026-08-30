@@ -313,11 +313,19 @@ class MeterPrepaidSettingsForm(forms.ModelForm):
         model = MeterPrepaidSettings
         fields = [
             "meter",
-            "rate1_price_1", "rate2_price_1",
             "alarm_amount_1", "alarm_amount_2", "overdraft_limit",
-            "rate_switch_time", "step_switch_time",
-            "step1_value_1", "step2_value_1",
+            "maximum_balance", "reconnect_amount", "max_load", "load_delay",
+            "rate1_price_1", "rate1_price_2", "rate1_price_3", "rate1_price_4",
+            "rate2_price_1", "rate2_price_2", "rate2_price_3", "rate2_price_4",
+            "step_count", "step1_value_1", "step1_value_2", "step1_value_3",
+            "step1_price_1", "step1_price_2", "step1_price_3", "step1_price_4",
+            "step2_value_1", "step2_value_2", "step2_value_3",
+            "step2_price_1", "step2_price_2", "step2_price_3", "step2_price_4",
+            "timezone_count", "schedule_count", "time_period_count", "rate_count",
+            "voltage_ratio", "current_ratio", "rate_switch_time", "step_switch_time",
+            "timezone_switch_time", "schedule_switch_time",
         ]
+
         widgets = {
             "rate1_price_1": forms.NumberInput(attrs={"step": "0.0001"}),
             "rate2_price_1": forms.NumberInput(attrs={"step": "0.0001"}),

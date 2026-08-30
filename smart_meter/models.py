@@ -1525,34 +1525,63 @@ class MeterPrepaidSettings(models.Model):
     rate_switch_time = models.BigIntegerField(default=0)
     step_switch_time = models.BigIntegerField(default=0)
 
+    # Full manufacturer Parameter 1 configuration.  These values are human
+    # values; the authoritative codec performs the only protocol scaling.
+    timezone_switch_time = models.BigIntegerField(default=0)
+    schedule_switch_time = models.BigIntegerField(default=0)
+    timezone_count = models.PositiveSmallIntegerField(default=0)
+    schedule_count = models.PositiveSmallIntegerField(default=0)
+    time_period_count = models.PositiveSmallIntegerField(default=0)
+    rate_count = models.PositiveSmallIntegerField(default=0)
+    step_count = models.PositiveSmallIntegerField(default=0)
+    voltage_ratio = models.PositiveIntegerField(default=0)
+    current_ratio = models.PositiveIntegerField(default=0)
+    maximum_balance = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    reconnect_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    max_load = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    load_delay = models.PositiveSmallIntegerField(default=0)
+    rate1_price_2 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    rate1_price_3 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    rate1_price_4 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    rate2_price_2 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    rate2_price_3 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    rate2_price_4 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    step1_value_2 = models.DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.0000"))
+    step1_value_3 = models.DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.0000"))
+    step2_value_2 = models.DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.0000"))
+    step2_value_3 = models.DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.0000"))
+    step1_price_1 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    step1_price_2 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    step1_price_3 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    step1_price_4 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    step2_price_1 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    step2_price_2 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    step2_price_3 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+    step2_price_4 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
+
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"Prepaid settings for {self.meter.meter_number}"
 
-    # Helper that returns a dict vendor.build_frame() expects
+    # Semantic values for the authoritative Parameter 1 codec.  No value is
+    # pre-scaled here: money is Rs, and prices/steps are human decimals.
     def to_vendor_parameters(self) -> dict:
-        # Convert rupees → fen/cents style “integer of 2 decimals”
-        def rupees_to_fen(d: Decimal) -> int:
-            return int(Decimal(d).quantize(Decimal("0.01")) * 100)
-
         return {
-            # simple subset first; you can fill out the rest over time
-            "alarm_amount_1": rupees_to_fen(self.alarm_amount_1),
-            "alarm_amount_2": rupees_to_fen(self.alarm_amount_2),
-            "overdraft_limit": rupees_to_fen(self.overdraft_limit),
-
-            # prices are floats with 4 decimal places in the vendor frame
-            "rate1_price_1": float(self.rate1_price_1),
-            "rate2_price_1": float(self.rate2_price_1),
-
-            # optional switches (5-byte BCD times). keep 0 to ignore
-            "rate_switch_time": int(self.rate_switch_time or 0),
-            "step_switch_time": int(self.step_switch_time or 0),
-
-            # if you enable steps later:
-            "step1_value_1": int(self.step1_value_1 or 0),
-            "step2_value_1": int(self.step2_value_1 or 0),
+            "priceChgDate": self.rate_switch_time, "stepChgDate": self.step_switch_time,
+            "timeAreaChgDate": self.timezone_switch_time, "timeSecChgDate": self.schedule_switch_time,
+            "qtyarea": self.timezone_count, "qtytimertable": self.schedule_count,
+            "qtytimer": self.time_period_count, "qtyprice": self.rate_count, "qtystep": self.step_count,
+            "pt": self.voltage_ratio, "ct": self.current_ratio,
+            "warnlowbala1": self.alarm_amount_1, "warnlowbala2": self.alarm_amount_2,
+            "creditVal": self.overdraft_limit, "balancemax": self.maximum_balance,
+            "remainPowerOn": self.reconnect_amount, "kwMax": self.max_load, "sleepKw": self.load_delay,
+            **{f"set1Price{i}": getattr(self, f"rate1_price_{i}") for i in range(1, 5)},
+            **{f"set2Price{i}": getattr(self, f"rate2_price_{i}") for i in range(1, 5)},
+            **{f"set1Step{i}": getattr(self, f"step1_value_{i}") for i in range(1, 4)},
+            **{f"set2Step{i}": getattr(self, f"step2_value_{i}") for i in range(1, 4)},
+            **{f"set1StepPrice{i}": getattr(self, f"step1_price_{i}") for i in range(1, 5)},
+            **{f"set2StepPrice{i}": getattr(self, f"step2_price_{i}") for i in range(1, 5)},
         }
 
 # models.py

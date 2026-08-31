@@ -1,4 +1,4 @@
-﻿import os
+import os
 from decimal import Decimal, ROUND_HALF_UP
 from django.db.models.signals import post_save
 
@@ -120,7 +120,8 @@ class Meter(models.Model):
         choices=REVERSE_CAPABILITY_CHOICES,
         default=REVERSE_CAPABILITY_UNKNOWN,
         help_text="Updated to Supported after a valid reverse-energy register response. Set Not supported only for meters known not to provide that register.",
-    )    power_status = models.CharField(
+    )
+    power_status = models.CharField(
         max_length=10, choices=[("on", "On"), ("off", "Off")], default="on")
     unit_rate = models.DecimalField(
         max_digits=10,

@@ -1,4 +1,4 @@
-import os
+﻿import os
 from decimal import Decimal, ROUND_HALF_UP
 from django.db.models.signals import post_save
 
@@ -67,6 +67,14 @@ class Meter(models.Model):
         (READING_PROFILE_TOTAL_AND_PER_PHASE, "Total + per-phase"),
     ]
 
+    REVERSE_CAPABILITY_UNKNOWN = "unknown"
+    REVERSE_CAPABILITY_SUPPORTED = "supported"
+    REVERSE_CAPABILITY_NOT_SUPPORTED = "not_supported"
+    REVERSE_CAPABILITY_CHOICES = [
+        (REVERSE_CAPABILITY_UNKNOWN, "Not yet verified"),
+        (REVERSE_CAPABILITY_SUPPORTED, "Supported"),
+        (REVERSE_CAPABILITY_NOT_SUPPORTED, "Not supported"),
+    ]
     unit = models.ForeignKey(
         "properties.Unit",
         on_delete=models.SET_NULL,
@@ -107,7 +115,12 @@ class Meter(models.Model):
             "retains phase A/B/C measurements. Auto preserves existing meter behavior."
         ),
     )
-    power_status = models.CharField(
+    reverse_energy_capability = models.CharField(
+        max_length=16,
+        choices=REVERSE_CAPABILITY_CHOICES,
+        default=REVERSE_CAPABILITY_UNKNOWN,
+        help_text="Updated to Supported after a valid reverse-energy register response. Set Not supported only for meters known not to provide that register.",
+    )    power_status = models.CharField(
         max_length=10, choices=[("on", "On"), ("off", "Off")], default="on")
     unit_rate = models.DecimalField(
         max_digits=10,
@@ -266,7 +279,7 @@ class Meter(models.Model):
         return self.relay_state == "off"
 
     def __str__(self):
-        return f"Meter #{self.meter_number} → {self.unit}"
+        return f"Meter #{self.meter_number} â†’ {self.unit}"
 
     class Meta:
         indexes = [
@@ -319,6 +332,14 @@ class MeterInstallation(models.Model):
         on_delete=models.PROTECT,
         related_name="installations",
     )
+    REVERSE_CAPABILITY_UNKNOWN = "unknown"
+    REVERSE_CAPABILITY_SUPPORTED = "supported"
+    REVERSE_CAPABILITY_NOT_SUPPORTED = "not_supported"
+    REVERSE_CAPABILITY_CHOICES = [
+        (REVERSE_CAPABILITY_UNKNOWN, "Not yet verified"),
+        (REVERSE_CAPABILITY_SUPPORTED, "Supported"),
+        (REVERSE_CAPABILITY_NOT_SUPPORTED, "Not supported"),
+    ]
     unit = models.ForeignKey(
         Unit,
         on_delete=models.PROTECT,
@@ -773,7 +794,7 @@ class UtilityConnection(models.Model):
     property_label = models.CharField(max_length=80, blank=True)
 
     def __str__(self):
-        return f"{self.consumer_id} — {self.property_label or self.energy_system.name}"
+        return f"{self.consumer_id} â€” {self.property_label or self.energy_system.name}"
 
 
 class UtilityBillCycle(models.Model):
@@ -1031,6 +1052,14 @@ class MeterAssignmentHistory(models.Model):
         on_delete=models.CASCADE,
         related_name="assignment_history",
     )
+    REVERSE_CAPABILITY_UNKNOWN = "unknown"
+    REVERSE_CAPABILITY_SUPPORTED = "supported"
+    REVERSE_CAPABILITY_NOT_SUPPORTED = "not_supported"
+    REVERSE_CAPABILITY_CHOICES = [
+        (REVERSE_CAPABILITY_UNKNOWN, "Not yet verified"),
+        (REVERSE_CAPABILITY_SUPPORTED, "Supported"),
+        (REVERSE_CAPABILITY_NOT_SUPPORTED, "Not supported"),
+    ]
     unit = models.ForeignKey(
         Unit,
         on_delete=models.SET_NULL,
@@ -1181,7 +1210,7 @@ class Tariff(models.Model):
     active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.name} ₹{self.rate_per_kwh}/kWh"
+        return f"{self.name} â‚¹{self.rate_per_kwh}/kWh"
 
 
 class LiveReading(models.Model):
@@ -1287,6 +1316,14 @@ class LiveReading(models.Model):
 
 
 class Bill(models.Model):
+    REVERSE_CAPABILITY_UNKNOWN = "unknown"
+    REVERSE_CAPABILITY_SUPPORTED = "supported"
+    REVERSE_CAPABILITY_NOT_SUPPORTED = "not_supported"
+    REVERSE_CAPABILITY_CHOICES = [
+        (REVERSE_CAPABILITY_UNKNOWN, "Not yet verified"),
+        (REVERSE_CAPABILITY_SUPPORTED, "Supported"),
+        (REVERSE_CAPABILITY_NOT_SUPPORTED, "Not supported"),
+    ]
     unit = models.ForeignKey(
         'properties.Unit', on_delete=models.CASCADE, related_name='bills')
     meter = models.ForeignKey(
@@ -1306,7 +1343,7 @@ class Bill(models.Model):
         'unpaid', 'Unpaid'), ('paid', 'Paid')], default='unpaid')
 
     def __str__(self):
-        return f"Bill {self.unit} {self.period_start} → {self.period_end}"
+        return f"Bill {self.unit} {self.period_start} â†’ {self.period_end}"
 
 
 class Payment(models.Model):
@@ -1318,7 +1355,7 @@ class Payment(models.Model):
     note = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
-        return f"₹{self.amount} for {self.bill}"
+        return f"â‚¹{self.amount} for {self.bill}"
 
 
 class MeterBalance(models.Model):
@@ -1330,10 +1367,18 @@ class MeterBalance(models.Model):
     last_alert_sent = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"{self.unit} balance: ₹{self.balance}"
+        return f"{self.unit} balance: â‚¹{self.balance}"
 
 
 class CutoffEvent(models.Model):
+    REVERSE_CAPABILITY_UNKNOWN = "unknown"
+    REVERSE_CAPABILITY_SUPPORTED = "supported"
+    REVERSE_CAPABILITY_NOT_SUPPORTED = "not_supported"
+    REVERSE_CAPABILITY_CHOICES = [
+        (REVERSE_CAPABILITY_UNKNOWN, "Not yet verified"),
+        (REVERSE_CAPABILITY_SUPPORTED, "Supported"),
+        (REVERSE_CAPABILITY_NOT_SUPPORTED, "Not supported"),
+    ]
     unit = models.ForeignKey(Unit, on_delete=models.CASCADE)
     timestamp = models.DateTimeField(auto_now_add=True)
     reason = models.CharField(max_length=255, default="Balance depleted")
@@ -1416,7 +1461,7 @@ def deduct_balance_on_reading(sender, instance, created, **kwargs):
         if dep >= deficit:
             dep = dep - deficit
         else:
-            # Not enough in deposit either → consider prepaid cutoff,
+            # Not enough in deposit either â†’ consider prepaid cutoff,
             # but only if explicitly enabled AND meter is prepaid.
             prepaid_enabled = getattr(
                 settings, "METER_ENABLE_PREPAID_CUTOFF", False)
@@ -1448,7 +1493,7 @@ def deduct_balance_on_reading(sender, instance, created, **kwargs):
                         pass
 
                     logger.info(
-                        "%s: ⚡ Cutoff sent for %s (meter=%s)",
+                        "%s: âš¡ Cutoff sent for %s (meter=%s)",
                         datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"),
                         unit,
                         instance.meter.meter_number,
@@ -1464,7 +1509,7 @@ def deduct_balance_on_reading(sender, instance, created, **kwargs):
             else:
                 # Skipped cutoff due to flags or kill-switch
                 logger.info(
-                    "Skipping cutoff for %s (meter=%s) — prepaid_enabled=%s has_prepaid=%s cutoff_env_blocked=%s",
+                    "Skipping cutoff for %s (meter=%s) â€” prepaid_enabled=%s has_prepaid=%s cutoff_env_blocked=%s",
                     unit,
                     instance.meter.meter_number,
                     prepaid_enabled,
@@ -1487,6 +1532,14 @@ class MeterEvent(models.Model):
         ("alert", "Low Balance Alert"),
     ]
 
+    REVERSE_CAPABILITY_UNKNOWN = "unknown"
+    REVERSE_CAPABILITY_SUPPORTED = "supported"
+    REVERSE_CAPABILITY_NOT_SUPPORTED = "not_supported"
+    REVERSE_CAPABILITY_CHOICES = [
+        (REVERSE_CAPABILITY_UNKNOWN, "Not yet verified"),
+        (REVERSE_CAPABILITY_SUPPORTED, "Supported"),
+        (REVERSE_CAPABILITY_NOT_SUPPORTED, "Not supported"),
+    ]
     unit = models.ForeignKey(Unit, on_delete=models.CASCADE)
     event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
     timestamp = models.DateTimeField(auto_now_add=True)
@@ -1505,7 +1558,7 @@ class MeterSettings(models.Model):
     peak_end_hour = models.IntegerField(default=22)
 
     def __str__(self):
-        return f"Global Meter Settings: ₹{self.unit_rate}/kWh"
+        return f"Global Meter Settings: â‚¹{self.unit_rate}/kWh"
 
 # smart_meter/models.py
 
@@ -1533,7 +1586,7 @@ class UnknownMeter(models.Model):
 class MeterPrepaidSettings(models.Model):
     meter = models.OneToOneField(
         "smart_meter.Meter", on_delete=models.CASCADE, related_name="prepaid")
-    # ---- core amounts in rupees (human friendly); we’ll convert to fen/cents for the frame ----
+    # ---- core amounts in rupees (human friendly); weâ€™ll convert to fen/cents for the frame ----
     alarm_amount_1 = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00"))
     alarm_amount_2 = models.DecimalField(
@@ -1541,7 +1594,7 @@ class MeterPrepaidSettings(models.Model):
     overdraft_limit = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00"))
 
-    # two simple rates (Rs/kWh) with 4 decimal places to match the vendor’s 4-dec BCD
+    # two simple rates (Rs/kWh) with 4 decimal places to match the vendorâ€™s 4-dec BCD
     rate1_price_1 = models.DecimalField(
         max_digits=10, decimal_places=4, default=Decimal("0.0000"))
     rate2_price_1 = models.DecimalField(
@@ -1990,3 +2043,4 @@ class MeterPrepaidRecharge(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="prepaid_recharges")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+

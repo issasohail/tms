@@ -1,4 +1,4 @@
-from django import forms
+﻿from django import forms
 from django.db.models import Q
 
 from smart_meter.models import (
@@ -62,6 +62,12 @@ class EnergySystemSetupForm(forms.Form):
         widget=forms.Select(attrs={"class": "form-select"}),
     )
 
+    output_reverse_capability = forms.ChoiceField(
+        required=False,
+        choices=[("", "Leave each meter unchanged"), (Meter.REVERSE_CAPABILITY_NOT_SUPPORTED, "Not supported - hide reverse reading"), (Meter.REVERSE_CAPABILITY_SUPPORTED, "Supported")],
+        widget=forms.Select(attrs={"class": "form-select"}),
+        help_text="Apply this reverse-register status to the selected output meters. Use Not supported for the H9 single-phase output meters.",
+    )
     def __init__(self, *args, group=None, energy_system=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["input_meters"].queryset = Meter.objects.filter(
@@ -188,3 +194,4 @@ class UtilityBillPaymentForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["paid_at"].input_formats = ["%Y-%m-%dT%H:%M"]
+

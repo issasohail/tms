@@ -1,4 +1,4 @@
-import hashlib
+﻿import hashlib
 from datetime import date, timedelta
 
 from django.contrib import messages
@@ -91,7 +91,8 @@ def energy_system_setup(request, group_id):
                 EnergySystemMeterLink(energy_system=system, meter=meter, side=EnergySystemMeterLink.SIDE_OUTPUT)
                 for meter in form.cleaned_data["output_meters"]
             ])
-        messages.success(request, "Energy System created with linked input and output meters.")
+            if form.cleaned_data["output_reverse_capability"]:
+                form.cleaned_data["output_meters"].update(reverse_energy_capability=form.cleaned_data["output_reverse_capability"])        messages.success(request, "Energy System created with linked input and output meters.")
         return redirect("smart_meter:energy_system_detail", pk=system.pk)
     return render(request, "smart_meter/energy_system_setup.html", {"form": form, "group": group})
 
@@ -118,7 +119,8 @@ def energy_system_edit(request, pk):
                 EnergySystemMeterLink(energy_system=system, meter=meter, side=EnergySystemMeterLink.SIDE_OUTPUT)
                 for meter in form.cleaned_data["output_meters"]
             ])
-        messages.success(request, "Energy System meter links updated.")
+            if form.cleaned_data["output_reverse_capability"]:
+                form.cleaned_data["output_meters"].update(reverse_energy_capability=form.cleaned_data["output_reverse_capability"])        messages.success(request, "Energy System meter links updated.")
         return redirect("smart_meter:energy_system_detail", pk=system.pk)
     return render(request, "smart_meter/energy_system_setup.html", {"form": form, "group": group, "system": system, "is_edit": True})
 
@@ -445,3 +447,4 @@ def utility_bill_payment_confirm(request, pk):
     log_audit(payment, "confirmed", request.user)
     messages.success(request, "Utility payment confirmed.")
     return redirect("smart_meter:utility_bill_detail", pk=payment.bill_cycle_id)
+

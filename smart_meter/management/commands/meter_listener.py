@@ -1,4 +1,4 @@
-# smart_meter/management/commands/meter_listener.py
+﻿# smart_meter/management/commands/meter_listener.py
 
 from __future__ import annotations
 
@@ -224,7 +224,7 @@ def _register_handler(meter_number: str, handler: ClientHandler):
         if old and old is not handler:
             try:
                 logger.info(
-                    "🔁 Meter %s reconnected from %s; closing old peer %s",
+                    "ðŸ” Meter %s reconnected from %s; closing old peer %s",
                     meter_number,
                     handler.peer,
                     getattr(old, "peer", "?"),
@@ -647,7 +647,7 @@ class ClientHandler(threading.Thread):
         while self.alive and not self._hb_stop.wait(HEARTBEAT_INTERVAL):
             # only ping if quiet for a while
             if time.time() - self.last_seen >= HEARTBEAT_INTERVAL * 0.5:
-                logger.debug("💓 HB → %s", self.meter_number or self.peer)
+                logger.debug("ðŸ’“ HB â†’ %s", self.meter_number or self.peer)
                 try:
                     self.enqueue_send(hb, expire_at=time.time() + HEARTBEAT_INTERVAL)
                 except Exception:
@@ -689,7 +689,7 @@ class ClientHandler(threading.Thread):
                 if chunk:
                     if self.debug:
                         logger.debug(
-                            f"⬇️ RAW CHUNK {self.addr} ({len(chunk)}B): {chunk.hex().upper()}"
+                            f"â¬‡ï¸ RAW CHUNK {self.addr} ({len(chunk)}B): {chunk.hex().upper()}"
                         )
                     self.buffer += chunk
 
@@ -733,7 +733,7 @@ class ClientHandler(threading.Thread):
 
                         if self.debug:
                             logger.debug(
-                                f"🧱 FRAME {self.addr} ({len(frame)}B): {frame.hex().upper()}"
+                                f"ðŸ§± FRAME {self.addr} ({len(frame)}B): {frame.hex().upper()}"
                             )
 
                         if self.dump_raw:
@@ -830,7 +830,7 @@ class ClientHandler(threading.Thread):
 
         parsed = parse_frame(frame, accept_bad_checksum=self.accept_bad)
         if self.debug:
-            logger.debug(f"🧩 parse_frame -> {parsed}")
+            logger.debug(f"ðŸ§© parse_frame -> {parsed}")
         if not parsed:
             return
 
@@ -875,7 +875,7 @@ class ClientHandler(threading.Thread):
             self.meter_number = meter_number
             _register_handler(meter_number, self)
 
-        msg = f"📥 Meter {meter_number} DI={di} "
+        msg = f"ðŸ“¥ Meter {meter_number} DI={di} "
         msg += "(data parsed)" if data else "(no data)"
         if parsed.get("cs_style"):
             msg += f" [cs:{parsed.get('cs_style')}]"
@@ -889,7 +889,7 @@ class ClientHandler(threading.Thread):
             if not matched_waiter:
                 acknowledge_late_prepaid_reply(meter_number, di, ctrl_code, frame)
             if matched_waiter and self.debug:
-                logger.debug(f"📤 Delivered reply to waiter for meter {meter_number}")
+                logger.debug(f"ðŸ“¤ Delivered reply to waiter for meter {meter_number}")
 
             if (
                 matched_waiter
@@ -933,7 +933,7 @@ class ClientHandler(threading.Thread):
                         ]
                     )
             logger.info(
-                f"🆕 Unknown meter discovered: {meter_number} (seen {um.seen_count}x)"
+                f"ðŸ†• Unknown meter discovered: {meter_number} (seen {um.seen_count}x)"
             )
             return
 
@@ -966,6 +966,13 @@ class ClientHandler(threading.Thread):
             live_reading, _live_created = LiveReading.objects.update_or_create(
                 meter=meter, defaults=live_defaults
             )
+        if (
+            di == "00020000"
+            and data.get("reverse_active_energy_kwh") is not None
+            and meter.reverse_energy_capability != Meter.REVERSE_CAPABILITY_SUPPORTED
+        ):
+            meter.reverse_energy_capability = Meter.REVERSE_CAPABILITY_SUPPORTED
+            meter.save(update_fields=["reverse_energy_capability"])
         if di == "028011FF" and data.get("balance") is not None:
             reconcile_prepaid_balance(meter, data.get("balance"))
         if relay_state is not None:
@@ -994,7 +1001,7 @@ class ClientHandler(threading.Thread):
                     **history_values,
                 )
             logger.info(
-                "%s ✅ Stored live reading for meter %s",
+                "%s âœ… Stored live reading for meter %s",
                 timezone.localtime().isoformat(timespec="seconds"),
                 meter_number,
             )
@@ -1011,7 +1018,7 @@ class ClientHandler(threading.Thread):
             )
         else:
             logger.info(
-                "%s ✅ Stored live reading for meter %s",
+                "%s âœ… Stored live reading for meter %s",
                 timezone.localtime().isoformat(timespec="seconds"),
                 meter_number,
             )
@@ -1079,7 +1086,7 @@ class DbCommandPoller(threading.Thread):
         self._stop.set()
 
     def run(self):
-        logger.info("🗂️  DB command poller started")
+        logger.info("ðŸ—‚ï¸  DB command poller started")
         while not self._stop.is_set():
             try:
                 close_old_connections()
@@ -1526,7 +1533,7 @@ class Command(BaseCommand):
 
         if debug:
             logger.setLevel(logging.DEBUG)
-            logger.debug("🔧 Debug logging enabled")
+            logger.debug("ðŸ”§ Debug logging enabled")
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -1539,7 +1546,7 @@ class Command(BaseCommand):
             DbCommandPoller(debug=debug).start()
             MeterTimingSchedulePoller().start()
             start_diagnostic_server()
-            logger.info("✅ Listening on %s:%s for DL/T 645 frames...", host, port)
+            logger.info("âœ… Listening on %s:%s for DL/T 645 frames...", host, port)
 
             while True:
                 conn, addr = s.accept()
@@ -1548,3 +1555,4 @@ class Command(BaseCommand):
                 ClientHandler(
                     conn, addr, debug=debug, dump_raw=dump_raw, accept_bad=accept_bad
                 ).start()
+

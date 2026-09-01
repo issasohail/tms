@@ -95,6 +95,7 @@ class MeterForm(forms.ModelForm):
     class Meta:
         model = Meter
         fields = "__all__"
+        exclude = ("reverse_energy_capability",)
         widgets = {
             'meter_number': forms.TextInput(attrs={'class': 'form-control'}),
             'unit': forms.Select(attrs={'class': 'form-select'}),

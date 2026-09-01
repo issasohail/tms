@@ -400,6 +400,12 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_BACKEND = "redis://localhost:6379/0"  # Storing results in Redis
 
 # Local RQ queue for monthly billing background jobs.
+BILLING_RQ_ENABLED = os.getenv("BILLING_RQ_ENABLED", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 BILLING_RQ_REDIS_URL = os.getenv("BILLING_RQ_REDIS_URL", "redis://localhost:6379/1")
 BILLING_RQ_QUEUE = os.getenv("BILLING_RQ_QUEUE", "billing")
 

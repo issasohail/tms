@@ -4154,43 +4154,48 @@ def monthly_billing_run_enqueue(request, pk):
         .order_by("-created_at")
         .first()
     )
-    if existing:
+    if existing and (
+        existing.status == BillingProgressJob.STATUS_RUNNING or existing.rq_job_id
+    ):
         return JsonResponse({"ok": True, "job_id": existing.pk})
 
-    progress_job = BillingProgressJob.objects.create(
-        billing_run=run,
-        action=action,
-        created_by=request.user if request.user.is_authenticated else None,
-        current_step="Queued",
-        message="Queued",
-    )
-    def _run_locally():
-            try:
-                from invoices.tasks import run_billing_progress_job
+    progress_job = existing
+    if progress_job is None:
+        progress_job = BillingProgressJob.objects.create(
+            billing_run=run,
+            action=action,
+            created_by=request.user if request.user.is_authenticated else None,
+            current_step="Queued",
+            message="Queued",
+        )
 
-                progress_job.message = "Running locally (Redis disabled)."
-                progress_job.save(update_fields=["message", "updated_at"])
-                run_billing_progress_job(progress_job.pk)
-                return None
-            except Exception as local_exc:
-                progress_job.status = BillingProgressJob.STATUS_FAILED
-                progress_job.error_text = str(local_exc)
-                progress_job.completed_at = timezone.now()
-                progress_job.save(
-                    update_fields=["status", "error_text", "completed_at", "updated_at"]
-                )
-                return JsonResponse(
-                    {"ok": False, "job_id": progress_job.pk, "error": str(local_exc)},
-                    status=503,
-                )
+    def _run_locally():
+        try:
+            from invoices.tasks import run_billing_progress_job
+
+            progress_job.message = "Running locally (Redis disabled)."
+            progress_job.save(update_fields=["message", "updated_at"])
+            run_billing_progress_job(progress_job.pk)
+            return None
+        except Exception as local_exc:
+            progress_job.status = BillingProgressJob.STATUS_FAILED
+            progress_job.error_text = str(local_exc)
+            progress_job.completed_at = timezone.now()
+            progress_job.save(
+                update_fields=["status", "error_text", "completed_at", "updated_at"]
+            )
+            return JsonResponse(
+                {"ok": False, "job_id": progress_job.pk, "error": str(local_exc)},
+                status=503,
+            )
 
     if settings.BILLING_RQ_ENABLED:
-            try:
-                enqueue_billing_job(progress_job)
-            except Exception:
-                err = _run_locally()
-                if err:
-                    return err
+        try:
+            enqueue_billing_job(progress_job)
+        except Exception:
+            err = _run_locally()
+            if err:
+                return err
     else:
             err = _run_locally()
             if err:

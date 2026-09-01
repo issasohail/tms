@@ -1201,6 +1201,43 @@ class MeterReading(models.Model):
         return f"{self.meter.meter_number} @ {self.ts}"
 
 
+class MeterRawFrame(models.Model):
+    """Append-only audit ledger for every valid frame persisted by the listener.
+
+    ``decoded_data`` deliberately keeps all parser output, including manufacturer
+    bulk fields that are not safe for billing or reconciliation.
+    """
+    TRUST_AUTHORITATIVE = "authoritative"
+    TRUST_REPORTED_UNVERIFIED = "reported_unverified"
+    TRUST_CHOICES = (
+        (TRUST_AUTHORITATIVE, "Authoritative direct register"),
+        (TRUST_REPORTED_UNVERIFIED, "Meter-reported / unverified"),
+    )
+
+    meter = models.ForeignKey(Meter, on_delete=models.CASCADE, related_name="raw_frames")
+    received_at = models.DateTimeField(default=timezone.now, db_index=True)
+    source_ip = models.GenericIPAddressField(null=True, blank=True)
+    source_port = models.PositiveIntegerField(null=True, blank=True)
+    control_code = models.PositiveSmallIntegerField()
+    data_identifier = models.CharField(max_length=8, blank=True, db_index=True)
+    data_length = models.PositiveSmallIntegerField(default=0)
+    raw_frame_hex = models.TextField()
+    checksum_style = models.CharField(max_length=32, blank=True)
+    decoded_data = models.JSONField(default=dict, blank=True)
+    trust_classification = models.CharField(max_length=32, choices=TRUST_CHOICES)
+    parser_version = models.CharField(max_length=32, default="dlt645-v1")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["meter", "received_at"]),
+            models.Index(fields=["meter", "data_identifier", "received_at"]),
+        ]
+        ordering = ["-received_at", "-id"]
+
+    def __str__(self):
+        return f"{self.meter.meter_number} {self.data_identifier} @ {self.received_at}"
+
+
 class Tariff(models.Model):
     """
     Simple flat tariff. If you do TOU later, extend with time bands.

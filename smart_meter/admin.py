@@ -3,7 +3,7 @@ from django.contrib import admin
 from .models import (
     Meter, LiveReading, MeterReading, Tariff, Bill, Payment,
     MeterAssignmentHistory, MeterInstallation, MeterRoleHistory,
-    MeterCheckGroup, MeterCheckGroupMembership, MeterTimingEvent,
+    MeterCheckGroup, MeterCheckGroupMembership, MeterTimingEvent, MeterRawFrame,
 )
 # smart_meter/admin.py
 from django.contrib import admin
@@ -120,6 +120,18 @@ class MeterReadingAdmin(admin.ModelAdmin):
     readonly_fields = ("ts",)
     search_fields = ("meter__meter_number", "meter__unit__unit_number")
     list_filter = ("ts", "meter")
+
+
+@admin.register(MeterRawFrame)
+class MeterRawFrameAdmin(admin.ModelAdmin):
+    list_display = ("meter", "received_at", "data_identifier", "control_code", "trust_classification")
+    list_filter = ("data_identifier", "trust_classification")
+    search_fields = ("meter__meter_number", "raw_frame_hex")
+    readonly_fields = (
+        "meter", "received_at", "source_ip", "source_port", "control_code",
+        "data_identifier", "data_length", "raw_frame_hex", "checksum_style",
+        "decoded_data", "trust_classification", "parser_version",
+    )
 
 
 @admin.register(Tariff)

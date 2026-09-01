@@ -37,6 +37,7 @@ from smart_meter.models import (
     Meter,
     MeterCommand,  # already importing Meter
     MeterReading,
+    MeterRawFrame,
     UnknownMeter,
 )
 from smart_meter.services.command_lifecycle import revalidate_command
@@ -936,6 +937,34 @@ class ClientHandler(threading.Thread):
                 f"ðŸ†• Unknown meter discovered: {meter_number} (seen {um.seen_count}x)"
             )
             return
+
+        # Keep every valid decoded frame in an append-only ledger.  The bulk
+        # 028011FF layout varies by firmware, so its extended values are kept
+        # as raw reported data and never gain billing/reconciliation authority.
+        trust = (
+            MeterRawFrame.TRUST_AUTHORITATIVE
+            if di in DIRECT_REGISTER_SPECS
+            else MeterRawFrame.TRUST_REPORTED_UNVERIFIED
+        )
+        frame_start = frame.find(b"\x68")
+        frame_data_length = (
+            frame[frame_start + 9]
+            if frame_start >= 0 and len(frame) > frame_start + 9
+            else 0
+        )
+        MeterRawFrame.objects.create(
+            meter=meter,
+            received_at=timezone.now(),
+            source_ip=self.addr[0],
+            source_port=self.addr[1],
+            control_code=ctrl_code,
+            data_identifier=di or "",
+            data_length=frame_data_length,
+            raw_frame_hex=frame.hex().upper(),
+            checksum_style=parsed.get("cs_style") or "",
+            decoded_data={key: str(value) for key, value in data.items()},
+            trust_classification=trust,
+        )
 
         # Live upsert.  Only a valid status word from the documented
         # 0x028011FF response may replace the last confirmed relay status.

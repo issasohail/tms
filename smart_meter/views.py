@@ -142,6 +142,7 @@ from .models import (
     MeterEvent,
     MeterInstallation,
     MeterReading,
+    MeterRawFrame,
     MeterRoleHistory,
     Unit,
     UnknownMeter,
@@ -1220,6 +1221,31 @@ def meter_edit(request, pk):
         request,
         "smart_meter/meter_form.html",
         {"form": form, "edit": True, "original_meter_role": old_role},
+    )
+
+
+@login_required
+@permission_required("smart_meter.view_raw_dlt645_frames", raise_exception=True)
+def meter_raw_frame_history(request, pk):
+    """Read-only, paginated audit history for the meter's persisted frames."""
+    meter = get_object_or_404(
+        Meter.objects.select_related("unit", "unit__property"),
+        pk=pk,
+    )
+    frames = (
+        MeterRawFrame.objects.filter(meter=meter)
+        .only(
+            "id", "received_at", "source_ip", "source_port", "control_code",
+            "data_identifier", "data_length", "raw_frame_hex", "checksum_style",
+            "decoded_data", "trust_classification", "parser_version",
+        )
+        .order_by("-received_at", "-id")
+    )
+    page_obj = Paginator(frames, 50).get_page(request.GET.get("page"))
+    return render(
+        request,
+        "smart_meter/meter_raw_frame_history.html",
+        {"meter": meter, "page_obj": page_obj},
     )
 
 

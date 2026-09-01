@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <h2 class="mb-0">Raw Readings: {{ meter.meter_number }}</h2>
+      <div class="text-muted small">Read-only DL/T645 audit frames recorded by the meter listener.</div>
+    </div>
+    <a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:meter_detail' meter.pk %}"><i class="fas fa-arrow-left me-1"></i> Meter Overview</a>
+  </div>
+
+  <ul class="nav nav-tabs mb-3" aria-label="Meter detail sections">
+    <li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:meter_detail' meter.pk %}"><i class="fas fa-tachometer-alt me-1"></i> Meter Overview</a></li>
+    {% if perms.smart_meter.view_meter_credit_details %}<li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:credit_control' meter.pk %}"><i class="fas fa-bolt me-1"></i> Credit Control</a></li>{% endif %}
+    <li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:meter_schedule_detail' meter.pk %}"><i class="fas fa-calendar-alt me-1"></i> Meter Schedule</a></li>
+    <li class="nav-item"><a class="nav-link active" aria-current="page"><i class="fas fa-list-alt me-1"></i> Raw Readings</a></li>
+  </ul>
+
+  <div class="card shadow-sm"><div class="card-body p-0"><div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light"><tr><th>Received</th><th>Source</th><th>DI / control</th><th>Trust</th><th>Decoded values</th><th>Raw frame</th></tr></thead>
+      <tbody>
+        {% for frame in page_obj %}<tr>
+          <td class="text-nowrap">{{ frame.received_at|date:"Y-m-d H:i:s" }}</td>
+          <td class="small text-nowrap">{{ frame.source_ip|default:"-" }}{% if frame.source_port %}:{{ frame.source_port }}{% endif %}</td>
+          <td class="small"><strong>{{ frame.data_identifier|default:"-" }}</strong><br><span class="text-muted">0x{{ frame.control_code|stringformat:"02X" }} · {{ frame.data_length }} B · {{ frame.checksum_style|default:"-" }}</span></td>
+          <td class="small">{{ frame.get_trust_classification_display }}</td>
+          <td class="small">{% if frame.decoded_data %}<div class="d-flex flex-wrap gap-1">{% for key, value in frame.decoded_data.items %}<span class="badge text-bg-light border">{{ key }}: {{ value }}</span>{% endfor %}</div>{% else %}<span class="text-muted">No decoded values</span>{% endif %}</td>
+          <td><details><summary class="small text-primary">View {{ frame.raw_frame_hex|length }} hex chars</summary><code class="d-block small text-break mt-1">{{ frame.raw_frame_hex }}</code><div class="small text-muted mt-1">Parser: {{ frame.parser_version }}</div></details></td>
+        </tr>{% empty %}<tr><td colspan="6" class="text-center text-muted py-4">No raw readings have been recorded for this meter.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div></div></div>
+
+  {% if page_obj.paginator.num_pages > 1 %}<nav class="mt-3" aria-label="Raw reading pages"><ul class="pagination pagination-sm mb-0">{% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>{% endif %}<li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>{% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>{% endif %}</ul></nav>{% endif %}
+</div>
+{% endblock %}

@@ -62,6 +62,7 @@ urlpatterns = [
     path('meters/schedules/<int:meter_id>/copy/', views_schedule.meter_schedule_copy, name='meter_schedule_copy'),
     path('meters/<int:meter_id>/schedule/', views_schedule.meter_schedule_detail, name='meter_schedule_detail'),
     path('meters/add/', views.add_meter, name='add_meter'),
+    path('meters/<int:pk>/raw-readings/', views.meter_raw_frame_history, name='meter_raw_frame_history'),
     path('meters/<int:pk>/', views.meter_detail, name='meter_detail'),
     path('meters/<int:pk>/credit-control/', views_credit_control.credit_control, name='credit_control'),
     path('meters/<int:pk>/edit/', views.meter_edit, name='meter_edit'),

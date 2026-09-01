@@ -205,8 +205,9 @@ def parse_bulk_summary_frame(frame: bytes, start_idx: int) -> Dict:
         pos += 2
         out["voltage_b"] = _decode_bcd(dat[pos:pos+2], 1)
         pos += 2
-        # vendor spec says 2 bytes but 3dp — keep as found in your device
-        out["voltage_c"] = _decode_bcd(dat[pos:pos+2], 3)
+        # All three phase-voltage registers use one decimal place. Decoding
+        # phase C with three places turns a real 240.5 V into 2.405 V.
+        out["voltage_c"] = _decode_bcd(dat[pos:pos+2], 1)
         pos += 2
 
         # currents (3B each, 3dp)

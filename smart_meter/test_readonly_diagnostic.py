@@ -12,6 +12,7 @@ from smart_meter.diagnostic import (
     decode_diagnostic_response,
     validate_diagnostic_request_frame,
 )
+from smart_meter.dlt645 import parse_frame
 from smart_meter.management.commands.meter_listener import (
     ClientHandler,
     _deliver_if_match,
@@ -144,6 +145,10 @@ class DiagnosticFrameTests(SimpleTestCase):
         self.assertEqual(values["voltage_c"], Decimal("240.0"))
         self.assertEqual(values["total_energy"], Decimal("4693.65"))
         self.assertEqual(values["status_word"], "0003")
+
+    def test_bulk_parser_uses_the_same_phase_c_voltage_scale_as_diagnostics(self):
+        parsed = parse_frame(CAPTURED_BULK_REPLY)
+        self.assertEqual(parsed["data"]["voltage_c"], Decimal("240.0"))
 
     def test_response_address_di_checksum_length_and_bcd_are_enforced(self):
         with self.assertRaisesMessage(ValueError, "does not match"):

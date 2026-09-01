@@ -495,6 +495,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
             "propertyName": getattr(getattr(m.unit, "property", None), "property_name", ""),
             "meterRole": m.meter_role,
             "meterRoleDisplay": m.get_meter_role_display(),
+            "meterIsActive": m.is_active,
         })
 
         rate = Decimal(str(m.effective_unit_rate or "0"))
@@ -514,6 +515,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
                 "meter_number": m.meter_number,
                 "meter_role": m.meter_role,
                 "meter_role_display": m.get_meter_role_display(),
+                "meter_is_active": m.is_active,
                 "unit_number": unit_number,
                 "unit_id": m.unit_id,
                 "property_name": getattr(getattr(m.unit, "property", None), "property_name", ""),
@@ -580,6 +582,7 @@ def _export_rows(request):
     unit_id = (request.GET.get("unit") or "").strip()
     meter_id = (request.GET.get("meter") or "").strip()
     meter_role = (request.GET.get("role") or "").strip().lower()
+    active_filter = (request.GET.get("active") or "").strip().lower()
 
     units_qs = Unit.objects.all()
     if prop_id:
@@ -604,6 +607,10 @@ def _export_rows(request):
         meter_role = "all" if include_check else selected_role or Meter.METER_ROLE_BILLING
     if meter_role != "all":
         selected_meters = selected_meters.filter(meter_role=meter_role)
+    if active_filter == "active":
+        selected_meters = selected_meters.filter(is_active=True)
+    elif active_filter == "inactive":
+        selected_meters = selected_meters.filter(is_active=False)
 
     billing_meters = selected_meters.filter(meter_role=Meter.METER_ROLE_BILLING)
     if meter_role == "all":
@@ -660,6 +667,7 @@ def energy_dashboard(request):
     unit_id = (request.GET.get("unit") or "").strip()
     meter_id = (request.GET.get("meter") or "").strip()
     meter_role = (request.GET.get("role") or "").strip().lower()
+    active_filter = (request.GET.get("active") or "").strip().lower()
 
     all_properties = Property.objects.only("id", "property_name").order_by("property_name")
 
@@ -684,6 +692,10 @@ def energy_dashboard(request):
         meter_role = "all" if include_check else selected_role or Meter.METER_ROLE_BILLING
     if meter_role != "all":
         filtered_meters = filtered_meters.filter(meter_role=meter_role)
+    if active_filter == "active":
+        filtered_meters = filtered_meters.filter(is_active=True)
+    elif active_filter == "inactive":
+        filtered_meters = filtered_meters.filter(is_active=False)
 
     selected_meters = filtered_meters
     if meter_id:
@@ -824,6 +836,7 @@ def energy_dashboard(request):
         "current_unit": unit_id,
         "current_meter": meter_id,
         "current_role": meter_role,
+        "current_active": active_filter,
         "meter_role_choices": Meter.METER_ROLE_CHOICES,
         "report_type": report_type,
         "start_date": start_date,

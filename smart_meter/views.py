@@ -570,6 +570,7 @@ def _meters_annotated_qs(request, online_minutes: int = 10):
     meter_id = (request.GET.get("meter") or "").strip()
     q = (request.GET.get("q") or "").strip()
     role = (request.GET.get("role") or "").strip().lower()
+    active_filter = (request.GET.get("active") or "").strip().lower()
 
     qs = Meter.objects.select_related("unit", "unit__property")
 
@@ -581,6 +582,10 @@ def _meters_annotated_qs(request, online_minutes: int = 10):
         qs = qs.filter(id=meter_id)
     if role in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
         qs = qs.filter(meter_role=role)
+    if active_filter == "active":
+        qs = qs.filter(is_active=True)
+    elif active_filter == "inactive":
+        qs = qs.filter(is_active=False)
     if q:
         qs = qs.filter(
             Q(meter_number__icontains=q)
@@ -826,6 +831,7 @@ def _meter_chip_cards(request, base_qs, url_name):
 
 def meter_list(request):
     online_minutes = online_threshold_minutes()
+    active_filter = (request.GET.get("active") or "").strip().lower()
 
     # Your existing helper builds the base queryset with flags/filters.
     # Add chip flags/counts before applying the selected chip filter so the chips
@@ -835,6 +841,8 @@ def meter_list(request):
     )
     meters_base_qs = restrict_queryset_to_properties(meters_base_qs, request.user, "unit__property")
     current_chip = _normalized_meter_chip(request)
+    if active_filter in {"active", "inactive"} and "chip" not in request.GET:
+        current_chip = "total"
     chip_cards = _meter_chip_cards(request, meters_base_qs, "smart_meter:meter_list")
     meters_qs = _apply_meter_chip_filter(meters_base_qs, current_chip)
 
@@ -1000,6 +1008,7 @@ def meter_list(request):
             "current_unit": unit_id,
             "current_meter": meter_param,
             "current_role": (request.GET.get("role") or "").strip().lower(),
+            "current_active": active_filter,
             "q": q,
             # Backward-compat alias if the partial uses a different key
             "properties": all_properties,
@@ -2826,6 +2835,7 @@ def live_custom(request):
             "active_filter": active_filter,
             "chip_cards": chip_cards,
             "current_chip": current_chip,
+            "current_active": active_filter,
             # dropdown data (same as meter list)
             "all_properties": all_properties,
             "filtered_units": filtered_units,
@@ -3813,6 +3823,7 @@ def reading_list(request):
     unit_id = request.GET.get("unit") or ""
     meter_id = request.GET.get("meter") or ""
     role = (request.GET.get("role") or "").strip().lower()
+    active_filter = (request.GET.get("active") or "").strip().lower()
 
     range_key = (request.GET.get("range") or "").strip()
     if range_key not in QUICK_RANGES:
@@ -3873,11 +3884,19 @@ def reading_list(request):
         "total_power",
         "pf_total",
         "voltage_a",
+        "voltage_b",
+        "voltage_c",
         "current_a",
+        "current_b",
+        "current_c",
+        "power_a",
+        "power_b",
+        "power_c",
         "meter__id",
         "meter__meter_number",
         "meter__name",
         "meter__meter_role",
+        "meter__is_active",
         "meter__unit_id",
         "meter__unit__id",
         "meter__unit__property_id",
@@ -3894,6 +3913,10 @@ def reading_list(request):
         readings = readings.filter(meter__unit__property_id=prop_id)
     if role in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
         readings = readings.filter(meter__meter_role=role)
+    if active_filter == "active":
+        readings = readings.filter(meter__is_active=True)
+    elif active_filter == "inactive":
+        readings = readings.filter(meter__is_active=False)
 
     # ---------- Date filters (use datetime bounds; robust across time zones) ----------
     if start_dt:
@@ -3979,6 +4002,10 @@ def reading_list(request):
     )
     if role in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
         filtered_meters_ctx = filtered_meters_ctx.filter(meter_role=role)
+    if active_filter == "active":
+        filtered_meters_ctx = filtered_meters_ctx.filter(is_active=True)
+    elif active_filter == "inactive":
+        filtered_meters_ctx = filtered_meters_ctx.filter(is_active=False)
 
     ctx = dict(
         all_properties=Property.objects.only("id", "property_name").order_by(
@@ -3996,6 +4023,7 @@ def reading_list(request):
         current_unit=unit_id,
         current_meter=meter_id,
         current_role=role,
+        current_active=active_filter,
         rows=rows,
         page_obj=ReadingPage(rows, page_number, page_size, has_next),
         page_numbers=page_numbers,
@@ -4018,6 +4046,7 @@ def _filtered_readings_qs(request):
     meter_id = request.GET.get("meter") or ""
     q = request.GET.get("q") or ""
     role = (request.GET.get("role") or "").strip().lower()
+    active_filter = (request.GET.get("active") or "").strip().lower()
 
     qs = MeterReading.objects.select_related(
         "meter", "meter__unit", "meter__unit__property"
@@ -4031,6 +4060,10 @@ def _filtered_readings_qs(request):
         qs = qs.filter(meter__unit__property_id=prop_id)
     if role in (Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK):
         qs = qs.filter(meter__meter_role=role)
+    if active_filter == "active":
+        qs = qs.filter(meter__is_active=True)
+    elif active_filter == "inactive":
+        qs = qs.filter(meter__is_active=False)
 
     _, _, _, start_dt, end_dt_excl = _reading_date_window_from_request(request)
     if start_dt:

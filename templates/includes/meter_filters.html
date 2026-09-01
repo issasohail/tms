@@ -37,6 +37,14 @@
     </select>
   </div>
 
+  <div class="meter-filter-field meter-filter-active">
+    <select name="active" class="form-select form-select-sm" id="mf_active" aria-label="Active status filter">
+      <option value="" {% if not current_active %}selected{% endif %}>All Statuses</option>
+      <option value="active" {% if current_active == "active" %}selected{% endif %}>Active</option>
+      <option value="inactive" {% if current_active == "inactive" %}selected{% endif %}>Inactive</option>
+    </select>
+  </div>
+
   <div class="meter-filter-actions">
     <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-filter"></i><span> Filter</span></button>
     {% if request.GET %}
@@ -48,7 +56,7 @@
 <style>
   .meter-filter-grid {
     display: grid;
-    grid-template-columns: minmax(150px, 1fr) minmax(130px, .8fr) minmax(180px, 1fr) minmax(135px, .75fr) auto;
+    grid-template-columns: minmax(150px, 1fr) minmax(130px, .8fr) minmax(180px, 1fr) minmax(135px, .75fr) minmax(130px, .7fr) auto;
     gap: .5rem;
     align-items: center;
   }
@@ -64,7 +72,8 @@
     .meter-filter-property,
     .meter-filter-unit { grid-column: span 6; }
     .meter-filter-meter { grid-column: span 5; }
-    .meter-filter-role { grid-column: span 4; }
+    .meter-filter-role,
+    .meter-filter-active { grid-column: span 4; }
     .meter-filter-actions { grid-column: span 3; }
     .meter-filter-actions .btn { min-height: 31px; }
     .meter-filter-actions .btn-primary span { display: none; }
@@ -78,10 +87,12 @@ document.addEventListener("DOMContentLoaded", function () {
   const unit = document.getElementById('mf_unit');
   const meter = document.getElementById('mf_meter');
   const role = document.getElementById('mf_role');
+  const active = document.getElementById('mf_active');
 
   property?.addEventListener('change', () => { unit.value = ''; meter.value = ''; form.submit(); });
   unit?.addEventListener('change', () => { meter.value = ''; form.submit(); });
   meter?.addEventListener('change', () => form.submit());
   role?.addEventListener('change', () => form.submit());
+  active?.addEventListener('change', () => form.submit());
 });
 </script>

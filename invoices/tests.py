@@ -1,12 +1,14 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
 from django.test import TestCase
+from django.utils import timezone
 from unittest.mock import call, patch
 
 from invoices.models import Invoice, InvoiceItem, ItemCategory, RecurringCharge
 from invoices.services import (
+    _latest_meter_reading_for_lease,
     _recurring_rules_for_lease,
     ensure_month_invoice,
     generate_monthly_billing_electric,
@@ -17,6 +19,7 @@ from invoices.services import (
 )
 from leases.models import Lease
 from properties.models import Property, Unit
+from smart_meter.models import Meter, MeterInstallation, MeterReading
 from tenants.models import Tenant
 
 
@@ -55,6 +58,77 @@ class MonthlyBillingRegressionTests(TestCase):
     def test_previous_month_start_handles_year_boundary(self):
         self.assertEqual(previous_month_start(date(2026, 7, 1)), date(2026, 6, 1))
         self.assertEqual(previous_month_start(date(2026, 1, 1)), date(2025, 12, 1))
+
+    def test_meter_readiness_uses_unit_installation_with_blank_lease_link(self):
+        self.unit.is_smart_meter = True
+        self.unit.save(update_fields=["is_smart_meter"])
+        meter = Meter.objects.create(
+            meter_number="LEGACY-MONTHLY-1",
+            unit=self.unit,
+        )
+        installation = MeterInstallation.objects.create(
+            meter=meter,
+            unit=self.unit,
+            lease=None,
+            start_date=date(2026, 1, 1),
+        )
+        reading = MeterReading.objects.create(
+            meter=meter,
+            ts=timezone.make_aware(datetime(2026, 6, 30, 23, 59)),
+            total_energy=Decimal("150.000"),
+        )
+
+        latest, installations = _latest_meter_reading_for_lease(
+            self.lease,
+            date(2026, 6, 30),
+        )
+
+        self.assertEqual(latest, reading)
+        self.assertEqual(installations, [installation])
+
+    def test_meter_readiness_includes_replaced_and_new_meter_for_month(self):
+        old_meter = Meter.objects.create(
+            meter_number="MONTHLY-OLD-1",
+            unit=self.unit,
+            is_active=False,
+        )
+        new_meter = Meter.objects.create(
+            meter_number="MONTHLY-NEW-1",
+            unit=self.unit,
+        )
+        old_installation = MeterInstallation.objects.create(
+            meter=old_meter,
+            unit=self.unit,
+            lease=self.lease,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 8, 15),
+            is_active=False,
+        )
+        new_installation = MeterInstallation.objects.create(
+            meter=new_meter,
+            unit=self.unit,
+            lease=None,
+            start_date=date(2026, 8, 16),
+        )
+        MeterReading.objects.create(
+            meter=old_meter,
+            ts=timezone.make_aware(datetime(2026, 8, 15, 10, 0)),
+            total_energy=Decimal("900.000"),
+        )
+        latest = MeterReading.objects.create(
+            meter=new_meter,
+            ts=timezone.make_aware(datetime(2026, 9, 1, 1, 0)),
+            total_energy=Decimal("25.000"),
+        )
+
+        found_latest, installations = _latest_meter_reading_for_lease(
+            self.lease,
+            date(2026, 8, 31),
+            date(2026, 8, 1),
+        )
+
+        self.assertEqual(found_latest, latest)
+        self.assertEqual(installations, [old_installation, new_installation])
 
     def test_invoice_due_date_uses_lease_due_day(self):
         self.lease.due_date = "5th of each month."

@@ -62,6 +62,14 @@
             <option value="all" {% if current_role == 'all' %}selected{% endif %}>All roles</option>
           </select>
         </div>
+        <div class="col">
+          <label class="form-label mb-1">Meter status</label>
+          <select name="active" class="form-select form-select-sm">
+            <option value="" {% if not current_active %}selected{% endif %}>All</option>
+            <option value="active" {% if current_active == 'active' %}selected{% endif %}>Active</option>
+            <option value="inactive" {% if current_active == 'inactive' %}selected{% endif %}>Inactive</option>
+          </select>
+        </div>
         <!-- Report -->
         <div class="col">
           <label class="form-label mb-1">Report</label>
@@ -219,6 +227,8 @@
             <!-- Tenant header (desktop only) -->
             <th class="d-none d-sm-table-cell col-tenant"><span>Tenant</span></th>
 
+            <th class="d-none d-sm-table-cell col-active"><span>Active</span></th>
+
             <!-- Period: hidden on small (shown under Meter# instead) -->
             <th class="d-none d-sm-table-cell col-period"><span>Period</span></th>
 
@@ -289,6 +299,10 @@
               <span class="tenant-name ellipsis-1line" title="{{ r.tenant_name|default:'Vacant' }}">{{ r.tenant_name|default:"Vacant" }}</span>
             </td>
 
+            <td class="d-none d-sm-table-cell col-active">
+              {% if r.meter_is_active %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}
+            </td>
+
             <!-- Period (desktop only) -->
             <td class="d-none d-sm-table-cell col-period">{{ r.period_label }}</td>
 
@@ -340,6 +354,9 @@
             <!-- Tenant -->
             <td class="d-none d-sm-table-cell col-tenant"></td>
 
+            <!-- Active -->
+            <td class="d-none d-sm-table-cell col-active"></td>
+
             <!-- Period -->
             <td></td>
 
@@ -376,7 +393,7 @@
               <td class="text-end">Service</td>
               <td>{{ totals_disp.total_kwh }}</td>   <!-- keep "total unit" under Unit col on small too -->
               <!-- skip hidden cols by spanning across them -->
-              <td colspan="3"></td>
+              <td colspan="4"></td>
               <td class="text-end" colspan="2">Amount</td>
               <td></td>
               <td></td>
@@ -387,7 +404,7 @@
               <td></td>
               <td class="text-end">Total</td>
               <td>{{ totals_disp.total_kwh }}</td>
-              <td colspan="3"></td>
+              <td colspan="4"></td>
               <td class="text-end" colspan="2">Amount</td>
               <td></td>
               <td></td>
@@ -399,7 +416,7 @@
               <td></td>
               <td class="text-end">Totals</td>
               <td>{{ totals_disp.total_kwh }}</td> <!-- under Unit -->
-              <td colspan="3"></td>
+              <td colspan="4"></td>
               <td class="text-end" colspan="2">Amount</td>
               <td></td>
               <td></td>
@@ -673,16 +690,6 @@ function shortLabel(raw, maxLen) {
     inputStart.value=toISO(first);
     inputEnd.value=toISO(last);
   }
-  function lockDailyAll(){
-    if(!inputStart||!inputEnd) return;
-    const dailyAll = selReport?.value==='daily' && isAllMeters();
-    if(dailyAll){
-      inputEnd.value=inputStart.value; inputEnd.readOnly=true; inputEnd.classList.add('bg-light'); inputEnd.title='Locked: Daily + All meters';
-    }else{
-      inputEnd.readOnly=false; inputEnd.classList.remove('bg-light'); inputEnd.removeAttribute('title');
-    }
-  }
-
   // INIT: prefer server-sent start/end (same month); DO NOT force to today's month
   (function init(){
     if (inputStart?.value && inputEnd?.value) {
@@ -696,7 +703,6 @@ function shortLabel(raw, maxLen) {
     colMonth.style.display = showMonthMode() ? '' : 'none';
     document.getElementById('col-start').style.display = showMonthMode() ? 'none' : '';
     document.getElementById('col-end').style.display = showMonthMode() ? 'none' : '';
-    lockDailyAll();
   })();
 
   // unchanged: on change, update UI + submit
@@ -708,7 +714,6 @@ function shortLabel(raw, maxLen) {
         document.getElementById('col-start').style.display = showMonthMode() ? 'none' : '';
         document.getElementById('col-end').style.display = showMonthMode() ? 'none' : '';
       }
-      lockDailyAll();
       form.submit();
     });
   });
@@ -774,6 +779,7 @@ function shortLabel(raw, maxLen) {
     --col-unit-lg:         145px;
     --col-property-lg:      76px;
     --col-tenant-lg:       120px; /* Your 120px tenant width */
+    --col-active-lg:        64px;
     --col-period-lg:       110px;
     --col-begin-lg:         56px;
     --col-end-lg:           56px;
@@ -789,6 +795,7 @@ function shortLabel(raw, maxLen) {
     --col-unit-sm:         120px;
     --col-property-sm:     120px; /* property is hidden on small in your markup */
     --col-tenant-sm:       100px; /* tenant is hidden on small; inline tenant uses var below */
+    --col-active-sm:        64px;
     --col-period-sm:       120px; /* period is hidden on small in your markup */
     --col-begin-sm:         86px;
     --col-end-sm:           86px; /* end is hidden on small in your markup */
@@ -879,6 +886,7 @@ function shortLabel(raw, maxLen) {
     #energyTable th.col-unit,       #energyTable td.col-unit       { width: var(--col-unit-lg);       max-width: var(--col-unit-lg); }
     #energyTable th.col-property,   #energyTable td.col-property   { width: var(--col-property-lg);   max-width: var(--col-property-lg); }
     #energyTable th.col-tenant,     #energyTable td.col-tenant     { width: var(--col-tenant-lg);     max-width: var(--col-tenant-lg); }
+    #energyTable th.col-active,     #energyTable td.col-active     { width: var(--col-active-lg);     max-width: var(--col-active-lg); }
     #energyTable th.col-period,     #energyTable td.col-period     { width: var(--col-period-lg);     max-width: var(--col-period-lg); }
     #energyTable th.col-begin,      #energyTable td.col-begin      { width: var(--col-begin-lg);      max-width: var(--col-begin-lg); }
     #energyTable th.col-end,        #energyTable td.col-end        { width: var(--col-end-lg);        max-width: var(--col-end-lg); }
@@ -908,6 +916,7 @@ function shortLabel(raw, maxLen) {
     #energyTable th.col-unit,       #energyTable td.col-unit       { width: var(--col-unit-sm);       max-width: var(--col-unit-sm); }
     #energyTable th.col-property,   #energyTable td.col-property   { width: var(--col-property-sm);   max-width: var(--col-property-sm); }
     #energyTable th.col-tenant,     #energyTable td.col-tenant     { width: var(--col-tenant-sm);     max-width: var(--col-tenant-sm); }
+    #energyTable th.col-active,     #energyTable td.col-active     { width: var(--col-active-sm);     max-width: var(--col-active-sm); }
     #energyTable th.col-period,     #energyTable td.col-period     { width: var(--col-period-sm);     max-width: var(--col-period-sm); }
     #energyTable th.col-begin,      #energyTable td.col-begin      { width: var(--col-begin-sm);      max-width: var(--col-begin-sm); }
     #energyTable th.col-end,        #energyTable td.col-end        { width: var(--col-end-sm);        max-width: var(--col-end-sm); }

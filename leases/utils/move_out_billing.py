@@ -74,7 +74,7 @@ def _electric_installations_for_lease(lease, as_of: date):
 
     return (
         MeterInstallation.objects.filter(
-            lease=lease,
+            unit_id=lease.unit_id,
             meter__meter_type="electric",
             meter__billing_mode="postpaid",
             start_date__lte=as_of,

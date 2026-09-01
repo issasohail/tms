@@ -829,18 +829,22 @@ def _invoice_water_item(invoice):
     )
 
 
-def _latest_meter_reading_for_lease(lease, period_end: date):
+def _latest_meter_reading_for_lease(
+    lease, period_end: date, period_start: date | None = None
+):
     from smart_meter.models import MeterInstallation, MeterReading
 
+    period_start = period_start or period_end.replace(day=1)
     installations = (
         MeterInstallation.objects.filter(
-            lease=lease,
+            unit_id=lease.unit_id,
             meter__meter_type="electric",
             meter__billing_mode__in=("postpaid", "credit_controlled"),
             start_date__lte=period_end,
         )
-        .filter(Q(end_date__isnull=True) | Q(end_date__gte=period_end))
+        .filter(Q(end_date__isnull=True) | Q(end_date__gte=period_start))
         .select_related("meter")
+        .order_by("start_date", "id")
     )
     latest = None
     for installation in installations:
@@ -1166,7 +1170,7 @@ def run_monthly_billing_preflight(
         )
 
         latest, installations = _latest_meter_reading_for_lease(
-            lease, electric_month_end
+            lease, electric_month_end, electric_month
         )
         is_smart_meter = bool(getattr(unit, "is_smart_meter", False))
         item.manual_electric = bool(
@@ -1202,7 +1206,12 @@ def run_monthly_billing_preflight(
                     )
                     + f"; electric period ends {electric_month_end:%Y-%m-%d}.",
                 ))
-            elif any(not installation.meter.is_active for installation in installations):
+            elif not any(
+                installation.meter.is_active
+                for installation in installations
+                if installation.end_date is None
+                or installation.end_date >= electric_month_end
+            ):
                 issues.append((
                     MonthlyBillingRunItem.ISSUE_METER_OFFLINE,
                     f"Meter appears offline/stale. Latest reading date: {item.latest_meter_reading_date:%Y-%m-%d}.",
@@ -1522,8 +1531,9 @@ def approve_monthly_billing_electric_reading(item):
     period_end = item.electric_period_end or monthly_period_end(
         previous_month_start(item.billing_run.billing_month)
     )
+    period_start = item.electric_period_start or period_end.replace(day=1)
     latest, installations = _latest_meter_reading_for_lease(
-        item.lease, period_end
+        item.lease, period_end, period_start
     )
     if not installations:
         raise ValueError("No active postpaid electric meter installation found for this lease.")

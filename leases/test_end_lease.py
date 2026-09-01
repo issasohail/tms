@@ -1,5 +1,5 @@
 from calendar import monthrange
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from invoices.models import Invoice, InvoiceItem, ItemCategory, SecurityDepositTransaction
 from invoices.services import security_deposit_totals
@@ -26,6 +27,7 @@ from leases.utils.end_lease import (
     tenant_message,
 )
 from properties.models import Property, Unit
+from smart_meter.models import Meter, MeterInstallation, MeterReading
 from tenants.models import Tenant
 
 
@@ -124,6 +126,77 @@ class EndLeaseCalculationTests(SimpleTestCase):
 
 
 class EndLeasePostingTests(TestCase):
+    def test_preview_uses_unit_installation_when_legacy_lease_link_is_blank(self):
+        property_obj = Property.objects.create(
+            property_name="Legacy Installation Property",
+            owner_name="Owner",
+            owner_cnic="6110112345698",
+            type="residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        unit = Unit.objects.create(
+            property=property_obj,
+            unit_number="ROOM-9",
+            is_smart_meter=True,
+        )
+        tenant = Tenant.objects.create(
+            first_name="Legacy",
+            last_name="Installation",
+            cnic="6110112345699",
+        )
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            start_date=date(2026, 8, 1),
+            end_date=date(2027, 6, 30),
+            monthly_rent=Decimal("12000.00"),
+            water_charges=Decimal("2000.00"),
+            bill_water_charges=True,
+            status="active",
+        )
+        LeaseUnitOccupancy.objects.create(
+            lease=lease,
+            unit=unit,
+            move_in_date=date(2026, 8, 1),
+        )
+        meter = Meter.objects.create(
+            meter_number="LEGACY-ROOM-9",
+            unit=unit,
+            unit_rate=Decimal("50.00"),
+        )
+        MeterInstallation.objects.create(
+            meter=meter,
+            unit=unit,
+            lease=None,
+            start_date=date(2026, 1, 1),
+            start_reading=Decimal("400.000"),
+        )
+        MeterReading.objects.create(
+            meter=meter,
+            ts=timezone.make_aware(datetime(2026, 8, 1, 0, 0)),
+            total_energy=Decimal("400.000"),
+        )
+        MeterReading.objects.create(
+            meter=meter,
+            ts=timezone.make_aware(datetime(2026, 8, 31, 23, 59)),
+            total_energy=Decimal("481.910"),
+        )
+
+        result = build_end_lease_preview(
+            lease,
+            end_date=date(2026, 8, 31),
+            inspection_complete=True,
+            keys_returned=True,
+        )
+
+        self.assertFalse(result["settlement_preview"]["blocked"])
+        self.assertEqual(
+            [row.meter_id for row in result["settlement_preview"]["installations"]],
+            [meter.pk],
+        )
+        self.assertGreater(result["electric_amount"], ZERO)
+
     def test_rollback_action_reactivates_lease_and_reopens_end_lease(self):
         today = date.today()
         user = get_user_model().objects.create_superuser(

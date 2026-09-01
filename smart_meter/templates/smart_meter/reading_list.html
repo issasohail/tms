@@ -48,12 +48,21 @@
           </select>
         </div>
 
-        <div class="grp grp-a">
+        <div class="grp grp-a f-role">
           <label class="form-label mb-1 small">Role</label>
           <select name="role" class="form-select form-select-sm auto-submit">
             <option value="">All</option>
             <option value="billing" {% if current_role == 'billing' %}selected{% endif %}>Billing</option>
             <option value="check" {% if current_role == 'check' %}selected{% endif %}>Audit</option>
+          </select>
+        </div>
+
+        <div class="grp grp-a f-active">
+          <label class="form-label mb-1 small">Meter status</label>
+          <select name="active" class="form-select form-select-sm auto-submit">
+            <option value="" {% if not current_active %}selected{% endif %}>All</option>
+            <option value="active" {% if current_active == 'active' %}selected{% endif %}>Active</option>
+            <option value="inactive" {% if current_active == 'inactive' %}selected{% endif %}>Inactive</option>
           </select>
         </div>
 
@@ -125,6 +134,7 @@
           <th class="col-tenant">Tenant</th>
           <th class="col-meter">Meter #</th>
           <th class="ld-col-role">Role</th>
+          <th class="col-active">Active</th>
           {# Use unified toggle class on headers so they hide too #}
           <th class="col-ip toggle-col-ip d-none">Source IP</th>
           <th class="col-port toggle-col-port d-none">Port</th>
@@ -144,7 +154,7 @@
               {% include "smart_meter/partials/reading_row_display.html" with r=r sno=forloop.counter %}
             {% endif %}
           {% empty %}
-            <tr><td colspan="14" class="text-center py-3">No readings found.</td></tr>
+            <tr><td colspan="15" class="text-center py-3">No readings found.</td></tr>
           {% endfor %}
         </tbody>
     </table>
@@ -235,6 +245,7 @@
     --lg-col-tenant:12%;
     --lg-col-meter:10%;
     --lg-col-role: 10%;
+    --lg-col-active: 7%;
     --lg-col-ip:  10%;
     --lg-col-port:6%;
     --lg-col-volt:8%;
@@ -249,6 +260,7 @@
     --sm-col-prop:  20%;
     --sm-col-meter: 25%;
     --sm-col-role:  18%;
+    --sm-col-active:12%;
     --sm-col-energy:13%;
 
     /* Small heading */
@@ -269,23 +281,25 @@
     .col-tenant{ width: var(--lg-col-tenant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .col-meter { width: var(--lg-col-meter); }
     .ld-col-role { width: var(--lg-col-role); }
+    .col-active { width: var(--lg-col-active); }
     .col-ip    { width: var(--lg-col-ip); }
     .col-port  { width: var(--lg-col-port); }
     .col-volt  { width: var(--lg-col-volt); }
     .col-amp   { width: var(--lg-col-amp); }
     .col-watt  { width: var(--lg-col-watt); }
-    .col-energy{ width: calc(var(--lg-col-energy) + 50px); }
+    .col-energy{ width: calc(var(--lg-col-energy) + 50px); min-width: calc(var(--lg-col-energy) + 50px); }
     .col-pf    { width: var(--lg-col-pf); }
   }
   @media (max-width: 576px){
     .table { font-size: .54rem; }
     .table td, .table th { padding: .02rem .025rem; }
-    .col-unit, .col-tenant, .col-ip, .col-port, .col-volt, .col-amp, .col-watt, .col-pf { display:none; }
+    .col-unit, .col-tenant, .col-ip, .col-port, .col-volt, .col-amp, .col-watt, .col-pf, .col-active { display:none; }
     .col-idx   { width: var(--sm-col-idx); }
     .col-ts    { width: var(--sm-col-ts); }
     .col-prop  { width: var(--sm-col-prop); }
     .col-meter { width: var(--sm-col-meter); }
     .ld-col-role { width: var(--sm-col-role); }
+    .col-active { width: var(--sm-col-active); }
     .col-energy{ width: var(--sm-col-energy); }
   }
 
@@ -308,6 +322,8 @@
     .filter-grid .f-prop  { width: var(--lg-w-prop); }
     .filter-grid .f-unit  { width: var(--lg-w-unit); }
     .filter-grid .f-meter { width: var(--lg-w-meter); }
+    .filter-grid .f-role,
+    .filter-grid .f-active { width: 8%; }
     .filter-grid .f-range { width: var(--lg-w-range); }
     .filter-grid .f-start { width: var(--lg-w-start); }
     .filter-grid .f-end   { width: var(--lg-w-end); }
@@ -338,6 +354,8 @@
     .filter-grid .f-prop,
     .filter-grid .f-unit,
     .filter-grid .f-meter,
+    .filter-grid .f-role,
+    .filter-grid .f-active,
     .filter-grid .f-range,
     .filter-grid .f-start,
     .filter-grid .f-end{
@@ -416,6 +434,11 @@
   }
   .ld-role-display:hover,
   .ld-role-display:focus { background: #f1f3f5; border-radius: .25rem; outline: none; }
+  .phase-stack,
+  .energy-stack { display: inline-grid; gap: .12rem; text-align: left; line-height: 1.15; }
+  .phase-stack > span,
+  .energy-stack > span { white-space: nowrap; }
+  .phase-label { display: inline-block; min-width: 1.1rem; font-weight: 700; color: #6c757d; }
   @media (max-width: 576px) {
     .ld-role-select {
       min-width: 0;

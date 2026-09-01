@@ -174,6 +174,7 @@ class LeaseForm(forms.ModelForm):
         if not self.instance.pk and not self.is_bound:
             from core.models import GlobalSettings
 
+            self.fields['bill_water_charges'].initial = False
             self.fields['lease_months'].initial = (
                 GlobalSettings.get_solo().default_lease_months or 11
             )

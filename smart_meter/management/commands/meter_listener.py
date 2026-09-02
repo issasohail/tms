@@ -177,11 +177,10 @@ KA_IDLE = 600  # start keepalive probes after 600s idle
 KA_INT = 10  # send a probe every 10s
 KA_CNT = 3  # drop after 3 failed probes
 
-# UPDATED: lightweight application-level heartbeat to tick NATs
-# Can be overridden via Django settings if you like.
-HEARTBEAT_INTERVAL = getattr(settings, "METER_HEARTBEAT_INTERVAL", 300)  # seconds
-# A benign DLT645 "read" DI is ideal here; adjust to your meters if needed.
-HEARTBEAT_FRAME_HEX = getattr(settings, "METER_HEARTBEAT_FRAME_HEX", "028011FF")
+# Application heartbeats are disabled unless a vendor-supplied complete frame is
+# explicitly configured.  A bare DI such as 028011FF is not a DL/T645 frame.
+HEARTBEAT_INTERVAL = getattr(settings, "METER_HEARTBEAT_INTERVAL", 0)  # seconds
+HEARTBEAT_FRAME_HEX = getattr(settings, "METER_HEARTBEAT_FRAME_HEX", "")
 
 MAX_BUFFER_BYTES = 1024 * 1024  # 1 MB (unchanged)
 
@@ -642,8 +641,20 @@ class ClientHandler(threading.Thread):
     def _heartbeat_loop(self):
         if HEARTBEAT_INTERVAL <= 0:
             return
-        hb = bytes.fromhex(HEARTBEAT_FRAME_HEX) if HEARTBEAT_FRAME_HEX else None
-        if not hb:
+        try:
+            hb = bytes.fromhex(HEARTBEAT_FRAME_HEX) if HEARTBEAT_FRAME_HEX else None
+        except ValueError:
+            logger.error("Invalid configured meter heartbeat; application heartbeat disabled")
+            return
+        if not hb or len(hb) < 12 or not hb.startswith(b"\xFE" * 4):
+            logger.error("Configured meter heartbeat is not a complete DL/T645 frame; disabled")
+            return
+        first_68 = hb.find(b"\x68", 4)
+        if first_68 < 0 or len(hb) <= first_68 + 9 or hb[first_68 + 7] != 0x68:
+            logger.error("Configured meter heartbeat has invalid DL/T645 framing; disabled")
+            return
+        if len(hb) != 12 + hb[first_68 + 9]:
+            logger.error("Configured meter heartbeat length is invalid; disabled")
             return
         while self.alive and not self._hb_stop.wait(HEARTBEAT_INTERVAL):
             # only ping if quiet for a while

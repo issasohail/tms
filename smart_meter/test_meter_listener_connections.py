@@ -10,6 +10,8 @@ from django.test import SimpleTestCase, TestCase
 from smart_meter.management.commands.meter_listener import (
     ClientHandler,
     DbCommandPoller,
+    HEARTBEAT_FRAME_HEX,
+    HEARTBEAT_INTERVAL,
 )
 from smart_meter.models import LiveReading, Meter, MeterReading
 
@@ -65,6 +67,10 @@ class BlockingReceiveSocket(FakeSocket):
 
 
 class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
+    def test_application_heartbeat_is_disabled_by_default(self):
+        self.assertEqual(HEARTBEAT_INTERVAL, 0)
+        self.assertEqual(HEARTBEAT_FRAME_HEX, "")
+
     def make_handler(self, recv_result=b""):
         return ClientHandler(FakeSocket(recv_result), ("127.0.0.1", 12345))
 

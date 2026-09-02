@@ -34,7 +34,7 @@ from core.backup_utils import (
     purge_old_backups,
 )
 from core.views import _pending_approval_filter_state
-from core.forms import GlobalSettingsForm
+from core.forms import BackupUploadForm, GlobalSettingsForm
 from core.models import GlobalSettings, TenantIncomeBracket, TenantOccupationOption
 
 
@@ -420,6 +420,12 @@ class BackupUploadDetectionTests(SimpleTestCase):
     def test_gzip_database_file_is_detected_from_extension(self):
         upload = SimpleUploadedFile("backup.sql.gz", b"gzip-placeholder")
         self.assertEqual(detect_uploaded_backup_type(upload), "db")
+
+    def test_upload_form_accepts_compressed_database_backup(self):
+        form = BackupUploadForm(files={
+            "backup_file": SimpleUploadedFile("backup.sql.gz", b"gzip-placeholder")
+        })
+        self.assertTrue(form.is_valid(), form.errors)
 
     def test_regular_zip_is_detected_as_media(self):
         upload = self._zip_upload("backup.zip", ["tenant_photos/photo.jpg"])

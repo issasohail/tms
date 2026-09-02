@@ -447,8 +447,10 @@ class BackupUploadForm(forms.Form):
     def clean_backup_file(self):
         upload = self.cleaned_data["backup_file"]
         name = upload.name.lower()
-        if not name.endswith((".sql", ".sqlite3", ".zip")):
-            raise forms.ValidationError("Backup upload must be a .sql, .sqlite3, or .zip file.")
+        if not name.endswith((".sql", ".sql.gz", ".sqlite3", ".zip")):
+            raise forms.ValidationError(
+                "Backup upload must be a .sql, .sql.gz, .sqlite3, or .zip file."
+            )
         return upload
 
 

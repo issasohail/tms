@@ -235,11 +235,13 @@ def _timestamp():
 
 
 def detect_uploaded_backup_type(uploaded_file):
-    suffix = Path(uploaded_file.name).suffix.lower()
-    if suffix in {".sql", ".sqlite3", ".gz"}:
+    name = str(getattr(uploaded_file, "name", "") or "").lower()
+    if name.endswith((".sql", ".sql.gz", ".sqlite3")):
         return "db"
-    if suffix != ".zip":
-        raise RuntimeError("Backup uploads must be .sql, .sqlite3, or .zip files.")
+    if not name.endswith(".zip"):
+        raise RuntimeError(
+            "Backup uploads must be .sql, .sql.gz, .sqlite3, or .zip files."
+        )
 
     original_position = uploaded_file.tell() if hasattr(uploaded_file, "tell") else 0
     try:

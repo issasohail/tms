@@ -1765,7 +1765,7 @@ def pending_approval_approve(request, kind, pk):
                 elif not request.POST.get("media_destination", ""):
                     raise ValueError("Choose a media destination or reassign this media to a property / unit.")
                 for batch_item in approval_items:
-                    if reassigned_unit:
+                    if reassigned_unit and reassigned_unit.pk != batch_item.unit_id:
                         old_destination = _property_unit_label(batch_item)
                         batch_item.property = reassigned_unit.property
                         batch_item.unit = reassigned_unit

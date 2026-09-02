@@ -34,6 +34,13 @@
     .photos-grid {
       --tms-masonry-min: 220px;
       --tms-masonry-gap: 12px;
+      display: grid;
+      grid-template-columns: repeat(
+        auto-fill,
+        minmax(min(100%, var(--tms-masonry-min)), 1fr)
+      );
+      gap: var(--tms-masonry-gap);
+      align-items: start;
     }
     .photo-card {
       position: relative;

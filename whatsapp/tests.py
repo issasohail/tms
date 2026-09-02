@@ -459,6 +459,107 @@ class PendingWhatsAppMediaApprovalTests(TestCase):
         )
         self.assertTrue(frame.ai_notes.startswith("[Extracted video frame]"))
 
+    def test_lease_video_frames_keep_lease_destination_when_current_unit_is_posted(self):
+        from properties.models import UnitMedia
+
+        video = self._pending(
+            filename="lease-walkthrough.mp4",
+            file=ContentFile(b"test video bytes", name="lease-walkthrough.mp4"),
+            media_type="video",
+            purpose=PendingWhatsAppMedia.PURPOSE_LEASE,
+            target_kind=PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
+        )
+        response = self.client.post(
+            reverse("core:save_pending_video_frames", args=[video.pk]),
+            {
+                "frames": [
+                    self._jpeg_upload("lease-first.jpg"),
+                    self._jpeg_upload("lease-second.jpg", "red"),
+                ]
+            },
+        )
+        frame_ids = response.json()["created_ids"]
+
+        approval = self.client.post(
+            reverse("core:pending_approval_approve", args=["media", video.pk]),
+            {
+                "media_destination": f"lease_photo:{self.lease.pk}",
+                "reassign_unit": str(self.unit.pk),
+                "media_selection": "explicit",
+                "selected_media_ids": [str(frame_id) for frame_id in frame_ids],
+            },
+        )
+
+        self.assertEqual(approval.status_code, 302)
+        video.refresh_from_db()
+        frames = list(
+            PendingWhatsAppMedia.objects.filter(pk__in=frame_ids).order_by("pk")
+        )
+        self.assertEqual(video.status, PendingWhatsAppMedia.STATUS_REJECTED)
+        self.assertTrue(
+            all(frame.status == PendingWhatsAppMedia.STATUS_APPROVED for frame in frames)
+        )
+        self.assertTrue(all(frame.lease_id == self.lease.pk for frame in frames))
+        self.assertTrue(
+            all(
+                frame.target_kind == PendingWhatsAppMedia.TARGET_LEASE_PHOTO
+                for frame in frames
+            )
+        )
+        self.assertEqual(LeaseMedia.objects.filter(lease=self.lease).count(), 2)
+        self.assertFalse(UnitMedia.objects.filter(unit=self.unit).exists())
+
+    def test_reassigning_lease_photo_to_different_unit_creates_unit_media(self):
+        from properties.models import UnitMedia
+
+        new_unit = Unit.objects.create(
+            property=self.property,
+            unit_number="M-02",
+            status="vacant",
+        )
+        pending = self._pending(
+            filename="lease-condition.jpg",
+            file=self._jpeg_upload("lease-condition.jpg"),
+            media_type="image",
+            purpose=PendingWhatsAppMedia.PURPOSE_LEASE,
+            target_kind=PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
+        )
+
+        response = self.client.post(
+            reverse("core:pending_approval_approve", args=["media", pending.pk]),
+            {
+                "media_destination": f"lease_photo:{self.lease.pk}",
+                "reassign_unit": str(new_unit.pk),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        pending.refresh_from_db()
+        self.assertEqual(pending.status, PendingWhatsAppMedia.STATUS_APPROVED)
+        self.assertEqual(pending.unit_id, new_unit.pk)
+        self.assertIsNone(pending.lease_id)
+        self.assertEqual(
+            pending.target_kind, PendingWhatsAppMedia.TARGET_UNIT_PHOTO
+        )
+        self.assertTrue(UnitMedia.objects.filter(unit=new_unit).exists())
+        self.assertFalse(LeaseMedia.objects.filter(lease=self.lease).exists())
+
+    def test_reassign_unit_dropdown_does_not_preselect_current_unit(self):
+        pending = self._pending(
+            purpose=PendingWhatsAppMedia.PURPOSE_LEASE,
+            target_kind=PendingWhatsAppMedia.TARGET_LEASE_PHOTO,
+        )
+
+        response = self.client.get(
+            reverse("core:pending_approval_detail", args=["media", pending.pk])
+        )
+
+        self.assertContains(response, '<option value="">Or reassign property / unit</option>')
+        self.assertNotContains(
+            response,
+            f'<option value="{self.unit.pk}" selected>',
+        )
+
     def test_normal_pending_media_description_is_preserved(self):
         note = "Tenant highlighted the kitchen cabinet damage."
         pending = self._pending(

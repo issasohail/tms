@@ -1113,8 +1113,21 @@ Thank you!`;
       allocationLock = true;
 
       const total = n($total.val());
+      const changedAmount = changed === 'lease' ? n($lease.val()) : n($sec.val());
 
-      if (total >= 0){
+      if (changedAmount < 0){
+        // Typing a negative allocation is how the user selects its refund type.
+        // Do this before the normal-payment clamp, otherwise a security refund
+        // entered while Amount is zero/positive is immediately reset to zero.
+        if (changed === 'lease'){
+          $lease.val(f2(changedAmount));
+          $sec.val(f2(0));
+        } else {
+          $sec.val(f2(changedAmount));
+          $lease.val(f2(0));
+        }
+        $total.val(f2(changedAmount));
+      } else if (total >= 0){
         if (changed === 'lease'){
           const leaseAmt = clamp(n($lease.val()), 0, total);
           if (formatChanged || leaseAmt !== n($lease.val())) $lease.val(f2(leaseAmt));

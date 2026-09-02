@@ -111,7 +111,10 @@ from properties.models import Property
 
 from payments.models import Payment
 from payments.forms import PaymentForm
-from payments.services.payment_detail import rebuild_payment_detail  # ✅ the service function
+from payments.services.payment_detail import (
+    lease_payment_amount_expression,
+    rebuild_payment_detail,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -369,13 +372,7 @@ def _attach_cached_lease_balances(payments):
         .values("lease_id")
         .annotate(
             total=Coalesce(
-                Sum(
-                    Case(
-                        When(detail__isnull=False, then=F("detail__lease_amount")),
-                        default=F("amount"),
-                        output_field=money_field,
-                    )
-                ),
+                Sum(lease_payment_amount_expression()),
                 zero,
             )
         )
@@ -415,13 +412,7 @@ def _attach_cached_lease_financials(leases):
         .values("lease_id")
         .annotate(
             total=Coalesce(
-                Sum(
-                    Case(
-                        When(detail__isnull=False, then=F("detail__lease_amount")),
-                        default=F("amount"),
-                        output_field=money_field,
-                    )
-                ),
+                Sum(lease_payment_amount_expression()),
                 zero,
             )
         )
@@ -446,6 +437,8 @@ def _attach_cached_lease_financials(leases):
             - security_paid.get(lease.pk, Decimal("0.00")),
             Decimal("0.00"),
         )
+        if lease.status in {"ended", "terminated"}:
+            lease._cached_security_due = Decimal("0.00")
 
     return leases
 
@@ -1355,6 +1348,13 @@ def api_payment_receipt_whatsapp(request, pk: int):
     phone = getattr(getattr(getattr(pay, "lease", None),
                     "tenant", None), "phone", "") or ""
     message = build_payment_receipt_message(request, pay)
+    if request.GET.get("open") == "1":
+        from leases.whatsapp import build_whatsapp_url
+
+        whatsapp_url = build_whatsapp_url(phone, message)
+        if not whatsapp_url:
+            return HttpResponseBadRequest("Tenant phone number is missing or invalid.")
+        return redirect(whatsapp_url)
     return JsonResponse({"phone": phone, "phone_display": format_phone(phone), "message": message, "payment_id": pay.pk})
 
 class PaymentDetailRecordViewV1(LoginRequiredMixin, DetailView):

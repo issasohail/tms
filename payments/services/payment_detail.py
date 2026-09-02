@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Case, DecimalField, Exists, F, OuterRef, When
 
 from invoices.models import SecurityDepositTransaction
 from payments.models import PaymentDetail
@@ -13,6 +14,30 @@ def D(v) -> Decimal:
         return Decimal(v or "0")
     except Exception:
         return Decimal("0")
+
+
+def lease_payment_amount_expression():
+    """Lease portion, treating a removed security movement as lease money."""
+    movement_exists = Exists(
+        SecurityDepositTransaction.objects.filter(payment_id=OuterRef("pk"))
+        | SecurityDepositTransaction.objects.filter(
+            payment_detail_id=OuterRef("detail__pk")
+        )
+    )
+    money_field = DecimalField(max_digits=12, decimal_places=2)
+    return Case(
+        When(
+            detail__security_amount__gt=0,
+            then=Case(
+                When(movement_exists, then=F("detail__lease_amount")),
+                default=F("amount"),
+                output_field=money_field,
+            ),
+        ),
+        When(detail__isnull=False, then=F("detail__lease_amount")),
+        default=F("amount"),
+        output_field=money_field,
+    )
 
 
 def sync_security_deposit_paid_flag(lease):

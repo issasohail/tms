@@ -554,9 +554,30 @@ class Lease(models.Model):
         )
 
         payments_total = zero
+        valid_security_detail_ids = {
+            tx.payment_detail_id
+            for tx in self.security_transactions_qs
+            if tx.payment_detail_id
+        }
+        valid_security_payment_ids = {
+            tx.payment_id for tx in self.security_transactions_qs if tx.payment_id
+        }
         for payment in self.payments_qs:
             payment_detail = getattr(payment, "detail", None)
-            if payment_detail:
+            has_security_movement = bool(
+                payment_detail
+                and (
+                    payment_detail.pk in valid_security_detail_ids
+                    or payment.pk in valid_security_payment_ids
+                )
+            )
+            if (
+                payment_detail
+                and (payment_detail.security_amount or zero) > zero
+                and not has_security_movement
+            ):
+                payments_total += payment.amount or zero
+            elif payment_detail:
                 payments_total += payment_detail.lease_amount or zero
             else:
                 payments_total += payment.amount or zero
@@ -613,6 +634,12 @@ class Lease(models.Model):
         damages = grouped["DAMAGE"]
         adjust = grouped["ADJUST"]
         required = self.security_required
+        unpaid_required = max(required - paid_in, zero)
+        waived_at_end = (
+            unpaid_required
+            if self.status in {"ended", "terminated"}
+            else zero
+        )
 
         return {
             "required": required,
@@ -622,7 +649,8 @@ class Lease(models.Model):
             "refund_deductions": refund_deductions,
             "damages": damages,
             "adjust": adjust,
-            "balance_to_collect": max(required - paid_in, zero),
+            "waived_at_end": waived_at_end,
+            "balance_to_collect": unpaid_required - waived_at_end,
             "currently_held": max(
                 paid_in - refunded - refund_deductions - damages,
                 zero,

@@ -370,6 +370,8 @@ class InvoiceListView(SingleTableView):
                 "PAYMENT", Decimal("0.00")
             )
             security_balance = max(security_required - security_paid, Decimal("0.00"))
+            if getattr(record.lease, "status", "") in {"ended", "terminated"}:
+                security_balance = Decimal("0.00")
             total_balance = balance + security_balance
             record.dashboard_lease_balance = balance
             record.dashboard_security_balance = security_balance
@@ -3783,6 +3785,13 @@ def api_security_receipt_whatsapp(request, pk: int):
 
     phone = getattr(tx.lease.tenant, "phone", "") or ""
     message = build_security_receipt_message(request, tx)
+    if request.GET.get("open") == "1":
+        from leases.whatsapp import build_whatsapp_url
+
+        whatsapp_url = build_whatsapp_url(phone, message)
+        if not whatsapp_url:
+            return HttpResponseBadRequest("Tenant phone number is missing or invalid.")
+        return redirect(whatsapp_url)
     return JsonResponse({"phone": phone, "message": message, "security_tx_id": tx.pk})
 
 

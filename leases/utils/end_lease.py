@@ -611,11 +611,12 @@ def build_end_lease_preview(
     )
     gross_balance = money(gross_balance + electricity_transfer_on_confirm)
     security_held = money(security_deposit_totals(lease)["currently_held"])
-    security_applied = min(max(gross_balance, ZERO), security_held)
-    balance_after_security = money(gross_balance - security_applied)
-    security_refund = money(security_held - security_applied)
-    lease_credit = money(max(-balance_after_security, ZERO))
-    refund_due = money(security_refund + lease_credit)
+    # Transfer the full held deposit to the lease ledger as one auditable
+    # credit. The ordinary lease balance then determines payable/refund due.
+    security_transferred = security_held
+    balance_after_security = money(gross_balance - security_transferred)
+    lease_credit = money(max(-gross_balance, ZERO))
+    refund_due = money(max(-balance_after_security, ZERO))
     billing_month_start = end_date.replace(day=1)
     prior_invoices = Invoice.objects.filter(
         lease=lease,
@@ -681,9 +682,11 @@ def build_end_lease_preview(
         )),
         "gross_balance": gross_balance,
         "security_held": security_held,
-        "security_applied": security_applied,
+        # Keep security_applied as a compatibility alias for existing clients.
+        "security_applied": security_transferred,
+        "security_transferred": security_transferred,
         "balance_after_security": balance_after_security,
-        "security_refund": security_refund,
+        "security_refund": security_transferred,
         "lease_credit": lease_credit,
         "refund_due": refund_due,
         "amount_payable": money(max(balance_after_security, ZERO)),
@@ -971,53 +974,29 @@ def end_lease(lease, *, user=None, notes="", **preview_kwargs) -> dict:
     invoice.description = f"Final settlement - lease ended {end_date:%Y-%m-%d}"
     invoice.save(update_fields=["status", "description", "updated_at"])
 
-    note_text = f"Security applied to final lease settlement dated {end_date:%Y-%m-%d}."
-    if notes:
-        note_text += f" {notes.strip()}"
-    if preview["security_applied"] > ZERO:
-        payment = Payment.objects.create(
-            lease=lease,
-            payment_date=end_date,
-            amount=preview["security_applied"],
-            description="Security deposit applied to final lease balance",
-            notes=note_text,
-        )
-        rebuild_payment_detail(
-            payment=payment,
-            lease_amount=preview["security_applied"],
-            security_amount=ZERO,
-            user=user,
-            reason="Applied automatically by End Lease workflow",
-        )
-        SecurityDepositTransaction.objects.create(
-            lease=lease,
-            date=end_date,
-            type="REFUND",
-            amount=ZERO,
-            deduction_amount=preview["security_applied"],
-            deduction_reason="Applied to final lease balance",
-            refund_status="PAID",
-            payment=payment,
-            notes=note_text,
-        )
-
-    if preview["security_refund"] > ZERO:
+    if preview["security_transferred"] > ZERO:
         _create_security_ledger_transfer(
             lease,
-            amount=preview["security_refund"],
+            amount=preview["security_transferred"],
             transfer_date=end_date,
             user=user,
             notes=(
+                "Full held security transferred automatically by End Lease. "
+                f"Lease balance before transfer: Rs. {preview['gross_balance']:,.2f}. "
                 f"Existing lease credit before transfer: Rs. "
                 f"{preview['lease_credit']:,.2f}. {notes.strip()}"
             ).strip(),
+            reason="Full security deposit transferred to lease ledger on lease end",
         )
 
     lease.end_date = end_date
     lease.status = "ended"
     lease.notes = "\n".join(filter(None, [lease.notes, f"Lease ended: {notes.strip()}" if notes else ""]))
     lease.save(update_fields=["end_date", "status", "notes", "updated_at"])
-    lease.unit_occupancies.filter(move_out_date__isnull=True).update(move_out_date=end_date)
+    lease.unit_occupancies.filter(move_out_date__isnull=True).update(
+        move_out_date=end_date,
+        active_lease_key=None,
+    )
     lease.recurringcharge_set.filter(
         Q(end_date__isnull=True) | Q(end_date__gt=end_date)
     ).update(end_date=end_date)
@@ -1075,6 +1054,8 @@ def rollback_end_lease(lease, *, restored_end_date: date, user=None, notes="") -
     for movement in security_rows:
         is_workflow_row = (
             "final lease settlement" in (movement.notes or "").lower()
+            or "full held security transferred automatically by end lease"
+            in (movement.notes or "").lower()
             or "unused security transferred to the lease ledger" in (movement.notes or "").lower()
             or "pending security refund" in (movement.notes or "").lower()
             or "pending tenant refund" in (movement.notes or "").lower()
@@ -1156,6 +1137,9 @@ def rollback_end_lease(lease, *, restored_end_date: date, user=None, notes="") -
 def tenant_message(result: dict) -> str:
     tenant = result["lease"].tenant
     amount = result["amount_payable"]
+    security_transferred = result.get(
+        "security_transferred", result.get("security_applied", ZERO)
+    )
     if result["refund_due"] > ZERO:
         closing = (
             f"We owe you Rs. {result['refund_due']:,.2f}. Please reply with your bank/account "
@@ -1167,8 +1151,9 @@ def tenant_message(result: dict) -> str:
         closing = "Your final account is settled and no payment is due."
     return (
         f"Dear {tenant.get_full_name()}, your lease ended on {result['end_date']:%d %b %Y}. "
-        f"Your final account balance is Rs. {result['gross_balance']:,.2f}. Security applied: "
-        f"Rs. {result['security_applied']:,.2f}. {closing}"
+        f"Your final account balance before security is Rs. {result['gross_balance']:,.2f}. "
+        f"Full security transferred to your lease ledger: Rs. "
+        f"{security_transferred:,.2f}. {closing}"
     )
 
 
@@ -1183,7 +1168,8 @@ def staff_message(result: dict) -> str:
         f"Lease ended - accounts action\nTenant: {lease.tenant.get_full_name()}\n"
         f"Phone: {lease.tenant.phone or '-'}\nProperty/Unit: {lease.unit.property} / {lease.unit}\n"
         f"End date: {result['end_date']:%Y-%m-%d}\nFinal account balance before security: "
-        f"Rs. {result['gross_balance']:,.2f}\nSecurity applied: Rs. {result['security_applied']:,.2f}\n"
+        f"Rs. {result['gross_balance']:,.2f}\nFull security transferred to lease ledger: "
+        f"Rs. {result['security_transferred']:,.2f}\n"
         f"Tenant payable: Rs. {result['amount_payable']:,.2f}\nRefund due: Rs. {result['refund_due']:,.2f}\n"
         f"Invoices after end date: {len(result['future_invoices'])} ({future_action}), "
         f"total Rs. {result['future_invoice_total']:,.2f}\n"

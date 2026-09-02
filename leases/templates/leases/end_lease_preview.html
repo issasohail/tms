@@ -46,7 +46,7 @@
 
   <div class="card mb-3"><div class="card-body p-0"><table class="table table-sm mb-0">
     <tr><th>Total lease balance</th><th class="text-end">Rs. {{ result.gross_balance|floatformat:2|intcomma }}</th></tr>
-    <tr><th>Security applied</th><th class="text-end">Rs. {{ result.security_applied|floatformat:2|intcomma }}</th></tr>
+    <tr><th>Full security transferred to lease ledger</th><th class="text-end">Rs. {{ result.security_transferred|floatformat:2|intcomma }}</th></tr>
     {% if result.amount_payable > 0 %}<tr class="table-warning"><th>Tenant payable</th><th class="text-end">Rs. {{ result.amount_payable|floatformat:2|intcomma }}</th></tr>
     {% elif result.refund_due > 0 %}<tr class="table-success"><th>Refund due</th><th class="text-end">Rs. {{ result.refund_due|floatformat:2|intcomma }}</th></tr>
     {% else %}<tr class="table-success"><th>Account settled</th><th class="text-end">Rs. 0.00</th></tr>{% endif %}

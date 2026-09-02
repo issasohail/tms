@@ -94,7 +94,7 @@ from invoices.models import (
     SecurityDepositTransaction,
 )
 from invoices.public_links import make_public_invoice_token
-from invoices.services import security_deposit_totals
+from invoices.services import lease_outstanding_totals, security_deposit_totals
 from leases.forms import LeaseForm, PublicAgreementEditForm, PublicLeaseCreationForm
 from leases.models import (
     Lease,
@@ -126,7 +126,11 @@ from leases.services.police_verification import (
 from leases.utils import do_replace_placeholders
 from maintenance.public_links import make_public_maintenance_token
 from payments.models import Payment
-from payments.services.payment_detail import sync_security_deposit_paid_flag
+from payments.services.payment_detail import (
+    lease_payment_amount_expression,
+    rebuild_payment_detail,
+    sync_security_deposit_paid_flag,
+)
 from properties.models import Property, Unit
 from smart_meter.models import MeterCreditAccount, MeterInstallation
 from tenants.models import Tenant, normalize_cnic
@@ -179,6 +183,7 @@ from .utils.email_service import send_lease_agreement_email
 from .utils.move_out_billing import (
     apply_move_out_settlement,
     build_move_out_settlement_preview,
+    lease_is_ending,
     move_out_billing_trigger,
 )
 from .utils.end_lease import (
@@ -200,6 +205,16 @@ ZERO = Decimal("0.00")
 
 
 def sync_lease_move_in_occupancy(lease, move_in_date):
+    if lease_is_ending(lease.status):
+        lease.unit_occupancies.filter(move_out_date__isnull=True).update(
+            move_out_date=lease.end_date,
+            active_lease_key=None,
+        )
+        # Repair rows closed by older code that left the unique active key set.
+        lease.unit_occupancies.filter(active_lease_key=lease.pk).update(
+            active_lease_key=None,
+        )
+        return None
     if not move_in_date:
         return None
     occupancy = lease.unit_occupancies.filter(move_out_date__isnull=True).first()
@@ -1169,7 +1184,12 @@ class LeaseListView(SingleTableView):
             for row in (
                 Invoice.objects.filter(lease_id__in=lease_ids)
                 .values("lease_id")
-                .annotate(total=Coalesce(Sum("amount"), Decimal("0.00")))
+                .annotate(
+                    total=Coalesce(
+                        Sum(lease_payment_amount_expression()),
+                        Decimal("0.00"),
+                    )
+                )
             )
         }
 
@@ -1200,10 +1220,13 @@ class LeaseListView(SingleTableView):
 
             sd = sd_by_lease[lease.id]
             sd_paid = sd.get("PAYMENT", Decimal("0.00"))
-            lease.list_security_deposit_due = (
+            lease.list_security_deposit_due = max(
                 (getattr(lease, "security_deposit", None) or Decimal("0.00"))
-                - sd_paid
+                - sd_paid,
+                Decimal("0.00"),
             )
+            if lease.status in {"ended", "terminated"}:
+                lease.list_security_deposit_due = Decimal("0.00")
 
         return leases
 
@@ -1516,6 +1539,8 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
                 "monthly_rent": selected_unit.monthly_rent,
                 "society_maintenance": selected_unit.society_maintenance,
                 "water_charges": selected_unit.water_charges,
+                "internet_charges": selected_unit.internet_charges,
+                "security_deposit": selected_unit.security_deposit_amount,
             }
             for field_name, value in default_map.items():
                 if field_name in form.fields and value not in (None, ""):
@@ -4413,6 +4438,7 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
                 "security_paid_in": sec_totals["paid_in"],
                 "security_refunded": sec_totals["refunded"],
                 "security_damages": sec_totals["damages"],
+                "security_waived_at_end": sec_totals.get("waived_at_end", ZERO),
                 "security_balance_to_collect": sec_totals["balance_to_collect"],
                 "security_currently_held": sec_totals["currently_held"],
                 "deposit_is_paid": sec_totals["balance_to_collect"] <= ZERO,
@@ -4696,14 +4722,15 @@ def lease_end_action(request, pk):
                     "gross_balance": str(result["gross_balance"]),
                     "security_held": str(result["security_held"]),
                     "security_applied": str(result["security_applied"]),
+                    "security_transferred": str(result["security_transferred"]),
                     "amount_payable": str(result["amount_payable"]),
                     "refund_due": str(result["refund_due"]),
                     "tenant_phone": normalize_phone(lease.tenant.phone or ""),
                     "whatsapp_message": (
                         f"Settlement preview for {lease.tenant.get_full_name()} - lease end "
                         f"{result['end_date']:%Y-%m-%d}. Balance before security: "
-                        f"Rs. {result['gross_balance']:,.2f}. Security applied: "
-                        f"Rs. {result['security_applied']:,.2f}. "
+                        f"Rs. {result['gross_balance']:,.2f}. Full security transferred "
+                        f"to lease ledger: Rs. {result['security_transferred']:,.2f}. "
                         + (
                             f"Tenant payable: Rs. {result['amount_payable']:,.2f}."
                             if result["amount_payable"] > ZERO
@@ -4809,7 +4836,7 @@ def lease_end_action(request, pk):
     messages.success(
         request,
         f"Lease ended. Final bill Rs. {result['gross_balance']:,.2f}; "
-        f"security applied Rs. {result['security_applied']:,.2f}; "
+        f"full security transferred Rs. {result['security_transferred']:,.2f}; "
         f"payable Rs. {result['amount_payable']:,.2f}; refund due Rs. {result['refund_due']:,.2f}. "
         f"{len(result['future_invoices'])} future invoice(s) "
         f"{'cancelled' if result['future_invoice_action'] == 'cancel' else 'kept as approved charges'}.",
@@ -4847,7 +4874,7 @@ def lease_end_rollback_action(request, pk):
         request,
         f"Lease end rolled back. End date restored to {result['restored_end_date']:%Y-%m-%d}; "
         f"{len(result['restored_invoices'])} invoice(s) restored and "
-        f"Rs. {result['reversed_security']:,.2f} security application reversed.",
+        f"Rs. {result['reversed_security']:,.2f} security-ledger transfer reversed.",
     )
     return redirect(f"{reverse('leases:lease_detail', args=[lease.pk])}?open_end_lease=1")
 
@@ -4959,15 +4986,25 @@ from django.contrib.auth.decorators import login_required
 @login_required
 def get_units_by_property(request):
     """
-    Return units for a given property as JSON:
-    { "units": [ { "id": 1, "unit_number": "A-101" }, ... ] }
+    Return units and their lease-create charge defaults for a property as JSON.
     """
     prop_id = request.GET.get("property_id")
     if not prop_id:
         return JsonResponse({"units": []})
 
     qs = Unit.objects.filter(property_id=prop_id).order_by("unit_number")
-    data = [{"id": u.id, "unit_number": u.unit_number} for u in qs]
+    data = [
+        {
+            "id": u.id,
+            "unit_number": u.unit_number,
+            "monthly_rent": u.monthly_rent,
+            "security_deposit": u.security_deposit_amount,
+            "society_maintenance": u.society_maintenance,
+            "water_charges": u.water_charges,
+            "internet_charges": u.internet_charges,
+        }
+        for u in qs
+    ]
     return JsonResponse({"units": data})
 
 
@@ -5384,6 +5421,14 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
             )
 
         # Lease ledger must use the payment detail lease amount, not total payment amount.
+        valid_security_detail_ids = {
+            tx.payment_detail_id
+            for tx in lease.security_transactions_qs
+            if tx.payment_detail_id
+        }
+        valid_security_payment_ids = {
+            tx.payment_id for tx in lease.security_transactions_qs if tx.payment_id
+        }
         for payment in lease.payments_qs:
             payment_detail = getattr(payment, "detail", None)
 
@@ -5393,9 +5438,23 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                 if payment_detail
                 else None
             )
-            amt = (
-                lease_amt if lease_amt is not None else (payment.amount or ZERO)
-            ) or ZERO
+            has_security_movement = bool(
+                payment_detail
+                and (
+                    payment_detail.pk in valid_security_detail_ids
+                    or payment.pk in valid_security_payment_ids
+                )
+            )
+            if (
+                payment_detail
+                and (payment_detail.security_amount or ZERO) > ZERO
+                and not has_security_movement
+            ):
+                amt = payment.amount or ZERO
+            else:
+                amt = (
+                    lease_amt if lease_amt is not None else (payment.amount or ZERO)
+                ) or ZERO
 
             balance += amt
             transactions.append(
@@ -5404,6 +5463,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     "type": "Payment",
                     "description": payment.reference_number or f"Payment #{payment.id}",
                     "payment_id": payment.id,
+                    "delete_url": reverse("payments:payment_delete", args=[payment.id]),
                     "amount": amt,
                     "balance": balance,
                     "url": reverse("payments:payment_detail", args=[payment.id]),
@@ -5494,6 +5554,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                 "security_refunded": sec_totals["refunded"],
                 "security_pending_refund": sec_totals["pending_refund"],
                 "security_damages": sec_totals["damages"],
+                "security_waived_at_end": sec_totals.get("waived_at_end", ZERO),
                 "security_balance_to_collect": sec_totals["balance_to_collect"],
                 "security_currently_held": sec_totals["currently_held"],
                 "security_transferred_to_ledger": sec_totals.get("transferred_to_ledger", ZERO),
@@ -7230,9 +7291,44 @@ class SecurityDepositDeleteView(LeaseSecurityMixin, DeleteView):
             )
             return redirect(self.get_success_url())
         self.object = self.get_object()
-        self.object.delete()
+        linked_payment = self.object.payment
+        if linked_payment:
+            payment_detail = getattr(linked_payment, "detail", None)
+            if payment_detail:
+                rebuild_payment_detail(
+                    payment=linked_payment,
+                    lease_amount=linked_payment.amount,
+                    security_amount=ZERO,
+                    electricity_amount=payment_detail.electricity_amount,
+                    electricity_meter=payment_detail.electricity_meter,
+                    security_type="PAYMENT",
+                    user=request.user,
+                    reason="Security allocation removed; retained payment reallocated to lease",
+                )
+            else:
+                self.object.delete()
+        else:
+            self.object.delete()
         sync_security_deposit_paid_flag(self.lease)
-        messages.success(self.request, "Security deposit transaction deleted.")
+        messages.success(
+            self.request,
+            "Security allocation removed and the retained payment reallocated to the lease."
+            if linked_payment
+            else "Security deposit transaction deleted.",
+        )
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            totals = lease_outstanding_totals(self.lease)
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "message": "Security deposit entry deleted and all balances recalculated.",
+                    "lease_id": self.lease.pk,
+                    "redirect_url": reverse(
+                        "leases:lease_ledger_by_pk", args=[self.lease.pk]
+                    ),
+                    "totals": {key: str(value) for key, value in totals.items()},
+                }
+            )
         return redirect(self.get_success_url())
 
 

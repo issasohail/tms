@@ -32,6 +32,7 @@ from core.backup_utils import (
     list_backups,
     prune_old_backups,
     purge_old_backups,
+    restore_database,
 )
 from core.views import _pending_approval_filter_state
 from core.forms import BackupUploadForm, GlobalSettingsForm
@@ -300,6 +301,40 @@ class PendingApprovalLeaseScopeTests(TestCase):
 
 
 class BackupMySQLCommandTests(SimpleTestCase):
+    @patch("core.backup_utils.connections.close_all")
+    @patch("core.backup_utils._run_mysql_command")
+    @patch("core.backup_utils._resolve_mysql_executable", return_value="mysql")
+    @patch("core.backup_utils._db_settings")
+    def test_database_restore_streams_sql_as_binary(
+        self,
+        db_settings,
+        _resolve_executable,
+        run_mysql_command,
+        close_connections,
+    ):
+        db_settings.return_value = {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": "tenant_management",
+            "HOST": "localhost",
+            "PORT": "3306",
+            "USER": "root",
+            "PASSWORD": "",
+        }
+        with TemporaryDirectory() as backup_root:
+            backup = Path(backup_root) / "tms_db_backup_test.sql"
+            backup.write_bytes(b"SELECT 1;\n")
+
+            restore_database(
+                {"backup_root": backup_root, "mysql_path": "mysql"},
+                backup.name,
+            )
+
+        close_connections.assert_called_once_with()
+        command = run_mysql_command.call_args.args[0]
+        self.assertIn("--binary-mode=1", command)
+        self.assertIn("--default-character-set=utf8mb4", command)
+        self.assertFalse(run_mysql_command.call_args.kwargs["text"])
+
     def test_streaming_gzip_dump_is_a_valid_gzip_file(self):
         payload = b"-- SQL dump\nINSERT INTO test VALUES (1);\n" * 1000
         with TemporaryDirectory() as backup_root:
@@ -402,6 +437,25 @@ class BackupMySQLCommandTests(SimpleTestCase):
                 ["mysqldump"],
                 operation="Database backup",
                 stdout=MagicMock(),
+            )
+
+    @patch("core.backup_utils.subprocess.run")
+    def test_binary_mysql_stderr_is_returned_as_a_readable_error(self, run):
+        run.side_effect = subprocess.CalledProcessError(
+            1,
+            ["mysql"],
+            stderr=b"ERROR 1064: invalid SQL statement",
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Database restore failed: ERROR 1064: invalid SQL statement",
+        ):
+            _run_mysql_command(
+                ["mysql"],
+                operation="Database restore",
+                stdin=MagicMock(),
+                text=False,
             )
 
 

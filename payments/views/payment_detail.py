@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.db.models import Prefetch
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.views import View
@@ -13,7 +13,7 @@ from django.views.generic import DeleteView, DetailView
 
 from core.models import GlobalSettings
 from invoices.models import Invoice, SecurityDepositTransaction
-from invoices.services import security_deposit_totals
+from invoices.services import lease_outstanding_totals, security_deposit_totals
 from payments.models import Payment
 from payments.services.payment_detail import sync_security_deposit_paid_flag
 from utils.pdf_export import PaymentDetailReceiptPDF
@@ -163,6 +163,17 @@ class PaymentDeleteView(LoginRequiredMixin, DeleteView):
         sync_security_deposit_paid_flag(lease)
 
         messages.success(request, "Payment deleted. Related payment detail and security deposit movements were reversed.")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            totals = lease_outstanding_totals(lease)
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "message": "Payment deleted and all balances recalculated.",
+                    "lease_id": lease.pk,
+                    "redirect_url": reverse("leases:lease_ledger_by_pk", args=[lease.pk]),
+                    "totals": {key: str(value) for key, value in totals.items()},
+                }
+            )
         return redirect(self.get_success_url())
 
     @transaction.atomic

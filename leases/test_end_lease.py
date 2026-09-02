@@ -464,8 +464,15 @@ class EndLeasePostingTests(TestCase):
             deduction_reason="Transferred to lease ledger for tenant refund",
         )
         self.assertEqual(transfer.amount, ZERO)
-        self.assertEqual(transfer.deduction_amount, result["refund_due"])
-        self.assertEqual(transfer.payment.detail.lease_amount, result["refund_due"])
+        self.assertEqual(transfer.deduction_amount, result["security_held"])
+        self.assertEqual(transfer.payment.detail.lease_amount, result["security_held"])
+        self.assertEqual(result["security_transferred"], Decimal("100000.00"))
+        self.assertFalse(
+            Payment.objects.filter(
+                lease=lease,
+                description="Security deposit applied to final lease balance",
+            ).exists()
+        )
         self.assertEqual(security_deposit_totals(lease)["currently_held"], ZERO)
         self.assertEqual(
             LeaseUnitOccupancy.objects.get(lease=lease).move_out_date,
@@ -488,6 +495,12 @@ class EndLeasePostingTests(TestCase):
         self.assertEqual(future_invoice.status, "sent")
         self.assertEqual(result["invoice"].status, "cancelled")
         self.assertEqual(rollback["restored_end_date"], today + timedelta(days=180))
+        self.assertEqual(rollback["reversed_security"], Decimal("100000.00"))
+        self.assertTrue(
+            transfer.ledger_transfer_event.__class__.objects.get(
+                pk=transfer.ledger_transfer_event.pk
+            ).is_reversed
+        )
         self.assertFalse(
             SecurityDepositTransaction.objects.filter(
                 lease=lease, type="REFUND"
@@ -824,8 +837,9 @@ class EndLeaseRefundAndReviewTests(TestCase):
         self.assertIn(preview["invoice"], preview["review_invoices"])
         self.assertEqual(preview["gross_balance"], Decimal("1200.00"))
         self.assertEqual(preview["security_held"], Decimal("5000.00"))
-        self.assertEqual(preview["security_applied"], Decimal("1200.00"))
-        self.assertEqual(preview["security_refund"], Decimal("3800.00"))
+        self.assertEqual(preview["security_applied"], Decimal("5000.00"))
+        self.assertEqual(preview["security_transferred"], Decimal("5000.00"))
+        self.assertEqual(preview["security_refund"], Decimal("5000.00"))
         self.assertEqual(preview["amount_payable"], ZERO)
 
         result = end_lease(
@@ -846,8 +860,9 @@ class EndLeaseRefundAndReviewTests(TestCase):
         self.assertEqual(future_invoice.status, "cancelled")
         self.assertEqual(result["invoice"].status, "sent")
         self.assertEqual(result["gross_balance"], Decimal("1200.00"))
-        self.assertEqual(result["security_applied"], Decimal("1200.00"))
-        self.assertEqual(result["security_refund"], Decimal("3800.00"))
+        self.assertEqual(result["security_applied"], Decimal("5000.00"))
+        self.assertEqual(result["security_transferred"], Decimal("5000.00"))
+        self.assertEqual(result["security_refund"], Decimal("5000.00"))
         self.assertEqual(result["amount_payable"], ZERO)
         self.assertEqual(result["final_balance"], Decimal("-3800.00"))
 
@@ -1054,7 +1069,11 @@ class EndLeaseWithoutPriorInvoiceRegressionTests(TestCase):
             security_deposit=Decimal("20000.00"),
             status="active",
         )
-        LeaseUnitOccupancy.objects.create(lease=lease, unit=unit, move_in_date=today)
+        occupancy = LeaseUnitOccupancy.objects.create(
+            lease=lease,
+            unit=unit,
+            move_in_date=today,
+        )
         SecurityDepositTransaction.objects.create(
             lease=lease, type="PAYMENT", amount=Decimal("20000.00")
         )
@@ -1070,7 +1089,10 @@ class EndLeaseWithoutPriorInvoiceRegressionTests(TestCase):
         )
 
         lease.refresh_from_db()
+        occupancy.refresh_from_db()
         self.assertEqual(lease.status, "ended")
+        self.assertEqual(occupancy.move_out_date, today)
+        self.assertIsNone(occupancy.active_lease_key)
         self.assertTrue(Invoice.objects.filter(lease=lease).exists())
         self.assertIsNotNone(result["invoice"])
         self.assertTrue(
@@ -1078,3 +1100,48 @@ class EndLeaseWithoutPriorInvoiceRegressionTests(TestCase):
                 lease=lease, type="REFUND", refund_status="TRANSFERRED"
             ).exists()
         )
+
+    def test_ended_lease_occupancy_sync_repairs_stale_active_key(self):
+        from leases.views import sync_lease_move_in_occupancy
+
+        today = date.today()
+        property_obj = Property.objects.create(
+            property_name="Stale Occupancy Property",
+            owner_name="Owner",
+            owner_cnic="6110112345793",
+            type="residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        unit = Unit.objects.create(
+            property=property_obj,
+            unit_number="SO-1",
+            is_smart_meter=False,
+        )
+        tenant = Tenant.objects.create(
+            first_name="Stale", last_name="Occupancy", cnic="6110112345794"
+        )
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=unit,
+            start_date=today - timedelta(days=30),
+            end_date=today,
+            monthly_rent=ZERO,
+            status="ended",
+        )
+        occupancy = LeaseUnitOccupancy.objects.create(
+            lease=lease,
+            unit=unit,
+            move_in_date=lease.start_date,
+        )
+        # Reproduce the inconsistent row created by the old bulk-close logic.
+        LeaseUnitOccupancy.objects.filter(pk=occupancy.pk).update(
+            move_out_date=today
+        )
+
+        sync_lease_move_in_occupancy(lease, lease.start_date)
+
+        occupancy.refresh_from_db()
+        self.assertEqual(occupancy.move_out_date, today)
+        self.assertIsNone(occupancy.active_lease_key)
+        self.assertEqual(lease.unit_occupancies.count(), 1)

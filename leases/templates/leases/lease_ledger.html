@@ -174,12 +174,12 @@
       <div class="divider">•</div>
 
       <div class="summary-item">
-        <span class="muted">Deposit:</span>
-        <strong>Rs. {{ lease.security_deposit|intcomma }}</strong>
-        {% if lease.security_deposit_paid %}
-        <span class="badge badge-compact bg-success-subtle text-success border border-success-subtle ms-1">Paid</span>
+        <span class="muted">Deposit Paid In:</span>
+        <strong>Rs. {{ security_paid_in|intcomma }}</strong>
+        {% if security_paid_in > 0 %}
+        <span class="badge badge-compact bg-success-subtle text-success border border-success-subtle ms-1">Received</span>
         {% else %}
-        <span class="badge badge-compact bg-danger-subtle text-danger border border-danger-subtle ms-1">Not Paid</span>
+        <span class="badge badge-compact bg-secondary-subtle text-secondary border ms-1">None</span>
         {% endif %}
         {% if lease.security_deposit_return_amount %}
         <span class="muted mx-2">Return:</span>
@@ -189,6 +189,12 @@
         {% endif %}
       </div>
     </div>
+    {% if security_waived_at_end > 0 %}
+    <div class="small text-muted mt-1">
+      Unpaid security of <strong>Rs. {{ security_waived_at_end|intcomma }}</strong>
+      was waived when this lease ended and is not included in Total Outstanding.
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endif %}
@@ -273,15 +279,15 @@
               <div class="d-flex justify-content-center gap-1">
                 {% if t.obj.payment and t.obj.payment.detail %}
                 <a class="btn btn-success btn-slim"
-                   href="{% url 'payments:api_payment_detail_receipt_whatsapp' t.obj.payment.detail.id %}"
+                   href="{% url 'payments:api_payment_detail_receipt_whatsapp' t.obj.payment.detail.id %}?open=1"
                    target="_blank">Receipt</a>
                 {% elif t.obj.payment %}
                 <a class="btn btn-success btn-slim"
-                   href="{% url 'payments:api_payment_receipt_whatsapp' t.obj.payment.id %}"
+                   href="{% url 'payments:api_payment_receipt_whatsapp' t.obj.payment.id %}?open=1"
                    target="_blank">Receipt</a>
                 {% else %}
                 <a class="btn btn-success btn-slim"
-                   href="{% url 'invoices:api_security_receipt_whatsapp' t.obj.id %}"
+                   href="{% url 'invoices:api_security_receipt_whatsapp' t.obj.id %}?open=1"
                    target="_blank">Receipt</a>
                 {% endif %}
 
@@ -293,7 +299,8 @@
                    href="{% url 'leases:lease_security_edit' lease.id t.obj.id %}">Edit</a>
                 {% endif %}
 
-                <a class="btn btn-danger btn-slim"
+                <a class="btn btn-danger btn-slim js-ledger-delete"
+                   data-delete-kind="security entry"
                    href="{% url 'leases:lease_security_delete' lease.id t.obj.id %}">Delete</a>
               </div>
             </td>
@@ -389,6 +396,7 @@
                   class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                   {{ t.amount|intcomma }}
                 </a>
+                {% if t.delete_url %}<a href="{{ t.delete_url }}" class="js-ledger-delete ms-1 text-danger" data-delete-kind="payment" title="Delete payment"><i class="fas fa-trash-alt"></i></a>{% endif %}
               </td>
               <td data-label="Balance">{{ t.balance|intcomma }}</td>
             </tr>
@@ -430,6 +438,7 @@
                       class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                       {{ t.amount|intcomma }}
                     </a>
+                    {% if t.delete_url %}<a href="{{ t.delete_url }}" class="js-ledger-delete ms-1 text-danger" data-delete-kind="payment" title="Delete payment"><i class="fas fa-trash-alt"></i></a>{% endif %}
                   </td>
                   <td>{{ t.balance|intcomma }}</td>
                 </tr>
@@ -468,6 +477,7 @@
                       class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                       {{ t.amount|intcomma }}
                     </a>
+                    {% if t.delete_url %}<a href="{{ t.delete_url }}" class="js-ledger-delete ms-1 text-danger" data-delete-kind="payment" title="Delete payment"><i class="fas fa-trash-alt"></i></a>{% endif %}
                   </td>
                   <td>{{ t.balance|intcomma }}</td>
                 </tr>
@@ -1003,6 +1013,42 @@
 {% block extra_js %}
 {# ===== jQuery + Select2 ===== #}
 <script>
+  function leaseLedgerCookie(name) {
+    const row = document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
+    return row ? decodeURIComponent(row.slice(name.length + 1)) : '';
+  }
+
+  document.addEventListener('click', async function (event) {
+    const link = event.target.closest('.js-ledger-delete');
+    if (!link) return;
+    event.preventDefault();
+    const kind = link.dataset.deleteKind || 'entry';
+    if (!window.confirm(`Delete this ${kind}? All lease and security balances will be recalculated.`)) return;
+
+    link.classList.add('disabled');
+    try {
+      const body = new FormData();
+      body.append('confirm_delete', 'yes');
+      const response = await fetch(link.href, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': leaseLedgerCookie('csrftoken'),
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body,
+        credentials: 'same-origin'
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || 'The entry could not be deleted.');
+      }
+      window.location.assign(payload.redirect_url || window.location.href);
+    } catch (error) {
+      link.classList.remove('disabled');
+      window.alert(error.message || 'The entry could not be deleted.');
+    }
+  });
+
   (function ensureLibs(cb) {
     function load(src, onload) { var s = document.createElement('script'); s.src = src; s.onload = onload; document.head.appendChild(s); }
     if (!window.jQuery) { load('https://code.jquery.com/jquery-3.6.0.min.js', function () { load('https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', cb); }); }

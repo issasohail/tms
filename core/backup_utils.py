@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from django.conf import settings
+from django.db import connections
 
 
 SETTINGS_FILE_NAME = "backup_settings.json"
@@ -351,19 +352,22 @@ def _mysqldump_compatibility_args(mysqldump_path):
     return args
 
 
-def _run_mysql_command(cmd, *, operation, stdin=None, stdout=None, env=None):
+def _run_mysql_command(cmd, *, operation, stdin=None, stdout=None, env=None, text=True):
     try:
         return subprocess.run(
             cmd,
             stdin=stdin,
             stdout=stdout,
             stderr=subprocess.PIPE,
-            text=True,
+            text=text,
             check=True,
             env=env,
         )
     except subprocess.CalledProcessError as exc:
-        detail = " ".join((exc.stderr or "").strip().split())
+        stderr = exc.stderr or (b"" if not text else "")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        detail = " ".join(stderr.strip().split())
         if not detail:
             detail = f"MySQL client exited with code {exc.returncode}."
         raise RuntimeError(f"{operation} failed: {detail}") from exc
@@ -565,22 +569,28 @@ def restore_database(config, backup_id):
     )
     cmd = [
         mysql_path,
+        "--binary-mode=1",
+        "--default-character-set=utf8mb4",
         f"--host={db.get('HOST') or 'localhost'}",
         f"--port={db.get('PORT') or 3306}",
         f"--user={db.get('USER') or ''}",
     ]
     cmd.append(db["NAME"])
     input_context = (
-        gzip.open(path, "rt", encoding="utf-8")
+        gzip.open(path, "rb")
         if path.suffix.lower() == ".gz"
-        else path.open("r", encoding="utf-8")
+        else path.open("rb")
     )
+    # Release this request's database connection before the external client
+    # starts dropping and recreating tables. Django will reconnect on demand.
+    connections.close_all()
     with input_context as input_sql:
         _run_mysql_command(
             cmd,
             operation="Database restore",
             stdin=input_sql,
             env=_mysql_client_environment(db),
+            text=False,
         )
 
 

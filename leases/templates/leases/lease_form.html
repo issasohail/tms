@@ -1965,6 +1965,26 @@ document.addEventListener('DOMContentLoaded', function () {
   (async function(){
     var $prop = document.getElementById('id_property');
     var $unit = document.getElementById('id_unit');
+    const shouldApplyUnitDefaults = {% if form.instance.pk %}false{% else %}true{% endif %};
+    function applyUnitDefaults(){
+      if(!shouldApplyUnitDefaults || !$unit || !$unit.value) return;
+      const option=$unit.options[$unit.selectedIndex];
+      if(!option) return;
+      [
+        ['id_monthly_rent', option.dataset.monthlyRent],
+        ['id_security_deposit', option.dataset.securityDeposit],
+        ['id_society_maintenance', option.dataset.societyMaintenance],
+        ['id_water_charges', option.dataset.waterCharges],
+        ['id_internet_charges', option.dataset.internetCharges]
+      ].forEach(function(item){
+        const input=document.getElementById(item[0]);
+        if(!input) return;
+        input.value=intcommaStr(item[1] === undefined || item[1] === null || item[1] === '' ? '0.00' : item[1]);
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+        input.dispatchEvent(new Event('change',{bubbles:true}));
+      });
+      updateTotal();
+    }
     function resetUnits(label){
       if(!$unit) return;
       $unit.innerHTML='';
@@ -1974,7 +1994,17 @@ document.addEventListener('DOMContentLoaded', function () {
     function populate(units){
       const current=($unit?$unit.value:''), fallback=($unit&&$unit.dataset&&$unit.dataset.currentUnit)?$unit.dataset.currentUnit:'';
       resetUnits('---------');
-      (units||[]).forEach(function(u){ var o=document.createElement('option'); o.value=u.id; o.textContent=u.unit_number||u.text||''; $unit.appendChild(o); });
+      (units||[]).forEach(function(u){
+        var o=document.createElement('option');
+        o.value=u.id;
+        o.textContent=u.unit_number||u.text||'';
+        o.dataset.monthlyRent=u.monthly_rent ?? '';
+        o.dataset.securityDeposit=u.security_deposit ?? '';
+        o.dataset.societyMaintenance=u.society_maintenance ?? '';
+        o.dataset.waterCharges=u.water_charges ?? '';
+        o.dataset.internetCharges=u.internet_charges ?? '';
+        $unit.appendChild(o);
+      });
       $unit.disabled=false;
       const pick=current||fallback||'';
       if(pick){ $unit.value=String(pick); try{$unit.dispatchEvent(new Event('change',{bubbles:true}));}catch(e){} }
@@ -1986,6 +2016,7 @@ document.addEventListener('DOMContentLoaded', function () {
       try{ const r=await fetch(url+'?property_id='+encodeURIComponent(pid),{headers:{'X-Requested-With':'XMLHttpRequest'}}); if(!r.ok) throw new Error('HTTP '+r.status); const data=await r.json(); populate((data&&(data.units||data))||[]); }
       catch(e){ console.error('Unit load failed:',e); resetUnits('Failed'); $unit.disabled=false; }
     }
+    if($unit){ $unit.addEventListener('change',applyUnitDefaults); }
     if($prop){ $prop.addEventListener('change',function(){ load(this.value); }); if($prop.value) load($prop.value); else resetUnits('---------'); }
   })();
 

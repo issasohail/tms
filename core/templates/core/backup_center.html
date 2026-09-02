@@ -387,7 +387,14 @@ document.querySelectorAll(".js-long-operation").forEach(function (form) {
         })
           .then(function (response) {
             window.clearInterval(timerInterval);
-            window.location.assign(response.url || submitUrl);
+            const responseUrl = response.url || submitUrl;
+            const submittedPath = new URL(submitUrl, window.location.href).pathname;
+            const responsePath = new URL(responseUrl, window.location.href).pathname;
+            if (isRestore && response.redirected && responsePath !== submittedPath) {
+              window.top.location.assign(responseUrl);
+              return;
+            }
+            window.location.assign(responseUrl);
           })
           .catch(function () {
             window.clearInterval(timerInterval);

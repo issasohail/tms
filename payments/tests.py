@@ -66,6 +66,203 @@ class SecurityDepositBalanceTests(TestCase):
             1,
         )
 
+    def test_multiple_payins_are_summed_and_unpaid_remainder_is_waived_at_end(self):
+        from decimal import Decimal
+
+        from invoices.models import SecurityDepositTransaction
+        from invoices.services import security_deposit_totals
+
+        SecurityDepositTransaction.objects.create(
+            lease=self.lease, type="PAYMENT", amount=Decimal("5000.00")
+        )
+        SecurityDepositTransaction.objects.create(
+            lease=self.lease, type="PAYMENT", amount=Decimal("3000.00")
+        )
+
+        active_totals = security_deposit_totals(self.lease)
+        self.assertEqual(active_totals["paid_in"], Decimal("8000.00"))
+        self.assertEqual(active_totals["balance_to_collect"], Decimal("10300.00"))
+
+        self.lease.status = "ended"
+        self.lease.save(update_fields=["status"])
+        ended_totals = security_deposit_totals(self.lease)
+        self.assertEqual(ended_totals["paid_in"], Decimal("8000.00"))
+        self.assertEqual(ended_totals["currently_held"], Decimal("8000.00"))
+        self.assertEqual(ended_totals["waived_at_end"], Decimal("10300.00"))
+        self.assertEqual(ended_totals["balance_to_collect"], Decimal("0.00"))
+
+    def test_ajax_payment_delete_returns_recalculated_security_and_total_balances(self):
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        from invoices.services import security_deposit_totals
+        from payments.models import Payment
+        from payments.services.payment_detail import rebuild_payment_detail
+
+        user = get_user_model().objects.create_superuser(
+            username="security-delete-admin",
+            email="security-delete@example.com",
+            password="test-password",
+        )
+        self.client.force_login(user)
+        payment = Payment.objects.create(
+            lease=self.lease,
+            payment_date=self.lease.start_date,
+            amount=Decimal("5000.00"),
+        )
+        rebuild_payment_detail(
+            payment=payment,
+            lease_amount=Decimal("0.00"),
+            security_amount=Decimal("5000.00"),
+            reason="AJAX deletion regression test",
+        )
+        self.assertEqual(
+            security_deposit_totals(self.lease)["paid_in"], Decimal("5000.00")
+        )
+
+        response = self.client.post(
+            reverse("payments:payment_delete", args=[payment.pk]),
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["totals"]["security_paid_in"], "0.00")
+        self.assertEqual(
+            payload["totals"]["security_balance_to_collect"], "18300.00"
+        )
+        self.assertEqual(payload["totals"]["total_outstanding"], "18300.00")
+        self.assertFalse(Payment.objects.filter(pk=payment.pk).exists())
+
+    def test_ajax_manual_payin_delete_returns_zero_paid_in(self):
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        from invoices.models import SecurityDepositTransaction
+
+        user = get_user_model().objects.create_superuser(
+            username="manual-security-delete-admin",
+            email="manual-security-delete@example.com",
+            password="test-password",
+        )
+        self.client.force_login(user)
+        payin = SecurityDepositTransaction.objects.create(
+            lease=self.lease,
+            type="PAYMENT",
+            amount=Decimal("18300.00"),
+        )
+
+        response = self.client.post(
+            reverse(
+                "leases:lease_security_delete",
+                args=[self.lease.pk, payin.pk],
+            ),
+            {"confirm_delete": "yes"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["totals"]["security_paid_in"], "0.00")
+        self.assertEqual(payload["totals"]["security_currently_held"], "0.00")
+        self.assertEqual(payload["totals"]["total_outstanding"], "18300.00")
+        self.assertFalse(
+            SecurityDepositTransaction.objects.filter(pk=payin.pk).exists()
+        )
+
+    def test_deleting_linked_security_entry_reallocates_payment_to_lease(self):
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        from invoices.models import SecurityDepositTransaction
+        from payments.models import Payment
+        from payments.services.payment_detail import rebuild_payment_detail
+
+        user = get_user_model().objects.create_superuser(
+            username="security-reallocation-admin",
+            email="security-reallocation@example.com",
+            password="test-password",
+        )
+        self.client.force_login(user)
+        payment = Payment.objects.create(
+            lease=self.lease,
+            payment_date=self.lease.start_date,
+            amount=Decimal("15300.00"),
+        )
+        detail = rebuild_payment_detail(
+            payment=payment,
+            lease_amount=Decimal("0.00"),
+            security_amount=Decimal("15300.00"),
+            reason="Security reallocation regression test",
+        )
+        movement = SecurityDepositTransaction.objects.get(payment_detail=detail)
+
+        response = self.client.post(
+            reverse(
+                "leases:lease_security_delete",
+                args=[self.lease.pk, movement.pk],
+            ),
+            {"confirm_delete": "yes"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payment.refresh_from_db()
+        detail.refresh_from_db()
+        self.assertTrue(Payment.objects.filter(pk=payment.pk).exists())
+        self.assertEqual(detail.lease_amount, Decimal("15300.00"))
+        self.assertEqual(detail.security_amount, Decimal("0.00"))
+        self.assertFalse(
+            SecurityDepositTransaction.objects.filter(payment_detail=detail).exists()
+        )
+        self.assertEqual(response.json()["totals"]["lease_balance"], "-15300.00")
+
+    def test_orphaned_security_allocation_counts_as_lease_payment(self):
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        from invoices.models import SecurityDepositTransaction
+        from payments.models import Payment
+        from payments.services.payment_detail import rebuild_payment_detail
+        from payments.views.payments import _attach_cached_lease_financials
+
+        payment = Payment.objects.create(
+            lease=self.lease,
+            payment_date=self.lease.start_date,
+            amount=Decimal("15300.00"),
+        )
+        detail = rebuild_payment_detail(
+            payment=payment,
+            lease_amount=Decimal("0.00"),
+            security_amount=Decimal("15300.00"),
+            reason="Orphaned security allocation regression test",
+        )
+        SecurityDepositTransaction.objects.filter(payment_detail=detail).delete()
+
+        lease = _attach_cached_lease_financials(
+            [self.lease.__class__.objects.get(pk=self.lease.pk)]
+        )[0]
+
+        self.assertEqual(lease.get_balance, Decimal("-15300.00"))
+        user = get_user_model().objects.create_superuser(
+            username="orphan-allocation-search-admin",
+            email="orphan-allocation-search@example.com",
+            password="test-password",
+        )
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("payments:get_filtered_leases"),
+            {"lease_id": self.lease.pk},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["leases"][0]["balance_raw"], -15300.0)
+
 
 # Create your tests here.
 

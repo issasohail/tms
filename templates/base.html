@@ -185,15 +185,22 @@
       --bs-table-striped-bg: #fafbfc;
       --bs-table-hover-bg:   #f0f4ff;
     }
-    .table thead th {
+    html body .tms-main table.table thead th {
       font-size: .75rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: .04em;
-      color: var(--tms-text-muted);
+      color: #000 !important;
       border-bottom: 2px solid #e9ecef;
       white-space: nowrap;
       padding: .5rem .6rem;
+    }
+    html body .tms-main table.table thead th a,
+    html body .tms-main table.table thead th a:hover,
+    html body .tms-main .desktop-sticky-grid-header,
+    html body .tms-main .desktop-sticky-grid-header a,
+    html body .tms-main .desktop-sticky-grid-header a:hover {
+      color: #000 !important;
     }
     .table td { padding: .42rem .6rem; vertical-align: middle; }
     .table-responsive { -webkit-overflow-scrolling: touch; }

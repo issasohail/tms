@@ -2,10 +2,10 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseBadRequest, JsonResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.http import require_GET, require_POST
 
-from invoices.services import security_deposit_totals
+from invoices.services import lease_outstanding_totals, security_deposit_totals
 from core.utils.identity import format_phone
 from payments.models import PaymentDetail
 from payments.services.payment_detail import rebuild_payment_detail
@@ -108,7 +108,14 @@ def payment_detail_update_api(request):
         user=request.user,
         reason="Payment detail edited from payment list",
     )
-    return JsonResponse({"ok": True, "payment_detail_id": detail.id})
+    totals = lease_outstanding_totals(payment.lease)
+    return JsonResponse(
+        {
+            "ok": True,
+            "payment_detail_id": detail.id,
+            "totals": {key: str(value) for key, value in totals.items()},
+        }
+    )
 
 
 @login_required
@@ -171,9 +178,17 @@ def api_payment_detail_receipt_whatsapp(request, pk: int):
     lines.append(f"Total Balance: {_money(total_balance)}")
     lines.append("Thank you.")
 
-    return JsonResponse({
+    payload = {
         "phone": getattr(tenant, "phone", "") or "",
         "phone_display": format_phone(getattr(tenant, "phone", "")),
         "message": "\n".join(line for line in lines if line),
         "payment_detail_id": detail.id,
-    })
+    }
+    if request.GET.get("open") == "1":
+        from leases.whatsapp import build_whatsapp_url
+
+        whatsapp_url = build_whatsapp_url(payload["phone"], payload["message"])
+        if not whatsapp_url:
+            return HttpResponseBadRequest("Tenant phone number is missing or invalid.")
+        return redirect(whatsapp_url)
+    return JsonResponse(payload)

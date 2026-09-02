@@ -168,19 +168,19 @@
                       {% if row.obj.type in "REQUIRED PAYMENT REFUND DAMAGE ADJUST" %}
                         {% if row.obj.payment and row.obj.payment.detail %}
                           <a class="btn btn-success btn-sm"
-                            href="{% url 'payments:api_payment_detail_receipt_whatsapp' row.obj.payment.detail.id %}"
+                            href="{% url 'payments:api_payment_detail_receipt_whatsapp' row.obj.payment.detail.id %}?open=1"
                             target="_blank">
                             Receipt
                           </a>
                         {% elif row.obj.payment %}
                           <a class="btn btn-success btn-sm"
-                            href="{% url 'payments:api_payment_receipt_whatsapp' row.obj.payment.id %}"
+                            href="{% url 'payments:api_payment_receipt_whatsapp' row.obj.payment.id %}?open=1"
                             target="_blank">
                             Receipt
                           </a>
                         {% else %}
                           <a class="btn btn-success btn-sm"
-                            href="{% url 'invoices:api_security_receipt_whatsapp' row.obj.id %}"
+                            href="{% url 'invoices:api_security_receipt_whatsapp' row.obj.id %}?open=1"
                             target="_blank">
                             Receipt
                           </a>

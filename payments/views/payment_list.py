@@ -13,6 +13,7 @@ from invoices.models import Invoice, SecurityDepositTransaction
 from leases.models import Lease
 from payments.payment_list_row import PaymentListRow
 from payments.models import Payment
+from payments.services.payment_detail import lease_payment_amount_expression
 from payments.tables_payment_list import PaymentListTable
 from properties.models import Property, Unit
 from tenants.models import Tenant
@@ -47,13 +48,7 @@ def _bulk_lease_balances(lease_ids):
             Payment.objects.filter(lease_id__in=lease_ids)
             .values("lease_id")
             .annotate(
-                total=Sum(
-                    Case(
-                        When(detail__isnull=False, then=F("detail__lease_amount")),
-                        default=F("amount"),
-                        output_field=DecimalField(max_digits=12, decimal_places=2),
-                    )
-                )
+                total=Sum(lease_payment_amount_expression())
             )
         )
     }
@@ -203,6 +198,8 @@ class PaymentListView(SingleTableView):
 
             balance_to_collect = required - paid
             if balance_to_collect < 0:
+                balance_to_collect = Decimal("0.00")
+            if lease.status in {"ended", "terminated"}:
                 balance_to_collect = Decimal("0.00")
 
             sec_totals_map[lease.id] = {

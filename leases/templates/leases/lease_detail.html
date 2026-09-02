@@ -970,6 +970,9 @@
           <div class="dep-row"><span class="dep-k">Paid In</span><span class="dep-v">{{ security_paid_in|default:0|money:0 }}</span></div>
           <div class="dep-row"><span class="dep-k">Refunded</span><span class="dep-v">{{ security_refunded|default:0|money:0 }}</span></div>
           <div class="dep-row"><span class="dep-k">Damages</span><span class="dep-v">{{ security_damages|default:0|money:0 }}</span></div>
+          {% if security_waived_at_end > 0 %}
+          <div class="dep-row"><span class="dep-k">Waived at End</span><span class="dep-v">{{ security_waived_at_end|money:0 }}</span></div>
+          {% endif %}
           <div class="dep-row dep-warn">
             <span class="dep-k" style="color:#92400e;font-weight:600;">To Collect</span>
             <span class="dep-v" style="color:#92400e;">{{ security_balance_to_collect|default:0|money:0 }}</span>
@@ -1793,7 +1796,7 @@
         <div class="modal-body">
           <div class="alert alert-warning py-2 small">
             This reactivates the lease, cancels the final-settlement invoice and pending refund,
-            restores invoices cancelled by End Lease, and reverses any security applied to the lease balance.
+            restores invoices cancelled by End Lease, and reverses the full security transfer to the lease ledger.
             Messages already sent cannot be recalled. After a successful rollback, the End Lease window
             opens automatically so you can enter the corrected end date and settlement.
           </div>
@@ -2074,7 +2077,7 @@ document.addEventListener('DOMContentLoaded', function () {
               <table class="table table-sm mb-0 small">
                 <tbody>
                   <tr><th>Total lease balance</th><th class="text-end" id="endLeaseGross"></th></tr>
-                  <tr><th>Security applied</th><th class="text-end" id="endLeaseSecurity"></th></tr>
+                  <tr><th>Full security transferred to lease ledger</th><th class="text-end" id="endLeaseSecurity"></th></tr>
                   <tr id="endLeaseOutcomeRow"><th id="endLeaseOutcomeLabel">Tenant payable</th><th class="text-end" id="endLeaseOutcomeValue"></th></tr>
                 </tbody>
               </table>
@@ -2394,7 +2397,7 @@ document.addEventListener('DOMContentLoaded', function () {
         else debug('Missing preview element: endLeaseDays');
         [
           ['endLeaseGross', pkr(payload.gross_balance)],
-          ['endLeaseSecurity', pkr(payload.security_applied)]
+          ['endLeaseSecurity', pkr(payload.security_transferred)]
         ].forEach(function (entry) {
           var element = document.getElementById(entry[0]);
           if (element) element.textContent = entry[1];

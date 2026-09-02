@@ -3193,6 +3193,7 @@ class BackupCenterView(LoginRequiredMixin, UserPassesTestMixin, View):
             else:
                 messages.error(request, "Unknown backup action.")
         except Exception as exc:
+            logger.exception("Backup action failed for action %s", action)
             messages.error(request, f"Backup action failed: {exc}")
 
         return embed_redirect(request, "core:backup_center")

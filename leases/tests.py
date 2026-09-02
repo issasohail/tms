@@ -4,6 +4,109 @@ from unittest.mock import Mock
 from django.test import SimpleTestCase, TestCase
 
 
+class LeaseUnitDefaultsAjaxTests(TestCase):
+    def setUp(self):
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+
+        from properties.models import Property, Unit
+
+        self.client.force_login(
+            get_user_model().objects.create_superuser(
+                username="lease-unit-defaults-user",
+                email="lease-unit-defaults@example.com",
+                password="test-password",
+            )
+        )
+        property_obj = Property.objects.create(
+            property_name="Unit Defaults Property",
+            owner_name="Owner",
+            owner_cnic="61101-1000000-1",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(
+            property=property_obj,
+            unit_number="UD-01",
+            monthly_rent=Decimal("32000.00"),
+            security_deposit_amount=Decimal("64000.00"),
+            society_maintenance=Decimal("2500.00"),
+            water_charges=Decimal("1200.00"),
+            internet_charges=Decimal("1800.00"),
+        )
+
+    def test_unit_response_contains_all_lease_create_charge_defaults(self):
+        from django.urls import reverse
+
+        response = self.client.get(
+            reverse("leases:get_units_by_property"),
+            {"property_id": self.unit.property_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        unit_data = response.json()["units"][0]
+        self.assertEqual(unit_data["monthly_rent"], "32000.00")
+        self.assertEqual(unit_data["security_deposit"], "64000.00")
+        self.assertEqual(unit_data["society_maintenance"], "2500.00")
+        self.assertEqual(unit_data["water_charges"], "1200.00")
+        self.assertEqual(unit_data["internet_charges"], "1800.00")
+
+    def test_create_form_prefills_all_charge_defaults_for_selected_unit(self):
+        from decimal import Decimal
+
+        from django.urls import reverse
+
+        response = self.client.get(
+            reverse("leases:lease_create"),
+            {"property": self.unit.property_id, "unit": self.unit.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        form = response.context["form"]
+        self.assertEqual(form["monthly_rent"].value(), Decimal("32000.00"))
+        self.assertEqual(form["security_deposit"].value(), Decimal("64000.00"))
+        self.assertEqual(form["society_maintenance"].value(), Decimal("2500.00"))
+        self.assertEqual(form["water_charges"].value(), Decimal("1200.00"))
+        self.assertEqual(form["internet_charges"].value(), Decimal("1800.00"))
+        self.assertContains(response, "const shouldApplyUnitDefaults = true;")
+
+    def test_update_form_keeps_saved_charges_and_disables_unit_defaults(self):
+        from datetime import date
+        from decimal import Decimal
+
+        from django.urls import reverse
+
+        from leases.models import Lease
+        from tenants.models import Tenant
+
+        tenant = Tenant.objects.create(
+            first_name="Saved",
+            last_name="Tenant",
+            cnic="61101-1000001-1",
+        )
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=self.unit,
+            start_date=date(2026, 9, 1),
+            end_date=date(2027, 7, 31),
+            monthly_rent=Decimal("21000.00"),
+            security_deposit=Decimal("42000.00"),
+            society_maintenance=Decimal("1500.00"),
+            water_charges=Decimal("900.00"),
+            internet_charges=Decimal("700.00"),
+        )
+
+        response = self.client.get(reverse("leases:lease_update", args=[lease.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        form = response.context["form"]
+        self.assertEqual(form["monthly_rent"].value(), Decimal("21000.00"))
+        self.assertEqual(form["security_deposit"].value(), Decimal("42000.00"))
+        self.assertContains(response, "const shouldApplyUnitDefaults = false;")
+
+
 class TenantWelcomeWhatsAppTests(TestCase):
     def test_empty_active_template_uses_readable_welcome_message(self):
         from core.models import GlobalSettings
@@ -794,6 +897,47 @@ class LeaseBillingChangeRegressionTests(TestCase):
         self.assertIn("Lease Balance: 5000.00", sheet_values)
         self.assertIn("Security Due: 3000.00", sheet_values)
         self.assertIn("Total Due: 8000.00", sheet_values)
+
+    def test_ended_lease_waives_unpaid_security_from_total_outstanding(self):
+        from datetime import date
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        from invoices.models import Invoice
+
+        user = get_user_model().objects.create_superuser(
+            username="ended-security-waiver",
+            email="ended-security-waiver@example.com",
+            password="test-password",
+        )
+        self.client.force_login(user)
+        self.lease.security_deposit = Decimal("3000.00")
+        self.lease.status = "ended"
+        self.lease.save(update_fields=["security_deposit", "status"])
+        Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date.today(),
+            due_date=date.today(),
+            amount=Decimal("5000.00"),
+            status="sent",
+        )
+
+        response = self.client.get(
+            reverse("leases:lease_ledger_by_pk", args=[self.lease.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["security_paid_in"], Decimal("0.00"))
+        self.assertEqual(
+            response.context["security_waived_at_end"], Decimal("3000.00")
+        )
+        self.assertEqual(
+            response.context["security_balance_to_collect"], Decimal("0.00")
+        )
+        self.assertEqual(response.context["total_outstanding"], Decimal("5000.00"))
+        self.assertContains(response, "Deposit Paid In")
+        self.assertContains(response, "was waived when this lease ended")
 
     def test_end_date_only_is_not_a_billing_change_or_backfill(self):
         from datetime import timedelta

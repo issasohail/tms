@@ -565,7 +565,13 @@ def security_deposit_totals(lease):
         damages = totals["damages"] or ZERO
         adjust = totals["adjust"] or ZERO
 
-    balance_to_collect = max(required - paid_in, ZERO)
+    unpaid_required = max(required - paid_in, ZERO)
+    waived_at_end = (
+        unpaid_required
+        if getattr(lease, "status", "") in {"ended", "terminated"}
+        else ZERO
+    )
+    balance_to_collect = unpaid_required - waived_at_end
     currently_held = max(
         paid_in - refunded - refund_deductions - damages - transferred_to_ledger, ZERO
     )
@@ -579,8 +585,26 @@ def security_deposit_totals(lease):
         "transferred_to_ledger": transferred_to_ledger,
         "damages": damages,
         "adjust": adjust,
+        "contractual_required": required,
+        "waived_at_end": waived_at_end,
         "balance_to_collect": balance_to_collect,
         "currently_held": currently_held,
+    }
+
+
+def lease_outstanding_totals(lease):
+    """Canonical balances returned after payment/security AJAX mutations."""
+    ZERO = Decimal("0.00")
+    security = security_deposit_totals(lease)
+    lease_balance = _lease_balance_value(lease)
+    return {
+        "lease_balance": lease_balance,
+        "security_required": security["required"],
+        "security_paid_in": security["paid_in"],
+        "security_balance_to_collect": security["balance_to_collect"],
+        "security_currently_held": security["currently_held"],
+        "security_waived_at_end": security.get("waived_at_end", ZERO),
+        "total_outstanding": lease_balance + security["balance_to_collect"],
     }
 
 def security_deposit_balance(lease):

@@ -169,6 +169,13 @@ def build_move_out_settlement_preview(lease, end_date: date | None = None) -> di
                 "amount": line_total,
                 "period_start": period_start,
                 "period_end": period_end,
+                "description": ctx.description_text,
+                "beg_kwh": ctx.beg_kwh,
+                "end_kwh": ctx.end_kwh,
+                "units": ctx.units,
+                "unit_rate": ctx.unit_rate,
+                "usage_amount": ctx.usage_amount,
+                "service_charges": ctx.service_charges,
             }
         )
     result["electric_preview"] = {"total": total, "lines": lines}

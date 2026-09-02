@@ -172,7 +172,8 @@
 
   {% if rows %}
     <div class="alert alert-info py-2">
-      <strong>Total kWh:</strong> {{ totals_disp.total_kwh }}
+      <strong>Forward kWh:</strong> {{ totals_disp.total_kwh }}
+      {% if has_reverse_data %}<span class="ms-3"><strong>Reverse / Export kWh:</strong> {{ totals_disp.total_reverse_kwh }}</span><span class="ms-3"><strong>Net kWh:</strong> {{ totals_disp.total_net_kwh }}</span>{% endif %}
       <span class="ms-3"><strong>Usage Charges:</strong> {{ currency }} {{ totals_disp.usage_charges }}</span>
       {% if report_type == 'monthly' %}
         <span class="ms-3"><strong>Service Charges:</strong> {{ currency }} {{ totals_disp.service_charges }}</span>
@@ -238,7 +239,7 @@
             <!-- End: hidden on small (rendered under Begin) -->
             <th class="d-none d-sm-table-cell col-end"><span>End<br>(kWh)</span></th>
 
-            <th class="col-usage"><span>Usage<br>(kWh)</span></th>
+            <th class="col-usage"><span>Forward / Reverse<br>(kWh)</span></th>
 
             <!-- Rate: shows Usage Charges beneath on small -->
             <th class="col-rate"><span>Rate<br>({{ currency }}/kWh)</span></th>
@@ -315,7 +316,7 @@
             <!-- End (desktop only) -->
             <td class="d-none d-sm-table-cell col-end">{{ r.end_kwh |floatformat:3}}</td>
 
-            <td class="fw-semibold col-usage">{{ r.usage |default:"0.00"|floatformat:3 }}</td>
+            <td class="fw-semibold col-usage">F: {{ r.usage |default:"0.00"|floatformat:3 }}{% if r.reverse_usage is not None %}<div class="small text-warning-emphasis">R: {{ r.reverse_usage|floatformat:3 }}</div><div class="small text-muted">Net: {{ r.net_usage|floatformat:3 }}</div>{% endif %}</td>
 
             <!-- Rate (small also shows Usage Charges under it) -->
             <td class="col-rate">
@@ -519,6 +520,22 @@ function shortLabel(raw, maxLen) {
     };
   });
 
+  // For one selected meter, show its reverse/export register as a distinct
+  // second line. All-meters mode stays readable and shows reverse in the table.
+  if (perMeterMode && datasets.length === 1 && Array.isArray(datasets[0].reverseData) && datasets[0].reverseData.some(function (v) { return v !== null; })) {
+    barSets.push({
+      type: 'line',
+      label: 'Reverse / export kWh',
+      data: datasets[0].reverseData,
+      borderColor: 'rgb(220, 53, 69)',
+      backgroundColor: 'rgba(220, 53, 69, .15)',
+      pointBackgroundColor: 'rgb(220, 53, 69)',
+      borderWidth: 2,
+      tension: .2,
+      datalabels: { display: false }
+    });
+  }
+
   if (!perMeterMode) {
     barSets.sort(function (a, b) {
       return (a.meterRole === 'billing' ? 0 : 1) - (b.meterRole === 'billing' ? 0 : 1) ||
@@ -551,7 +568,7 @@ function shortLabel(raw, maxLen) {
       aspectRatio: SMALL_360 ? undefined : 3,
       layout: { padding: 0 },
       plugins: {
-        legend: { display: false },
+        legend: { display: perMeterMode && barSets.length > 1 },
         datalabels: {
           labels: {
             value: {

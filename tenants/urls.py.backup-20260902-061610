@@ -35,11 +35,6 @@ urlpatterns = [
         name="cnic_date_of_birth_ocr",
     ),
     path(
-        "cnic/pdf-to-jpeg/",
-        views.cnic_pdf_to_jpeg,
-        name="cnic_pdf_to_jpeg",
-    ),
-    path(
         "registration/new/",
         views.tenant_public_registration_new,
         name="tenant_public_registration_new",

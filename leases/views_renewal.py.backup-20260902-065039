@@ -20,7 +20,7 @@ from .services.lease_history import (
     sync_history_to_master_lease,
 )
 from .utils.agreement_generator import generate_renewal_agreement_pdf
-from .utils.billing import reconcile_move_in_proration, update_billing_on_change
+from .utils.billing import update_billing_on_change
 
 
 def _copy_clauses_to_renewal(lease, renewal):
@@ -117,10 +117,7 @@ class RenewLeaseView(LoginRequiredMixin, FormView):
                 include_backfill=False,
                 update_existing=False,
             )
-            proration_result = reconcile_move_in_proration(lease)
 
-        if proration_result["warning"]:
-            messages.warning(self.request, proration_result["warning"])
         messages.success(
             self.request,
             f"Lease renewed. Renewal #{renewal.renewal_number} was created.",
@@ -219,9 +216,6 @@ class LeaseHistoryUpdateView(LoginRequiredMixin, UpdateView):
                 include_backfill=False,
                 update_existing=False,
             )
-            proration_result = reconcile_move_in_proration(new_lease)
-            if proration_result["warning"]:
-                messages.warning(self.request, proration_result["warning"])
             if not is_ajax:
                 messages.success(self.request, "Active lease history updated and master lease recurring charges synced.")
         else:

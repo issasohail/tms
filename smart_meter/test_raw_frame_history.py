@@ -1,9 +1,11 @@
 from datetime import timedelta
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from openpyxl import load_workbook
 
 from smart_meter.models import Meter, MeterRawFrame
 
@@ -15,6 +17,9 @@ class MeterRawFrameHistoryTests(TestCase):
         )
         self.meter = Meter.objects.create(meter_number="260305510012")
         self.url = reverse("smart_meter:meter_raw_frame_history", args=[self.meter.pk])
+        self.export_url = reverse(
+            "smart_meter:meter_raw_frame_history_xlsx", args=[self.meter.pk]
+        )
 
     def test_login_is_required(self):
         self.assertEqual(self.client.get(self.url).status_code, 302)
@@ -31,7 +36,11 @@ class MeterRawFrameHistoryTests(TestCase):
             meter=self.meter, received_at=timezone.now(),
             source_ip="119.156.230.185", source_port=61331, control_code=0x91,
             data_identifier="028011FF", data_length=69, raw_frame_hex="NEWERFRAME",
-            checksum_style="incl_1st68", decoded_data={"total_power": "0.7800"},
+            checksum_style="incl_1st68", decoded_data={
+                "total_power": "0.7800",
+                "forward_active_energy_kwh": "84.05",
+                "reverse_active_energy_kwh": "1.20",
+            },
             trust_classification=MeterRawFrame.TRUST_REPORTED_UNVERIFIED,
         )
 
@@ -40,6 +49,31 @@ class MeterRawFrameHistoryTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Raw Readings: 260305510012")
-        self.assertContains(response, "total_power: 0.7800")
+        self.assertContains(response, "Forward")
+        self.assertContains(response, "1.20")
         self.assertContains(response, "NEWERFRAME")
         self.assertLess(response.content.find(b"NEWERFRAME"), response.content.find(b"OLDERFRAME"))
+
+    def test_excel_export_includes_meter_and_current_unit_columns(self):
+        MeterRawFrame.objects.create(
+            meter=self.meter,
+            source_ip="119.156.230.185",
+            source_port=61331,
+            control_code=0x91,
+            data_identifier="028011FF",
+            data_length=69,
+            raw_frame_hex="EXPORTFRAME",
+            checksum_style="incl_1st68",
+            decoded_data={"total_energy": "84.05"},
+            trust_classification=MeterRawFrame.TRUST_REPORTED_UNVERIFIED,
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(self.export_url)
+
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(BytesIO(response.content))
+        worksheet = workbook.active
+        headers = [cell.value for cell in worksheet[1]]
+        self.assertIn("Meter #", headers)
+        self.assertIn("Current Unit", headers)
+        self.assertEqual(worksheet.cell(row=2, column=2).value, "260305510012")

@@ -2059,8 +2059,8 @@ def tenant_registration_submission_review(request, pk):
         return redirect("tenants:registration_submission_detail", pk=submission.pk)
     create_lease = bool(property_id and unit_id) and not existing_lease
     unit = None
-    move_in_date = None
-    lease_start_date = None
+    move_in_date = timezone.localdate()
+    lease_start_date = move_in_date
     align_billing_to_month_start = (
         request.POST.get("align_billing_to_month_start", "0") == "1"
     )
@@ -2121,15 +2121,6 @@ def tenant_registration_submission_review(request, pk):
                 return redirect(
                     "tenants:registration_submission_detail", pk=submission.pk
                 )
-        else:
-            messages.error(
-                request,
-                "Enter the physical move-in date for the new lease.",
-            )
-            return redirect(
-                "tenants:registration_submission_detail", pk=submission.pk
-            )
-        lease_start_date = move_in_date
         if align_billing_to_month_start and move_in_date.day != 1:
             if move_in_date.month == 12:
                 lease_start_date = move_in_date.replace(
@@ -2277,7 +2268,7 @@ def tenant_registration_submission_review(request, pk):
                 from leases.services.lease_history import ensure_original_history
                 from leases.utils.billing import (
                     apply_initial_billing,
-                    reconcile_move_in_proration,
+                    ensure_move_in_proration_invoice,
                 )
                 from tenants.services.registration_workflow import (
                     attach_registration_to_lease,
@@ -2316,6 +2307,16 @@ def tenant_registration_submission_review(request, pk):
                     include_backfill=False,
                     update_existing=False,
                 )
+                if (
+                    move_in_proration_mode != "waive"
+                    and move_in_date < lease.start_date
+                ):
+                    ensure_move_in_proration_invoice(
+                        lease,
+                        move_in_date=move_in_date,
+                        mode=move_in_proration_mode,
+                        manual_days=manual_proration_days,
+                    )
                 workflow_result = attach_registration_to_lease(
                     submission,
                     lease,
@@ -2323,15 +2324,6 @@ def tenant_registration_submission_review(request, pk):
                     missing_files=missing_file_warnings,
                 )
                 ensure_original_history(lease, user=request.user)
-                proration_result = reconcile_move_in_proration(
-                    lease,
-                    move_in_date=move_in_date,
-                    enabled=move_in_proration_mode != "waive",
-                    mode=move_in_proration_mode,
-                    manual_days=manual_proration_days,
-                )
-                if proration_result["warning"]:
-                    messages.warning(request, proration_result["warning"])
                 created_new_lease = True
             elif tenant.current_lease:
                 if not (

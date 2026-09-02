@@ -24,7 +24,6 @@ from core.utils.identity import (
     validate_date_of_birth,
 )
 from core.models import GlobalSettings
-from tenants.services.cnic_uploads import cnic_pdf_first_page_to_jpeg
 
 
 def _tenant_registration_options():
@@ -48,12 +47,12 @@ class TenantForm(forms.ModelForm):
     }))
     cnic_front = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
         "class": "form-control-file",
-        "accept": "image/*,.heic,.heif,application/pdf,.pdf",
+        "accept": "image/*,.heic,.heif",
         "capture": "environment",
     }))
     cnic_back = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
         "class": "form-control-file",
-        "accept": "image/*,.heic,.heif,application/pdf,.pdf",
+        "accept": "image/*,.heic,.heif",
         "capture": "environment",
     }))
 
@@ -125,12 +124,6 @@ class TenantForm(forms.ModelForm):
                     "A tenant with this CNIC already exists.")
 
         return digits
-
-    def clean_cnic_front(self):
-        return cnic_pdf_first_page_to_jpeg(self.cleaned_data.get("cnic_front"))
-
-    def clean_cnic_back(self):
-        return cnic_pdf_first_page_to_jpeg(self.cleaned_data.get("cnic_back"))
 
     def clean_date_of_birth(self):
         date_of_birth = self.cleaned_data.get("date_of_birth")
@@ -296,20 +289,14 @@ class TenantPublicRegistrationForm(forms.Form):
     }))
     cnic_front = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
         "class": "form-control form-control-sm",
-        "accept": "image/*,.heic,.heif,application/pdf,.pdf",
+        "accept": "image/*,.heic,.heif",
         "capture": "environment",
     }))
     cnic_back = forms.FileField(required=False, widget=forms.ClearableFileInput(attrs={
         "class": "form-control form-control-sm",
-        "accept": "image/*,.heic,.heif,application/pdf,.pdf",
+        "accept": "image/*,.heic,.heif",
         "capture": "environment",
     }))
-
-    def clean_cnic_front(self):
-        return cnic_pdf_first_page_to_jpeg(self.cleaned_data.get("cnic_front"))
-
-    def clean_cnic_back(self):
-        return cnic_pdf_first_page_to_jpeg(self.cleaned_data.get("cnic_back"))
 
     def __init__(self, *args, **kwargs):
         self.role_data = kwargs.pop("role_data", None)

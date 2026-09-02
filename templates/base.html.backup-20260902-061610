@@ -638,8 +638,7 @@
 
   {% block extra_js %}{% endblock %}
 
-  <script>window.TMS_CNIC_PDF_CONVERT_URL = "{% url 'tenants:cnic_pdf_to_jpeg' %}";</script>
-  <script src="{% static 'js/tms-image-editor.js' %}?v=20260902-1"></script>
+  <script src="{% static 'js/tms-image-editor.js' %}?v=20260812-1"></script>
   <script>window.tmsInstallSelect2IdentityMatcher?.();</script>
 
   <script>

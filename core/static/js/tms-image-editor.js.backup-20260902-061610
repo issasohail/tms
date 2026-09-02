@@ -5,7 +5,6 @@
   window.TMSImageEditorInstalled = true;
 
   const IMAGE_NAME_RE = /\.(avif|bmp|gif|heic|heif|jpe?g|png|webp)$/i;
-  const PDF_NAME_RE = /\.pdf$/i;
   const IMAGE_FIELD_RE = /(avatar|cnic|id[_-]?(front|back)|image|photo|picture|scan)/i;
   let activeResolve = null;
   let state = null;
@@ -17,21 +16,6 @@
         String(file.type || "").toLowerCase().startsWith("image/") ||
         IMAGE_NAME_RE.test(String(file.name || ""))
       )
-    );
-  }
-
-  function isPdfFile(file) {
-    return Boolean(
-      file && (
-        String(file.type || "").toLowerCase() === "application/pdf" ||
-        PDF_NAME_RE.test(String(file.name || ""))
-      )
-    );
-  }
-
-  function isCnicInput(input) {
-    return /(cnic|id[_-]?(front|back))/.test(
-      String(input?.name || input?.id || input?.dataset?.field || "").toLowerCase()
     );
   }
 
@@ -57,6 +41,7 @@
       .tms-img-editor__close{width:34px;height:34px;border:0;border-radius:50%;background:#eef1f5;font-size:24px;line-height:30px;cursor:pointer}
       .tms-img-editor__stage{min-height:260px;padding:10px;background:#15171a;text-align:center;overflow:auto}
       .tms-img-editor canvas{display:block;width:min(100%,900px);height:auto;margin:auto;touch-action:none;cursor:grab;background:#20242a}
+      .tms-img-editor canvas:active{cursor:grabbing}
       .tms-img-editor__tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid #d8dee8;background:#f8fafc}
       .tms-img-editor__tools button,.tms-img-editor__tools select{min-height:36px;padding:6px 11px;border:1px solid #b8c2cf;border-radius:7px;background:#fff;color:#172033;font-size:13px;cursor:pointer}
       .tms-img-editor__tools label{display:flex;align-items:center;gap:7px;font-size:13px;color:#39455a}
@@ -101,7 +86,7 @@
             </select>
           </label>
           <label>Zoom <input data-role="zoom" type="range" min="1" max="3" step=".01" value="1"></label>
-          <span class="tms-img-editor__hint">Drag the image to position it. Drag the crop border or handles to resize.</span>
+          <span class="tms-img-editor__hint">Drag the image to position it inside the crop frame.</span>
           <button type="button" data-action="original">Use original</button>
           <button type="button" class="tms-img-editor__apply" data-action="apply">Apply crop</button>
         </div>
@@ -124,8 +109,6 @@
         state.rotation = (state.rotation + (action === "left" ? -90 : 90) + 360) % 360;
         state.offsetX = 0;
         state.offsetY = 0;
-        state.crop = null;
-        state.baseCoverScale = null;
         render();
       } else if (action === "original") {
         finishEditor(state.file);
@@ -140,8 +123,6 @@
       state.ratio = ratio.value;
       state.offsetX = 0;
       state.offsetY = 0;
-      state.crop = null;
-      state.baseCoverScale = null;
       render();
     });
     zoom.addEventListener("input", function () {
@@ -152,51 +133,31 @@
       state.straighten = Number(straighten.value) || 0;
       state.offsetX = 0;
       state.offsetY = 0;
-      state.baseCoverScale = null;
       straightenValue.value = `${state.straighten.toFixed(1)}\u00b0`;
       render();
     });
 
     let dragging = false;
-    let resizeHandle = "";
-    let resizeStart = null;
     let lastX = 0;
     let lastY = 0;
     canvas.addEventListener("pointerdown", function (event) {
       if (!state) return;
-      const point = canvasPoint(event, canvas);
-      resizeHandle = cropResizeHandle(point.x, point.y);
-      resizeStart = resizeHandle ? {...cropRect()} : null;
       dragging = true;
       lastX = event.clientX;
       lastY = event.clientY;
       canvas.setPointerCapture(event.pointerId);
     });
     canvas.addEventListener("pointermove", function (event) {
-      if (!state) return;
-      const point = canvasPoint(event, canvas);
-      if (!dragging) {
-        canvas.style.cursor = resizeCursor(cropResizeHandle(point.x, point.y)) || "grab";
-        return;
-      }
+      if (!dragging || !state) return;
       const rect = canvas.getBoundingClientRect();
-      if (resizeHandle) {
-        resizeCrop(resizeHandle, resizeStart, point.x, point.y);
-      } else {
-        state.offsetX += (event.clientX - lastX) * canvas.width / rect.width;
-        state.offsetY += (event.clientY - lastY) * canvas.height / rect.height;
-      }
+      state.offsetX += (event.clientX - lastX) * canvas.width / rect.width;
+      state.offsetY += (event.clientY - lastY) * canvas.height / rect.height;
       lastX = event.clientX;
       lastY = event.clientY;
       render();
     });
-    function stopDragging() {
-      dragging = false;
-      resizeHandle = "";
-      resizeStart = null;
-    }
-    canvas.addEventListener("pointerup", stopDragging);
-    canvas.addEventListener("pointercancel", stopDragging);
+    canvas.addEventListener("pointerup", function () { dragging = false; });
+    canvas.addEventListener("pointercancel", function () { dragging = false; });
     canvas.addEventListener("wheel", function (event) {
       if (!state) return;
       event.preventDefault();
@@ -435,7 +396,7 @@
     });
   }
 
-  function defaultCropRect() {
+  function cropRect() {
     const canvas = getUi().canvas;
     const padding = 54;
     const maxWidth = canvas.width - padding * 2;
@@ -458,168 +419,6 @@
     };
   }
 
-  function csrfToken() {
-    const field = document.querySelector('input[name="csrfmiddlewaretoken"]');
-    if (field?.value) return field.value;
-    const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-    return match ? decodeURIComponent(match[1]) : "";
-  }
-
-  async function convertPdfToJpeg(file) {
-    const url = window.TMS_CNIC_PDF_CONVERT_URL;
-    if (!url) throw new Error("PDF conversion is not available on this page.");
-    const body = new FormData();
-    body.append("file", file);
-    const response = await fetch(url, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {"X-CSRFToken": csrfToken()},
-      body,
-    });
-    if (!response.ok) {
-      let message = "The CNIC PDF could not be converted.";
-      try {
-        const payload = await response.json();
-        if (payload.error) message = payload.error;
-      } catch (_) {}
-      throw new Error(message);
-    }
-    const blob = await response.blob();
-    const stem = String(file.name || "cnic").replace(/\.pdf$/i, "") || "cnic";
-    return new File([blob], `${stem}-page-1.jpg`, {
-      type: "image/jpeg",
-      lastModified: Date.now(),
-    });
-  }
-
-  function cropRect() {
-    if (!state.crop) state.crop = defaultCropRect();
-    return state.crop;
-  }
-
-  function canvasPoint(event, canvas) {
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: (event.clientX - rect.left) * canvas.width / rect.width,
-      y: (event.clientY - rect.top) * canvas.height / rect.height,
-    };
-  }
-
-  function cropResizeHandle(x, y) {
-    if (!state) return "";
-    const crop = cropRect();
-    const tolerance = 22;
-    if (
-      x < crop.x - tolerance || x > crop.x + crop.width + tolerance ||
-      y < crop.y - tolerance || y > crop.y + crop.height + tolerance
-    ) return "";
-    const west = Math.abs(x - crop.x) <= tolerance;
-    const east = Math.abs(x - (crop.x + crop.width)) <= tolerance;
-    const north = Math.abs(y - crop.y) <= tolerance;
-    const south = Math.abs(y - (crop.y + crop.height)) <= tolerance;
-    return `${north ? "n" : south ? "s" : ""}${west ? "w" : east ? "e" : ""}`;
-  }
-
-  function resizeCursor(handle) {
-    if (handle === "n" || handle === "s") return "ns-resize";
-    if (handle === "e" || handle === "w") return "ew-resize";
-    if (handle === "nw" || handle === "se") return "nwse-resize";
-    if (handle === "ne" || handle === "sw") return "nesw-resize";
-    return "";
-  }
-
-  function resizeFreeCrop(handle, start, pointerX, pointerY) {
-    const canvas = getUi().canvas;
-    const padding = 16;
-    const minimumWidth = 100;
-    const minimumHeight = 70;
-    let left = start.x;
-    let top = start.y;
-    let right = start.x + start.width;
-    let bottom = start.y + start.height;
-    if (handle.includes("w")) left = Math.max(padding, Math.min(pointerX, right - minimumWidth));
-    if (handle.includes("e")) right = Math.min(canvas.width - padding, Math.max(pointerX, left + minimumWidth));
-    if (handle.includes("n")) top = Math.max(padding, Math.min(pointerY, bottom - minimumHeight));
-    if (handle.includes("s")) bottom = Math.min(canvas.height - padding, Math.max(pointerY, top + minimumHeight));
-    state.crop = {x: left, y: top, width: right - left, height: bottom - top};
-  }
-
-  function resizeRatioCrop(handle, start, pointerX, pointerY, ratio) {
-    const canvas = getUi().canvas;
-    const padding = 16;
-    const minimumWidth = 100;
-    const hasWest = handle.includes("w");
-    const hasEast = handle.includes("e");
-    const hasNorth = handle.includes("n");
-    const hasSouth = handle.includes("s");
-    let anchorX;
-    let anchorY;
-    let width;
-    let maxWidth;
-
-    if ((hasWest || hasEast) && (hasNorth || hasSouth)) {
-      anchorX = hasWest ? start.x + start.width : start.x;
-      anchorY = hasNorth ? start.y + start.height : start.y;
-      const widthFromX = Math.abs(pointerX - anchorX);
-      const widthFromY = Math.abs(pointerY - anchorY) * ratio;
-      const xChange = Math.abs(widthFromX - start.width) / start.width;
-      const yChange = Math.abs(widthFromY - start.width) / start.width;
-      width = xChange >= yChange ? widthFromX : widthFromY;
-      const availableX = hasWest ? anchorX - padding : canvas.width - padding - anchorX;
-      const availableY = hasNorth ? anchorY - padding : canvas.height - padding - anchorY;
-      maxWidth = Math.min(availableX, availableY * ratio);
-      width = Math.max(minimumWidth, Math.min(maxWidth, width));
-      state.crop = {
-        x: hasWest ? anchorX - width : anchorX,
-        y: hasNorth ? anchorY - width / ratio : anchorY,
-        width,
-        height: width / ratio,
-      };
-      return;
-    }
-
-    if (hasWest || hasEast) {
-      anchorX = hasWest ? start.x + start.width : start.x;
-      const centerY = start.y + start.height / 2;
-      width = Math.abs(pointerX - anchorX);
-      const availableX = hasWest ? anchorX - padding : canvas.width - padding - anchorX;
-      const availableHalfHeight = Math.min(centerY - padding, canvas.height - padding - centerY);
-      maxWidth = Math.min(availableX, availableHalfHeight * 2 * ratio);
-      width = Math.max(minimumWidth, Math.min(maxWidth, width));
-      state.crop = {
-        x: hasWest ? anchorX - width : anchorX,
-        y: centerY - width / ratio / 2,
-        width,
-        height: width / ratio,
-      };
-      return;
-    }
-
-    anchorY = hasNorth ? start.y + start.height : start.y;
-    const centerX = start.x + start.width / 2;
-    let height = Math.abs(pointerY - anchorY);
-    const availableY = hasNorth ? anchorY - padding : canvas.height - padding - anchorY;
-    const availableHalfWidth = Math.min(centerX - padding, canvas.width - padding - centerX);
-    const maxHeight = Math.min(availableY, availableHalfWidth * 2 / ratio);
-    height = Math.max(minimumWidth / ratio, Math.min(maxHeight, height));
-    width = height * ratio;
-    state.crop = {
-      x: centerX - width / 2,
-      y: hasNorth ? anchorY - height : anchorY,
-      width,
-      height,
-    };
-  }
-
-  function resizeCrop(handle, start, pointerX, pointerY) {
-    if (!handle || !start) return;
-    if (state.ratio === "free") {
-      resizeFreeCrop(handle, start, pointerX, pointerY);
-      return;
-    }
-    resizeRatioCrop(handle, start, pointerX, pointerY, Number(state.ratio));
-  }
-
   function drawingMetrics() {
     const crop = cropRect();
     const sideways = state.rotation % 180 !== 0;
@@ -628,15 +427,13 @@
     const radians = Math.abs(state.straighten || 0) * Math.PI / 180;
     const cosine = Math.abs(Math.cos(radians));
     const sine = Math.abs(Math.sin(radians));
-    if (!state.baseCoverScale) {
-      state.baseCoverScale = Math.max(
-        crop.width / rotatedWidth,
-        crop.height / rotatedHeight,
-        (crop.width * cosine + crop.height * sine) / rotatedWidth,
-        (crop.width * sine + crop.height * cosine) / rotatedHeight
-      );
-    }
-    const scale = state.baseCoverScale * state.zoom;
+    const coverScale = Math.max(
+      crop.width / rotatedWidth,
+      crop.height / rotatedHeight,
+      (crop.width * cosine + crop.height * sine) / rotatedWidth,
+      (crop.width * sine + crop.height * cosine) / rotatedHeight
+    );
+    const scale = coverScale * state.zoom;
     const drawnWidth = rotatedWidth * scale;
     const drawnHeight = rotatedHeight * scale;
     const isStraightened = Math.abs(state.straighten || 0) > .001;
@@ -648,7 +445,7 @@
     return {crop, scale};
   }
 
-  function render(showGuides = true) {
+  function render() {
     if (!state) return;
     const canvas = getUi().canvas;
     const context = canvas.getContext("2d");
@@ -674,7 +471,6 @@
       -state.image.naturalHeight / 2
     );
     context.restore();
-    if (!showGuides) return;
     context.strokeStyle = "#fff";
     context.lineWidth = 4;
     context.strokeRect(crop.x, crop.y, crop.width, crop.height);
@@ -693,25 +489,6 @@
       context.lineTo(crop.x + crop.width, y);
       context.stroke();
     }
-
-    context.fillStyle = "#0d6efd";
-    context.strokeStyle = "#fff";
-    context.lineWidth = 2;
-    const handleSize = 14;
-    const handles = [
-      [crop.x, crop.y],
-      [crop.x + crop.width / 2, crop.y],
-      [crop.x + crop.width, crop.y],
-      [crop.x + crop.width, crop.y + crop.height / 2],
-      [crop.x + crop.width, crop.y + crop.height],
-      [crop.x + crop.width / 2, crop.y + crop.height],
-      [crop.x, crop.y + crop.height],
-      [crop.x, crop.y + crop.height / 2],
-    ];
-    handles.forEach(function (point) {
-      context.fillRect(point[0] - handleSize / 2, point[1] - handleSize / 2, handleSize, handleSize);
-      context.strokeRect(point[0] - handleSize / 2, point[1] - handleSize / 2, handleSize, handleSize);
-    });
   }
 
   function exportCrop() {
@@ -728,7 +505,6 @@
       const output = document.createElement("canvas");
       output.width = width;
       output.height = height;
-      render(false);
       output.getContext("2d").drawImage(
         preview,
         crop.x,
@@ -740,7 +516,6 @@
         width,
         height
       );
-      render();
       output.toBlob(function (blob) {
         if (!blob) {
           reject(new Error("Crop failed"));
@@ -782,8 +557,6 @@
       zoom: 1,
       offsetX: 0,
       offsetY: 0,
-      crop: null,
-      baseCoverScale: null,
       previousOverflow: document.body.style.overflow,
     };
     editor.ratio.value = ratio;
@@ -795,7 +568,7 @@
       : "Crop, rotate and straighten image";
     editor.hint.textContent = initialRotation
       ? "Auto-rotation is already shown in this preview and is the orientation that will be saved. Rotate again only if it still looks wrong."
-      : "Drag the image to position it. Drag the crop border or blue handles to resize the frame.";
+      : "This preview is the orientation that will be saved. Drag the image to position it inside the crop frame.";
     editor.modal.hidden = false;
     document.body.style.overflow = "hidden";
     render();
@@ -805,15 +578,6 @@
   async function processInput(input, originalFiles) {
     const processed = [];
     for (const file of originalFiles) {
-      if (isPdfFile(file) && isCnicInput(input)) {
-        try {
-          const jpeg = await convertPdfToJpeg(file);
-          processed.push(await editFile(jpeg, input));
-        } catch (error) {
-          window.alert(error.message || "The CNIC PDF could not be converted.");
-        }
-        continue;
-      }
       if (!isImageFile(file)) {
         processed.push(file);
         continue;
@@ -844,37 +608,9 @@
       input.dataset.tmsImageEditorApplying === "1"
     ) return;
     const files = Array.from(input.files || []);
-    if (!files.some(function (file) {
-      return isImageFile(file) || (isCnicInput(input) && isPdfFile(file));
-    })) return;
+    if (!files.some(isImageFile)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     processInput(input, files);
   }, true);
-
-  function enableCnicPdfInput(input) {
-    if (!input || input.type !== "file" || !isCnicInput(input)) return;
-    const accept = String(input.accept || "");
-    if (!/application\/pdf|\.pdf/i.test(accept)) {
-      input.accept = accept ? `${accept},application/pdf,.pdf` : "image/*,application/pdf,.pdf";
-    }
-  }
-
-  function enableCnicPdfInputs(root) {
-    if (root?.matches?.('input[type="file"]')) enableCnicPdfInput(root);
-    root?.querySelectorAll?.('input[type="file"]').forEach(enableCnicPdfInput);
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () { enableCnicPdfInputs(document); });
-  } else {
-    enableCnicPdfInputs(document);
-  }
-  new MutationObserver(function (mutations) {
-    mutations.forEach(function (mutation) {
-      mutation.addedNodes.forEach(function (node) {
-        if (node.nodeType === 1) enableCnicPdfInputs(node);
-      });
-    });
-  }).observe(document.documentElement, {childList: true, subtree: true});
 })();

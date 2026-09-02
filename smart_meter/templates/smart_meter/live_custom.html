@@ -182,6 +182,15 @@
     padding-top: 0 !important;
   }
 
+  /* The live table has many operational columns. Use available desktop gutter
+     space before falling back to its internal horizontal scrollbar. */
+  @media (min-width: 1200px) {
+    #captureArea {
+      width: calc(100% + 150px);
+      max-width: none;
+    }
+  }
+
   /* All columns non-sticky */
   .table thead th {
     position: static !important;
@@ -1536,7 +1545,7 @@
       <div class="d-flex align-items-start flex-wrap gap-2">
         <div class="me-3">
           <h2 class="mb-0 d-flex align-items-center">
-            <i class="fas fa-broadcast-tower text-primary me-2"></i>Live Readings 101
+            <i class="fas fa-broadcast-tower text-primary me-2"></i>Live Readings
             <span id="headingPowerMsg" class="small ms-3 text-muted" aria-live="polite"></span>
           </h2>
           <small class="text-muted d-block lh-1">

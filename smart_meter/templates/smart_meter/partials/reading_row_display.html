@@ -69,24 +69,36 @@
 
   <td class="col-volt">
     <div class="phase-stack">
-      <span><span class="phase-label">A</span>{{ r.voltage_a|default_if_none:"-"|floatformat:1 }}</span>
-      {% if r.voltage_b is not None %}<span><span class="phase-label">B</span>{{ r.voltage_b|floatformat:1 }}</span>{% endif %}
-      {% if r.voltage_c is not None %}<span><span class="phase-label">C</span>{{ r.voltage_c|floatformat:1 }}</span>{% endif %}
+      {% if r.meter.reading_profile == "total_and_per_phase" %}
+        <span><span class="phase-label">A</span>{{ r.voltage_a|default_if_none:"-"|floatformat:1 }}</span>
+        <span><span class="phase-label">B</span>{{ r.voltage_b|default_if_none:"-"|floatformat:1 }}</span>
+        <span><span class="phase-label">C</span>{{ r.voltage_c|default_if_none:"-"|floatformat:1 }}</span>
+      {% else %}
+        <span>{{ r.voltage_a|default_if_none:"-"|floatformat:1 }}</span>
+      {% endif %}
     </div>
   </td>
   <td class="col-amp">
     <div class="phase-stack">
-      <span><span class="phase-label">A</span>{{ r.current_a|default_if_none:"-"|floatformat:3 }}</span>
-      {% if r.current_b is not None %}<span><span class="phase-label">B</span>{{ r.current_b|floatformat:3 }}</span>{% endif %}
-      {% if r.current_c is not None %}<span><span class="phase-label">C</span>{{ r.current_c|floatformat:3 }}</span>{% endif %}
+      {% if r.meter.reading_profile == "total_and_per_phase" %}
+        <span><span class="phase-label">A</span>{{ r.current_a|default_if_none:"-"|floatformat:3 }}</span>
+        <span><span class="phase-label">B</span>{{ r.current_b|default_if_none:"-"|floatformat:3 }}</span>
+        <span><span class="phase-label">C</span>{{ r.current_c|default_if_none:"-"|floatformat:3 }}</span>
+      {% else %}
+        <span>{{ r.current_a|default_if_none:"-"|floatformat:3 }}</span>
+      {% endif %}
     </div>
   </td>
   <td class="col-watt">
     <div class="phase-stack">
-      {% if r.power_a is not None %}<span><span class="phase-label">A</span>{{ r.power_a|floatformat:3 }}</span>{% endif %}
-      {% if r.power_b is not None %}<span><span class="phase-label">B</span>{{ r.power_b|floatformat:3 }}</span>{% endif %}
-      {% if r.power_c is not None %}<span><span class="phase-label">C</span>{{ r.power_c|floatformat:3 }}</span>{% endif %}
-      <span><span class="phase-label">Σ</span>{{ r.total_power|default_if_none:"-"|floatformat:3 }}</span>
+      {% if r.meter.reading_profile == "total_and_per_phase" %}
+        <span><span class="phase-label">A</span>{{ r.power_a|default_if_none:"-"|floatformat:3 }}</span>
+        <span><span class="phase-label">B</span>{{ r.power_b|default_if_none:"-"|floatformat:3 }}</span>
+        <span><span class="phase-label">C</span>{{ r.power_c|default_if_none:"-"|floatformat:3 }}</span>
+        <span><span class="phase-label">Σ</span>{{ r.total_power|default_if_none:"-"|floatformat:3 }}</span>
+      {% else %}
+        <span>{{ r.total_power|default_if_none:"-"|floatformat:3 }}</span>
+      {% endif %}
     </div>
   </td>
 

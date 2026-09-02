@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from uuid import uuid4
 
 from django.conf import settings
 from django.utils import timezone
@@ -170,9 +171,9 @@ def _save_ticket(updated_ticket):
 
 def _save_photos(ticket_id, files):
     saved = []
-    for index, upload in enumerate(files or [], start=1):
+    for upload in files or []:
         ext = Path(upload.name or "").suffix.lower() or ".jpg"
-        target = _photo_dir(ticket_id) / f"{ticket_id}_{index}{ext}"
+        target = _photo_dir(ticket_id) / f"{ticket_id}_{uuid4().hex}{ext}"
         with target.open("wb") as output:
             for chunk in upload.chunks():
                 output.write(chunk)
@@ -259,7 +260,7 @@ def delete_ticket(ticket_id):
     return True
 
 
-def add_reply(ticket_id, message, user, status=None):
+def add_reply(ticket_id, message, user, status=None, files=None):
     ticket = get_ticket(ticket_id)
     if not ticket:
         return None
@@ -269,6 +270,7 @@ def add_reply(ticket_id, message, user, status=None):
         "created_by": username,
         "is_staff_reply": bool(getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)),
         "created_at": _now(),
+        "photos": _save_photos(ticket.id, files),
     })
     if status:
         ticket.status = status

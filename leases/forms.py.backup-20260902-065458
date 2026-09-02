@@ -227,23 +227,6 @@ class LeaseForm(forms.ModelForm):
             active_occupancy = self.instance.unit_occupancies.filter(
                 move_out_date__isnull=True
             ).first()
-            existing_proration = self.instance.invoices.filter(
-                description__startswith="[MOVE_IN_PRORATION]"
-            ).exclude(
-                status="cancelled"
-            ).exclude(
-                lifecycle_status__in={"cancelled", "void"}
-            ).order_by("id").first()
-            from leases.utils.billing import stored_move_in_proration_options
-
-            stored_mode, stored_days = stored_move_in_proration_options(
-                existing_proration
-            )
-            self.fields["create_move_in_proration"].initial = bool(
-                existing_proration
-            )
-            self.fields["move_in_proration_mode"].initial = stored_mode
-            self.fields["move_in_proration_days"].initial = stored_days
             self.fields["move_in_date"].initial = (
                 active_occupancy.move_in_date
                 if active_occupancy

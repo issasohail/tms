@@ -697,67 +697,6 @@ class RegistrationOnboardingTests(TestCase):
             Lease.objects.filter(registration_submission=submission).count(), 1
         )
 
-    def test_registration_approval_uses_physical_move_in_and_aligned_billing_start(self):
-        from datetime import date
-        from decimal import Decimal
-
-        from django.urls import reverse
-
-        from invoices.models import Invoice
-        from tenants.models import TenantRegistrationSubmission
-        from tenants.views import _registration_submission_comparison
-
-        submission = TenantRegistrationSubmission.objects.create(
-            tenant=self.make_shell(),
-            submitted_data=self.public_post_data(cnic="3520212345699"),
-        )
-        self.make_required_parties(submission)
-        prop, unit = self.make_unit("9")
-        unit.monthly_rent = Decimal("30000.00")
-        unit.society_maintenance = Decimal("0.00")
-        unit.water_charges = Decimal("0.00")
-        unit.internet_charges = Decimal("0.00")
-        unit.save(update_fields=[
-            "monthly_rent",
-            "society_maintenance",
-            "water_charges",
-            "internet_charges",
-        ])
-        data = {
-            "action": "approve_and_create_lease",
-            "property": prop.pk,
-            "unit": unit.pk,
-            "move_in_date": "2026-09-12",
-            "align_billing_to_month_start": "1",
-            "move_in_proration_mode": "exact",
-        }
-        for row in _registration_submission_comparison(submission):
-            if row["changed"]:
-                data[f"decision_{row['field']}"] = "accept_submitted"
-
-        self.client.force_login(self.user)
-        response = self.client.post(
-            reverse("tenants:registration_submission_review", args=[submission.pk]),
-            data,
-        )
-
-        submission.refresh_from_db()
-        self.assertEqual(response.status_code, 302)
-        lease = submission.created_lease
-        self.assertEqual(lease.start_date, date(2026, 10, 1))
-        self.assertEqual(
-            lease.unit_occupancies.get(move_out_date__isnull=True).move_in_date,
-            date(2026, 9, 12),
-        )
-        self.assertEqual(lease.renewals.get(is_original=True).start_date, date(2026, 10, 1))
-        invoice = Invoice.objects.get(
-            lease=lease,
-            description__startswith="[MOVE_IN_PRORATION]",
-        )
-        self.assertEqual(invoice.issue_date, date(2026, 9, 12))
-        self.assertEqual(invoice.amount, Decimal("19000.00"))
-        self.assertEqual(invoice.status, "draft")
-
     def test_tenant_only_approval_processes_required_people_without_lease(self):
         from django.urls import reverse
 

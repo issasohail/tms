@@ -724,15 +724,56 @@ class InvoiceDetailView(DetailView):
         # Preload items + category
         items = list(inv.items.all())
 
+        # Older End Lease invoices stored only a generic electricity label.
+        # Reconstruct the already-calculated meter breakdown for display without
+        # changing the historical item or its amount.
+        lease = getattr(inv, "lease", None)
+        for item in items:
+            item.display_description = item.description or ""
+            is_generic_move_out_electric = bool(
+                item.category
+                and item.category.name.lower().startswith("electric")
+                and (item.description or "").startswith(
+                    "Final electricity charge - move out "
+                )
+            )
+            if not is_generic_move_out_electric or not lease:
+                continue
+            try:
+                description_date = (item.description or "")[-10:]
+                move_out_date = date.fromisoformat(description_date)
+                from leases.utils.move_out_billing import (
+                    build_move_out_settlement_preview,
+                )
+
+                settlement = build_move_out_settlement_preview(
+                    lease, end_date=move_out_date
+                )
+                detail_lines = [
+                    line.get("description", "").strip()
+                    for line in (settlement.get("electric_preview") or {}).get(
+                        "lines", []
+                    )
+                    if line.get("description", "").strip()
+                ]
+                if detail_lines:
+                    item.display_description = (
+                        f"Final electricity through move-out {move_out_date:%Y-%m-%d}; "
+                        + " | ".join(detail_lines)
+                    )
+            except (TypeError, ValueError, ValidationError):
+                pass
+
         # Combined description = "Category: desc, Category: desc, ..."
         parts = []
         for it in items:
-            if it.category and it.description:
-                parts.append(f"{it.category.name}: {it.description}")
+            display_description = getattr(it, "display_description", it.description)
+            if it.category and display_description:
+                parts.append(f"{it.category.name}: {display_description}")
             elif it.category:
                 parts.append(f"{it.category.name}")
-            elif it.description:
-                parts.append(it.description)
+            elif display_description:
+                parts.append(display_description)
         ctx["combined_description"] = ", ".join(parts)
 
         # Compute total from items (don’t trust stale invoice.amount)

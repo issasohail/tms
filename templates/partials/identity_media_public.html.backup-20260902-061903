@@ -264,5 +264,4 @@ window.TMS_USES_IDENTITY_MEDIA_PUBLIC = true;
   },true);document.getElementById('tmsPublicImageClose')?.addEventListener('click',closeViewer);document.getElementById('tmsPublicImageCloseBottom')?.addEventListener('click',closeViewer);viewer?.addEventListener('click',e=>{if(e.target===viewer)closeViewer()});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!viewer.hidden)closeViewer()})
 })();
 </script>
-<script>window.TMS_CNIC_PDF_CONVERT_URL = "{% url 'tenants:cnic_pdf_to_jpeg' %}";</script>
-<script src="{% static 'js/tms-image-editor.js' %}?v=20260902-1"></script>
+<script src="{% static 'js/tms-image-editor.js' %}?v=20260815-1"></script>

@@ -326,6 +326,7 @@ def _prepare_settlement_invoice(
     days_in_month,
     electric_amount,
     electric_exact,
+    electric_description,
     other_amount,
     other_description,
     inspection_state,
@@ -364,12 +365,16 @@ def _prepare_settlement_invoice(
         elif existing_checklist_item:
             existing_checklist_item.delete()
 
-    electricity_item = invoice.items.filter(description__startswith="Final electricity charge").first()
+    electricity_item = invoice.items.filter(
+        category__name__istartswith="Electric"
+    ).first()
     if electric_amount > ZERO:
         item_kwargs = {
             "invoice": invoice,
             "category_name": "Electricity",
-            "description": f"Final electricity charge - move out {end_date:%Y-%m-%d}",
+            "description": electric_description or (
+                f"Final electricity charge - move out {end_date:%Y-%m-%d}"
+            ),
             "amount": electric_amount,
             "existing": electricity_item,
         }
@@ -561,6 +566,18 @@ def build_end_lease_preview(
             electricity_transfer_on_confirm = future_electric_amount
     else:
         electricity_to_post = electric_amount
+    electric_description = f"Final electricity charge - move out {end_date:%Y-%m-%d}"
+    if not manual_electric and settlement_preview.get("electric_preview"):
+        detail_lines = [
+            line.get("description", "").strip()
+            for line in settlement_preview["electric_preview"].get("lines", [])
+            if line.get("description", "").strip()
+        ]
+        if detail_lines:
+            electric_description = (
+                f"Final electricity through move-out {end_date:%Y-%m-%d}; "
+                + " | ".join(detail_lines)
+            )[:500]
     _prepare_settlement_invoice(
         lease,
         invoice=invoice,
@@ -569,6 +586,7 @@ def build_end_lease_preview(
         days_in_month=days_in_month,
         electric_amount=electricity_to_post,
         electric_exact=False,
+        electric_description=electric_description,
         other_amount=other_amount,
         other_description=other_description.strip() or "Other move-out charges",
         inspection_state=inspection_state,
@@ -646,6 +664,13 @@ def build_end_lease_preview(
         "future_electric_amount": future_electric_amount,
         "electricity_posted_to_settlement": electricity_to_post,
         "electricity_transfer_on_confirm": electricity_transfer_on_confirm,
+        "electricity_transfer_description": (
+            " | ".join(
+                item.description
+                for item in future_electric_items
+                if (item.description or "").strip()
+            )[:500]
+        ),
         "other_amount": other_amount,
         "other_description": other_description.strip() or "Other move-out charges",
         "future_invoice_action": future_invoice_action,
@@ -933,11 +958,12 @@ def end_lease(lease, *, user=None, notes="", **preview_kwargs) -> dict:
             invoice,
             category_name="Electricity",
             description=(
-                f"Final electricity transferred from cancelled future invoice; {billing_period}"
-            ),
+                preview.get("electricity_transfer_description")
+                or f"Final electricity transferred from cancelled future invoice; {billing_period}"
+            )[:500],
             amount=preview["electricity_transfer_on_confirm"],
             existing=invoice.items.filter(
-                description__startswith="Final electricity charge"
+                category__name__istartswith="Electric"
             ).first(),
         )
 

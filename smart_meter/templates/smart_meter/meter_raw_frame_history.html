@@ -1,11 +1,15 @@
 {% extends "base.html" %}
 
+{% block title %}Raw Readings — {{ meter.meter_number }}{% endblock %}
+
 {% block content %}
-<div class="container py-3">
+{% include "smart_meter/meterbar.html" %}
+
+<div class="container-fluid raw-readings-page py-3">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
     <div>
       <h2 class="mb-0">Raw Readings: {{ meter.meter_number }}</h2>
-      <div class="text-muted small">Read-only DL/T645 audit frames recorded by the meter listener.</div>
+      <div class="text-muted small">{{ meter.display_location_name|default:"No current unit" }} · read-only DL/T645 audit frames.</div>
     </div>
     <a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:meter_detail' meter.pk %}"><i class="fas fa-arrow-left me-1"></i> Meter Overview</a>
   </div>
@@ -17,22 +21,34 @@
     <li class="nav-item"><a class="nav-link active" aria-current="page"><i class="fas fa-list-alt me-1"></i> Raw Readings</a></li>
   </ul>
 
+  <div class="card shadow-sm mb-3"><div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-12 col-md-7 col-xl-5"><label for="raw-frame-search" class="form-label small mb-1">Search frames</label><input id="raw-frame-search" class="form-control form-control-sm" type="search" name="q" value="{{ search_term }}" placeholder="Search data identifier, source IP, or raw hex"></div>
+      <div class="col-auto d-flex gap-2"><button class="btn btn-sm btn-primary" type="submit"><i class="fas fa-search me-1"></i>Search</button>{% if search_term %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_raw_frame_history' meter.pk %}">Clear</a>{% endif %}<a class="btn btn-sm btn-success" href="{% url 'smart_meter:meter_raw_frame_history_xlsx' meter.pk %}?q={{ search_term|urlencode }}"><i class="fas fa-file-excel me-1"></i>Excel</a></div>
+    </form>
+  </div></div>
+
   <div class="card shadow-sm"><div class="card-body p-0"><div class="table-responsive">
-    <table class="table table-sm table-hover align-middle mb-0">
-      <thead class="table-light"><tr><th>Received</th><th>Source</th><th>DI / control</th><th>Trust</th><th>Decoded values</th><th>Raw frame</th></tr></thead>
+    <table class="table table-sm table-hover align-middle mb-0 raw-readings-table">
+      <thead class="table-light"><tr><th>Received</th><th>Meter #</th><th>Current Unit</th><th>Balance</th><th>Forward<br>kWh</th><th>Reverse<br>kWh</th><th>Voltage<br>V</th><th>Current<br>A</th><th>Power<br>kW</th><th>PF<br>Total</th><th>Relay</th>{% if is_three_phase %}<th>Phase A / B / C</th>{% endif %}<th>Source / DI</th><th>Technical details</th></tr></thead>
       <tbody>
         {% for frame in page_obj %}<tr>
-          <td class="text-nowrap">{{ frame.received_at|date:"Y-m-d H:i:s" }}</td>
-          <td class="small text-nowrap">{{ frame.source_ip|default:"-" }}{% if frame.source_port %}:{{ frame.source_port }}{% endif %}</td>
-          <td class="small"><strong>{{ frame.data_identifier|default:"-" }}</strong><br><span class="text-muted">0x{{ frame.control_code|stringformat:"02X" }} · {{ frame.data_length }} B · {{ frame.checksum_style|default:"-" }}</span></td>
-          <td class="small">{{ frame.get_trust_classification_display }}</td>
-          <td class="small">{% if frame.decoded_data %}<div class="d-flex flex-wrap gap-1">{% for key, value in frame.decoded_data.items %}<span class="badge text-bg-light border">{{ key }}: {{ value }}</span>{% endfor %}</div>{% else %}<span class="text-muted">No decoded values</span>{% endif %}</td>
-          <td><details><summary class="small text-primary">View {{ frame.raw_frame_hex|length }} hex chars</summary><code class="d-block small text-break mt-1">{{ frame.raw_frame_hex }}</code><div class="small text-muted mt-1">Parser: {{ frame.parser_version }}</div></details></td>
-        </tr>{% empty %}<tr><td colspan="6" class="text-center text-muted py-4">No raw readings have been recorded for this meter.</td></tr>{% endfor %}
+          <td class="text-nowrap">{{ frame.received_at|date:"Y-m-d H:i:s" }}</td><td class="text-nowrap">{{ meter.meter_number }}</td><td>{{ meter.display_location_name|default:"—" }}</td><td>{{ frame.reading_values.balance|default:"—" }}</td><td>{{ frame.reading_values.forward_energy|default:"—" }}</td><td>{% if frame.reading_values.reverse_energy is not None %}<span class="text-warning-emphasis fw-semibold">{{ frame.reading_values.reverse_energy }}</span>{% else %}—{% endif %}</td><td>{{ frame.reading_values.voltage|default:"—" }}</td><td>{{ frame.reading_values.current|default:"—" }}</td><td>{{ frame.reading_values.total_power|default:"—" }}</td><td>{{ frame.reading_values.pf_total|default:"—" }}</td><td>{{ frame.reading_values.status_word|default:"—" }}</td>
+          {% if is_three_phase %}<td class="small text-nowrap">V {{ frame.reading_values.voltage_a|default:"—" }} / {{ frame.reading_values.voltage_b|default:"—" }} / {{ frame.reading_values.voltage_c|default:"—" }}<br>I {{ frame.reading_values.current_a|default:"—" }} / {{ frame.reading_values.current_b|default:"—" }} / {{ frame.reading_values.current_c|default:"—" }}<br>P {{ frame.reading_values.power_a|default:"—" }} / {{ frame.reading_values.power_b|default:"—" }} / {{ frame.reading_values.power_c|default:"—" }}</td>{% endif %}
+          <td class="small text-nowrap"><strong>{{ frame.data_identifier|default:"—" }}</strong><br>{{ frame.source_ip|default:"—" }}{% if frame.source_port %}:{{ frame.source_port }}{% endif %}</td><td class="raw-details"><details><summary class="small text-primary">Frame / parser</summary><div class="small mt-2"><strong>Trust:</strong> {{ frame.get_trust_classification_display }}<br><strong>Control:</strong> 0x{{ frame.control_code|stringformat:"02X" }} · {{ frame.data_length }} B · {{ frame.checksum_style|default:"—" }}<br><strong>Parser:</strong> {{ frame.parser_version }}</div><code class="d-block small text-break mt-2">{{ frame.raw_frame_hex }}</code></details></td>
+        </tr>{% empty %}<tr><td colspan="14" class="text-center text-muted py-4">No raw readings match this search.</td></tr>{% endfor %}
       </tbody>
     </table>
   </div></div></div>
 
-  {% if page_obj.paginator.num_pages > 1 %}<nav class="mt-3" aria-label="Raw reading pages"><ul class="pagination pagination-sm mb-0">{% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>{% endif %}<li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>{% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>{% endif %}</ul></nav>{% endif %}
+  {% if page_obj.paginator.num_pages > 1 %}<nav class="mt-3" aria-label="Raw reading pages"><ul class="pagination pagination-sm mb-0">{% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ search_term|urlencode }}&page={{ page_obj.previous_page_number }}">Previous</a></li>{% endif %}<li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>{% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?q={{ search_term|urlencode }}&page={{ page_obj.next_page_number }}">Next</a></li>{% endif %}</ul></nav>{% endif %}
 </div>
+
+<style>
+  .raw-readings-page { max-width: 1900px; }
+  .raw-readings-table { min-width: 1380px; }
+  .raw-readings-table th { white-space: nowrap; font-size: .76rem; }
+  .raw-readings-table td { font-size: .78rem; }
+  .raw-details { min-width: 235px; max-width: 360px; }
+</style>
 {% endblock %}

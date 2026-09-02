@@ -1224,29 +1224,187 @@ def meter_edit(request, pk):
     )
 
 
+def _raw_frame_history_queryset(meter, search_term=""):
+    """Return the safe, searchable audit-frame queryset for one meter."""
+    frames = MeterRawFrame.objects.filter(meter=meter).only(
+        "id", "received_at", "source_ip", "source_port", "control_code",
+        "data_identifier", "data_length", "raw_frame_hex", "checksum_style",
+        "decoded_data", "trust_classification", "parser_version",
+    )
+    if search_term:
+        frames = frames.filter(
+            Q(data_identifier__icontains=search_term)
+            | Q(source_ip__icontains=search_term)
+            | Q(raw_frame_hex__icontains=search_term)
+        )
+    return frames.order_by("-received_at", "-id")
+
+
+def _raw_frame_decoded_value(decoded_data, *names):
+    """Accept parser aliases without inventing a reading when none was decoded."""
+    decoded_data = decoded_data or {}
+    for name in names:
+        value = decoded_data.get(name)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _prepare_raw_frame_for_display(frame):
+    decoded_data = frame.decoded_data or {}
+    frame.reading_values = {
+        "balance": _raw_frame_decoded_value(decoded_data, "balance"),
+        "forward_energy": _raw_frame_decoded_value(
+            decoded_data,
+            "forward_active_energy_kwh",
+            "forward_active_energy",
+            "total_energy",
+        ),
+        "reverse_energy": _raw_frame_decoded_value(
+            decoded_data,
+            "reverse_active_energy_kwh",
+            "reverse_active_energy",
+            "reverse_energy",
+        ),
+        "total_power": _raw_frame_decoded_value(decoded_data, "total_power"),
+        "pf_total": _raw_frame_decoded_value(decoded_data, "pf_total"),
+        "voltage": _raw_frame_decoded_value(decoded_data, "voltage_a"),
+        "current": _raw_frame_decoded_value(decoded_data, "current_a"),
+        "status_word": _raw_frame_decoded_value(decoded_data, "status_word"),
+        "voltage_a": _raw_frame_decoded_value(decoded_data, "voltage_a"),
+        "voltage_b": _raw_frame_decoded_value(decoded_data, "voltage_b"),
+        "voltage_c": _raw_frame_decoded_value(decoded_data, "voltage_c"),
+        "current_a": _raw_frame_decoded_value(decoded_data, "current_a"),
+        "current_b": _raw_frame_decoded_value(decoded_data, "current_b"),
+        "current_c": _raw_frame_decoded_value(decoded_data, "current_c"),
+        "power_a": _raw_frame_decoded_value(decoded_data, "power_a"),
+        "power_b": _raw_frame_decoded_value(decoded_data, "power_b"),
+        "power_c": _raw_frame_decoded_value(decoded_data, "power_c"),
+    }
+    return frame
+
+
 @login_required
 @permission_required("smart_meter.view_raw_dlt645_frames", raise_exception=True)
 def meter_raw_frame_history(request, pk):
-    """Read-only, paginated audit history for the meter's persisted frames."""
+    """Read-only, searchable audit history for the meter's persisted frames."""
     meter = get_object_or_404(
         Meter.objects.select_related("unit", "unit__property"),
         pk=pk,
     )
-    frames = (
-        MeterRawFrame.objects.filter(meter=meter)
-        .only(
-            "id", "received_at", "source_ip", "source_port", "control_code",
-            "data_identifier", "data_length", "raw_frame_hex", "checksum_style",
-            "decoded_data", "trust_classification", "parser_version",
-        )
-        .order_by("-received_at", "-id")
-    )
+    search_term = (request.GET.get("q") or "").strip()
+    frames = _raw_frame_history_queryset(meter, search_term)
     page_obj = Paginator(frames, 50).get_page(request.GET.get("page"))
+    for frame in page_obj:
+        _prepare_raw_frame_for_display(frame)
     return render(
         request,
         "smart_meter/meter_raw_frame_history.html",
-        {"meter": meter, "page_obj": page_obj},
+        {
+            "meter": meter,
+            "page_obj": page_obj,
+            "search_term": search_term,
+            "is_three_phase": (
+                meter.reading_profile == Meter.READING_PROFILE_TOTAL_AND_PER_PHASE
+            ),
+        },
     )
+
+
+@login_required
+@permission_required("smart_meter.view_raw_dlt645_frames", raise_exception=True)
+def meter_raw_frame_history_xlsx(request, pk):
+    """Export exactly the currently filtered raw-reading audit history."""
+    meter = get_object_or_404(
+        Meter.objects.select_related("unit", "unit__property"), pk=pk
+    )
+    search_term = (request.GET.get("q") or "").strip()
+    is_three_phase = meter.reading_profile == Meter.READING_PROFILE_TOTAL_AND_PER_PHASE
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Raw Readings"
+    headers = [
+        "Received",
+        "Meter #",
+        "Current Unit",
+        "Property",
+        "Balance",
+        "Forward Energy (kWh)",
+        "Reverse Energy (kWh)",
+        "Voltage (V)",
+        "Current (A)",
+        "Total Power (kW)",
+        "PF Total",
+        "Relay Status",
+        "Data Identifier",
+        "Control Code",
+        "Source IP",
+        "Source Port",
+        "Trust",
+        "Parser Version",
+        "Raw Frame Hex",
+    ]
+    if is_three_phase:
+        headers[8:8] = [
+            "Voltage B (V)", "Voltage C (V)",
+            "Current B (A)", "Current C (A)",
+            "Power A (kW)", "Power B (kW)", "Power C (kW)",
+        ]
+    worksheet.append(headers)
+
+    unit_name = meter.display_location_name or ""
+    property_name = getattr(getattr(meter.unit, "property", None), "property_name", "")
+    for frame in _raw_frame_history_queryset(meter, search_term).iterator(chunk_size=500):
+        values = _prepare_raw_frame_for_display(frame).reading_values
+        row = [
+            timezone.localtime(frame.received_at).strftime("%Y-%m-%d %H:%M:%S"),
+            meter.meter_number,
+            unit_name,
+            property_name,
+            values["balance"],
+            values["forward_energy"],
+            values["reverse_energy"],
+            values["voltage"],
+            values["current"],
+            values["total_power"],
+            values["pf_total"],
+            values["status_word"],
+            frame.data_identifier,
+            f"0x{frame.control_code:02X}",
+            frame.source_ip,
+            frame.source_port,
+            frame.get_trust_classification_display(),
+            frame.parser_version,
+            frame.raw_frame_hex,
+        ]
+        if is_three_phase:
+            row[8:8] = [
+                values["voltage_b"], values["voltage_c"],
+                values["current_b"], values["current_c"],
+                values["power_a"], values["power_b"], values["power_c"],
+            ]
+        worksheet.append(row)
+
+    worksheet.freeze_panes = "A2"
+    for cell in worksheet[1]:
+        cell.font = cell.font.copy(bold=True)
+    for column in worksheet.columns:
+        letter = get_column_letter(column[0].column)
+        max_length = max(len(str(cell.value or "")) for cell in column)
+        worksheet.column_dimensions[letter].width = min(max(12, max_length + 2), 42)
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    response = HttpResponse(
+        output.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = (
+        f'attachment; filename="raw_readings_{meter.meter_number}_{timezone.now():%Y%m%d_%H%M%S}.xlsx"'
+    )
+    return response
 
 
 @require_POST

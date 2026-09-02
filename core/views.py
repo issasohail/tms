@@ -3283,11 +3283,12 @@ def suggestion_detail(request, pk):
         selected_status = request.POST.get("status") if request.user.is_staff or request.user.is_superuser else None
         if form.is_valid():
             message = (form.cleaned_data.get("message") or "").strip()
-            if message or selected_status:
-                add_reply(ticket.id, message, request.user, status=selected_status)
+            photos = request.FILES.getlist("photos")
+            if message or photos or selected_status:
+                add_reply(ticket.id, message, request.user, status=selected_status, files=photos)
                 messages.success(request, "Reply saved.")
                 return embed_redirect(request, "core:suggestion_detail", pk=ticket.id)
-            messages.error(request, "Reply or status change is required.")
+            messages.error(request, "Reply, image, or status change is required.")
     else:
         form = SuggestionReplyForm()
 

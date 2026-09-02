@@ -3,6 +3,10 @@
 {% block content %}
 <style>
   .suggestion-photo-grid img { width:100%; aspect-ratio:1; object-fit:cover; }
+  .suggestion-reply-photo-preview { display:grid; grid-template-columns:repeat(auto-fill,minmax(88px,110px)); gap:.5rem; margin-top:.5rem; }
+  .suggestion-reply-photo-preview figure { margin:0; min-width:0; }
+  .suggestion-reply-photo-preview img { width:100%; aspect-ratio:1; object-fit:cover; border:1px solid #dee2e6; border-radius:.45rem; }
+  .suggestion-reply-photo-preview figcaption { font-size:.68rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   @media (max-width:575.98px) {
     .suggestion-detail-head { align-items:flex-start !important; }
     .suggestion-detail-card .card-header { align-items:flex-start !important; flex-wrap:wrap; }
@@ -67,16 +71,30 @@
           <span>{% if r.is_staff_reply %}<strong>Admin</strong>{% else %}<strong>{{ r.created_by }}</strong>{% endif %}</span>
           <span>{{ r.created_at }}</span>
         </div>
-        <div>{{ r.message|linebreaksbr }}</div>
+        {% if r.message %}<div>{{ r.message|linebreaksbr }}</div>{% endif %}
+        {% if r.photos %}
+          <div class="row g-2 mt-1 suggestion-photo-grid">
+            {% for p in r.photos %}
+              <div class="col-6 col-md-3 col-lg-2">
+                <a href="{{ p.url }}" target="_blank"><img src="{{ p.url }}" alt="{{ p.name }}" class="img-fluid rounded border"></a>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
       </div>
     {% empty %}
       <div class="text-muted small">No replies yet.</div>
     {% endfor %}
     <hr>
-    <form method="post">
+    <form method="post" enctype="multipart/form-data" id="suggestionReplyForm">
       {% csrf_token %}
       <label class="form-label">Reply</label>
       {{ form.message }}
+      <label class="form-label mt-2">Images / Screenshots</label>
+      <div id="replyPhotoAlert" class="alert alert-danger py-2 d-none" role="alert"></div>
+      <input type="file" name="photos" class="form-control form-control-sm" multiple accept="image/*">
+      <div class="suggestion-reply-photo-preview" id="suggestionReplyPhotoPreview" aria-live="polite"></div>
+      <div class="form-text">Choose images, or copy an image and paste it anywhere in this reply form.</div>
       {% if request.user.is_staff or request.user.is_superuser %}
         <label class="form-label mt-2">Change Status</label>
         <select name="status" class="form-select form-select-sm" style="max-width:250px">
@@ -91,6 +109,56 @@
 </div>
 
 <script>
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.getElementById("suggestionReplyForm");
+  const photos = form ? form.querySelector('input[type="file"][name="photos"]') : null;
+  const preview = document.getElementById("suggestionReplyPhotoPreview");
+  const alertEl = document.getElementById("replyPhotoAlert");
+  if (!form || !photos || !preview) return;
+
+  function renderPreview() {
+    preview.replaceChildren();
+    Array.from(photos.files || []).forEach(function (file) {
+      const figure = document.createElement("figure");
+      const img = document.createElement("img");
+      const caption = document.createElement("figcaption");
+      img.alt = file.name;
+      img.src = URL.createObjectURL(file);
+      img.onload = function () { URL.revokeObjectURL(img.src); };
+      caption.textContent = file.name;
+      figure.append(img, caption);
+      preview.appendChild(figure);
+    });
+  }
+
+  photos.addEventListener("change", renderPreview);
+  form.addEventListener("paste", function (event) {
+    const pastedImages = Array.from((event.clipboardData && event.clipboardData.items) || [])
+      .filter(function (item) { return item.kind === "file" && item.type.startsWith("image/"); })
+      .map(function (item) { return item.getAsFile(); })
+      .filter(Boolean);
+    if (!pastedImages.length) return;
+
+    event.preventDefault();
+    try {
+      const transfer = new DataTransfer();
+      Array.from(photos.files || []).forEach(function (file) { transfer.items.add(file); });
+      pastedImages.forEach(function (file, index) {
+        const extension = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
+        transfer.items.add(new File([file], "pasted-image-" + Date.now() + "-" + (index + 1) + "." + extension, { type: file.type }));
+      });
+      photos.files = transfer.files;
+      if (alertEl) alertEl.classList.add("d-none");
+      renderPreview();
+    } catch (error) {
+      if (alertEl) {
+        alertEl.textContent = "This browser could not attach the pasted image. Please use the file picker.";
+        alertEl.classList.remove("d-none");
+      }
+    }
+  });
+});
+
 document.addEventListener("change", function(e){
   const el = e.target.closest(".js-ticket-status");
   if(!el) return;

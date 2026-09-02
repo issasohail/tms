@@ -172,7 +172,6 @@ from .utils.billing import (
     ensure_move_in_proration_invoice,
     preview_billing_on_change,
     preview_initial_billing,
-    reconcile_move_in_proration,
     update_billing_on_change,
 )
 from .utils.email_service import send_lease_agreement_email
@@ -1736,15 +1735,6 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
                     update_existing=update_existing,
                 )
             )
-            proration_result = reconcile_move_in_proration(
-                self.object,
-                move_in_date=move_in_date,
-                enabled=form.cleaned_data.get("create_move_in_proration", False),
-                mode=form.cleaned_data.get("move_in_proration_mode") or "exact",
-                manual_days=form.cleaned_data.get("move_in_proration_days"),
-            )
-            if proration_result["warning"]:
-                messages.warning(self.request, proration_result["warning"])
             messages.success(self.request, "Initial billing created (debug_sql).")
             return render(
                 self.request,
@@ -1766,15 +1756,20 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
             proration_mode = (
                 form.cleaned_data.get("move_in_proration_mode") or "exact"
             )
-            proration_result = reconcile_move_in_proration(
-                self.object,
-                move_in_date=move_in_date,
-                enabled=form.cleaned_data.get("create_move_in_proration", False),
-                mode=proration_mode,
-                manual_days=form.cleaned_data.get("move_in_proration_days"),
-            )
-            if proration_result["warning"]:
-                messages.warning(self.request, proration_result["warning"])
+            if (
+                form.cleaned_data.get("create_move_in_proration")
+                and proration_mode != "waive"
+                and move_in_date
+                and move_in_date < self.object.start_date
+            ):
+                ensure_move_in_proration_invoice(
+                    self.object,
+                    move_in_date=move_in_date,
+                    mode=proration_mode,
+                    manual_days=form.cleaned_data.get(
+                        "move_in_proration_days"
+                    ),
+                )
             messages.success(
                 self.request, "Lease created. Billing & security initialized."
             )
@@ -3871,15 +3866,6 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
                     update_existing=update_existing,
                 )
             )
-            proration_result = reconcile_move_in_proration(
-                self.object,
-                move_in_date=form.cleaned_data.get("move_in_date"),
-                enabled=form.cleaned_data.get("create_move_in_proration", False),
-                mode=form.cleaned_data.get("move_in_proration_mode") or "exact",
-                manual_days=form.cleaned_data.get("move_in_proration_days"),
-            )
-            if proration_result["warning"]:
-                messages.warning(self.request, proration_result["warning"])
             messages.success(self.request, "Billing updated (debug_sql).")
             return render(
                 self.request,
@@ -3898,15 +3884,6 @@ class LeaseUpdateView(LoginRequiredMixin, LeaseTenantOrderMixin, UpdateView):
             include_backfill=include_backfill,
             update_existing=update_existing,
         )
-        proration_result = reconcile_move_in_proration(
-            self.object,
-            move_in_date=form.cleaned_data.get("move_in_date"),
-            enabled=form.cleaned_data.get("create_move_in_proration", False),
-            mode=form.cleaned_data.get("move_in_proration_mode") or "exact",
-            manual_days=form.cleaned_data.get("move_in_proration_days"),
-        )
-        if proration_result["warning"]:
-            messages.warning(self.request, proration_result["warning"])
 
         # ---------- STEP 6: MOVE-OUT FINAL SETTLEMENT (electric + water) ----------
         if (

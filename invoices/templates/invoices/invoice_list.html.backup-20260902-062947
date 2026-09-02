@@ -176,9 +176,10 @@
     <div class="invoice-mobile-cards" aria-live="polite">
       {% for row in table.paginated_rows %}
         <article class="invoice-mobile-card">
-          <div class="invoice-mobile-card-sn">{{ table.page.start_index|add:forloop.counter0 }}</div>
           {% for column, cell in row.items %}
-            {% if column.name == "property_unit" %}
+            {% if column.name == "sn" %}
+              <div class="invoice-mobile-card-sn">{{ cell }}</div>
+            {% elif column.name == "property_unit" %}
               <div class="invoice-mobile-card-property">{{ cell }}</div>
             {% elif column.name == "tenant" %}
               <div class="invoice-mobile-card-tenant">{{ cell }}</div>
@@ -4366,19 +4367,17 @@ document.addEventListener('DOMContentLoaded', () => {
     display: flex !important;
     flex-wrap: nowrap !important;
     align-items: center !important;
-    justify-content: space-between !important;
-    gap: 4px !important;
+    justify-content: flex-end !important;
+    gap: 2px !important;
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
   }
   .invoice-mobile-card-actions .btn {
-    flex: 1 1 0 !important;
-    width: 100% !important;
-    max-width: calc((min(100vw, 400px) - 3.5rem) / 5) !important;
-    height: 32px !important;
-    min-width: 36px !important;
-    min-height: 32px !important;
+    width: auto !important;
+    height: 24px !important;
+    min-width: 0 !important;
+    min-height: 24px !important;
     padding: .12rem .24rem !important;
     display: inline-flex !important;
     flex-direction: row-reverse !important;

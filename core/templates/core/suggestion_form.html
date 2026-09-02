@@ -14,7 +14,7 @@
     <a href="{% url 'core:suggestion_list' %}" class="btn btn-sm btn-outline-secondary">Back</a>
   </div>
   <div class="card-body">
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" id="suggestionCreateForm">
       {% csrf_token %}
       <div class="row g-2">
         <div class="col-md-4">
@@ -42,7 +42,7 @@
           <div id="photoUploadAlert" class="alert alert-danger py-2 d-none" role="alert"></div>
           <input type="file" name="photos" class="form-control" multiple accept="image/*">
           <div class="suggestion-photo-preview" id="suggestionPhotoPreview" aria-live="polite"></div>
-          <div class="form-text">You can upload multiple screenshots.</div>
+          <div class="form-text">Upload multiple screenshots, or copy an image and paste it anywhere in this form.</div>
         </div>
       </div>
       <div class="mt-3 d-flex gap-2">
@@ -54,9 +54,13 @@
 </div>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+  const form = document.getElementById("suggestionCreateForm");
   const photos = document.querySelector('input[type="file"][name="photos"]');
   const photoPreview = document.getElementById("suggestionPhotoPreview");
-  if (photos && photoPreview) photos.addEventListener("change", function () {
+  const photoAlert = document.getElementById("photoUploadAlert");
+
+  function renderPhotoPreview() {
+    if (!photos || !photoPreview) return;
     photoPreview.replaceChildren();
     Array.from(photos.files || []).forEach(function (file) {
       const figure = document.createElement("figure");
@@ -69,7 +73,36 @@ document.addEventListener("DOMContentLoaded", function () {
       figure.append(img, caption);
       photoPreview.appendChild(figure);
     });
+  }
+
+  if (photos) photos.addEventListener("change", renderPhotoPreview);
+
+  if (form && photos) form.addEventListener("paste", function (event) {
+    const pastedImages = Array.from((event.clipboardData && event.clipboardData.items) || [])
+      .filter(function (item) { return item.kind === "file" && item.type.startsWith("image/"); })
+      .map(function (item) { return item.getAsFile(); })
+      .filter(Boolean);
+    if (!pastedImages.length) return;
+
+    event.preventDefault();
+    try {
+      const transfer = new DataTransfer();
+      Array.from(photos.files || []).forEach(function (file) { transfer.items.add(file); });
+      pastedImages.forEach(function (file, index) {
+        const extension = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
+        transfer.items.add(new File([file], "pasted-image-" + Date.now() + "-" + (index + 1) + "." + extension, { type: file.type }));
+      });
+      photos.files = transfer.files;
+      if (photoAlert) photoAlert.classList.add("d-none");
+      renderPhotoPreview();
+    } catch (error) {
+      if (photoAlert) {
+        photoAlert.textContent = "This browser could not attach the pasted image. Please use the file picker.";
+        photoAlert.classList.remove("d-none");
+      }
+    }
   });
+
   const description = document.querySelector("textarea[name='description']");
   if (!description) return;
 

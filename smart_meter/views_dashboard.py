@@ -170,7 +170,10 @@ def _boundary_readings_by_meter(
             ts__in=candidate_timestamps,
         )
         .order_by("meter_id", "ts", "id")
-        .values("id", "meter_id", "ts", "total_energy")
+        .values(
+            "id", "meter_id", "ts", "total_energy",
+            "forward_active_energy_kwh", "reverse_active_energy_kwh",
+        )
     )
     for row in candidate_rows:
         candidates_by_key[(row["meter_id"], row["ts"])].append(row)
@@ -367,6 +370,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     )
 
     prev_end_by_meter = {}
+    prev_reverse_end_by_meter = {}
     if meter_ids:
         # Fetch the latest timestamp before the report window per meter using
         # GROUP BY + MAX(ts). This avoids ranking/sorting the entire historical
@@ -393,7 +397,10 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
                     ts__in=set(latest_ts_by_meter.values()),
                 )
                 .order_by("meter_id", "ts", "id")
-                .values("id", "meter_id", "ts", "total_energy")
+                .values(
+                    "id", "meter_id", "ts", "total_energy",
+                    "forward_active_energy_kwh", "reverse_active_energy_kwh",
+                )
             )
             latest_row_by_meter = {}
             for row in candidate_rows:
@@ -404,21 +411,44 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
                 if current is None or row["id"] > current["id"]:
                     latest_row_by_meter[meter_id] = row
             for meter_id, row in latest_row_by_meter.items():
-                if row["total_energy"] is not None:
-                    prev_end_by_meter[meter_id] = Decimal(str(row["total_energy"]))
+                forward_value = row["forward_active_energy_kwh"]
+                if forward_value is None:
+                    forward_value = row["total_energy"]
+                if forward_value is not None:
+                    prev_end_by_meter[meter_id] = Decimal(str(forward_value))
+                if row["reverse_active_energy_kwh"] is not None:
+                    prev_reverse_end_by_meter[meter_id] = Decimal(
+                        str(row["reverse_active_energy_kwh"])
+                    )
 
     for m in meters:
         prev_end = prev_end_by_meter.get(m.id)
+        prev_reverse_end = prev_reverse_end_by_meter.get(m.id)
 
         groups = OrderedDict()
         for r in readings_by_meter.get(m.id, []):
             ts_local = timezone.localtime(r["ts"], tz)
             key, label = _period_key_and_label(ts_local, granularity)
-            val = Decimal(str(r["total_energy"] or "0"))
+            forward_value = r["forward_active_energy_kwh"]
+            if forward_value is None:
+                forward_value = r["total_energy"]
+            val = Decimal(str(forward_value or "0"))
+            reverse_value = r["reverse_active_energy_kwh"]
             if key not in groups:
-                groups[key] = {"min": val, "max": val, "label": label}
+                groups[key] = {
+                    "min": val,
+                    "max": val,
+                    "reverse_min": Decimal(str(reverse_value)) if reverse_value is not None else None,
+                    "reverse_max": Decimal(str(reverse_value)) if reverse_value is not None else None,
+                    "label": label,
+                }
             else:
                 groups[key]["max"] = val
+                if reverse_value is not None:
+                    reverse_value = Decimal(str(reverse_value))
+                    if groups[key]["reverse_min"] is None:
+                        groups[key]["reverse_min"] = reverse_value
+                    groups[key]["reverse_max"] = reverse_value
 
         base_rows = _chain_rows_from_groups(groups, prev_end=prev_end)
 
@@ -428,6 +458,18 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
                 (x for x in base_rows if x["period_label"] == g["label"]), None)
             if row:
                 r2 = dict(row)
+                reverse_start = reverse_end = reverse_usage = None
+                if g["reverse_min"] is not None and g["reverse_max"] is not None:
+                    reverse_start = g["reverse_min"] if prev_reverse_end is None else prev_reverse_end
+                    reverse_end = g["reverse_max"]
+                    reverse_usage = reverse_end - reverse_start
+                    if reverse_usage < 0:
+                        reverse_usage = Decimal("0")
+                    prev_reverse_end = reverse_end
+                r2["reverse_start_kwh"] = reverse_start
+                r2["reverse_end_kwh"] = reverse_end
+                r2["reverse_usage"] = reverse_usage
+                r2["net_usage"] = r2["usage"] - reverse_usage if reverse_usage is not None else None
                 r2["period_key"] = k
                 rows_with_key.append(r2)
 
@@ -438,6 +480,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     if not key_union:
         return [], [], [], {
             "total_kwh": Decimal("0"),
+            "total_reverse_kwh": Decimal("0"),
             "usage_charges": Decimal("0"),
             "service_charges": Decimal("0"),
             "grand_total": Decimal("0"),
@@ -490,6 +533,12 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
         datasets.append({
             "label": legend_label,
             "data": series,
+            "reverseData": [
+                float(key_to_row[k]["reverse_usage"])
+                if key_to_row.get(k) and key_to_row[k]["reverse_usage"] is not None
+                else None
+                for k in keys_sorted
+            ],
             "meterNumber": m.meter_number,
             "unitNumber": unit_number,
             "propertyName": getattr(getattr(m.unit, "property", None), "property_name", ""),
@@ -525,6 +574,8 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
                 "start_kwh": row["start_kwh"],
                 "end_kwh": row["end_kwh"],
                 "usage": row["usage"],
+                "reverse_usage": row["reverse_usage"],
+                "net_usage": row["net_usage"],
                 "unit_rate": rate,
                 "usage_amount": usage_amt,
                 "service_charges": service_amt,
@@ -541,6 +592,14 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
 
     totals = {
         "total_kwh": total_kwh,
+        "total_reverse_kwh": sum(
+            (
+                row["reverse_usage"]
+                for row in combined_rows
+                if row["reverse_usage"] is not None
+            ),
+            Decimal("0"),
+        ),
         "usage_charges": usage_charges,
         "service_charges": service_total,
         "grand_total": (usage_charges + service_total).quantize(Decimal("0.01")),
@@ -758,6 +817,14 @@ def energy_dashboard(request):
         )
         totals = {
             "total_kwh": total_kwh,
+            "total_reverse_kwh": sum(
+                (
+                    row["reverse_usage"]
+                    for row in billing_rows
+                    if row["reverse_usage"] is not None
+                ),
+                Decimal("0"),
+            ),
             "usage_charges": usage_charges,
             "service_charges": service_charges,
             "grand_total": (usage_charges + service_charges).quantize(
@@ -822,6 +889,10 @@ def energy_dashboard(request):
 
     totals_disp = {
         "total_kwh": (totals["total_kwh"]),
+        "total_reverse_kwh": totals.get("total_reverse_kwh", Decimal("0")),
+        "total_net_kwh": (
+            totals["total_kwh"] - totals.get("total_reverse_kwh", Decimal("0"))
+        ),
         "usage_charges": _fmt0(totals["usage_charges"]),
         "service_charges": _fmt0(totals["service_charges"]),
         "grand_total": _fmt0(totals["grand_total"]),
@@ -849,6 +920,9 @@ def energy_dashboard(request):
         "rows_disp": rows_disp,
         "totals": totals,
         "totals_disp": totals_disp,
+        "has_reverse_data": any(
+            row.get("reverse_usage") is not None for row in table_rows
+        ),
 
         "selected_meter": selected_meter,
         "live_panel": live_panel,

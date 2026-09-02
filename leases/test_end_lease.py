@@ -196,6 +196,35 @@ class EndLeasePostingTests(TestCase):
             [meter.pk],
         )
         self.assertGreater(result["electric_amount"], ZERO)
+        electricity_item = result["invoice"].items.get(
+            category__name__istartswith="Electric"
+        )
+        self.assertIn("Meter#=LEGACY-ROOM-9", electricity_item.description)
+        self.assertIn("Billing Period=2026-08-01 to 2026-08-31", electricity_item.description)
+        self.assertIn("Beg Unit=400.000", electricity_item.description)
+        self.assertIn("end unit=481.910", electricity_item.description)
+        self.assertIn("unit consume=81.910", electricity_item.description)
+        self.assertIn("unit rate=50.0000", electricity_item.description)
+        self.assertIn("service charges=250.00", electricity_item.description)
+
+        # Existing invoices created before this fix keep their stored generic
+        # description, but the detail page reconstructs the full breakdown.
+        InvoiceItem.objects.filter(pk=electricity_item.pk).update(
+            description="Final electricity charge - move out 2026-08-31"
+        )
+        user = get_user_model().objects.create_superuser(
+            username="legacy-electric-detail",
+            email="legacy-electric-detail@example.com",
+            password="test-password",
+        )
+        self.client.force_login(user)
+        response = self.client.get(
+            reverse("invoices:invoice_detail", args=[result["invoice"].pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Meter#=LEGACY-ROOM-9")
+        self.assertContains(response, "Beg Unit=400.000")
+        self.assertContains(response, "end unit=481.910")
 
     def test_rollback_action_reactivates_lease_and_reopens_end_lease(self):
         today = date.today()
@@ -326,6 +355,7 @@ class EndLeasePostingTests(TestCase):
         )
         self.assertEqual(electric_items.count(), 1)
         self.assertEqual(electric_items.get().amount, Decimal("4654.00"))
+        self.assertIn("Electric bill; Billing Period=", electric_items.get().description)
         self.assertEqual(result["invoice"].amount, Decimal("4654.00"))
 
     def test_posts_proration_applies_security_and_transfers_refund_to_ledger(self):

@@ -194,7 +194,7 @@
               {# View state #}
               <span class="cell-view cat-desc-view">
                 <span class="category-view fw-semibold">{{ item.category.name|default:item.category|default:"—" }}</span>
-                <span class="desc-view text-muted small">{{ item.description|default:"" }}</span>
+                <span class="desc-view text-muted small">{{ item.display_description|default:item.description|default:"" }}</span>
               </span>
               {# Edit state #}
               <span class="cell-edit d-none">

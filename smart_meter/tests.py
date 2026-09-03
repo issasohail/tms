@@ -14,9 +14,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from leases.models import Lease, LeaseUnitOccupancy
+from invoices.models import InvoiceItem, ItemCategory
 from properties.models import Property, Unit
 from smart_meter.models import LiveReading, Meter, MeterInstallation, MeterReading, MeterRoleHistory
-from smart_meter.services.invoicing import ElectricBillContext
+from smart_meter.services.invoicing import (
+    ElectricBillContext,
+    compute_electric_bill,
+    upsert_invoice_with_electric_item,
+)
 from tenants.models import Tenant
 
 
@@ -296,6 +301,162 @@ class ElectricBillDescriptionTests(TestCase):
 
         self.assertIn(f"total={ctx.line_total}.", description)
         self.assertLessEqual(len(description), 490)
+
+
+class SmartMeterInvoiceGenerationRegressionTests(TestCase):
+    period_start = date(2026, 8, 1)
+    period_end = date(2026, 8, 31)
+
+    def setUp(self):
+        property_obj = Property.objects.create(
+            property_name="Invoice Reading Test",
+            owner_name="Owner",
+            owner_cnic="1234512345699",
+            type="apartment",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(property=property_obj, unit_number="1")
+        tenant = Tenant.objects.create(
+            first_name="Invoice",
+            last_name="Tenant",
+            cnic="1234512345698",
+        )
+        self.lease = Lease.objects.create(
+            tenant=tenant,
+            unit=self.unit,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+            monthly_rent=Decimal("25000.00"),
+        )
+        LeaseUnitOccupancy.objects.create(
+            lease=self.lease,
+            unit=self.unit,
+            move_in_date=date(2026, 1, 1),
+        )
+        self.meter = Meter.objects.create(
+            meter_number="INVOICE-BOUNDARY-1",
+            unit=self.unit,
+            meter_role=Meter.METER_ROLE_BILLING,
+            billing_mode="postpaid",
+            unit_rate=Decimal("50.0000"),
+            service_charges=Decimal("250.00"),
+        )
+        MeterInstallation.objects.create(
+            meter=self.meter,
+            unit=self.unit,
+            lease=self.lease,
+            start_date=date(2026, 1, 1),
+            start_reading=Decimal("0.000"),
+        )
+        self.category = ItemCategory.objects.create(pk=7, name="Electricity")
+        self.tz = timezone.get_current_timezone()
+
+    def add_reading(self, ts, *, total=None, forward=None):
+        return MeterReading.objects.create(
+            meter=self.meter,
+            ts=timezone.make_aware(ts, self.tz),
+            total_energy=Decimal(total) if total is not None else None,
+            forward_active_energy_kwh=Decimal(forward) if forward is not None else None,
+        )
+
+    def compute(self):
+        return compute_electric_bill(
+            self.lease,
+            self.meter,
+            self.period_start,
+            self.period_end,
+        )
+
+    def test_final_timestamp_not_mid_month_max_drives_dashboard_and_invoice(self):
+        self.add_reading(datetime(2026, 7, 31, 23, 45), total="359.080")
+        self.add_reading(datetime(2026, 8, 15, 12, 0), total="361.880")
+        self.add_reading(datetime(2026, 8, 31, 23, 45), total="361.200")
+
+        ctx = self.compute()
+        from smart_meter.views_dashboard import _per_meter_series
+
+        _labels, _datasets, dashboard_rows, _totals = _per_meter_series(
+            Meter.objects.filter(pk=self.meter.pk),
+            self.period_start,
+            self.period_end,
+            "monthly",
+        )
+
+        self.assertEqual(ctx.beg_kwh, Decimal("359.080"))
+        self.assertEqual(ctx.end_kwh, Decimal("361.200"))
+        self.assertEqual(ctx.units, Decimal("2.120"))
+        self.assertEqual(ctx.usage_amount, Decimal("106.00"))
+        self.assertEqual(ctx.raw_total, Decimal("356.00"))
+        self.assertEqual(ctx.invoice_amount, Decimal("360.00"))
+        self.assertEqual(dashboard_rows[0]["start_kwh"], ctx.beg_kwh)
+        self.assertEqual(dashboard_rows[0]["end_kwh"], ctx.end_kwh)
+        self.assertEqual(dashboard_rows[0]["usage"], ctx.units)
+        self.assertEqual(dashboard_rows[0]["total_amount"], ctx.invoice_amount)
+
+        invoice = upsert_invoice_with_electric_item(ctx)
+        item = invoice.items.get(category=self.category)
+        self.assertEqual(item.amount, Decimal("360.00"))
+        self.assertIn("Beg Unit=359.080", item.description)
+        self.assertIn("end unit=361.200", item.description)
+        self.assertIn("unit consume=2.120", item.description)
+        self.assertIn("total usage=106.00", item.description)
+        self.assertIn("usage charge=106.00", item.description)
+        self.assertIn("service charges=250.00", item.description)
+        self.assertIn("raw subtotal=356.00", item.description)
+        self.assertIn("rounded invoice total=360.00", item.description)
+
+    def test_forward_active_energy_is_preferred_with_total_energy_fallback(self):
+        self.add_reading(
+            datetime(2026, 7, 31, 23, 45),
+            total="900.000",
+            forward="100.000",
+        )
+        self.add_reading(
+            datetime(2026, 8, 31, 23, 45),
+            total="110.000",
+            forward=None,
+        )
+
+        ctx = self.compute()
+
+        self.assertEqual(ctx.beg_kwh, Decimal("100.000"))
+        self.assertEqual(ctx.end_kwh, Decimal("110.000"))
+        self.assertEqual(ctx.units, Decimal("10.000"))
+
+    def test_regeneration_updates_existing_electricity_item_without_duplicate(self):
+        self.add_reading(datetime(2026, 7, 31, 23, 45), total="100.000")
+        self.add_reading(datetime(2026, 8, 20, 12, 0), total="105.000")
+        first_invoice = upsert_invoice_with_electric_item(self.compute())
+        original_item = first_invoice.items.get(category=self.category)
+
+        self.add_reading(datetime(2026, 8, 31, 23, 45), total="106.000")
+        second_invoice = upsert_invoice_with_electric_item(self.compute())
+
+        items = InvoiceItem.objects.filter(
+            invoice=second_invoice,
+            category=self.category,
+            description__icontains=f"Meter#={self.meter.meter_number}",
+        )
+        self.assertEqual(second_invoice.pk, first_invoice.pk)
+        self.assertEqual(items.count(), 1)
+        self.assertEqual(items.get().pk, original_item.pk)
+        self.assertIn("end unit=106.000", items.get().description)
+        self.assertEqual(items.get().amount, Decimal("550.00"))
+
+    def test_monotonically_increasing_readings_calculate_normally(self):
+        self.add_reading(datetime(2026, 7, 31, 23, 45), total="200.000")
+        self.add_reading(datetime(2026, 8, 10, 12, 0), total="204.000")
+        self.add_reading(datetime(2026, 8, 31, 23, 45), total="210.000")
+
+        ctx = self.compute()
+
+        self.assertEqual(ctx.beg_kwh, Decimal("200.000"))
+        self.assertEqual(ctx.end_kwh, Decimal("210.000"))
+        self.assertEqual(ctx.units, Decimal("10.000"))
+        self.assertEqual(ctx.usage_amount, Decimal("500.00"))
+        self.assertEqual(ctx.raw_total, Decimal("750.00"))
+        self.assertEqual(ctx.invoice_amount, Decimal("750.00"))
 
 
 class HistoricalMeterOccupancyTests(TestCase):

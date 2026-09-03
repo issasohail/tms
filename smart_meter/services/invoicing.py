@@ -3,11 +3,16 @@ from calendar import monthrange
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Min, Max, Q
+from django.db.models import Q
 from django.utils import timezone
 
 from smart_meter.models import MeterReading, Meter, MeterInstallation
-from invoices.models import Invoice, InvoiceItem, ItemCategory
+from invoices.models import (
+    Invoice,
+    InvoiceItem,
+    ItemCategory,
+    round_amount_up_to_nearest_10,
+)
 from leases.models import Lease, LeaseUnitOccupancy
 from smart_meter.rates import resolve_electricity_rate
 
@@ -79,8 +84,16 @@ class ElectricBillContext:
         return (self.units * self.unit_rate).quantize(Decimal("0.01"))
 
     @property
-    def line_total(self) -> Decimal:
+    def raw_total(self) -> Decimal:
         return (self.usage_amount + self.service_charges).quantize(Decimal("0.01"))
+
+    @property
+    def invoice_amount(self) -> Decimal:
+        return round_amount_up_to_nearest_10(self.raw_total)
+
+    @property
+    def line_total(self) -> Decimal:
+        return self.invoice_amount
 
     @property
     def billing_period_label(self) -> str:
@@ -93,7 +106,9 @@ class ElectricBillContext:
             f"Billing Period={self.billing_period_label}, "
             f"Beg Unit={self.beg_kwh} - end unit={self.end_kwh}, "
             f"unit consume={self.units}, unit rate={self.unit_rate}="
-            f"total usage={self.usage_amount}, service charges={self.service_charges}. "
+            f"total usage={self.usage_amount}, usage charge={self.usage_amount}, "
+            f"service charges={self.service_charges}. "
+            f"raw subtotal={self.raw_total}, rounded invoice total={self.invoice_amount}. "
             f"total={self.line_total}."
         )
         return _trim_desc(raw)
@@ -128,12 +143,30 @@ def _reading_bounds(meter: Meter, start: date, end: date):
     sdt = timezone.make_aware(datetime.combine(start, time.min), tz)
     edt = timezone.make_aware(datetime.combine(end + timedelta(days=1), time.min), tz)
 
-    agg = (
-        MeterReading.objects
-        .filter(meter=meter, ts__gte=sdt, ts__lt=edt)
-        .aggregate(beg=Min("total_energy"), end=Max("total_energy"))
+    period_readings = MeterReading.objects.filter(
+        meter=meter,
+        ts__gte=sdt,
+        ts__lt=edt,
     )
-    return agg["beg"], agg["end"]
+    previous = (
+        MeterReading.objects
+        .filter(meter=meter, ts__lt=sdt)
+        .order_by("-ts", "-id")
+        .first()
+    )
+    first = period_readings.order_by("ts", "id").first()
+    last = period_readings.order_by("-ts", "-id").first()
+
+    def energy_value(reading):
+        if reading is None:
+            return None
+        value = reading.forward_active_energy_kwh
+        return value if value is not None else reading.total_energy
+
+    beginning = energy_value(previous)
+    if beginning is None:
+        beginning = energy_value(first)
+    return beginning, energy_value(last)
 
 
 def compute_electric_bill(lease, meter, period_start: date, period_end: date) -> ElectricBillContext:
@@ -298,7 +331,8 @@ def upsert_invoice_with_electric_item(ctx, *, item_category_id: int = 7, posting
     unit_rate = Decimal(str(getattr(ctx, "unit_rate")))
     service_charges = Decimal(str(getattr(ctx, "service_charges")))
     usage_amount = (units * unit_rate).quantize(Decimal("0.01"))
-    line_total = (usage_amount + service_charges).quantize(Decimal("0.01"))
+    raw_total = (usage_amount + service_charges).quantize(Decimal("0.01"))
+    invoice_amount = round_amount_up_to_nearest_10(raw_total)
 
     billing_period_label = getattr(ctx, "billing_period_label", None)
     if not billing_period_label:
@@ -311,8 +345,10 @@ def upsert_invoice_with_electric_item(ctx, *, item_category_id: int = 7, posting
             f"Billing Period={billing_period_label}, "
             f"Beg Unit={ctx.beg_kwh} - end unit={ctx.end_kwh}, "
             f"unit consume={units}, unit rate={unit_rate}="
-            f"total usage={usage_amount}, service charges={service_charges}. "
-            f"total={line_total}."
+            f"total usage={usage_amount}, usage charge={usage_amount}, "
+            f"service charges={service_charges}. "
+            f"raw subtotal={raw_total}, rounded invoice total={invoice_amount}. "
+            f"total={invoice_amount}."
         )
 
     # Find an invoice for the posting month; default keeps the legacy smart-meter behavior.
@@ -345,14 +381,14 @@ def upsert_invoice_with_electric_item(ctx, *, item_category_id: int = 7, posting
 
     if existing:
         existing.description = description_text
-        existing.amount = line_total
+        existing.amount = invoice_amount
         existing.save()
     else:
         InvoiceItem.objects.create(
             invoice=inv,
             category=category,
             description=description_text,
-            amount=line_total,
+            amount=invoice_amount,
             is_recurring=False,
         )
 

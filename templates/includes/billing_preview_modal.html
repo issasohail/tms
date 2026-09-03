@@ -75,12 +75,57 @@
       </div>
 
       <div class="modal-body py-3">
-        {% if billing_plan.move_in_proration %}
-        <div class="alert alert-primary small mb-2">
-          <strong>Move-in proration:</strong>
-          {{ billing_plan.move_in_proration.description }}
-          &mdash; <strong>Rs {{ billing_plan.move_in_proration.amount|floatformat:2|intcomma }}</strong>
-        </div>
+        {% if billing_plan.move_in_summary %}
+          {% with move=billing_plan.move_in_summary %}
+          <div class="card border-primary mb-3">
+            <div class="card-header bg-primary text-white py-2">
+              <strong>Move-in and billing confirmation</strong>
+            </div>
+            <div class="card-body p-2 small">
+              <div class="row g-2">
+                <div class="col-12 col-md-6">
+                  <span class="text-muted d-block">Physical Move-in Date</span>
+                  <strong>{{ move.physical_move_in_date|date:"Y-m-d" }}</strong>
+                </div>
+                <div class="col-12 col-md-6">
+                  <span class="text-muted d-block">Regular Billing Start Date</span>
+                  <strong>{{ move.regular_billing_start_date|date:"Y-m-d" }}</strong>
+                </div>
+              </div>
+              {% if move.dates_differ %}
+                <div class="alert alert-warning border-warning fw-semibold mt-2 mb-2" role="alert">
+                  Warning: Physical move-in and regular billing start are different. Confirm both dates before saving.
+                </div>
+              {% endif %}
+              <div class="border rounded p-2">
+                <div>
+                  <strong>Move-in proration invoice:</strong>
+                  {% if move.proration_will_create %}
+                    <span class="text-success fw-bold">Will be created</span>
+                  {% else %}
+                    <span class="text-secondary fw-bold">Will not be created</span>
+                  {% endif %}
+                </div>
+                {% if move.proration_will_create %}
+                  <div class="mt-1">
+                    Period:
+                    <strong>{{ move.proration_period_start|date:"Y-m-d" }} to {{ move.proration_period_end|date:"Y-m-d" }}</strong>
+                    &nbsp;&mdash;&nbsp; Amount:
+                    <strong>Rs {{ move.proration_amount|floatformat:2|intcomma }}</strong>
+                  </div>
+                {% else %}
+                  <div class="text-muted mt-1">{{ move.proration_reason }}</div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endwith %}
+        {% elif billing_plan.move_in_proration %}
+          <div class="alert alert-primary small mb-2">
+            <strong>Move-in proration:</strong>
+            {{ billing_plan.move_in_proration.description }}
+            &mdash; <strong>Rs {{ billing_plan.move_in_proration.amount|floatformat:2|intcomma }}</strong>
+          </div>
         {% endif %}
         <div id="securityOnlyBox" class="alert alert-info small mb-2" style="display:none;">
           Only the <strong>security deposit</strong> invoice will be updated. 

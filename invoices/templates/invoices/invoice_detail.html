@@ -28,6 +28,9 @@
       <a href="{% url 'invoices:invoice_create' %}" class="btn btn-primary btn-sm">
         <i class="fas fa-plus me-1"></i> New Invoice
       </a>
+      <a href="{% url 'leases:lease_ledger_by_pk' invoice.lease_id %}" class="btn btn-primary btn-sm">
+        <i class="fas fa-book me-1"></i> Ledger
+      </a>
 
       <div class="action-sep"></div>
 

@@ -173,7 +173,6 @@ from .utils import generate_lease_agreement
 from .utils.agreement_generator import generate_lease_agreement
 from .utils.billing import (
     apply_initial_billing,
-    ensure_move_in_proration_invoice,
     preview_billing_on_change,
     preview_initial_billing,
     reconcile_move_in_proration,
@@ -1550,6 +1549,7 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         lease_instance = getattr(self, "object", None)
+        ctx["prevent_move_in_restore"] = self.request.method == "GET"
 
         # family formset (create mode: instance is None)
         ctx.setdefault(
@@ -1667,25 +1667,33 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
                 proration_mode = (
                     form.cleaned_data.get("move_in_proration_mode") or "exact"
                 )
-                if (
+                proration_selected = bool(
                     form.cleaned_data.get("create_move_in_proration")
                     and proration_mode != "waive"
-                    and move_in_date
-                    and move_in_date < tmp.start_date
-                ):
-                    proration_invoice = ensure_move_in_proration_invoice(
-                        tmp,
-                        move_in_date=move_in_date,
-                        mode=proration_mode,
-                        manual_days=form.cleaned_data.get(
-                            "move_in_proration_days"
-                        ),
-                    )
-                    if proration_invoice:
-                        plan["move_in_proration"] = {
-                            "description": proration_invoice.description,
-                            "amount": proration_invoice.amount,
-                        }
+                )
+                proration_plan = reconcile_move_in_proration(
+                    tmp,
+                    move_in_date=move_in_date,
+                    enabled=proration_selected,
+                    mode=proration_mode,
+                    manual_days=form.cleaned_data.get("move_in_proration_days"),
+                    apply=False,
+                )
+                plan["move_in_summary"] = {
+                    "physical_move_in_date": move_in_date,
+                    "regular_billing_start_date": tmp.start_date,
+                    "dates_differ": move_in_date != tmp.start_date,
+                    "proration_selected": proration_selected,
+                    "proration_will_create": proration_plan["applicable"],
+                    "proration_reason": proration_plan["reason"],
+                    "proration_period_start": (
+                        proration_plan.get("move_in_date")
+                        if proration_plan["applicable"]
+                        else None
+                    ),
+                    "proration_period_end": proration_plan.get("period_end"),
+                    "proration_amount": proration_plan.get("amount"),
+                }
                 transaction.set_rollback(True)
 
             # Keep in create mode (no pk) – don't show "created" yet
@@ -1697,7 +1705,7 @@ class LeaseCreateView(LoginRequiredMixin, LeaseTenantOrderMixin, CreateView):
                 {
                     "object": form.instance,
                     "billing_plan": plan,
-                    "auto_open_billing_modal": _plan_has_changes(plan),
+                    "auto_open_billing_modal": True,
                     "is_create": True,
                 }
             )
@@ -5290,7 +5298,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     Prefetch(
                         "security_transactions",
                         queryset=SecurityDepositTransaction.objects.select_related(
-                            "payment_detail", "payment"
+                            "payment_detail", "payment", "ledger_transfer_event"
                         ).order_by("date", "id"),
                     ),
                 ),
@@ -5397,6 +5405,7 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     "description": tx.notes or "",
                     "amount": signed_amt,
                     "balance": dep_balance,
+                    "transfer": getattr(tx, "ledger_transfer_event", None),
                 }
             )
 
@@ -5409,6 +5418,10 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                 continue
             amt = invoice.amount or ZERO
             balance -= amt
+            ledger_url = reverse("leases:lease_ledger_by_pk", args=[lease.pk])
+            invoice_delete_url = reverse(
+                "invoices:invoice_delete", args=[invoice.id]
+            ) + "?" + urlencode({"return_to": ledger_url})
             transactions.append(
                 {
                     "date": invoice.issue_date,
@@ -5417,6 +5430,9 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     "amount": -amt,
                     "balance": balance,
                     "url": reverse("invoices:invoice_detail", args=[invoice.id]),
+                    "delete_url": invoice_delete_url,
+                    "delete_kind": "invoice",
+                    "delete_ajax": False,
                 }
             )
 
@@ -5464,6 +5480,8 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                     "description": payment.reference_number or f"Payment #{payment.id}",
                     "payment_id": payment.id,
                     "delete_url": reverse("payments:payment_delete", args=[payment.id]),
+                    "delete_kind": "payment",
+                    "delete_ajax": True,
                     "amount": amt,
                     "balance": balance,
                     "url": reverse("payments:payment_detail", args=[payment.id]),
@@ -7291,6 +7309,16 @@ class SecurityDepositDeleteView(LeaseSecurityMixin, DeleteView):
             )
             return redirect(self.get_success_url())
         self.object = self.get_object()
+        linked_transfer = getattr(self.object, "ledger_transfer_event", None)
+        if linked_transfer:
+            error = (
+                "This entry is part of a security deposit ledger transfer and cannot "
+                "be deleted separately. Use Reverse to cancel the complete transfer."
+            )
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return JsonResponse({"ok": False, "error": error}, status=409)
+            messages.error(self.request, error)
+            return redirect(self.get_success_url())
         linked_payment = self.object.payment
         if linked_payment:
             payment_detail = getattr(linked_payment, "detail", None)

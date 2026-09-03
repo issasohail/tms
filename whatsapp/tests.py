@@ -56,10 +56,11 @@ from whatsapp.services.handover.lifecycle import (
     return_handover_to_ai,
 )
 from whatsapp.services.handover.notifications import notify_new_handover
-from whatsapp.services.handover.relay import relay_staff_reply
+from whatsapp.services.handover.relay import relay_staff_reply, relay_tenant_media_to_staff
 from whatsapp.services.handover.routing import eligible_staff, staff_can_access_handover
 from whatsapp.services.handover.workflow import (
     handle_active_tenant_message,
+    handle_staff_handover_media,
     handle_staff_handover_message,
 )
 from whatsapp.services.identity.mode_resolver import infer_mode
@@ -4019,7 +4020,131 @@ class WhatsAppControlledAssistantTests(TestCase):
         service = MagicMock()
         service.send_text.return_value = {"ok": True}
         notify_new_handover(self.handover, service=service)
-        self.assertIn(format_phone(self.phone), service.send_text.call_args.args[1])
+        notification = service.send_text.call_args.args[1]
+        self.assertIn(format_phone(self.phone), notification)
+        self.assertIn("Received message from", notification)
+        self.assertIn("Reply: your message", notification)
+        self.assertNotIn("Actions:", notification)
+
+    def test_reply_shortcut_relays_to_latest_notified_tenant(self):
+        notification_service = MagicMock()
+        notification_service.send_text.return_value = {"ok": True}
+        notify_new_handover(self.handover, service=notification_service)
+        staff_conversation = WhatsAppConversation.objects.get(
+            phone_number=self.staff1.whatsapp_number
+        )
+        service = MagicMock()
+        service.send_text.return_value = {"ok": True}
+
+        response = handle_staff_handover_message(
+            self.message,
+            staff_conversation,
+            "Reply: We will check this today.",
+            self.staff1,
+            service=service,
+        )
+
+        self.assertIn("reply was sent", response)
+        self.assertEqual(service.send_text.call_args.args[0], self.phone)
+        self.assertIn("We will check this today.", service.send_text.call_args.args[1])
+
+    def test_reference_reply_does_not_forward_separator_colon(self):
+        service = MagicMock()
+        service.send_text.return_value = {"ok": True}
+
+        response = handle_staff_handover_message(
+            self.message,
+            self.conversation,
+            f"Reply {self.handover.reference}: We will check this today.",
+            self.staff1,
+            service=service,
+        )
+
+        self.assertIn("reply was sent", response)
+        relayed = service.send_text.call_args.args[1]
+        self.assertIn("We will check this today.", relayed)
+        self.assertNotIn(": We will check this today.", relayed)
+
+    def test_reply_shortcut_without_text_waits_for_staff_media(self):
+        notification_service = MagicMock()
+        notification_service.send_text.return_value = {"ok": True}
+        notify_new_handover(self.handover, service=notification_service)
+        staff_conversation = WhatsAppConversation.objects.get(
+            phone_number=self.staff1.whatsapp_number
+        )
+
+        response = handle_staff_handover_message(
+            self.message, staff_conversation, "Reply:", self.staff1
+        )
+
+        staff_conversation.refresh_from_db()
+        self.assertIn("Send your message or media", response)
+        self.assertEqual(staff_conversation.pending_state, "awaiting_staff_reply")
+        self.assertEqual(staff_conversation.context["handover_id"], self.handover.pk)
+
+    def test_reply_shortcut_in_media_caption_relays_one_captioned_message(self):
+        notification_service = MagicMock()
+        notification_service.send_text.return_value = {"ok": True}
+        notify_new_handover(self.handover, service=notification_service)
+        staff_conversation = WhatsAppConversation.objects.get(
+            phone_number=self.staff1.whatsapp_number
+        )
+        pending = PendingWhatsAppMedia.objects.create(
+            conversation=staff_conversation,
+            phone=self.staff1.whatsapp_number,
+            original_filename="reply.jpg",
+            media_type="image",
+            file=ContentFile(b"jpg", name="reply.jpg"),
+        )
+        media_message = WhatsAppMessageLog.objects.create(
+            direction=WhatsAppMessageLog.DIRECTION_INBOUND,
+            phone_number=self.staff1.whatsapp_number,
+            wa_message_id="wamid.staff.reply-image",
+            message_type=WhatsAppMessageLog.MESSAGE_TYPE_IMAGE,
+            status=WhatsAppMessageLog.STATUS_RECEIVED,
+            payload={
+                "type": "image",
+                "image": {"id": "media.reply", "caption": "Reply: Please see attached."},
+            },
+            api_response={"simulator_pending_media_id": pending.pk},
+        )
+        service = MagicMock()
+        service.send_image_bytes.return_value = {"ok": True}
+
+        response = handle_staff_handover_media(
+            media_message,
+            staff_conversation,
+            "Reply: Please see attached.",
+            self.staff1,
+            service=service,
+        )
+
+        self.assertIn("media reply was sent", response)
+        service.send_text.assert_not_called()
+        service.send_image_bytes.assert_called_once()
+        call = service.send_image_bytes.call_args
+        self.assertEqual(call.args[0], self.phone)
+        self.assertIn("Please see attached.", call.kwargs["caption"])
+
+    def test_tenant_audio_relay_does_not_send_duplicate_caption_text(self):
+        media = PendingWhatsAppMedia.objects.create(
+            conversation=self.conversation,
+            phone=self.phone,
+            original_filename="voice.ogg",
+            media_type="audio",
+            file=ContentFile(b"audio", name="voice.ogg"),
+            tenant=self.tenant,
+            lease=self.lease,
+            property=self.property,
+            unit=self.unit,
+        )
+        service = MagicMock()
+        service.send_audio_bytes.return_value = {"ok": True}
+
+        relay_tenant_media_to_staff(self.handover, media, service=service)
+
+        service.send_text.assert_not_called()
+        self.assertTrue(service.send_audio_bytes.called)
 
     def test_staff_accepts_handover(self):
         accepted = accept_handover(self.handover, self.staff1)
@@ -4135,6 +4260,7 @@ class WhatsAppControlledAssistantTests(TestCase):
         relay_staff_reply(
             self.handover, self.staff1, "See attached", media=media, service=service
         )
+        service.send_text.assert_not_called()
         service.send_image_bytes.assert_called_once()
 
     def test_ambiguous_tenant_phone_is_blocked(self):

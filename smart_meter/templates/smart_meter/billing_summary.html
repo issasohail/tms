@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static humanize %}
+{% block main_container_class %}container billing-summary-page{% endblock %}
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
 
@@ -149,9 +150,9 @@
 <style>
   /* ======= Sizing knobs you can tweak ======= */
   :root{
-    --fs-body: 0.70rem;         /* slightly tighter */
-    --fs-th:   0.68rem;
-    --fs-th-cat: 0.64rem;
+    --fs-body: 0.78rem;         /* slightly larger for easier number reading */
+    --fs-th:   0.76rem;
+    --fs-th-cat: 0.72rem;
     --pad-cell: .18rem .30rem;  /* compact rows */
     --pad-btn:  .30rem .48rem;
     --radius:   10px;
@@ -188,6 +189,7 @@
   }
 
   body{ font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; font-size:var(--fs-body); }
+  #billingTbl th{ font-size:var(--fs-th); }
   .topbar{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-bottom:.4rem; }
   .title{ font-size:1.05rem; font-weight:700; margin-right:.25rem; }
   .toolbar { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
@@ -264,6 +266,32 @@
     .wa-btn span.txt{ display:none; }
   }
   .icon{ width:var(--wa-icon-size); height:var(--wa-icon-size); display:inline-block; }
+
+  /* Add 200px to Bootstrap's normal desktop container width on this page only. */
+  @media (min-width: 1200px){
+    .billing-summary-page{ max-width:1340px; }
+  }
+  @media (min-width: 1400px){
+    .billing-summary-page{ max-width:1520px; }
+  }
+
+  @media (min-width: 992px){
+    #captureArea.desktop-sticky-list .sticky-group-row > td{
+      position:sticky;
+      top:var(--billing-head-height, 32px);
+      z-index:15;
+      background:#eef2f7;
+      box-shadow:0 1px 0 #d7dde5;
+    }
+    #captureArea.desktop-sticky-list tfoot td{
+      position:sticky;
+      bottom:0;
+      z-index:21;
+      background:#e8eef5;
+      border-top:2px solid #aeb9c7;
+      box-shadow:0 -2px 5px rgba(15,23,42,.12);
+    }
+  }
 </style>
 
 </head>
@@ -391,7 +419,7 @@
 
     <tbody>
       {% for g in groups %}
-        <tr class="prop-row">
+        <tr class="prop-row{% if g.rows %} sticky-group-row{% endif %}">
           <td colspan="{{ header_cols|length|add:4 }}">Property: {{ g.property.property_name }}</td>
         </tr>
 
@@ -501,7 +529,7 @@
     </tbody>
 
     <tfoot>
-      <tr class="sub-row">
+      <tr class="sub-row grand-total-row">
         <td></td><td colspan="2">GRAND TOTAL</td><td></td>
         {% for cell in grand_cells %}
           {% if cell.kind == 'cat' %}
@@ -592,6 +620,14 @@
   // ===== resizer only on non-fixed headers =====
   (function(){
     const table = document.getElementById('billingTbl');
+    const wrap = document.getElementById('captureArea');
+    const syncStickyOffsets = () => {
+      const headHeight = table.tHead?.getBoundingClientRect().height || 32;
+      wrap?.style.setProperty('--billing-head-height', `${headHeight}px`);
+    };
+    syncStickyOffsets();
+    window.addEventListener('resize', syncStickyOffsets);
+
     const ths = table.querySelectorAll('thead th:not([data-fixed])');
     ths.forEach((th, idx) => {
       const handle = document.createElement('span');

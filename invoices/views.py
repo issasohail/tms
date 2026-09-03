@@ -996,6 +996,11 @@ class InvoiceDeleteView(LoginRequiredMixin, DeleteView):
             )
         return_to = (self.request.GET.get("return_to") or "").strip()
         invoice_list_path = reverse("invoices:invoice_list")
+        allowed_return_paths = {invoice_list_path}
+        if self.object.lease_id:
+            allowed_return_paths.add(
+                reverse("leases:lease_ledger_by_pk", args=[self.object.lease_id])
+            )
         if (
             return_to
             and url_has_allowed_host_and_scheme(
@@ -1003,7 +1008,7 @@ class InvoiceDeleteView(LoginRequiredMixin, DeleteView):
                 allowed_hosts={self.request.get_host()},
                 require_https=self.request.is_secure(),
             )
-            and urlsplit(return_to).path == invoice_list_path
+            and urlsplit(return_to).path in allowed_return_paths
         ):
             return return_to
         return str(self.success_url)

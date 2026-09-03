@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load humanize %}
+{% block main_container_class %}container lease-ledger-page{% endblock %}
 
 {% block content %}
 
@@ -291,17 +292,32 @@
                    target="_blank">Receipt</a>
                 {% endif %}
 
-                {% if t.obj.payment %}
-                <a class="btn btn-secondary btn-slim"
-                   href="{% url 'payments:payment_update' t.obj.payment.id %}">Edit</a>
+                {% if t.transfer %}
+                  {% if t.transfer.is_reversed %}
+                  <span class="btn btn-secondary btn-slim disabled" title="This transfer has been reversed.">Reversed</span>
+                  {% elif perms.invoices.reverse_security_deposit_ledger_transfer %}
+                  <form method="post"
+                        action="{% url 'leases:lease_reverse_security_transfer' lease.id t.transfer.id %}"
+                        class="d-inline js-security-transfer-reverse">
+                    {% csrf_token %}
+                    <input type="hidden" name="reason" value="">
+                    <button type="submit" class="btn btn-danger btn-slim"
+                            title="Reverse the complete linked security deposit transfer">Reverse</button>
+                  </form>
+                  {% endif %}
                 {% else %}
-                <a class="btn btn-secondary btn-slim"
-                   href="{% url 'leases:lease_security_edit' lease.id t.obj.id %}">Edit</a>
-                {% endif %}
+                  {% if t.obj.payment %}
+                  <a class="btn btn-secondary btn-slim"
+                     href="{% url 'payments:payment_update' t.obj.payment.id %}">Edit</a>
+                  {% else %}
+                  <a class="btn btn-secondary btn-slim"
+                     href="{% url 'leases:lease_security_edit' lease.id t.obj.id %}">Edit</a>
+                  {% endif %}
 
-                <a class="btn btn-danger btn-slim js-ledger-delete"
-                   data-delete-kind="security entry"
-                   href="{% url 'leases:lease_security_delete' lease.id t.obj.id %}">Delete</a>
+                  <a class="btn btn-danger btn-slim js-ledger-delete"
+                     data-delete-kind="security entry"
+                     href="{% url 'leases:lease_security_delete' lease.id t.obj.id %}">Delete</a>
+                {% endif %}
               </div>
             </td>
           </tr>
@@ -396,7 +412,7 @@
                   class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                   {{ t.amount|intcomma }}
                 </a>
-                {% if t.delete_url %}<a href="{{ t.delete_url }}" class="js-ledger-delete ms-1 text-danger" data-delete-kind="payment" title="Delete payment"><i class="fas fa-trash-alt"></i></a>{% endif %}
+                {% if t.delete_url %}<a href="{{ t.delete_url }}" class="{% if t.delete_ajax %}js-ledger-delete {% endif %}ms-1 text-danger" data-delete-kind="{{ t.delete_kind }}" title="Delete {{ t.delete_kind }}"><i class="fas fa-trash-alt"></i></a>{% endif %}
               </td>
               <td data-label="Balance">{{ t.balance|intcomma }}</td>
             </tr>
@@ -438,7 +454,7 @@
                       class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                       {{ t.amount|intcomma }}
                     </a>
-                    {% if t.delete_url %}<a href="{{ t.delete_url }}" class="js-ledger-delete ms-1 text-danger" data-delete-kind="payment" title="Delete payment"><i class="fas fa-trash-alt"></i></a>{% endif %}
+                    {% if t.delete_url %}<a href="{{ t.delete_url }}" class="{% if t.delete_ajax %}js-ledger-delete {% endif %}ms-1 text-danger" data-delete-kind="{{ t.delete_kind }}" title="Delete {{ t.delete_kind }}"><i class="fas fa-trash-alt"></i></a>{% endif %}
                   </td>
                   <td>{{ t.balance|intcomma }}</td>
                 </tr>
@@ -477,7 +493,7 @@
                       class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                       {{ t.amount|intcomma }}
                     </a>
-                    {% if t.delete_url %}<a href="{{ t.delete_url }}" class="js-ledger-delete ms-1 text-danger" data-delete-kind="payment" title="Delete payment"><i class="fas fa-trash-alt"></i></a>{% endif %}
+                    {% if t.delete_url %}<a href="{{ t.delete_url }}" class="{% if t.delete_ajax %}js-ledger-delete {% endif %}ms-1 text-danger" data-delete-kind="{{ t.delete_kind }}" title="Delete {{ t.delete_kind }}"><i class="fas fa-trash-alt"></i></a>{% endif %}
                   </td>
                   <td>{{ t.balance|intcomma }}</td>
                 </tr>
@@ -501,6 +517,14 @@
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 
 <style>
+  /* Bootstrap's desktop container plus the requested 150px ledger width. */
+  @media (min-width: 1200px) {
+    .lease-ledger-page { max-width: 1290px; }
+  }
+  @media (min-width: 1400px) {
+    .lease-ledger-page { max-width: 1470px; }
+  }
+
   /* ================== GLOBAL KNOBS ================== */
   :root {
     /* font sizes desktop defaults */
@@ -922,10 +946,14 @@
     .compact-table td:nth-child(3) { width: 14%; min-width: 0; }
 
     .compact-table th:nth-child(4),
-    .compact-table td:nth-child(4) { width: 31%; }
+    .compact-table td:nth-child(4) { width: 29%; }
 
     .compact-table th:nth-child(5),
-    .compact-table td:nth-child(5),
+    .compact-table td:nth-child(5) {
+      width: 17%;
+      white-space: nowrap;
+    }
+
     .compact-table th:nth-child(6),
     .compact-table td:nth-child(6) { width: 15%; }
 
@@ -1047,6 +1075,19 @@
       link.classList.remove('disabled');
       window.alert(error.message || 'The entry could not be deleted.');
     }
+  });
+
+  document.addEventListener('submit', function (event) {
+    const form = event.target.closest('.js-security-transfer-reverse');
+    if (!form) return;
+    const reason = window.prompt(
+      'Reverse this complete security deposit ledger transfer? Enter the reversal reason:'
+    );
+    if (!reason || !reason.trim()) {
+      event.preventDefault();
+      return;
+    }
+    form.querySelector('input[name="reason"]').value = reason.trim();
   });
 
   (function ensureLibs(cb) {

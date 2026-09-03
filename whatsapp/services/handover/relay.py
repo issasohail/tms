@@ -13,6 +13,8 @@ def relay_staff_reply(handover, staff_user, text, source_message=None, media=Non
     config = GlobalSettings.get_solo()
     if not config.whatsapp_allow_staff_reply_relay:
         raise PermissionError("Staff reply relay is disabled.")
+    if media and not config.whatsapp_allow_staff_media_relay:
+        raise PermissionError("Staff media relay is disabled.")
     if not staff_can_access_handover(staff_user, handover):
         raise PermissionError("You are not authorized for this handover.")
     if handover.assigned_staff_id and handover.assigned_staff_id != staff_user.pk and not staff_user.is_superuser:
@@ -20,12 +22,25 @@ def relay_staff_reply(handover, staff_user, text, source_message=None, media=Non
     service = service or WhatsAppService(created_by=staff_user)
     prefix = (config.whatsapp_staff_reply_prefix or "Management:").strip()
     relayed_text = f"{prefix}\n{text.strip()}" if text.strip() else prefix
-    result = service.send_text(handover.tenant_phone, relayed_text, tenant=handover.tenant, lease=handover.lease)
-    relay_log = _sent_log(result)
     if media:
-        if not config.whatsapp_allow_staff_media_relay:
-            raise PermissionError("Staff media relay is disabled.")
-        _relay_media(service, handover.tenant_phone, media, caption=relayed_text, tenant=handover.tenant, lease=handover.lease)
+        result = None
+        if not getattr(media, "processing", False):
+            result = _relay_media(
+                service,
+                handover.tenant_phone,
+                media,
+                caption=relayed_text,
+                tenant=handover.tenant,
+                lease=handover.lease,
+            )
+    else:
+        result = service.send_text(
+            handover.tenant_phone,
+            relayed_text,
+            tenant=handover.tenant,
+            lease=handover.lease,
+        )
+    relay_log = _sent_log(result)
     message = WhatsAppHandoverMessage.objects.create(
         handover=handover,
         source_message=source_message,
@@ -42,6 +57,29 @@ def relay_staff_reply(handover, staff_user, text, source_message=None, media=Non
     handover.last_staff_message_at = timezone.now()
     handover.save(update_fields=["assigned_staff", "status", "last_staff_message_at", "updated_at"])
     return message
+
+
+def relay_downloaded_staff_media(handover_message, media, service=None):
+    """Relay a staff audio/video reply after its deferred download completes."""
+    handover = handover_message.handover
+    staff_user = handover_message.staff_user
+    config = GlobalSettings.get_solo()
+    if not config.whatsapp_allow_staff_reply_relay or not config.whatsapp_allow_staff_media_relay:
+        raise PermissionError("Staff media relay is disabled.")
+    if not staff_user or not staff_can_access_handover(staff_user, handover):
+        raise PermissionError("You are not authorized for this handover.")
+    service = service or WhatsAppService(created_by=staff_user)
+    result = _relay_media(
+        service,
+        handover.tenant_phone,
+        media,
+        caption=handover_message.relayed_text,
+        tenant=handover.tenant,
+        lease=handover.lease,
+    )
+    handover_message.relayed_message = _sent_log(result)
+    handover_message.save(update_fields=["relayed_message"])
+    return result
 
 
 def relay_tenant_media_to_staff(handover, media, service=None):
@@ -62,6 +100,12 @@ def relay_tenant_media_to_staff(handover, media, service=None):
         f"Tenant: {handover.tenant.get_full_name() if handover.tenant else 'Tenant'}\n"
         f"Phone: {format_phone(handover.tenant_phone)}{location}"
     )
+    mime = mimetypes.guess_type(media.original_filename or media.file.name)[0] or "application/octet-stream"
+    if mime.startswith("audio/"):
+        # Audio messages cannot carry a caption. The consolidated handover
+        # notification already identifies the tenant, so do not send a second
+        # identification text before the playable audio.
+        caption = ""
     sent = []
     seen = set()
     for user in recipients:

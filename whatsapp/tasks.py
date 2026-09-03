@@ -103,21 +103,33 @@ def download_pending_media(pending_media_id):
         # Voice/video media can be attached to a tenant handover before the
         # deferred WhatsApp CDN download finishes. Once bytes are available,
         # relay the original media to the appropriate staff automatically.
-        relay_marker = "Relayed original media to handover staff."
-        if relay_marker not in (pending.ai_notes or ""):
+        tenant_relay_marker = "Relayed original media to handover staff."
+        staff_relay_marker = "Relayed downloaded staff reply to tenant."
+        if (
+            tenant_relay_marker not in (pending.ai_notes or "")
+            and staff_relay_marker not in (pending.ai_notes or "")
+        ):
             try:
                 from whatsapp.models import WhatsAppHandoverMessage
-                from whatsapp.services.handover.relay import relay_tenant_media_to_staff
+                from whatsapp.services.handover.relay import (
+                    relay_downloaded_staff_media,
+                    relay_tenant_media_to_staff,
+                )
 
                 handover_message = (
                     WhatsAppHandoverMessage.objects
                     .select_related("handover", "handover__tenant", "handover__property", "handover__unit", "handover__assigned_staff")
-                    .filter(media=pending, sender_type=WhatsAppHandoverMessage.SENDER_TENANT)
+                    .filter(media=pending)
                     .order_by("-created_at")
                     .first()
                 )
                 if handover_message:
-                    sent = relay_tenant_media_to_staff(handover_message.handover, pending)
+                    if handover_message.sender_type == WhatsAppHandoverMessage.SENDER_STAFF:
+                        sent = relay_downloaded_staff_media(handover_message, pending)
+                        relay_marker = staff_relay_marker
+                    else:
+                        sent = relay_tenant_media_to_staff(handover_message.handover, pending)
+                        relay_marker = tenant_relay_marker
                     if sent:
                         pending.ai_notes = f"{pending.ai_notes} {relay_marker}".strip()
                         pending.save(update_fields=["ai_notes", "updated_at"])

@@ -2,6 +2,7 @@
      Goal: Presentable dashboard that follows meter_list design: compact cards, tidy headings,
            no duplicate titles, sticky table header, aligned buttons -->
 {% extends "base.html" %}
+{% block main_container_class %}container energy-dashboard-page{% endblock %}
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
 
@@ -566,7 +567,7 @@ function shortLabel(raw, maxLen) {
       responsive: true,
       maintainAspectRatio: !SMALL_360,
       aspectRatio: SMALL_360 ? undefined : 3,
-      layout: { padding: 0 },
+      layout: { padding: { top: 18, right: 4, bottom: 0, left: 0 } },
       plugins: {
         legend: { display: perMeterMode && barSets.length > 1 },
         datalabels: {
@@ -579,8 +580,10 @@ function shortLabel(raw, maxLen) {
               anchor: 'end',
               align: SMALL_360 ? 'right' : 'end',
               offset: SMALL_360 ? 2 : 6,
-              font: { size: SMALL_360 ? tinyPx : 11 },
-              color: '#111'
+              clamp: true,
+              clip: false,
+              font: { size: SMALL_360 ? tinyPx : 12, weight: '700' },
+              color: '#000'
             },
             meter: {
               display: !SMALL_360,
@@ -590,12 +593,14 @@ function shortLabel(raw, maxLen) {
                 if (!ds.meterNumber) return '';
                 return ds.unitNumber ? ds.unitNumber + '\n' + ds.meterNumber : ds.meterNumber;
               },
-              anchor: 'center',
-              align: 'center',
+              anchor: 'start',
+              align: 'end',
               rotation: -90,
               color: '#000',
               clamp: true,
-              offset: 120
+              clip: false,
+              offset: 4,
+              font: { size: 12, weight: '700' }
             }
           }
         },
@@ -786,6 +791,14 @@ function shortLabel(raw, maxLen) {
 
 
 <style>
+  /* Bootstrap's desktop container plus the requested 150px working width. */
+  @media (min-width: 1200px) {
+    .energy-dashboard-page { max-width: 1290px; }
+  }
+  @media (min-width: 1400px) {
+    .energy-dashboard-page { max-width: 1470px; }
+  }
+
   /* ===============================
      WIDTH KNOBS (edit these only)
      =============================== */

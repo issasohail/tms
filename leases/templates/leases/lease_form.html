@@ -953,7 +953,7 @@
       {% if form.instance.pk %}
         <form method="post" id="lease-form" action="{% url 'leases:lease_update' form.instance.pk %}" enctype="multipart/form-data" novalidate>
       {% else %}
-        <form method="post" id="lease-form" action="{% url 'leases:lease_create' %}" enctype="multipart/form-data" novalidate>
+        <form method="post" id="lease-form" action="{% url 'leases:lease_create' %}" enctype="multipart/form-data" novalidate{% if prevent_move_in_restore %} autocomplete="off"{% endif %}>
       {% endif %}
         {% csrf_token %}
 
@@ -1049,8 +1049,13 @@
                 <div class="lf-fg lf-fg-3 border-bottom" style="background:#f8fafc;">
                   <div class="lf-f">
                     <label class="form-label">{{ form.move_in_date.label }}</label>
-                    {{ form.move_in_date }}
+                    {% if prevent_move_in_restore %}
+                      {{ form.move_in_date|attr:"autocomplete:off"|attr:"data-fresh-lease-create:1" }}
+                    {% else %}
+                      {{ form.move_in_date }}
+                    {% endif %}
                     <div class="form-text">{{ form.move_in_date.help_text }}</div>
+                    {% for error in form.move_in_date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                   </div>
                   {% if not form.instance.pk %}
                   <div class="lf-f">
@@ -1089,8 +1094,9 @@
                 </div>
                 <div class="lf-fg lf-fg-3 lf-period-grid">
                   <div class="lf-f">
-                    <label class="form-label">Start Date</label>
+                    <label class="form-label">Regular Billing Start Date</label>
                     {{ form.start_date|add_class:"form-control form-control-sm datepicker"|attr:"id:id_start_date" }}
+                    <div class="form-text">First date for regular monthly billing; it can differ from physical move-in.</div>
                   </div>
                   <div class="lf-f">
                     <label class="form-label">End Date</label>
@@ -1785,6 +1791,29 @@
 </div>{# /lf-shell #}
 
 {% include "includes/billing_preview_modal.html" %}
+
+{% if prevent_move_in_restore %}
+<script>
+(function () {
+  function clearFreshMoveInRestore() {
+    var input = document.querySelector('#id_move_in_date[data-fresh-lease-create="1"]');
+    if (!input) return;
+    input.value = '';
+    input.defaultValue = '';
+    var confirmField = document.getElementById('confirm_billing_field');
+    if (confirmField) confirmField.value = '0';
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', clearFreshMoveInRestore, { once: true });
+  } else {
+    clearFreshMoveInRestore();
+  }
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted) clearFreshMoveInRestore();
+  });
+})();
+</script>
+{% endif %}
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {

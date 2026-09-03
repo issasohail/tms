@@ -46,7 +46,10 @@ class LeaseForm(forms.ModelForm):
             format="%Y-%m-%d",
             attrs={"type": "date", "class": "form-control form-control-sm"},
         ),
-        help_text="Physical possession date; it may be before regular billing starts.",
+        help_text=(
+            "Physical possession date. This is separate from the Regular "
+            "Billing Start Date and changing one does not automatically change the other."
+        ),
     )
     align_billing_to_month_start = forms.BooleanField(
         required=False,
@@ -169,6 +172,10 @@ class LeaseForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         self.fields["electric_unit_rate"].label = "Lease rate override"
+        self.fields["move_in_date"].required = not self.instance.pk
+        if not self.instance.pk and not self.is_bound:
+            # A fresh lease must start genuinely empty; the user must choose this date.
+            self.fields["move_in_date"].initial = None
 
         self.fields['end_date'].required = False
         if not self.instance.pk and not self.is_bound:

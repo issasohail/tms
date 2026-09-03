@@ -1006,6 +1006,47 @@ class SecurityRefundLinkTests(TestCase):
         self.assertIsNotNone(transfer.reversed_at)
         self.assertEqual(transfer.reversal_payment.detail.lease_amount, Decimal("-15300.00"))
 
+    def test_transferred_security_row_uses_reverse_and_rejects_separate_delete(self):
+        from invoices.models import SecurityDepositLedgerTransfer
+
+        self.lease.status = "ended"
+        self.lease.end_date = date.today()
+        self.lease.save(update_fields=["status", "end_date"])
+        self.client.post(
+            reverse("leases:lease_transfer_full_security", args=[self.lease.pk]),
+            {"transaction_date": date.today().isoformat(), "reason": "Tenant settlement"},
+        )
+        transfer = SecurityDepositLedgerTransfer.objects.get(lease=self.lease)
+        movement = transfer.security_movement
+
+        ledger = self.client.get(
+            reverse("leases:lease_ledger_by_pk", args=[self.lease.pk])
+        )
+        reverse_url = reverse(
+            "leases:lease_reverse_security_transfer",
+            args=[self.lease.pk, transfer.pk],
+        )
+        delete_url = reverse(
+            "leases:lease_security_delete", args=[self.lease.pk, movement.pk]
+        )
+        self.assertContains(ledger, f'action="{reverse_url}"')
+        self.assertContains(ledger, "js-security-transfer-reverse")
+        self.assertNotContains(ledger, f'href="{delete_url}"')
+
+        response = self.client.post(
+            delete_url,
+            {"confirm_delete": "yes"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(response.json()["ok"])
+        self.assertIn("Use Reverse", response.json()["error"])
+        self.assertTrue(
+            SecurityDepositTransaction.objects.filter(pk=movement.pk).exists()
+        )
+        transfer.refresh_from_db()
+        self.assertIsNone(transfer.reversed_at)
+
     def test_ended_lease_can_transfer_legacy_pending_refund_to_ledger(self):
         self.lease.status = "ended"
         self.lease.end_date = date.today()

@@ -34,7 +34,7 @@ class InvoiceDeleteReturnFilterTests(TestCase):
             last_name="Filter",
             cnic="61101-6666666-6",
         )
-        lease = Lease.objects.create(
+        self.lease = Lease.objects.create(
             tenant=tenant,
             unit=unit,
             start_date=date(2026, 1, 1),
@@ -43,7 +43,7 @@ class InvoiceDeleteReturnFilterTests(TestCase):
             status="active",
         )
         self.invoice = Invoice.objects.create(
-            lease=lease,
+            lease=self.lease,
             issue_date=date(2026, 8, 1),
             due_date=date(2026, 8, 5),
             amount=Decimal("10000.00"),
@@ -72,3 +72,22 @@ class InvoiceDeleteReturnFilterTests(TestCase):
             reverse("invoices:invoice_list"),
             fetch_redirect_response=False,
         )
+
+    def test_lease_ledger_shows_invoice_delete_and_returns_after_delete(self):
+        ledger_url = reverse("leases:lease_ledger_by_pk", args=[self.lease.pk])
+        ledger = self.client.get(ledger_url)
+
+        self.assertEqual(ledger.status_code, 200)
+        self.assertContains(ledger, 'title="Delete invoice"')
+        self.assertContains(
+            ledger,
+            reverse("invoices:invoice_delete", args=[self.invoice.pk]),
+        )
+
+        delete_url = reverse("invoices:invoice_delete", args=[self.invoice.pk])
+        response = self.client.post(
+            delete_url + "?" + urlencode({"return_to": ledger_url})
+        )
+
+        self.assertRedirects(response, ledger_url, fetch_redirect_response=False)
+        self.assertFalse(Invoice.objects.filter(pk=self.invoice.pk).exists())

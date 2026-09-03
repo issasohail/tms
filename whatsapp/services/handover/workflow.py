@@ -21,6 +21,7 @@ from core.utils.identity import format_phone
 
 
 REFERENCE_RE = re.compile(r"\bWH-\d{4}-[A-Z0-9]{8}\b", re.I)
+REPLY_SHORTCUT_RE = re.compile(r"^\s*reply\s*:\s*(.*)$", re.I | re.S)
 
 
 def active_handover(conversation):
@@ -42,18 +43,27 @@ def handle_active_tenant_message(message_log, conversation, text, media=None, se
 
 
 def handle_staff_handover_media(message_log, conversation, text, staff_user, service=None):
-    if conversation.pending_state != "awaiting_staff_reply":
+    shortcut_text = _reply_shortcut_text(text)
+    if shortcut_text is not None:
+        handover = _latest_notified_handover(conversation, staff_user)
+        if not handover:
+            return "I could not identify the tenant. Use REPLY followed by the handover reference first."
+    elif conversation.pending_state == "awaiting_staff_reply":
+        handover = WhatsAppHandover.objects.filter(pk=conversation.context.get("handover_id")).first()
+    else:
         return None
-    handover = WhatsAppHandover.objects.filter(pk=conversation.context.get("handover_id")).first()
     if not handover:
         _clear_state(conversation)
         return "That handover is no longer available."
     media = create_pending_media(message_log, conversation, handover.lease)
     try:
-        relay_staff_reply(handover, staff_user, text, source_message=message_log, media=media, service=service)
+        reply_text = shortcut_text if shortcut_text is not None else text
+        relay_staff_reply(handover, staff_user, reply_text, source_message=message_log, media=media, service=service)
     except (PermissionError, ValueError) as exc:
         return str(exc)
     _clear_state(conversation)
+    if getattr(media, "processing", False):
+        return f"Your media reply for {tenant_name(handover)} is downloading and will be sent automatically."
     return f"Your media reply was sent to {tenant_name(handover)}."
 
 
@@ -65,7 +75,9 @@ def handle_staff_handover_message(message_log, conversation, text, staff_user, s
             _clear_state(conversation)
             return "That handover is no longer available."
         if state == "awaiting_staff_reply":
-            relay_staff_reply(handover, staff_user, text, source_message=message_log, service=service)
+            shortcut_text = _reply_shortcut_text(text)
+            reply_text = shortcut_text if shortcut_text is not None else text
+            relay_staff_reply(handover, staff_user, reply_text, source_message=message_log, service=service)
             _clear_state(conversation)
             return f"Your reply was sent to {tenant_name(handover)}."
         add_internal_note(handover, staff_user, text)
@@ -73,6 +85,30 @@ def handle_staff_handover_message(message_log, conversation, text, staff_user, s
         return f"Internal note added to {handover.reference}."
 
     lowered = (text or "").strip().lower()
+    shortcut_text = _reply_shortcut_text(text)
+    if shortcut_text is not None:
+        handover = _latest_notified_handover(conversation, staff_user)
+        if not handover:
+            return "I could not identify the tenant. Use REPLY followed by the handover reference."
+        if shortcut_text:
+            try:
+                relay_staff_reply(
+                    handover,
+                    staff_user,
+                    shortcut_text,
+                    source_message=message_log,
+                    service=service,
+                )
+            except (PermissionError, ValueError) as exc:
+                return str(exc)
+            return f"Your reply was sent to {tenant_name(handover)}."
+        conversation.pending_state = "awaiting_staff_reply"
+        conversation.context["handover_id"] = handover.pk
+        conversation.save(update_fields=["pending_state", "context", "updated_at"])
+        return (
+            f"Send your message or media for {tenant_name(handover)}. "
+            "It will be delivered from the official TMS WhatsApp number."
+        )
     if lowered in {"handovers", "handover", "staff inbox", "inbox", "pending handovers"}:
         return staff_inbox_text(staff_user)
 
@@ -174,13 +210,41 @@ def _reference(text):
     return match.group(0).upper() if match else ""
 
 
+def _reply_shortcut_text(text):
+    match = REPLY_SHORTCUT_RE.match(text or "")
+    return match.group(1).strip() if match else None
+
+
+def _latest_notified_handover(conversation, staff_user):
+    handover_id = (conversation.context or {}).get("latest_notified_handover_id")
+    if handover_id:
+        handover = WhatsAppHandover.objects.select_related(
+            "tenant", "lease", "property", "unit", "assigned_staff"
+        ).filter(pk=handover_id, status__in=WhatsAppHandover.ACTIVE_STATUSES).first()
+        if handover and staff_can_access_handover(staff_user, handover):
+            return handover
+
+    accessible = []
+    for handover in WhatsAppHandover.objects.select_related(
+        "tenant", "lease", "property", "unit", "assigned_staff"
+    ).filter(status__in=WhatsAppHandover.ACTIVE_STATUSES).order_by("-updated_at")[:20]:
+        if staff_can_access_handover(staff_user, handover):
+            accessible.append(handover)
+            if len(accessible) > 1:
+                return None
+    return accessible[0] if accessible else None
+
+
 def _command_and_remainder(text, reference):
     raw = (text or "").strip()
     match = re.search(re.escape(reference), raw, flags=re.IGNORECASE)
     if not match:
         return raw.lower() or "details", ""
     command = raw[:match.start()].strip().lower() or "details"
-    return command, raw[match.end():].strip()
+    remainder = raw[match.end():].strip()
+    if remainder.startswith(":"):
+        remainder = remainder[1:].strip()
+    return command, remainder
 
 
 def _clear_state(conversation):

@@ -668,7 +668,13 @@ class RegistrationOnboardingTests(TestCase):
         unit.internet_charges = 1800
         unit.security_deposit_amount = 50000
         unit.save(update_fields=["internet_charges", "security_deposit_amount"])
-        data.update({"property": prop.pk, "unit": unit.pk})
+        data.update(
+            {
+                "property": prop.pk,
+                "unit": unit.pk,
+                "move_in_date": timezone.localdate().isoformat(),
+            }
+        )
         merged = self.client.post(url, data)
         submission.refresh_from_db()
         self.assertRedirects(
@@ -1103,6 +1109,7 @@ class RegistrationOnboardingTests(TestCase):
             "action": "approve_registration",
             "property": prop.pk,
             "unit": unit.pk,
+            "move_in_date": timezone.localdate().isoformat(),
         }
 
         for row in _registration_submission_comparison(submission):
@@ -1124,7 +1131,7 @@ class RegistrationOnboardingTests(TestCase):
             blocked, f'value="{unit.pk}" data-property="{prop.pk}" selected'
         )
 
-        data["lease_start_date"] = suggested_start.isoformat()
+        data["move_in_date"] = suggested_start.isoformat()
         retried = self.client.post(url, data)
 
         submission.refresh_from_db()

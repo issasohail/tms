@@ -1,4 +1,4 @@
-from whatsapp.models import WhatsAppHandover, WhatsAppStaffActionLog
+from whatsapp.models import WhatsAppConversation, WhatsAppHandover, WhatsAppStaffActionLog
 from whatsapp.services.handover.routing import eligible_staff
 from whatsapp.services.whatsapp import WhatsAppService
 from core.utils.identity import format_phone
@@ -16,6 +16,7 @@ def notify_new_handover(handover, service=None):
         if not number:
             continue
         service.send_text(number, staff_notification_text(handover), tenant=handover.tenant, lease=handover.lease)
+        remember_latest_handover(user, number, handover)
         sent.append(user.pk)
     if sent and handover.status == WhatsAppHandover.STATUS_NEW:
         handover.status = WhatsAppHandover.STATUS_NOTIFIED
@@ -41,23 +42,43 @@ def notify_tenant_message(handover, text, service=None):
         if number:
             service.send_text(
                 number,
-                f"Update for {handover.reference}\nTenant: {tenant_name(handover)}\nPhone: {format_phone(handover.tenant_phone)}\n\n{text[:1200]}\n\nReply {handover.reference} to respond.",
+                staff_notification_text(handover, message=text, heading="Received another message from"),
                 tenant=handover.tenant,
                 lease=handover.lease,
             )
+            remember_latest_handover(user, number, handover)
 
 
-def staff_notification_text(handover):
-    location = ""
-    if handover.property_id:
-        location = f"\nProperty: {handover.property}\nUnit: {handover.unit or '-'}"
+def staff_notification_text(handover, message=None, heading="Received message from"):
+    property_unit = f"{handover.property or '-'} / {handover.unit or '-'}"
+    tenant_message = (message if message is not None else handover.tenant_message or "").strip()
+    if not tenant_message:
+        tenant_message = "Media attached below."
     return (
-        f"New Tenant Handover\n\nReference: {handover.reference}\nPriority: {handover.get_priority_display()}\n\n"
-        f"Tenant: {tenant_name(handover)}\nPhone: {format_phone(handover.tenant_phone)}{location}\n\n"
-        f"Reason:\n{handover.reason}\n\nTenant message:\n{handover.tenant_message}\n\n"
-        f"AI summary:\n{handover.ai_summary or '-'}\n\n"
-        f"Actions:\nACCEPT {handover.reference}\nREPLY {handover.reference}\nCALL {handover.reference}\nDETAILS {handover.reference}\nCLOSE {handover.reference}"
+        f"{heading}\n\n"
+        f"Tenant: {tenant_name(handover)}\n"
+        f"Phone: {format_phone(handover.tenant_phone)}\n"
+        f"Property / Unit: {property_unit}\n"
+        f"Reference: {handover.reference}\n\n"
+        f"Message:\n{tenant_message[:1200]}\n\n"
+        "To respond, type:\nReply: your message\n\n"
+        f"If replying to an older message, use:\nReply {handover.reference}: your message"
     )
+
+
+def remember_latest_handover(user, phone_number, handover):
+    normalized = WhatsAppConversation._meta.get_field("phone_number").to_python(phone_number)
+    if not normalized:
+        return
+    conversation, _created = WhatsAppConversation.objects.get_or_create(phone_number=normalized)
+    context = dict(conversation.context or {})
+    context["latest_notified_handover_id"] = handover.pk
+    conversation.context = context
+    update_fields = ["context", "updated_at"]
+    if not conversation.staff_user_id:
+        conversation.staff_user = user
+        update_fields.append("staff_user")
+    conversation.save(update_fields=update_fields)
 
 
 def tenant_name(handover):

@@ -201,6 +201,13 @@ class MoveInProrationReconciliationTests(TestCase):
         self.assertEqual(result["action"], "cancelled")
         self.assertEqual(invoice.status, "cancelled")
 
+    def test_unchecked_proration_creates_no_invoice(self):
+        result = self.reconcile(enabled=False, mode="exact")
+
+        self.assertEqual(result["action"], "none")
+        self.assertFalse(result["applicable"])
+        self.assertFalse(self.marker_invoices().exists())
+
     def test_category_setup_does_not_duplicate_aliases(self):
         self.reconcile()
         self.reconcile()

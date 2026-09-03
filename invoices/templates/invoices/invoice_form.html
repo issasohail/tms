@@ -54,7 +54,7 @@
           </div>
           <div class="col-6 col-md-4">
             <label class="form-label mb-0 small"><strong>Tenant</strong></label>
-            <select id="filter-tenant" class="form-select form-select-sm"></select>
+            <select id="filter-tenant" class="form-select form-select-sm invoice-tenant-select2"></select>
 
 
           </div>
@@ -239,6 +239,13 @@
     #invoice-items .item-category-cell .btn { padding: .18rem .35rem; }
   }
   #id_lease { display: none !important; }
+  #filter-tenant + .select2-container { width: 100% !important; }
+  .invoice-tight .select2-container--bootstrap-5 .select2-selection--single {
+    min-height: 31px;
+    padding-top: .25rem;
+    padding-bottom: .25rem;
+    font-size: .9rem;
+  }
   
 </style>
 {% endblock %}
@@ -270,6 +277,29 @@
   const $tenant     = document.getElementById('filter-tenant');   // <-- now a SELECT
   const $lease      = document.getElementById('filter-lease');
   const $leaseHidden= document.getElementById('id_lease');  // hidden Django field
+
+  // Tenant is searchable on both invoice create and edit. Always focus the
+  // Select2 search field as soon as the dropdown opens so staff can type.
+  const $tenantSelect2 = window.jQuery && window.jQuery.fn.select2
+    ? window.jQuery($tenant)
+    : null;
+  if ($tenantSelect2) {
+    $tenantSelect2.select2({
+      theme: 'bootstrap-5',
+      placeholder: 'Search tenant...',
+      allowClear: true,
+      width: '100%',
+      minimumResultsForSearch: 0
+    });
+    $tenantSelect2.on('select2:open.invoiceTenant', function () {
+      window.setTimeout(function () {
+        const searchInput = document.querySelector(
+          '.select2-container--open .select2-search__field'
+        );
+        if (searchInput) searchInput.focus();
+      }, 0);
+    });
+  }
 
   // --- Helpers ---
   const focusFirstCategory = () => {
@@ -358,6 +388,9 @@
       arr.map(function(r){ return '<option value="'+r.id+'">'+r.label+'</option>'; }).join('');
 
     sel.disabled = arr.length === 0;
+    if ($tenantSelect2 && sel === $tenant) {
+      $tenantSelect2.trigger('change.select2');
+    }
   }
 
 

@@ -22,6 +22,7 @@ from django.utils import timezone
 
 from core.backup_utils import (
     BackupItem,
+    _copy_utf8_sanitized_sql,
     _is_mysql_concurrent_ddl_error,
     _mysql_client_environment,
     _mysqldump_compatibility_args,
@@ -301,6 +302,14 @@ class PendingApprovalLeaseScopeTests(TestCase):
 
 
 class BackupMySQLCommandTests(SimpleTestCase):
+    def test_restore_sql_replaces_only_malformed_utf8_bytes(self):
+        source = BytesIO(b"SELECT '\xffFlat=1, \xe2\x82\xac';\n")
+        target = BytesIO()
+
+        _copy_utf8_sanitized_sql(source, target, chunk_size=2)
+
+        self.assertEqual(target.getvalue(), "SELECT '\ufffdFlat=1, \u20ac';\n".encode("utf-8"))
+
     @patch("core.backup_utils.connections.close_all")
     @patch("core.backup_utils._run_mysql_command")
     @patch("core.backup_utils._resolve_mysql_executable", return_value="mysql")

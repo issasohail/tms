@@ -1,3 +1,4 @@
+import codecs
 import json
 import gzip
 import os
@@ -410,6 +411,17 @@ def _run_mysql_dump_to_gzip(cmd, target, *, env=None):
             raise RuntimeError(f"Database backup failed: {detail}")
 
 
+def _copy_utf8_sanitized_sql(source, target, chunk_size=1024 * 1024):
+    """Copy SQL bytes while replacing only malformed UTF-8 byte sequences."""
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    while True:
+        chunk = source.read(chunk_size)
+        if not chunk:
+            break
+        target.write(decoder.decode(chunk).encode("utf-8"))
+    target.write(decoder.decode(b"", final=True).encode("utf-8"))
+
+
 def _is_mysql_concurrent_ddl_error(exc):
     detail = str(exc).lower()
     return "concurrent ddl" in detail or "(1684)" in detail or " 1684" in detail
@@ -581,14 +593,20 @@ def restore_database(config, backup_id):
         if path.suffix.lower() == ".gz"
         else path.open("rb")
     )
-    # Release this request's database connection before the external client
-    # starts dropping and recreating tables. Django will reconnect on demand.
-    connections.close_all()
-    with input_context as input_sql:
+    # Validate/decompress the complete dump before changing the database. Some
+    # third-party dump tools can emit isolated non-UTF-8 bytes inside text
+    # columns; MySQL rejects the entire INSERT unless those bytes are replaced.
+    with input_context as input_sql, tempfile.TemporaryFile(mode="w+b") as sanitized_sql:
+        _copy_utf8_sanitized_sql(input_sql, sanitized_sql)
+        sanitized_sql.seek(0)
+
+        # Release this request's database connection before the external client
+        # starts dropping and recreating tables. Django will reconnect on demand.
+        connections.close_all()
         _run_mysql_command(
             cmd,
             operation="Database restore",
-            stdin=input_sql,
+            stdin=sanitized_sql,
             env=_mysql_client_environment(db),
             text=False,
         )

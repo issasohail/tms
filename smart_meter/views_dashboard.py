@@ -1449,14 +1449,27 @@ def _tenant_display(tenant):
     return full_name, phone
 
 
-def _billing_month_units_and_leases(start, end):
+def _billing_month_units_and_leases(
+    start, end, *, invoiced_lease_ids=None, active_only=False
+):
     """
-    Return one row source per unit/tenant record that overlaps the selected month.
-    A unit with two leases in the month gets two records; a unit with no lease
-    gets one Vacant record.
+    Return the tenant rows that belong in the selected billing month.
+
+    A lease qualifies when it is active and overlaps the selected month or the
+    immediately preceding month. A lease with a non-zero invoice in the selected
+    month also qualifies regardless of its current status. Historical balances
+    and stale open occupancy records must not create tenant rows by themselves.
     """
+    invoiced_lease_ids = set(invoiced_lease_ids or [])
     month_overlap = Q(start_date__lte=end) & (Q(end_date__isnull=True) | Q(end_date__gte=start))
     occupancy_overlap = Q(move_in_date__lte=end) & (Q(move_out_date__isnull=True) | Q(move_out_date__gte=start))
+    previous_month_start = (start - timedelta(days=1)).replace(day=1)
+    activity_overlap = Q(start_date__lte=end) & (
+        Q(end_date__isnull=True) | Q(end_date__gte=previous_month_start)
+    )
+    occupancy_activity_overlap = Q(move_in_date__lte=end) & (
+        Q(move_out_date__isnull=True) | Q(move_out_date__gte=previous_month_start)
+    )
 
     unit_ids = set(
         MeterInstallation.objects.filter(
@@ -1470,33 +1483,68 @@ def _billing_month_units_and_leases(start, end):
         Lease.objects.filter(month_overlap).values_list("unit_id", flat=True)
     )
 
-    occupancies = list(
-        LeaseUnitOccupancy.objects.filter(occupancy_overlap)
-        .select_related("lease", "lease__tenant", "unit", "unit__property")
-        .order_by("unit__property__property_name", "unit__unit_number", "move_in_date", "id")
-    )
-    unit_ids.update(o.unit_id for o in occupancies)
-
-    units = list(
-        Unit.objects.filter(id__in=unit_ids)
-        .select_related("property")
-        .order_by("property__property_name", "unit_number", "id")
+    # Preserve the existing report scope so a unit whose only overlapping lease
+    # is no longer eligible still appears once as Vacant.
+    unit_ids.update(
+        LeaseUnitOccupancy.objects.filter(occupancy_overlap).values_list(
+            "unit_id", flat=True
+        )
     )
 
     rows_by_unit = defaultdict(list)
+    added_rows = set()
+
+    def add_row(unit, lease):
+        key = (unit.id, lease.id)
+        if key in added_rows:
+            return
+        rows_by_unit[unit.id].append({"unit": unit, "lease": lease})
+        added_rows.add(key)
+        unit_ids.add(unit.id)
+
+    occupancies = list(
+        LeaseUnitOccupancy.objects.filter(
+            occupancy_activity_overlap,
+            lease__status="active",
+        ).filter(
+            Q(lease__end_date__isnull=True)
+            | Q(lease__end_date__gte=previous_month_start),
+            lease__start_date__lte=end,
+        )
+        .select_related("lease", "lease__tenant", "unit", "unit__property")
+        .order_by("unit__property__property_name", "unit__unit_number", "move_in_date", "id")
+    )
     occupancy_lease_ids = set()
     for occ in occupancies:
-        rows_by_unit[occ.unit_id].append({"unit": occ.unit, "lease": occ.lease})
+        add_row(occ.unit, occ.lease)
         occupancy_lease_ids.add(occ.lease_id)
 
     leases = (
-        Lease.objects.filter(month_overlap)
+        Lease.objects.filter(activity_overlap, status="active")
         .exclude(id__in=occupancy_lease_ids)
         .select_related("tenant", "unit", "unit__property")
         .order_by("unit__property__property_name", "unit__unit_number", "start_date", "id")
     )
     for lease in leases:
-        rows_by_unit[lease.unit_id].append({"unit": lease.unit, "lease": lease})
+        add_row(lease.unit, lease)
+
+    if invoiced_lease_ids:
+        invoiced_leases = (
+            Lease.objects.filter(id__in=invoiced_lease_ids)
+            .select_related("tenant", "unit", "unit__property")
+            .order_by(
+                "unit__property__property_name", "unit__unit_number", "start_date", "id"
+            )
+        )
+        for lease in invoiced_leases:
+            add_row(lease.unit, lease)
+
+    visible_unit_ids = rows_by_unit.keys() if active_only else unit_ids
+    units = list(
+        Unit.objects.filter(id__in=visible_unit_ids)
+        .select_related("property")
+        .order_by("property__property_name", "unit_number", "id")
+    )
 
     row_sources = []
     for unit in units:
@@ -1534,7 +1582,7 @@ def build_billing_summary_context(request):
     )
     invoices = list(
         inv_qs.only(
-            "id", "lease_id", "issue_date",
+            "id", "lease_id", "issue_date", "amount",
             "lease__id", "lease__tenant__id",
             "lease__unit__id", "lease__unit__unit_number",
             "lease__unit__property__id", "lease__unit__property__property_name",
@@ -1555,10 +1603,22 @@ def build_billing_summary_context(request):
     for inv in invoices:
         inv_by_lease[inv.lease_id].append(inv)
 
-    # Rows are based on the selected billing month, not the current lease status.
-    # This keeps historical tenant names correct and shows Vacant when no lease
-    # overlaps the month.
-    row_sources = _billing_month_units_and_leases(start, end)
+    invoiced_lease_ids = {
+        inv.lease_id
+        for inv in invoices
+        if Decimal(inv.amount or 0) > ZERO
+        or any(Decimal(item.amount or 0) != ZERO for item in items_by_inv.get(inv.id, []))
+    }
+
+    # A monthly invoice keeps its tenant visible regardless of lease status.
+    # Otherwise only active leases in the selected/prior-month window qualify;
+    # stale historical balances fall back to a single Vacant unit row.
+    row_sources = _billing_month_units_and_leases(
+        start,
+        end,
+        invoiced_lease_ids=invoiced_lease_ids,
+        active_only=active_only,
+    )
     unit_display_labels = display_labels_for_units(
         source["unit"] for source in row_sources
     )
@@ -1704,6 +1764,7 @@ def build_billing_summary_context(request):
             "unit_display_label": unit_display_labels.get(unit.id, unit.unit_number),
             "tenant_name": full_name,
             "tenant_phone": phone,
+            "ledger_url": reverse("leases:lease_ledger_by_pk", args=[lease.pk]) if lease else "",
             "cells": cells,
         })
 
@@ -1855,8 +1916,6 @@ def billing_summary_items(request):
                 return JsonResponse({"error": "Missing unit_id for scope=unit."}, status=400)
             lease_qs = Lease.objects.filter(
                 unit_id=unit_id).select_related("unit__property")
-            if active_only:
-                lease_qs = lease_qs.filter(status="active")
             lease_ids = list(lease_qs.values_list("id", flat=True))
             u0 = lease_qs.first()
             if u0 and getattr(u0.unit, "property", None):
@@ -1866,16 +1925,12 @@ def billing_summary_items(request):
                 return JsonResponse({"error": "Missing property_id for scope=property."}, status=400)
             lease_qs = Lease.objects.filter(
                 unit__property_id=prop_id).select_related("unit__property")
-            if active_only:
-                lease_qs = lease_qs.filter(status="active")
             lease_ids = list(lease_qs.values_list("id", flat=True))
             u0 = lease_qs.first()
             if u0 and getattr(u0.unit, "property", None):
                 scope_prop_name = u0.unit.property.property_name
         else:
             lease_qs = Lease.objects.all()
-            if active_only:
-                lease_qs = lease_qs.filter(status="active")
             lease_ids = list(lease_qs.values_list("id", flat=True))
 
         # list invoices

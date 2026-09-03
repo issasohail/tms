@@ -331,10 +331,10 @@
 
     <input type="hidden" name="cols" id="colsField" value="{{ visible_cat_ids|join:',' }}" />
 
-    <label class="chip-btn" title="Show active leases only">
+    <label class="chip-btn" title="Show active leases plus any inactive lease invoiced in this month">
       <input type="checkbox" name="active_only" value="1" {% if active_only %}checked{% endif %}
              onchange="this.form.submit()" style="margin:0;">
-      Active only
+      Active + invoiced
     </label>
 
     <button type="button" id="btnCols" class="chip-btn">Show more Categories</button>
@@ -479,7 +479,13 @@
                      data-active-only="{% if active_only %}1{% endif %}">{{ cell.value|floatformat:0|intcomma }}</a>
                 </td>
               {% elif cell.kind == 'balance' %}
-                <td class="num" data-col="total_balance" data-fixed>{{ cell.value|floatformat:0|intcomma }}</td>
+                <td class="num" data-col="total_balance" data-fixed>
+                  {% if r.ledger_url %}
+                    <a href="{{ r.ledger_url }}" title="Open {{ r.tenant_name }} ledger">{{ cell.value|floatformat:0|intcomma }}</a>
+                  {% else %}
+                    {{ cell.value|floatformat:0|intcomma }}
+                  {% endif %}
+                </td>
               {% else %}
                 <td class="num" data-col="whatsapp" data-fixed>
                   {% if cell.phone %}

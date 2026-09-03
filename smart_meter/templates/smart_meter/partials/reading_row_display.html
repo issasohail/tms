@@ -48,7 +48,6 @@
       {% if r.meter.reading_profile == "total_and_per_phase" %}
         <span class="fw-bold"><span class="phase-label">F</span>{{ r.display_forward_energy|default_if_none:"-"|floatformat:3 }}</span>
         <span class="text-muted"><span class="phase-label">R</span>{{ r.reverse_active_energy_kwh|default_if_none:"-"|floatformat:3 }}</span>
-        <span class="text-muted"><span class="phase-label">Net</span>{{ r.display_net_energy|default_if_none:"-"|floatformat:3 }}</span>
       {% else %}
         <span class="fw-bold">{{ r.display_forward_energy|default_if_none:"-"|floatformat:3 }}</span>
       {% endif %}
@@ -102,6 +101,8 @@
       {% endif %}
     </div>
   </td>
+  {% comment %}Total power is intentionally omitted from the Meter Readings list.{% endcomment %}
+  {% comment %}
   <td class="col-watt">
     <div class="phase-stack">
       {% if r.meter.reading_profile == "total_and_per_phase" %}
@@ -115,5 +116,6 @@
     </div>
   </td>
 
+  {% endcomment %}
   <td class="col-pf">{{ r.pf_total|default_if_none:""|floatformat:3 }}</td>
 </tr>

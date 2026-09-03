@@ -142,7 +142,6 @@
           <th class="col-port toggle-col-port d-none">Port</th>
           <th class="col-volt">Voltage (V)</th>
           <th class="col-amp">Current (A)</th>
-          <th class="col-watt">Total Power (W)</th>
           <th class="col-pf">PF Total</th>
         </tr>
       </thead>
@@ -155,7 +154,7 @@
               {% include "smart_meter/partials/reading_row_display.html" with r=r sno=forloop.counter %}
             {% endif %}
           {% empty %}
-            <tr><td colspan="15" class="text-center py-3">No readings found.</td></tr>
+            <tr><td colspan="14" class="text-center py-3">No readings found.</td></tr>
           {% endfor %}
         </tbody>
     </table>
@@ -253,14 +252,13 @@
     --lg-col-unit:11%;
     --lg-col-tenant:12%;
     --lg-col-meter:10%;
-    --lg-col-role: 10%;
-    --lg-col-active: 7%;
+    --lg-col-role: 6%;
+    --lg-col-active: 5%;
     --lg-col-ip:  10%;
     --lg-col-port:6%;
     --lg-col-volt:8%;
     --lg-col-amp: 8%;
-    --lg-col-watt:8%;
-    --lg-col-energy:8%;
+    --lg-col-energy:12%;
     --lg-col-pf:  6%;
 
     /* ===== Column widths (small visible ones only) ===== */
@@ -295,14 +293,13 @@
     .col-port  { width: var(--lg-col-port); }
     .col-volt  { width: var(--lg-col-volt); }
     .col-amp   { width: var(--lg-col-amp); }
-    .col-watt  { width: var(--lg-col-watt); }
-    .col-energy{ width: calc(var(--lg-col-energy) + 50px); min-width: calc(var(--lg-col-energy) + 50px); }
+    .col-energy{ width: var(--lg-col-energy); }
     .col-pf    { width: var(--lg-col-pf); }
   }
   @media (max-width: 576px){
     .table { font-size: .54rem; }
     .table td, .table th { padding: .02rem .025rem; }
-    .col-unit, .col-tenant, .col-ip, .col-port, .col-volt, .col-amp, .col-watt, .col-pf, .col-active { display:none; }
+    .col-unit, .col-tenant, .col-ip, .col-port, .col-volt, .col-amp, .col-pf, .col-active { display:none; }
     .col-idx   { width: var(--sm-col-idx); }
     .col-ts    { width: var(--sm-col-ts); }
     .col-prop  { width: var(--sm-col-prop); }
@@ -426,7 +423,7 @@
 
   .ld-role-select {
     width: 100%;
-    min-width: 88px;
+    min-width: 64px;
     padding: .1rem 1.45rem .1rem .25rem;
     font-size: .68rem;
     line-height: 1.2;

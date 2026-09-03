@@ -220,7 +220,8 @@ class ReadingListEnergyColumnTests(TestCase):
         self.assertContains(response, '<span class="phase-label">Net</span>', html=True)
         self.assertContains(response, "500.000")
         self.assertContains(response, "0.500")
-        self.assertContains(response, "499.500")
+        self.assertNotContains(response, '<span class="phase-label">Net</span>', html=True)
+        self.assertNotContains(response, "Total Power (W)")
         self.assertContains(response, '<td class="col-pf">0.950</td>', html=True)
 
 
@@ -305,6 +306,53 @@ class EnergyDashboardMeterRoleTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["rows"][0]["total_amount"], Decimal("730.00"))
         self.assertEqual(response.context["totals"]["grand_total"], Decimal("730.00"))
+
+    def test_monthly_rows_link_to_matching_daily_energy_views(self):
+        readings = list(
+            MeterReading.objects.filter(meter=self.billing_meter).order_by("ts", "id")
+        )
+        readings[0].forward_active_energy_kwh = Decimal("100.000")
+        readings[0].reverse_active_energy_kwh = Decimal("5.000")
+        readings[0].save(
+            update_fields=["forward_active_energy_kwh", "reverse_active_energy_kwh"]
+        )
+        readings[1].forward_active_energy_kwh = Decimal("110.000")
+        readings[1].reverse_active_energy_kwh = Decimal("7.000")
+        readings[1].save(
+            update_fields=["forward_active_energy_kwh", "reverse_active_energy_kwh"]
+        )
+        selected_day = timezone.localdate()
+        month_start = selected_day.replace(day=1)
+        month_end = selected_day.replace(
+            day=calendar.monthrange(selected_day.year, selected_day.month)[1]
+        )
+
+        response = self.client.get(
+            reverse("smart_meter:energy_dashboard"),
+            {
+                "start": month_start.isoformat(),
+                "end": month_end.isoformat(),
+                "report_type": "monthly",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        row = response.context["rows_disp"][0]
+        self.assertIn("report_type=daily", row["daily_both_url"])
+        self.assertIn("energy_view=both", row["daily_both_url"])
+        self.assertIn("energy_view=forward", row["daily_forward_url"])
+        self.assertIn("energy_view=reverse", row["daily_reverse_url"])
+        self.assertIn(f"meter={self.billing_meter.pk}", row["daily_forward_url"])
+        self.assertIn(f"start={month_start.isoformat()}", row["daily_forward_url"])
+        self.assertIn(f"end={month_end.isoformat()}", row["daily_forward_url"])
+        self.assertContains(response, "Show daily forward readings")
+        self.assertContains(response, "Show daily reverse readings")
+
+        reverse_response = self.client.get(row["daily_reverse_url"])
+        self.assertEqual(reverse_response.status_code, 200)
+        self.assertEqual(reverse_response.context["report_type"], "daily")
+        self.assertEqual(reverse_response.context["energy_view"], "reverse")
+        self.assertEqual(reverse_response.context["current_meter"], str(self.billing_meter.pk))
 
 
 class EnergyDashboardBoundaryQueryTests(TestCase):

@@ -728,6 +728,10 @@ def energy_dashboard(request):
     if report_type not in ("hourly", "daily", "monthly"):
         report_type = "daily"
 
+    energy_view = (request.GET.get("energy_view") or "both").strip().lower()
+    if energy_view not in ("both", "forward", "reverse"):
+        energy_view = "both"
+
     prop_id = (request.GET.get("property") or "").strip()
     unit_id = (request.GET.get("unit") or "").strip()
     meter_id = (request.GET.get("meter") or "").strip()
@@ -881,7 +885,7 @@ def energy_dashboard(request):
     wa = _user_whatsapp(request)
     rows_disp = []
     for r in table_rows:
-        rows_disp.append({
+        row_disp = {
             **r,
             "whatsapp": wa,
             "is_online": (r["meter_id"] in online_set) if not per_meter_mode else None,
@@ -892,11 +896,36 @@ def energy_dashboard(request):
             "usage_amount": _fmt0(r["usage_amount"]),
             "service_charges": _fmt0(r["service_charges"]),
             "total_amount": _fmt0(r["total_amount"]),
-        })
+        }
+        if report_type == "monthly":
+            period_start = r["period_key"]
+            period_end = period_start.replace(
+                day=calendar.monthrange(period_start.year, period_start.month)[1]
+            )
+            drilldown_params = request.GET.copy()
+            drilldown_params["report_type"] = "daily"
+            drilldown_params["meter"] = str(r["meter_id"])
+            drilldown_params["start"] = period_start.isoformat()
+            drilldown_params["end"] = period_end.isoformat()
+
+            def _drilldown_url(direction):
+                params = drilldown_params.copy()
+                params["energy_view"] = direction
+                return f"{reverse('smart_meter:energy_dashboard')}?{params.urlencode()}"
+
+            row_disp["daily_both_url"] = _drilldown_url("both")
+            row_disp["daily_forward_url"] = _drilldown_url("forward")
+            row_disp["daily_reverse_url"] = _drilldown_url("reverse")
+        rows_disp.append(row_disp)
 
     totals_disp = {
         "total_kwh": (totals["total_kwh"]),
         "total_reverse_kwh": totals.get("total_reverse_kwh", Decimal("0")),
+        "display_total_kwh": (
+            totals.get("total_reverse_kwh", Decimal("0"))
+            if energy_view == "reverse"
+            else totals["total_kwh"]
+        ),
         "total_net_kwh": (
             totals["total_kwh"] - totals.get("total_reverse_kwh", Decimal("0"))
         ),
@@ -917,6 +946,7 @@ def energy_dashboard(request):
         "current_active": active_filter,
         "meter_role_choices": Meter.METER_ROLE_CHOICES,
         "report_type": report_type,
+        "energy_view": energy_view,
         "start_date": start_date,
         "end_date": end_date,
         "online_minutes": online_threshold_minutes(),

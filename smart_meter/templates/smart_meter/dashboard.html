@@ -18,6 +18,7 @@
   <div class="card mb-3">
     <div class="card-body py-2 px-3">
       <form id="meter-filter-form" method="get" class="row row-cols-lg-auto g-2 align-items-end">
+        <input type="hidden" name="energy_view" value="{{ energy_view }}">
         <!-- Property -->
         <div class="col">
           <label class="form-label mb-1">Property</label>
@@ -181,8 +182,14 @@
 
   {% if rows %}
     <div class="alert alert-info py-2">
-      <strong>Forward kWh:</strong> {{ totals_disp.total_kwh }}
-      {% if has_reverse_data %}<span class="ms-3"><strong>Reverse / Export kWh:</strong> {{ totals_disp.total_reverse_kwh }}</span><span class="ms-3"><strong>Net kWh:</strong> {{ totals_disp.total_net_kwh }}</span>{% endif %}
+      {% if energy_view == 'reverse' %}
+        <strong>Reverse / Export kWh:</strong> {{ totals_disp.total_reverse_kwh }}
+      {% elif energy_view == 'forward' %}
+        <strong>Forward kWh:</strong> {{ totals_disp.total_kwh }}
+      {% else %}
+        <strong>Forward kWh:</strong> {{ totals_disp.total_kwh }}
+        {% if has_reverse_data %}<span class="ms-3"><strong>Reverse / Export kWh:</strong> {{ totals_disp.total_reverse_kwh }}</span><span class="ms-3"><strong>Net kWh:</strong> {{ totals_disp.total_net_kwh }}</span>{% endif %}
+      {% endif %}
       <span class="ms-3"><strong>Usage Charges:</strong> {{ currency }} {{ totals_disp.usage_charges }}</span>
       {% if report_type == 'monthly' %}
         <span class="ms-3"><strong>Service Charges:</strong> {{ currency }} {{ totals_disp.service_charges }}</span>
@@ -248,7 +255,7 @@
             <!-- End: hidden on small (rendered under Begin) -->
             <th class="d-none d-sm-table-cell col-end"><span>End<br>(kWh)</span></th>
 
-            <th class="col-usage"><span>Forward / Reverse<br>(kWh)</span></th>
+            <th class="col-usage"><span>{% if energy_view == 'forward' %}Forward{% elif energy_view == 'reverse' %}Reverse{% else %}Forward / Reverse{% endif %}<br>(kWh)</span></th>
 
             <!-- Rate: shows Usage Charges beneath on small -->
             <th class="col-rate"><span>Rate<br>({{ currency }}/kWh)</span></th>
@@ -291,7 +298,7 @@
                   <span class="badge bg-success">Billing</span>
                 {% endif %}
               </div>
-              <div class="d-sm-none small text-muted ellipsis-1line" title="{{ r.period_label }}">{{ r.period_label }}</div>
+              <div class="d-sm-none small text-muted ellipsis-1line" title="{{ r.period_label }}">{% if report_type == 'monthly' %}<a href="{{ r.daily_both_url }}" title="Show daily forward and reverse readings for {{ r.period_label }}">{{ r.period_label }}</a>{% else %}{{ r.period_label }}{% endif %}</div>
             </td>
 
 
@@ -314,7 +321,7 @@
             </td>
 
             <!-- Period (desktop only) -->
-            <td class="d-none d-sm-table-cell col-period">{{ r.period_label }}</td>
+            <td class="d-none d-sm-table-cell col-period">{% if report_type == 'monthly' %}<a href="{{ r.daily_both_url }}" title="Show daily forward and reverse readings for {{ r.period_label }}">{{ r.period_label }}</a>{% else %}{{ r.period_label }}{% endif %}</td>
 
             <!-- Begin (small also shows End under it) -->
             <td class="col-begin">
@@ -325,7 +332,18 @@
             <!-- End (desktop only) -->
             <td class="d-none d-sm-table-cell col-end">{{ r.end_kwh |floatformat:3}}</td>
 
-            <td class="fw-semibold col-usage">F: {{ r.usage |default:"0.00"|floatformat:3 }}{% if r.reverse_usage is not None %}<div class="small text-warning-emphasis">R: {{ r.reverse_usage|floatformat:3 }}</div><div class="small text-muted">Net: {{ r.net_usage|floatformat:3 }}</div>{% endif %}</td>
+            <td class="fw-semibold col-usage">
+              {% if report_type == 'monthly' %}
+                <a href="{{ r.daily_forward_url }}" title="Show daily forward readings for {{ r.period_label }}">F: {{ r.usage|default:"0.00"|floatformat:3 }}</a>
+                {% if r.reverse_usage is not None %}<div class="small"><a class="text-warning-emphasis" href="{{ r.daily_reverse_url }}" title="Show daily reverse readings for {{ r.period_label }}">R: {{ r.reverse_usage|floatformat:3 }}</a></div><div class="small text-muted">Net: {{ r.net_usage|floatformat:3 }}</div>{% endif %}
+              {% elif energy_view == 'reverse' %}
+                R: {{ r.reverse_usage|default_if_none:"-"|floatformat:3 }}
+              {% elif energy_view == 'forward' %}
+                F: {{ r.usage|default:"0.00"|floatformat:3 }}
+              {% else %}
+                F: {{ r.usage|default:"0.00"|floatformat:3 }}{% if r.reverse_usage is not None %}<div class="small text-warning-emphasis">R: {{ r.reverse_usage|floatformat:3 }}</div><div class="small text-muted">Net: {{ r.net_usage|floatformat:3 }}</div>{% endif %}
+              {% endif %}
+            </td>
 
             <!-- Rate (small also shows Usage Charges under it) -->
             <td class="col-rate">
@@ -379,7 +397,7 @@
 
             <!-- Usage (kWh) -->
             
-            <td>{{ totals_disp.total_kwh }}</td>
+            <td>{{ totals_disp.display_total_kwh }}</td>
 
             <!-- Rate -->
             <td></td>
@@ -401,7 +419,7 @@
             <tr class="fw-bold d-sm-none">
               <td></td>
               <td class="text-end">Service</td>
-              <td>{{ totals_disp.total_kwh }}</td>   <!-- keep "total unit" under Unit col on small too -->
+              <td>{{ totals_disp.display_total_kwh }}</td>   <!-- keep "total unit" under Unit col on small too -->
               <!-- skip hidden cols by spanning across them -->
               <td colspan="4"></td>
               <td class="text-end" colspan="2">Amount</td>
@@ -413,7 +431,7 @@
             <tr class="fw-bold d-sm-none">
               <td></td>
               <td class="text-end">Total</td>
-              <td>{{ totals_disp.total_kwh }}</td>
+              <td>{{ totals_disp.display_total_kwh }}</td>
               <td colspan="4"></td>
               <td class="text-end" colspan="2">Amount</td>
               <td></td>
@@ -425,7 +443,7 @@
             <tr class="fw-bold d-sm-none">
               <td></td>
               <td class="text-end">Totals</td>
-              <td>{{ totals_disp.total_kwh }}</td> <!-- under Unit -->
+              <td>{{ totals_disp.display_total_kwh }}</td> <!-- under Unit -->
               <td colspan="4"></td>
               <td class="text-end" colspan="2">Amount</td>
               <td></td>
@@ -500,6 +518,7 @@ function shortLabel(raw, maxLen) {
 
   var perMeterMode = {{ current_meter|yesno:"true,false" }};
   var reportType   = "{{ report_type }}";
+  var energyView   = "{{ energy_view }}";
   if (!labels.length || !datasets.length) return;
 
   var el = document.getElementById('energyChart');
@@ -517,7 +536,7 @@ function shortLabel(raw, maxLen) {
   var barSets = datasets.map(function (d) {
     return {
       label: d.label,
-      data: d.data,
+      data: energyView === 'reverse' ? d.reverseData : d.data,
       meterNumber: d.meterNumber || '',
       unitNumber:  d.unitNumber  || '',
       propertyName: d.propertyName || '',
@@ -531,7 +550,7 @@ function shortLabel(raw, maxLen) {
 
   // For one selected meter, show its reverse/export register as a distinct
   // second line. All-meters mode stays readable and shows reverse in the table.
-  if (perMeterMode && datasets.length === 1 && Array.isArray(datasets[0].reverseData) && datasets[0].reverseData.some(function (v) { return v !== null; })) {
+  if (energyView === 'both' && perMeterMode && datasets.length === 1 && Array.isArray(datasets[0].reverseData) && datasets[0].reverseData.some(function (v) { return v !== null; })) {
     barSets.push({
       type: 'line',
       label: 'Reverse / export kWh',

@@ -4080,6 +4080,7 @@ def reading_list(request):
         "meter__meter_number",
         "meter__name",
         "meter__meter_role",
+        "meter__reading_profile",
         "meter__is_active",
         "meter__unit_id",
         "meter__unit__id",

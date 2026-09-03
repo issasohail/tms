@@ -127,6 +127,83 @@ class MeterRoleUpdateTests(TestCase):
         self.assertContains(response, 'if (rangeSel?.value) applyRange(rangeSel.value);')
 
 
+class ReadingListEnergyColumnTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="reading-energy-user",
+            password="test-pass",
+        )
+        self.user.user_permissions.add(
+            Permission.objects.get(codename="view_meterreading"),
+            Permission.objects.get(
+                content_type__app_label="accounts",
+                codename="access_all_properties",
+            ),
+        )
+        self.client.force_login(self.user)
+        property_obj = Property.objects.create(
+            property_name="Energy Column Property",
+            owner_name="Owner",
+            owner_cnic="1234512345688",
+            type="apartment",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(property=property_obj, unit_number="1")
+
+    def test_single_phase_has_plain_kwh_and_separate_pf_column(self):
+        meter = Meter.objects.create(
+            meter_number="ENERGY-SINGLE-1",
+            unit=self.unit,
+            reading_profile=Meter.READING_PROFILE_TOTAL_ONLY,
+        )
+        MeterReading.objects.create(
+            meter=meter,
+            total_energy=Decimal("123.456"),
+            pf_total=Decimal("0.987"),
+        )
+
+        response = self.client.get(
+            reverse("smart_meter:reading_list"),
+            {"meter": meter.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<th class="col-energy">Energy (kWh)</th>', html=True)
+        self.assertContains(response, '<span class="fw-bold">123.456</span>', html=True)
+        self.assertNotContains(response, '<span class="phase-label">F</span>', html=True)
+        self.assertContains(response, '<td class="col-pf">0.987</td>', html=True)
+        self.assertNotContains(response, "col-pf-smpf")
+
+    def test_three_phase_has_forward_reverse_net_and_separate_pf(self):
+        meter = Meter.objects.create(
+            meter_number="ENERGY-THREE-1",
+            unit=self.unit,
+            reading_profile=Meter.READING_PROFILE_TOTAL_AND_PER_PHASE,
+        )
+        MeterReading.objects.create(
+            meter=meter,
+            total_energy=Decimal("500.000"),
+            forward_active_energy_kwh=Decimal("500.000"),
+            reverse_active_energy_kwh=Decimal("0.500"),
+            pf_total=Decimal("0.950"),
+        )
+
+        response = self.client.get(
+            reverse("smart_meter:reading_list"),
+            {"meter": meter.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<span class="phase-label">F</span>', html=True)
+        self.assertContains(response, '<span class="phase-label">R</span>', html=True)
+        self.assertContains(response, '<span class="phase-label">Net</span>', html=True)
+        self.assertContains(response, "500.000")
+        self.assertContains(response, "0.500")
+        self.assertContains(response, "499.500")
+        self.assertContains(response, '<td class="col-pf">0.950</td>', html=True)
+
+
 class EnergyDashboardMeterRoleTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(

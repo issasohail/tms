@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
+{% block main_container_class %}container reading-list-page{% endblock %}
 
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
@@ -133,6 +134,7 @@
           <th class="col-unit">Unit / Meter</th>
           <th class="col-tenant">Tenant</th>
           <th class="col-meter">Meter #</th>
+          <th class="col-energy">Energy (kWh)</th>
           <th class="ld-col-role">Role</th>
           <th class="col-active">Active</th>
           {# Use unified toggle class on headers so they hide too #}
@@ -141,7 +143,6 @@
           <th class="col-volt">Voltage (V)</th>
           <th class="col-amp">Current (A)</th>
           <th class="col-watt">Total Power (W)</th>
-          <th class="col-energy">Energy (kWh)</th>
           <th class="col-pf">PF Total</th>
         </tr>
       </thead>
@@ -190,6 +191,14 @@
 
 {# Compact styles + column widths #}
 <style>
+  /* Add 200px to Bootstrap's normal desktop container width on this page only. */
+  @media (min-width: 1200px){
+    .reading-list-page{ max-width:1340px; }
+  }
+  @media (min-width: 1400px){
+    .reading-list-page{ max-width:1520px; }
+  }
+
   /* =========================
      TWEAKABLE KNOBS (edit here)
      ========================= */

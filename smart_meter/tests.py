@@ -174,6 +174,26 @@ class ReadingListEnergyColumnTests(TestCase):
         self.assertNotContains(response, '<span class="phase-label">F</span>', html=True)
         self.assertContains(response, '<td class="col-pf">0.987</td>', html=True)
         self.assertNotContains(response, "col-pf-smpf")
+        html = response.content.decode()
+        self.assertIn("container reading-list-page", html)
+        self.assertIn(".reading-list-page{ max-width:1340px; }", html)
+        self.assertIn(".reading-list-page{ max-width:1520px; }", html)
+        self.assertLess(
+            html.index('<th class="col-meter">Meter #</th>'),
+            html.index('<th class="col-energy">Energy (kWh)</th>'),
+        )
+        self.assertLess(
+            html.index('<th class="col-energy">Energy (kWh)</th>'),
+            html.index('<th class="ld-col-role">Role</th>'),
+        )
+        self.assertLess(
+            html.index('<td class="col-meter">'),
+            html.index('<td class="col-energy">'),
+        )
+        self.assertLess(
+            html.index('<td class="col-energy">'),
+            html.index('<td class="ld-col-role">'),
+        )
 
     def test_three_phase_has_forward_reverse_net_and_separate_pf(self):
         meter = Meter.objects.create(

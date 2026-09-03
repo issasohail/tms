@@ -43,6 +43,19 @@
     </div>
   </td>
 
+  <td class="col-energy">
+    <div class="energy-stack">
+      {% if r.meter.reading_profile == "total_and_per_phase" %}
+        <span class="fw-bold"><span class="phase-label">F</span>{{ r.display_forward_energy|default_if_none:"-"|floatformat:3 }}</span>
+        <span class="text-muted"><span class="phase-label">R</span>{{ r.reverse_active_energy_kwh|default_if_none:"-"|floatformat:3 }}</span>
+        <span class="text-muted"><span class="phase-label">Net</span>{{ r.display_net_energy|default_if_none:"-"|floatformat:3 }}</span>
+      {% else %}
+        <span class="fw-bold">{{ r.display_forward_energy|default_if_none:"-"|floatformat:3 }}</span>
+      {% endif %}
+    </div>
+    <div class="text-muted d-sm-none sm-pf">PF {{ r.pf_total|default_if_none:""|floatformat:3 }}</div>
+  </td>
+
   <td class="ld-col-role">
     <button type="button"
             class="ld-role-display"
@@ -102,17 +115,5 @@
     </div>
   </td>
 
-  <td class="col-energy">
-    <div class="energy-stack">
-      {% if r.meter.reading_profile == "total_and_per_phase" %}
-        <span class="fw-bold"><span class="phase-label">F</span>{{ r.display_forward_energy|default_if_none:"-"|floatformat:3 }}</span>
-        <span class="text-muted"><span class="phase-label">R</span>{{ r.reverse_active_energy_kwh|default_if_none:"-"|floatformat:3 }}</span>
-        <span class="text-muted"><span class="phase-label">Net</span>{{ r.display_net_energy|default_if_none:"-"|floatformat:3 }}</span>
-      {% else %}
-        <span class="fw-bold">{{ r.display_forward_energy|default_if_none:"-"|floatformat:3 }}</span>
-      {% endif %}
-    </div>
-    <div class="text-muted d-sm-none sm-pf">PF {{ r.pf_total|default_if_none:""|floatformat:3 }}</div>
-  </td>
   <td class="col-pf">{{ r.pf_total|default_if_none:""|floatformat:3 }}</td>
 </tr>

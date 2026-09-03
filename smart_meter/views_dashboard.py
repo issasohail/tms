@@ -6,6 +6,7 @@ from django.conf import settings
 from urllib.parse import urlencode
 import traceback
 from invoices.models import Invoice, InvoiceItem
+from invoices.models import round_amount_up_to_nearest_10
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
 from django.contrib.auth.decorators import permission_required, login_required
@@ -520,6 +521,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     total_kwh = Decimal("0")
     usage_charges = Decimal("0")
     service_total = Decimal("0")
+    grand_total = Decimal("0")
 
     for m in meters:
         unit_number = m.display_location_name
@@ -558,6 +560,8 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
             usage_amt = (row["usage"] * rate).quantize(Decimal("0.01"))
             service_amt = svc if granularity == "monthly" else Decimal("0.00")
             total_amt = (usage_amt + service_amt).quantize(Decimal("0.01"))
+            if granularity == "monthly":
+                total_amt = round_amount_up_to_nearest_10(total_amt)
 
             combined_rows.append({
                 "meter_id": m.id,
@@ -584,6 +588,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
             total_kwh += row["usage"]
             usage_charges += usage_amt
             service_total += service_amt
+            grand_total += total_amt
 
     # Keep Billing and Audit meters grouped consistently.
     combined_rows.sort(key=lambda x: (
@@ -602,7 +607,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
         ),
         "usage_charges": usage_charges,
         "service_charges": service_total,
-        "grand_total": (usage_charges + service_total).quantize(Decimal("0.01")),
+        "grand_total": grand_total,
     }
     return labels_sorted, datasets, combined_rows, totals
 
@@ -815,6 +820,9 @@ def energy_dashboard(request):
         service_charges = sum(
             (row["service_charges"] for row in billing_rows), Decimal("0")
         )
+        grand_total = sum(
+            (row["total_amount"] for row in billing_rows), Decimal("0")
+        )
         totals = {
             "total_kwh": total_kwh,
             "total_reverse_kwh": sum(
@@ -827,9 +835,7 @@ def energy_dashboard(request):
             ),
             "usage_charges": usage_charges,
             "service_charges": service_charges,
-            "grand_total": (usage_charges + service_charges).quantize(
-                Decimal("0.01")
-            ),
+            "grand_total": grand_total,
         }
         display_meters = selected_meters
     else:

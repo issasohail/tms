@@ -83,7 +83,15 @@
         <!-- Month (auto when monthly + all meters) -->
         <div class="col" id="col-month" style="display:none;">
           <label class="form-label mb-1">Month</label>
-          <input type="month" id="input-month" value="{{ start_date|date:'Y-m' }}" class="form-control form-control-sm">
+          <div class="input-group input-group-sm flex-nowrap">
+            <button type="button" id="btn-prev-month" class="btn btn-outline-secondary" title="Previous month" aria-label="Previous month">
+              <i class="fas fa-chevron-left" aria-hidden="true"></i>
+            </button>
+            <input type="month" id="input-month" value="{{ start_date|date:'Y-m' }}" class="form-control form-control-sm" aria-label="Report month">
+            <button type="button" id="btn-next-month" class="btn btn-outline-secondary" title="Next month" aria-label="Next month">
+              <i class="fas fa-chevron-right" aria-hidden="true"></i>
+            </button>
+          </div>
         </div>
         <!-- Start/End -->
         <div class="col" id="col-start">
@@ -546,6 +554,26 @@ function shortLabel(raw, maxLen) {
     });
   }
 
+  function meterLabelDoesNotFit(labelContext) {
+    var ds = labelContext && labelContext.dataset ? labelContext.dataset : {};
+    var label = ds.unitNumber ? ds.unitNumber + '\n' + ds.meterNumber : ds.meterNumber;
+    var bar = labelContext && labelContext.chart
+      ? labelContext.chart.getDatasetMeta(labelContext.datasetIndex).data[labelContext.dataIndex]
+      : null;
+    if (!label || !bar || !Number.isFinite(bar.y) || !Number.isFinite(bar.base)) return false;
+
+    var chartCtx = labelContext.chart.ctx;
+    var longestLine = label.split('\n').reduce(function (longest, line) {
+      return line.length > longest.length ? line : longest;
+    }, '');
+    chartCtx.save();
+    chartCtx.font = '700 12px ' + (Chart.defaults.font.family || 'sans-serif');
+    var rotatedLabelHeight = chartCtx.measureText(longestLine).width;
+    chartCtx.restore();
+
+    return Math.abs(bar.base - bar.y) < rotatedLabelHeight + 8;
+  }
+
   // canvas height: bounded and predictable
   var count = Array.isArray(labels) ? labels.length : 0;
   if (SMALL_360) {
@@ -593,13 +621,17 @@ function shortLabel(raw, maxLen) {
                 if (!ds.meterNumber) return '';
                 return ds.unitNumber ? ds.unitNumber + '\n' + ds.meterNumber : ds.meterNumber;
               },
-              anchor: 'start',
+              anchor: function (ctx) {
+                return meterLabelDoesNotFit(ctx) ? 'end' : 'start';
+              },
               align: 'end',
               rotation: -90,
               color: '#000',
               clamp: true,
               clip: false,
-              offset: 4,
+              offset: function (ctx) {
+                return meterLabelDoesNotFit(ctx) ? 30 : 4;
+              },
               font: { size: 12, weight: '700' }
             }
           }
@@ -697,6 +729,8 @@ function shortLabel(raw, maxLen) {
   const selMeter   = form.querySelector('select[name="meter"]');
   const colMonth   = document.getElementById('col-month');
   const inputMonth = document.getElementById('input-month');
+  const btnPrevMonth = document.getElementById('btn-prev-month');
+  const btnNextMonth = document.getElementById('btn-next-month');
   const inputStart = document.getElementById('input-start');
   const inputEnd   = document.getElementById('input-end');
 
@@ -712,6 +746,15 @@ function shortLabel(raw, maxLen) {
     inputStart.value=toISO(first);
     inputEnd.value=toISO(last);
   }
+  function moveMonth(offset){
+    if(!inputMonth.value) return;
+    const [y,m]=inputMonth.value.split('-').map(Number);
+    if(!y||!m) return;
+    const target=new Date(y,m-1+offset,1);
+    inputMonth.value=`${target.getFullYear()}-${String(target.getMonth()+1).padStart(2,'0')}`;
+    setStartEndFromMonth(inputMonth.value);
+    form.submit();
+  }
   // INIT: prefer server-sent start/end (same month); DO NOT force to today's month
   (function init(){
     if (inputStart?.value && inputEnd?.value) {
@@ -726,6 +769,9 @@ function shortLabel(raw, maxLen) {
     document.getElementById('col-start').style.display = showMonthMode() ? 'none' : '';
     document.getElementById('col-end').style.display = showMonthMode() ? 'none' : '';
   })();
+
+  btnPrevMonth?.addEventListener('click', () => moveMonth(-1));
+  btnNextMonth?.addEventListener('click', () => moveMonth(1));
 
   // unchanged: on change, update UI + submit
   form.querySelectorAll('select, input[type="date"], input[type="month"]').forEach(el => {
@@ -811,12 +857,12 @@ function shortLabel(raw, maxLen) {
     --col-tenant-lg:       120px; /* Your 120px tenant width */
     --col-active-lg:        64px;
     --col-period-lg:       110px;
-    --col-begin-lg:         56px;
-    --col-end-lg:           56px;
-    --col-usage-lg:        60px;
+    --col-begin-lg:         70px;
+    --col-end-lg:           70px;
+    --col-usage-lg:         96px;
     --col-rate-lg:          44px;
-    --col-usage-amt-lg:    120px;
-    --col-service-lg:      120px;
+    --col-usage-amt-lg:     90px;
+    --col-service-lg:       86px;
     --col-total-lg:        120px;
 
     /* Small screens (<576px) — only applied to columns that are visible on small */

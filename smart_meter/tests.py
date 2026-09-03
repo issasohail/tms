@@ -1,3 +1,4 @@
+import calendar
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -181,6 +182,27 @@ class EnergyDashboardMeterRoleTests(TestCase):
 
         roles = [dataset["meterRole"] for dataset in response.context["datasets"]]
         self.assertEqual(roles, [Meter.METER_ROLE_BILLING, Meter.METER_ROLE_CHECK])
+
+    def test_monthly_total_rounds_up_to_nearest_10(self):
+        self.billing_meter.unit_rate = Decimal("47.11")
+        self.billing_meter.service_charges = Decimal("250.00")
+        self.billing_meter.save(update_fields=["unit_rate", "service_charges"])
+        selected_day = timezone.localdate()
+
+        response = self.client.get(
+            reverse("smart_meter:energy_dashboard"),
+            {
+                "start": selected_day.replace(day=1).isoformat(),
+                "end": selected_day.replace(
+                    day=calendar.monthrange(selected_day.year, selected_day.month)[1]
+                ).isoformat(),
+                "report_type": "monthly",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["rows"][0]["total_amount"], Decimal("730.00"))
+        self.assertEqual(response.context["totals"]["grand_total"], Decimal("730.00"))
 
 
 class EnergyDashboardBoundaryQueryTests(TestCase):

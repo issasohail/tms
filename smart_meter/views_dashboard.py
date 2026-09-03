@@ -1969,6 +1969,12 @@ def billing_summary_items(request):
                     "category_full": full_cat_name,  # keep full for headings/tooltips
                     "amount": Decimal(it.amount or 0),
                     "invoice_url": inv_url,
+                    "tenant_url": reverse(
+                        "tenants:tenant_detail", args=[tenant_obj.pk]
+                    ) if tenant_obj else "",
+                    "lease_url": reverse(
+                        "leases:lease_detail", args=[inv.lease_id]
+                    ),
                 })
 
         # sort and serial

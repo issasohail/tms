@@ -84,12 +84,12 @@
             <tr>
               <td class="c-sn nowrap-clip"     title="{{ it.sn }}">{{ it.sn }}</td>
               <td class="c-date nowrap-clip"   title="{{ it.issue_date|date:'d-M-y' }}">{{ it.issue_date|date:"d-M-y" }}</td>
-              <td class="c-inv nowrap-clip"    title="{{ it.invoice_id }}">{{ it.invoice_id }}</td>
-              <td class="c-tenant nowrap-clip" title="{{ it.tenant }}">{{ it.tenant|default:"—" }}</td>
-              <td class="c-unit nowrap-clip"   title="{{ it.unit }}">{{ it.unit|default:"—" }}</td>
+              <td class="c-inv nowrap-clip"    title="{{ it.invoice_id }}"><a href="{{ it.invoice_url }}">{{ it.invoice_id }}</a></td>
+              <td class="c-tenant nowrap-clip" title="{{ it.tenant }}">{% if it.tenant_url %}<a href="{{ it.tenant_url }}">{{ it.tenant|default:"—" }}</a>{% else %}{{ it.tenant|default:"—" }}{% endif %}</td>
+              <td class="c-unit nowrap-clip"   title="{{ it.unit }}"><a href="{{ it.lease_url }}">{{ it.unit|default:"—" }}</a></td>
               <td class="c-cat nowrap-clip" title="{{ it.category|default:'—' }}">{{ it.category|default:"—" }}</td>
 
-              <td class="c-amt nowrap-clip">{{ it.amount|floatformat:0|intcomma }}</td>
+              <td class="c-amt nowrap-clip"><a href="{{ it.invoice_url }}">{{ it.amount|floatformat:0|intcomma }}</a></td>
 
               <!-- WhatsApp action (hidden from screenshot/exports) -->
               <td class="c-wa no-export">

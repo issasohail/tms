@@ -439,8 +439,12 @@
         {% for r in g.rows %}
           <tr>
             <td data-col="sn">{{ r.sn }}</td>
-            <td data-col="unit">{{ r.unit_display_label }}</td>
-            <td data-col="tenant" class="tenant"><span class="name" title="{{ r.tenant_name }}">{{ r.tenant_name }}</span></td>
+            <td data-col="unit">
+              {% if r.lease %}<a href="{% url 'leases:lease_detail' r.lease.pk %}">{{ r.unit_display_label }}</a>{% else %}{{ r.unit_display_label }}{% endif %}
+            </td>
+            <td data-col="tenant" class="tenant">
+              <span class="name" title="{{ r.tenant_name }}">{% if r.lease and r.lease.tenant %}<a href="{% url 'tenants:tenant_detail' r.lease.tenant.pk %}">{{ r.tenant_name }}</a>{% else %}{{ r.tenant_name }}{% endif %}</span>
+            </td>
             <td data-col="phone">{{ r.tenant_phone|format_phone }}</td>
 
             {% for cell in r.cells %}

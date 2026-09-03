@@ -1277,7 +1277,9 @@
                   </div>
                   <div class="col-12 col-md-4">
                     <label class="form-label">Relationship</label>
-                    <select name="relation" class="form-select form-select-sm" form="family-add-form">
+                    <select id="family-relationship-select" name="relation"
+                            class="form-select form-select-sm family-relationship-select"
+                            form="family-add-form" data-placeholder="Search relationship">
                       <option value="">Select relationship</option>
                       {% for item in relationship_types %}
                         <option value="{{ item.id }}">{{ item.name }}</option>
@@ -1314,7 +1316,7 @@
                         </td>
                         <td>
                           <span class="fm-read fam-rel">{{ f.instance.relation|default:"—" }}</span>
-                          <div class="fm-editing d-none">{{ f.relationship_type|add_class:"form-select form-select-sm" }}</div>
+                          <div class="fm-editing d-none">{{ f.relationship_type|add_class:"form-select form-select-sm family-relationship-select" }}</div>
                           {% for err in f.relationship_type.errors %}<div class="text-danger small">{{ err }}</div>{% endfor %}
                         </td>
                         <td class="text-center">
@@ -2044,17 +2046,30 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  /* Select2 (unchanged) */
+  /* Select2 */
   if(window.jQuery && $.fn.select2){
-    const $tenant=$('#id_tenant'), $fam=$('#family-tenant-select');
+    const $tenant=$('#id_tenant'), $fam=$('#family-tenant-select'), $relationships=$('.family-relationship-select');
     $tenant.select2({placeholder:"Select a tenant",allowClear:true,width:'100%'});
     if($fam.length){
       $fam.select2({placeholder:$fam.data('placeholder')||"Select a tenant",allowClear:true,width:'100%',
         matcher:window.tmsSelect2IdentityMatcher
       });
     }
-    $tenant.add($fam).on('select2:open',function(){
-      const s=document.querySelector('.select2-container--open .select2-search__field'); if(s) s.focus();
+    $relationships.each(function(){
+      const $relationship=$(this);
+      $relationship.select2({
+        theme:'bootstrap-5',
+        placeholder:$relationship.data('placeholder')||'Search relationship',
+        allowClear:true,
+        width:'100%',
+        minimumResultsForSearch:0
+      });
+    });
+    $tenant.add($fam).add($relationships).on('select2:open',function(){
+      window.setTimeout(function(){
+        const s=document.querySelector('.select2-container--open .select2-search__field');
+        if(s){ s.focus(); s.select(); }
+      },0);
     });
   }
 });

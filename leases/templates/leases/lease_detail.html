@@ -1234,7 +1234,9 @@
                 </div>
                 <div class="col-12 col-lg-3">
                   <label class="form-label small fw-semibold mb-1" for="leaseFamilyRelation">Relationship</label>
-                  <select id="leaseFamilyRelation" name="relation" class="form-select form-select-sm" required>
+                  <select id="leaseFamilyRelation" name="relation"
+                          class="form-select form-select-sm family-relationship-select"
+                          data-placeholder="Search relationship" required>
                     <option value="">Select relationship</option>
                     {% for item in relationship_types %}
                       <option value="{{ item.id }}">{{ item.name }}</option>
@@ -2601,7 +2603,8 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
             <div class="col-4 col-md-4">
               <label class="form-label small fw-semibold">Relationship</label>
-              <select class="form-select form-select-sm" name="relation" id="newFamilyRelation" required>
+              <select class="form-select form-select-sm family-relationship-select" name="relation"
+                      id="newFamilyRelation" data-placeholder="Search relationship" required>
                 <option value="">Select relationship</option>
                 {% for item in relationship_types %}
                   <option value="{{ item.id }}">{{ item.name }}</option>
@@ -2725,6 +2728,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const existingForm = document.getElementById('leaseFamilyExistingForm');
   const tenantSelect = document.getElementById('leaseFamilyTenantSelect');
   const relationSelect = document.getElementById('leaseFamilyRelation');
+  const newRelationSelect = document.getElementById('newFamilyRelation');
   const newModalEl = document.getElementById('newFamilyMemberModal');
   const newForm = document.getElementById('newFamilyMemberForm');
   const errorBox = document.getElementById('newFamilyError');
@@ -2812,7 +2816,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const names = splitFamilyName(term);
     const selectedRelation = relationSelect?.value || '';
     if (selectedRelation) {
-      document.getElementById('newFamilyRelation').value = selectedRelation;
+      newRelationSelect.value = selectedRelation;
+      if (window.jQuery && jQuery.fn.select2) {
+        jQuery(newRelationSelect).trigger('change.select2');
+      }
     }
     document.getElementById('newFamilyFullName').value = names.full;
     document.getElementById('newFamilyFirstName').value = names.first;
@@ -2878,6 +2885,30 @@ document.addEventListener('DOMContentLoaded', function () {
         searchHelp.textContent = 'Family members must exist in the Tenant table. If the name is not found, use Add New to create and link in one save.';
       }
       lastNoResultTerm = '';
+    });
+  }
+
+  if (window.jQuery && jQuery.fn.select2) {
+    [relationSelect, newRelationSelect].filter(Boolean).forEach(function (select) {
+      const options = {
+        theme: 'bootstrap-5',
+        placeholder: select.dataset.placeholder || 'Search relationship',
+        allowClear: true,
+        width: '100%',
+        minimumResultsForSearch: 0
+      };
+      if (select === newRelationSelect && newModalEl) {
+        options.dropdownParent = jQuery(newModalEl);
+      }
+      jQuery(select).select2(options).on('select2:open', function () {
+        window.setTimeout(function () {
+          const input = document.querySelector('.select2-container--open .select2-search__field');
+          if (input) {
+            input.focus();
+            input.select();
+          }
+        }, 0);
+      });
     });
   }
 

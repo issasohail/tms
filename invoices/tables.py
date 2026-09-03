@@ -69,8 +69,7 @@ class InvoiceTable(ExportableTable):
     property_unit = Column(
         empty_values=(),
         verbose_name="Property",
-        order_by=("lease__unit__property__property_name",
-                  "lease__unit__unit_number"),
+        order_by=("historical_property_name", "historical_unit_number"),
         orderable=True,
         attrs={"th": {"class": "col-propunit"},
                "td": {"class": "col-propunit"}},
@@ -159,7 +158,7 @@ class InvoiceTable(ExportableTable):
 
     def render_property_unit(self, record):
         try:
-            unit = record.lease.unit
+            unit = record.historical_unit
             prop = unit.property
             prop_name = (getattr(prop, "property_name", "") or "").strip()
             unit_no = getattr(unit, "unit_number", "") or ""
@@ -227,7 +226,7 @@ class InvoiceTable(ExportableTable):
 
         lease = getattr(record, "lease", None)
         tenant = getattr(lease, "tenant", None) if lease else None
-        unit = getattr(lease, "unit", None) if lease else None
+        unit = getattr(record, "historical_unit", None)
         prop = getattr(unit, "property", None) if unit else None
         phone = getattr(tenant, "phone", "") or ""
 

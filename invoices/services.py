@@ -12,6 +12,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
+from .historical_units import historical_unit_prefetch
 from .models import Invoice, InvoiceItem, ItemCategory, RecurringCharge, WaterBill
 
 
@@ -1682,7 +1683,15 @@ def generate_monthly_billing_pdfs(run, *, progress_callback=None):
     item_list = list(
         run.items.filter(status=MonthlyBillingRunItem.STATUS_READY)
         .exclude(status=MonthlyBillingRunItem.STATUS_EXCLUDED)
-        .select_related("invoice", "tenant", "property", "unit")
+        .select_related(
+            "invoice",
+            "invoice__lease__tenant",
+            "invoice__lease__unit__property",
+            "tenant",
+            "property",
+            "unit",
+        )
+        .prefetch_related(historical_unit_prefetch("invoice__"))
     )
     for index, item in enumerate(item_list, start=1):
         _progress(progress_callback, item, index, len(item_list), "Generating PDF")
@@ -1724,7 +1733,7 @@ def generate_monthly_billing_pdf_for_item(item):
 def build_monthly_invoice_whatsapp_message(invoice, billing_month):
     lease = invoice.lease
     tenant = lease.tenant
-    unit = lease.unit
+    unit = invoice.historical_unit
     prop = unit.property
     items = list(invoice.items.select_related("category"))
 
@@ -1785,13 +1794,25 @@ def send_monthly_billing_ready(
     from whatsapp.models import WhatsAppMessageLog
 
     queryset = (
-        run.items.select_related("invoice", "lease", "lease__tenant")
+        run.items.select_related(
+            "invoice",
+            "invoice__lease__unit__property",
+            "lease",
+            "lease__tenant",
+        )
+        .prefetch_related(historical_unit_prefetch("invoice__"))
         .filter(status=MonthlyBillingRunItem.STATUS_READY)
         .exclude(status=MonthlyBillingRunItem.STATUS_EXCLUDED)
     )
     if retry_failed:
         queryset = (
-            run.items.select_related("invoice", "lease", "lease__tenant")
+            run.items.select_related(
+                "invoice",
+                "invoice__lease__unit__property",
+                "lease",
+                "lease__tenant",
+            )
+            .prefetch_related(historical_unit_prefetch("invoice__"))
             .filter(status=MonthlyBillingRunItem.STATUS_FAILED)
             .exclude(status=MonthlyBillingRunItem.STATUS_EXCLUDED)
         )

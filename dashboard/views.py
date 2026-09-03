@@ -8,6 +8,7 @@ from django.shortcuts import render
 from django.utils import timezone
 
 from expenses.models import Expense
+from invoices.historical_units import prepare_historical_invoice_units
 from invoices.models import Invoice
 from leases.models import Lease, LeaseRenewal
 from payments.models import Payment
@@ -121,7 +122,7 @@ def dashboard(request):
             lease_id, ZERO
         ) - payment_totals.get(lease_id, ZERO)
 
-    upcoming_invoices = (
+    upcoming_invoices = prepare_historical_invoice_units(
         Invoice.objects.select_related(
             "lease",
             "lease__tenant",
@@ -133,8 +134,8 @@ def dashboard(request):
             due_date__lte=today + timedelta(days=15),
             status__in=["unpaid", "partially_paid"],
         )
-        .order_by("due_date", "id")[:5]
-    )
+        .order_by("due_date", "id")
+    )[:5]
 
     meter_online_minutes = online_threshold_minutes()
     meter_offline_cutoff = timezone.now() - timedelta(minutes=meter_online_minutes)

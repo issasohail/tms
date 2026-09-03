@@ -96,13 +96,13 @@
               <td>{{ forloop.counter }}</td>
 
               {# Large screens: separate Property / Unit #}
-              <td class="col-property">{{ inv.lease.unit.property.property_name }}</td>
-              <td class="col-unit">{{ inv.lease.unit.unit_number }}</td>
+              <td class="col-property">{{ inv.historical_unit.property.property_name }}</td>
+              <td class="col-unit">{{ inv.historical_unit.unit_number }}</td>
 
               {# XS: combined location #}
               <td class="col-loc">
-                <div class="fw-semibold truncate-1">{{ inv.lease.unit.property.property_name }}</div>
-                <div class="text-muted">{{ inv.lease.unit.unit_number }}</div>
+                <div class="fw-semibold truncate-1">{{ inv.historical_unit.property.property_name }}</div>
+                <div class="text-muted">{{ inv.historical_unit.unit_number }}</div>
               </td>
 
               {# Tenant name (2 lines + ellipsis). Replace the field if different in your model. #}

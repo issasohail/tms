@@ -82,6 +82,12 @@ class Invoice(models.Model):
     def __str__(self):
         return f"Invoice #{self.invoice_number} - {self.lease.id}"
 
+    @property
+    def historical_unit(self):
+        from invoices.historical_units import resolve_historical_invoice_unit
+
+        return resolve_historical_invoice_unit(self)
+
     def late_fee_hold_is_active(self, today=None):
         today = today or timezone.localdate()
         return bool(self.late_fee_hold_until and self.late_fee_hold_until >= today)

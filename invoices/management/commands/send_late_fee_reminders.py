@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from core.models import GlobalSettings
 from core.scheduling import format_scheduler_time, scheduler_time_is_due
+from invoices.historical_units import prepare_historical_invoice_units
 from invoices.late_fees import run_due_late_fee_reminders
 from invoices.models import Invoice, InvoiceLateFeeReminder
 
@@ -42,7 +43,7 @@ class Command(BaseCommand):
             self.stdout.write("No late-fee automation start date is configured.")
             return
 
-        invoices = (
+        invoices = prepare_historical_invoice_units(
             Invoice.objects
             .exclude(status__in=["paid", "cancelled"])
             .filter(
@@ -57,10 +58,10 @@ class Command(BaseCommand):
         self.stdout.write(
             "Invoice # | Invoice date | Due date | Property | Unit | Tenant | Amount | Status"
         )
-        for invoice in invoices.iterator():
+        for invoice in invoices.iterator(chunk_size=200):
             lease = invoice.lease
             tenant = lease.tenant
-            unit = lease.unit
+            unit = invoice.historical_unit
             self.stdout.write(
                 f"{invoice.invoice_number} | {invoice.issue_date} | {invoice.due_date} | "
                 f"{unit.property.property_name} | {unit.unit_number} | "

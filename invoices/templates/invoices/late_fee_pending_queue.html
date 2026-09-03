@@ -88,7 +88,7 @@
           <td>{{ forloop.counter }}</td>
           <td><a href="{% url 'invoices:invoice_detail' row.invoice.pk %}">#{{ row.invoice.invoice_number }}</a></td>
           <td>{{ row.invoice.issue_date }}<br><span class="text-danger">Due {{ row.invoice.due_date }}</span></td>
-          <td>{{ row.invoice.lease.unit.property.property_name }} / {{ row.invoice.lease.unit.unit_number }}</td>
+          <td>{{ row.invoice.historical_unit.property.property_name }} / {{ row.invoice.historical_unit.unit_number }}</td>
           <td>{{ row.invoice.lease.tenant.get_full_name|default:"-" }}</td>
           <td class="text-end">{{ row.invoice.amount|money:2 }}</td>
           <td class="text-end">{{ row.balance|money:2 }}</td>
@@ -127,7 +127,7 @@
     <thead><tr><th>S.N</th><th>Time</th><th>Invoice</th><th>Property / Unit</th><th>Tenant</th><th>Source</th><th>Reminder</th><th>Status</th><th class="text-end">Fee</th><th>Error</th></tr></thead>
     <tbody>{% for reminder in recent_reminders %}<tr><td>{{ forloop.counter }}</td>
       <td>{{ reminder.created_at|date:"Y-m-d H:i" }}</td><td><a href="{% url 'invoices:invoice_detail' reminder.invoice.pk %}">#{{ reminder.invoice.invoice_number }}</a></td>
-      <td>{{ reminder.invoice.lease.unit.property.property_name }} / {{ reminder.invoice.lease.unit.unit_number }}</td><td>{{ reminder.invoice.lease.tenant.get_full_name|default:"-" }}</td>
+      <td>{{ reminder.invoice.historical_unit.property.property_name }} / {{ reminder.invoice.historical_unit.unit_number }}</td><td>{{ reminder.invoice.lease.tenant.get_full_name|default:"-" }}</td>
       <td>{{ reminder.get_sent_via_display }}</td><td>#{{ reminder.reminder_number }}</td><td>{{ reminder.get_status_display }}</td><td class="text-end">{{ reminder.fee_amount|money:2 }}</td><td class="text-danger small">{{ reminder.error_text }}</td>
     </tr>{% empty %}<tr><td colspan="10" class="text-center text-muted py-3">No reminder activity has been recorded yet.</td></tr>{% endfor %}</tbody>
   </table></div>

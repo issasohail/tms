@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from .historical_units import historical_unit_prefetch, prepare_historical_invoice_units
 from .late_fees import (
     _attach_outstanding_balances,
     approve_pending_late_fee,
@@ -57,6 +58,7 @@ def late_fee_pending_queue(request):
         InvoiceLateFeeReminder.objects
         .filter(status=InvoiceLateFeeReminder.STATUS_FEE_PENDING)
         .select_related("invoice", "invoice__lease", "invoice__lease__tenant")
+        .prefetch_related(historical_unit_prefetch("invoice__"))
         .order_by("-created_at")
     )
     recent_reminders = (
@@ -65,17 +67,18 @@ def late_fee_pending_queue(request):
             "invoice", "invoice__lease__tenant", "invoice__lease__unit",
             "invoice__lease__unit__property", "created_by",
         )
+        .prefetch_related(historical_unit_prefetch("invoice__"))
         .order_by("-created_at")[:100]
     )
     settings_obj = GlobalSettings.get_solo()
-    review_invoices = list(
+    review_invoices = list(prepare_historical_invoice_units(
         Invoice.objects
         .exclude(status__in=["paid", "cancelled"])
         .filter(due_date__lte=today)
         .select_related("lease__tenant", "lease__unit", "lease__unit__property")
         .prefetch_related("late_fee_reminders")
-        .order_by("-due_date", "invoice_number")[:250]
-    )
+        .order_by("-due_date", "invoice_number")
+    )[:250])
     _attach_outstanding_balances(review_invoices)
     ready_ids = {item["invoice_id"] for item in preview["details"]}
     excluded_invoices = []

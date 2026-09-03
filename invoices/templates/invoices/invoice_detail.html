@@ -109,7 +109,7 @@
           <p class="mb-0 text-muted inv-field-label">To</p>
           <p class="mb-0 fw-semibold">{{ invoice.lease.tenant.first_name }} {{ invoice.lease.tenant.last_name }}</p>
           <p class="mb-0 text-muted">{{ invoice.lease.tenant.phone|format_phone }}</p>
-          <p class="mb-0 text-muted">{{ invoice.lease.unit.unit_number }}, {{ invoice.lease.unit.property.property_name }}</p>
+          <p class="mb-0 text-muted">{{ invoice.historical_unit.unit_number }}, {{ invoice.historical_unit.property.property_name }}</p>
         </div>
         <div class="col-12 col-md-6">
           <div class="row g-1">
@@ -799,8 +799,8 @@ function sendEmail() {
     `Amount: {{ computed_total|money:2 }}\n` +
     `Due Date: {{ invoice.due_date|date:"M d, Y" }}\n` +
     `Lease Balance: {{ lease_balance|money:2 }}\n` +
-    `Property: {{ invoice.lease.unit.property.property_name }}\n` +
-    `Unit: {{ invoice.lease.unit.unit_number }}\n\nThank you!`;
+    `Property: {{ invoice.historical_unit.property.property_name }}\n` +
+    `Unit: {{ invoice.historical_unit.unit_number }}\n\nThank you!`;
   window.location.href = `mailto:{{ invoice.lease.tenant.email }}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
@@ -813,7 +813,7 @@ function sendSMS() {
     `Amount: {{ computed_total|money:2 }}\n` +
     `Due: {{ invoice.due_date|date:"M d, Y" }}\n` +
     `Balance: {{ lease_balance|money:2 }}\n` +
-    `{{ invoice.lease.unit.property.property_name }} – {{ invoice.lease.unit.unit_number }}`;
+    `{{ invoice.historical_unit.property.property_name }} – {{ invoice.historical_unit.unit_number }}`;
   if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
     window.open(`sms:${phone}?body=${encodeURIComponent(msg)}`, '_blank');
   } else {
@@ -864,8 +864,8 @@ function sendInvoiceViaNormalWhatsApp(phone) {
   const issueDate     = '{{ invoice.issue_date|date:"M d, Y"|escapejs }}';
   const dueDate       = '{{ invoice.due_date|date:"M d, Y"|escapejs }}';
   const tenantFull    = '{{ invoice.lease.tenant.first_name|default:""|add:" "|add:invoice.lease.tenant.last_name|default:""|escapejs }}'.slice(0, 25);
-  const propertyName  = '{{ invoice.lease.unit.property.property_name|default:""|escapejs }}';
-  const unitNumber    = '{{ invoice.lease.unit.unit_number|default:""|escapejs }}';
+  const propertyName  = '{{ invoice.historical_unit.property.property_name|default:""|escapejs }}';
+  const unitNumber    = '{{ invoice.historical_unit.unit_number|default:""|escapejs }}';
   const leaseBalFmt   = '{{ lease_balance|floatformat:2|intcomma|escapejs }}';
   const totalFmt      = '{{ computed_total|floatformat:2|intcomma|escapejs }}';
   const secBalFmt     = '{{ sec_totals.balance_to_collect|floatformat:2|intcomma|escapejs }}';

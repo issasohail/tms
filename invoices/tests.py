@@ -2,10 +2,14 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
+from django.contrib.auth import get_user_model
+from django.template.loader import render_to_string
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 from unittest.mock import call, patch
 
+from invoices.historical_units import prepare_historical_invoice_units
 from invoices.models import Invoice, InvoiceItem, ItemCategory, RecurringCharge
 from invoices.services import (
     _latest_meter_reading_for_lease,
@@ -17,10 +21,141 @@ from invoices.services import (
     run_monthly_billing_full,
     run_monthly_billing_preflight,
 )
-from leases.models import Lease
+from leases.models import Lease, LeaseUnitOccupancy
 from properties.models import Property, Unit
 from smart_meter.models import Meter, MeterInstallation, MeterReading
 from tenants.models import Tenant
+
+
+class HistoricalInvoiceUnitTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="historical-invoice-admin",
+            email="historical-invoice@example.com",
+            password="test-pass",
+        )
+        self.client.force_login(self.user)
+        self.property = Property.objects.create(
+            property_name="F35",
+            owner_name="Owner",
+            owner_cnic="12345-1234567-9",
+            type="residential",
+            property_type="apartment",
+            total_units=3,
+        )
+        self.old_unit = Unit.objects.create(property=self.property, unit_number="Flat 12")
+        self.new_unit = Unit.objects.create(property=self.property, unit_number="Flat 5")
+        self.fallback_unit = Unit.objects.create(property=self.property, unit_number="Flat 8")
+        tenant = Tenant.objects.create(
+            first_name="Sirtaj Aziz",
+            last_name="Ajab Khan",
+            cnic="12345-1234567-8",
+        )
+        self.lease = Lease.objects.create(
+            tenant=tenant,
+            unit=self.new_unit,
+            start_date=date(2025, 12, 1),
+            end_date=date(2026, 12, 31),
+            monthly_rent=Decimal("25000.00"),
+        )
+        LeaseUnitOccupancy.objects.create(
+            lease=self.lease,
+            unit=self.old_unit,
+            move_in_date=date(2025, 12, 1),
+            move_out_date=date(2026, 8, 31),
+        )
+        LeaseUnitOccupancy.objects.create(
+            lease=self.lease,
+            unit=self.new_unit,
+            move_in_date=date(2026, 9, 1),
+        )
+        self.august_invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 8, 1),
+            due_date=date(2026, 8, 10),
+            amount=Decimal("25000.00"),
+        )
+        self.september_invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 9, 1),
+            due_date=date(2026, 9, 10),
+            amount=Decimal("25000.00"),
+        )
+
+        fallback_tenant = Tenant.objects.create(
+            first_name="Fallback",
+            last_name="Tenant",
+            cnic="12345-1234567-7",
+        )
+        self.fallback_lease = Lease.objects.create(
+            tenant=fallback_tenant,
+            unit=self.fallback_unit,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+            monthly_rent=Decimal("20000.00"),
+        )
+        self.fallback_invoice = Invoice.objects.create(
+            lease=self.fallback_lease,
+            issue_date=date(2026, 8, 1),
+            due_date=date(2026, 8, 10),
+            amount=Decimal("20000.00"),
+        )
+
+    def test_invoice_unit_resolves_before_and_after_move_with_fallback(self):
+        self.assertEqual(self.august_invoice.historical_unit, self.old_unit)
+        self.assertEqual(self.september_invoice.historical_unit, self.new_unit)
+        self.assertEqual(self.fallback_invoice.historical_unit, self.fallback_unit)
+
+    def test_invoice_list_filters_by_historical_unit(self):
+        old_response = self.client.get(
+            reverse("invoices:invoice_list"),
+            {"unit": self.old_unit.pk},
+        )
+        new_response = self.client.get(
+            reverse("invoices:invoice_list"),
+            {"unit": self.new_unit.pk},
+        )
+
+        self.assertEqual(old_response.status_code, 200)
+        self.assertContains(old_response, self.august_invoice.invoice_number)
+        self.assertContains(old_response, "F35-Flat 12")
+        self.assertNotContains(old_response, self.september_invoice.invoice_number)
+        self.assertEqual(new_response.status_code, 200)
+        self.assertContains(new_response, self.september_invoice.invoice_number)
+        self.assertContains(new_response, "F35-Flat 5")
+        self.assertNotContains(new_response, self.august_invoice.invoice_number)
+
+    def test_prefetched_historical_units_do_not_add_per_invoice_queries(self):
+        invoices = list(
+            prepare_historical_invoice_units(
+                Invoice.objects.select_related("lease__unit__property")
+            ).order_by("issue_date", "id")
+        )
+
+        with self.assertNumQueries(0):
+            unit_numbers = [invoice.historical_unit.unit_number for invoice in invoices]
+
+        self.assertEqual(unit_numbers, ["Flat 12", "Flat 8", "Flat 5"])
+
+    def test_invoice_detail_and_pdf_use_historical_unit(self):
+        detail = self.client.get(
+            reverse("invoices:invoice_detail", args=[self.august_invoice.pk])
+        )
+
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "Flat 12, F35")
+        self.assertNotContains(detail, "Flat 5, F35")
+
+        with patch("invoices.views.render_to_pdf", return_value=b"%PDF-1.4") as mocked_pdf:
+            pdf_response = self.client.get(
+                reverse("invoices:invoice_pdf", args=[self.august_invoice.pk])
+            )
+
+        self.assertEqual(pdf_response.status_code, 200)
+        pdf_context = mocked_pdf.call_args.args[1]
+        pdf_html = render_to_string("invoices/invoice_pdf.html", pdf_context)
+        self.assertIn("Flat 12, F35", pdf_html)
+        self.assertNotIn("Flat 5, F35", pdf_html)
 
 
 class MonthlyBillingRegressionTests(TestCase):

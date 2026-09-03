@@ -376,7 +376,7 @@
                             <tr onclick="window.location='{{ invoice.get_absolute_url }}'" style="cursor: pointer;">
                                 <td>{{ invoice.due_date|date:"M d" }}</td>
                                 <td>{{ invoice.lease.tenant.get_full_name }}</td>
-                                <td>{{ invoice.lease.unit.property.property_name }}-{{ invoice.lease.unit.unit_number }}</td>
+                                <td>{{ invoice.historical_unit.property.property_name }}-{{ invoice.historical_unit.unit_number }}</td>
                                 <td>{{ invoice.amount|money:2 }}</td>
                             </tr>
                             {% empty %}

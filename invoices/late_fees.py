@@ -5,6 +5,7 @@ from django.db.models import Case, DecimalField, F, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
+from invoices.historical_units import prepare_historical_invoice_units
 from invoices.models import Invoice, InvoiceItem, InvoiceLateFeeReminder, ItemCategory
 
 LATE_FEE_CATEGORY_NAME = "Late Fee"
@@ -290,7 +291,7 @@ def reject_pending_late_fee(reminder):
 
 def collect_due_invoices(today=None, start_date=None, skip_current_month=False):
     today = today or timezone.localdate()
-    invoices = (
+    invoices = prepare_historical_invoice_units(
         Invoice.objects
         .exclude(status__in=["paid", "cancelled"])
         .filter(amount__gt=0, due_date__lte=today)
@@ -309,7 +310,7 @@ def collect_due_invoices(today=None, start_date=None, skip_current_month=False):
 
 
 def _invoice_summary_detail(invoice, reminder_number, error=None):
-    unit = getattr(invoice.lease, "unit", None)
+    unit = getattr(invoice, "historical_unit", None)
     property_obj = getattr(unit, "property", None) if unit else None
     detail = {
         "invoice_id": invoice.pk,

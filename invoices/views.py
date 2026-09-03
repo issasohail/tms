@@ -1,4 +1,4 @@
-from accounts.access import restrict_queryset_to_properties
+from accounts.access import allowed_property_ids
 # invoices/views.py
 # adjust import if Category lives elsewhere
 import asyncio
@@ -72,6 +72,10 @@ from payments.models import Payment
 from properties.models import Property, Unit  # adjust imports
 
 from .forms import InvoiceForm, InvoiceItemForm
+from .historical_units import (
+    historical_unit_prefetch,
+    prepare_historical_invoice_units,
+)
 
 # top of views.py
 from .models import (
@@ -200,7 +204,10 @@ class InvoiceListView(SingleTableView):
             )
         )
 
-        qs = restrict_queryset_to_properties(qs, self.request.user, "lease__unit__property")
+        qs = prepare_historical_invoice_units(qs)
+        allowed_properties = allowed_property_ids(self.request.user)
+        if allowed_properties is not None:
+            qs = qs.filter(historical_property_id__in=allowed_properties)
 
         r = self.request
         prop = r.GET.get("property") or r.GET.get("property_id")
@@ -220,9 +227,9 @@ class InvoiceListView(SingleTableView):
                 end = e.isoformat()
 
         if prop:
-            qs = qs.filter(lease__unit__property_id=prop)
+            qs = qs.filter(historical_property_id=prop)
         if unit:
-            qs = qs.filter(lease__unit_id=unit)
+            qs = qs.filter(historical_unit_id=unit)
         if tenant:
             qs = qs.filter(lease__tenant_id=tenant)
         if lease:
@@ -704,6 +711,7 @@ class InvoiceDetailView(DetailView):
                 Prefetch(
                     "items", queryset=InvoiceItem.objects.select_related("category")
                 ),
+                historical_unit_prefetch(),
                 "lease__invoices",
                 "late_fee_reminders",
                 Prefetch(
@@ -923,6 +931,7 @@ def public_invoice_detail(request, token):
             "lease__unit__property",
         ).prefetch_related(
             Prefetch("items", queryset=InvoiceItem.objects.select_related("category")),
+            historical_unit_prefetch(),
             "lease__invoices",
             Prefetch(
                 "lease__payments", queryset=Payment.objects.select_related("detail")
@@ -1106,7 +1115,9 @@ def _invoice_pdf_context(invoice):
 def send_invoice_email(request, invoice_id):
     try:
         invoice = get_object_or_404(
-            Invoice.objects.select_related("lease__tenant", "lease__unit__property"),
+            prepare_historical_invoice_units(
+                Invoice.objects.select_related("lease__tenant", "lease__unit__property")
+            ),
             pk=invoice_id,
         )
 
@@ -1147,8 +1158,10 @@ class InvoicePDFView(View):
     def get(self, request, pk):
         try:
             invoice = get_object_or_404(
-                Invoice.objects.select_related(
-                    "lease__tenant", "lease__unit__property"
+                prepare_historical_invoice_units(
+                    Invoice.objects.select_related(
+                        "lease__tenant", "lease__unit__property"
+                    )
                 ),
                 pk=pk,
             )
@@ -3374,17 +3387,15 @@ def invoices_bulk_delete_preview(request):
         mode = "ids"
 
     # inside invoices_bulk_delete_preview() before select_related/prefetch
-    invoices_qs = invoices_qs.order_by(
-        "lease__unit__property__property_name",
-        "lease__unit__unit_number",  # change to "lease__unit__number" if that's your field
+    invoices_qs = prepare_historical_invoice_units(invoices_qs).order_by(
+        "historical_property_name",
+        "historical_unit_number",
         "issue_date",
         "id",
     )
 
     # Preload relations for template: lease → unit → property, plus items
-    invoices_qs = invoices_qs.select_related("lease__unit__property").prefetch_related(
-        "items"
-    )
+    invoices_qs = invoices_qs.select_related("lease__unit__property").prefetch_related("items")
 
     # Compute totals once (don’t trust any stale cached amount fields)
     rows = []
@@ -3442,7 +3453,7 @@ def invoices_bulk_delete_confirm(request):
 def build_invoice_whatsapp_message(inv):
     lease = getattr(inv, "lease", None)
     tenant = getattr(lease, "tenant", None)
-    unit = getattr(lease, "unit", None)
+    unit = getattr(inv, "historical_unit", None)
     prop = getattr(unit, "property", None)
 
     tenant_name = (
@@ -3485,8 +3496,10 @@ def build_invoice_whatsapp_message(inv):
 @require_GET
 def invoice_whatsapp_message(request, pk: int):
     inv = (
-        Invoice.objects.select_related(
-            "lease", "lease__tenant", "lease__unit", "lease__unit__property"
+        prepare_historical_invoice_units(
+            Invoice.objects.select_related(
+                "lease", "lease__tenant", "lease__unit", "lease__unit__property"
+            )
         )
         .filter(pk=pk)
         .first()
@@ -3514,7 +3527,7 @@ def invoice_whatsapp_message(request, pk: int):
 def build_invoice_whatsapp_message(request, inv):
     lease = getattr(inv, "lease", None)
     tenant = getattr(lease, "tenant", None)
-    unit = getattr(lease, "unit", None)
+    unit = getattr(inv, "historical_unit", None)
     prop = getattr(unit, "property", None)
 
     tenant_name = (
@@ -3619,8 +3632,10 @@ def build_invoice_whatsapp_message(request, inv):
 @require_GET
 def api_invoice_whatsapp(request, pk: int):
     inv = (
-        Invoice.objects.select_related(
-            "lease", "lease__tenant", "lease__unit", "lease__unit__property"
+        prepare_historical_invoice_units(
+            Invoice.objects.select_related(
+                "lease", "lease__tenant", "lease__unit", "lease__unit__property"
+            )
         )
         .filter(pk=pk)
         .first()

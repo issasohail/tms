@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 import traceback
 from invoices.models import Invoice, InvoiceItem
 from invoices.models import round_amount_up_to_nearest_10
+from invoices.historical_units import prepare_historical_invoice_units
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
 from django.contrib.auth.decorators import permission_required, login_required
@@ -1934,12 +1935,11 @@ def billing_summary_items(request):
             lease_ids = list(lease_qs.values_list("id", flat=True))
 
         # list invoices
-        invs = (
+        invs = prepare_historical_invoice_units(
             Invoice.objects.filter(
                 lease_id__in=lease_ids, issue_date__gte=start, issue_date__lte=end)
             .select_related("lease", "lease__tenant", "lease__unit", "lease__unit__property")
-            .order_by("lease__unit")
-        )
+        ).order_by("historical_property_name", "historical_unit_number")
 
         # category filter + heading label
         # --- category filter + heading label (robust) ---
@@ -1980,8 +1980,9 @@ def billing_summary_items(request):
             tenant_obj = getattr(inv.lease, "tenant", None)
             tenant_name = getattr(tenant_obj, "name", "") or (
                 str(tenant_obj) if tenant_obj else "")
-            unit_number = getattr(inv.lease.unit, "unit_number", "")
-            prop_obj = getattr(inv.lease.unit, "property", None)
+            invoice_unit = inv.historical_unit
+            unit_number = getattr(invoice_unit, "unit_number", "")
+            prop_obj = getattr(invoice_unit, "property", None)
             property_name = getattr(
                 prop_obj, "property_name", "") if prop_obj else ""
 

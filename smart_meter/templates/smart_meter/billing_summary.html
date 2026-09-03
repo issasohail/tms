@@ -150,9 +150,15 @@
 <style>
   /* ======= Sizing knobs you can tweak ======= */
   :root{
-    --fs-body: 0.78rem;         /* slightly larger for easier number reading */
-    --fs-th:   0.76rem;
-    --fs-th-cat: 0.72rem;
+    --fs-body: 0.86rem;         /* main table and page text */
+    --fs-th:   0.84rem;         /* table header text */
+    --fs-th-cat: 0.80rem;       /* category header text */
+    --fs-phone: 0.76rem;        /* phone numbers only */
+    --fw-phone: 600;            /* phone number font weight */
+    --fs-unit: 0.90rem;         /* Unit / Meter values */
+    --fw-unit: 600;             /* Unit / Meter font weight */
+    --fs-number: 0.90rem;       /* serial and financial numbers */
+    --fw-number: 600;           /* serial and financial number weight */
     --pad-cell: .18rem .30rem;  /* compact rows */
     --pad-btn:  .30rem .48rem;
     --radius:   10px;
@@ -232,10 +238,17 @@
   th[data-col="total_balance"],   td[data-col="total_balance"]   { width:var(--w-balance) !important; min-width:var(--w-balance) !important; }
   th[data-col="whatsapp"],        td[data-col="whatsapp"]        { width:var(--w-wa) !important;    min-width:var(--w-wa) !important; text-align:center; }
 
+  #billingTbl td[data-col="phone"]{ font-size:var(--fs-phone); font-weight:var(--fw-phone); }
+  #billingTbl tbody td[data-col="unit"]{ font-size:var(--fs-unit); font-weight:var(--fw-unit); }
+  #billingTbl tbody td[data-col="sn"],
+  #billingTbl tbody td.num:not([data-col="whatsapp"]),
+  #billingTbl tfoot td.num{ font-size:var(--fs-number); font-weight:var(--fw-number); }
+
   /* Category columns narrower and 2-line headers */
   th.cat-col, td.cat-col{ width:var(--w-cat); min-width:var(--w-cat); }
   th.cat-col .lbl{ white-space:normal; }
 
+  #billingTbl a, #billingTbl a:visited{ color:#000; }
   a.js-detail{ text-decoration:underline dotted; text-underline-offset:2px; }
   a.js-detail:hover{ text-decoration:underline; }
 

@@ -6,12 +6,16 @@ from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError
 from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
 
 from smart_meter.management.commands.meter_listener import (
+    ACTIVE_HANDLERS,
     ClientHandler,
     DbCommandPoller,
     HEARTBEAT_FRAME_HEX,
     HEARTBEAT_INTERVAL,
+    _register_handler,
+    _unregister_handler,
 )
 from smart_meter.models import LiveReading, Meter, MeterReading
 
@@ -67,6 +71,9 @@ class BlockingReceiveSocket(FakeSocket):
 
 
 class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
+    def tearDown(self):
+        ACTIVE_HANDLERS.clear()
+
     def test_application_heartbeat_is_disabled_by_default(self):
         self.assertEqual(HEARTBEAT_INTERVAL, 0)
         self.assertEqual(HEARTBEAT_FRAME_HEX, "")
@@ -265,6 +272,7 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         handler.join(timeout=1)
         self.assertFalse(handler.is_alive())
 
+    @patch("smart_meter.management.commands.meter_listener.Meter.objects.filter")
     @patch("smart_meter.management.commands.meter_listener.parse_frame")
     @patch("smart_meter.management.commands.meter_listener._register_handler")
     @patch(
@@ -272,8 +280,9 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         return_value=(True, "standard"),
     )
     def test_unresolved_di_logs_full_raw_frame(
-        self, _verify_checksum, _register_handler, parse_frame
+        self, _verify_checksum, _register_handler, parse_frame, meter_filter
     ):
+        meter_filter.return_value.exists.return_value = False
         parse_frame.return_value = {
             "meter_number": "260305510012",
             "control_code": 0x91,
@@ -292,6 +301,72 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         self.assertIn("control_code=0x91", raw_log)
         self.assertIn("len=3", raw_log)
         self.assertIn("frame=6801AB", raw_log)
+
+    @patch("smart_meter.management.commands.meter_listener.MeterCommand.objects.filter")
+    def test_repeated_registration_does_not_requery_waiting_commands(self, command_filter):
+        handler = self.make_handler()
+        handler.meter_number = "260305510012"
+
+        self.assertTrue(_register_handler(handler.meter_number, handler))
+        self.assertTrue(_register_handler(handler.meter_number, handler))
+
+        self.assertEqual(command_filter.call_count, 1)
+        handler.conn.close_calls = 0
+        _register_handler(handler.meter_number, handler)
+        self.assertEqual(handler.conn.close_calls, 0)
+
+    @patch("smart_meter.management.commands.meter_listener.MeterCommand.objects.filter")
+    @patch("smart_meter.management.commands.meter_listener.record_meter_contact")
+    @patch("smart_meter.management.commands.meter_listener.Meter.objects.filter")
+    @patch("smart_meter.management.commands.meter_listener.parse_frame")
+    @patch(
+        "smart_meter.management.commands.meter_listener.verify_checksum",
+        return_value=(True, "standard"),
+    )
+    def test_repeated_heartbeat_frames_only_wake_commands_once(
+        self,
+        _verify_checksum,
+        parse_frame,
+        meter_filter,
+        record_contact,
+        command_filter,
+    ):
+        parse_frame.return_value = {
+            "meter_number": "260305510012",
+            "control_code": 0x91,
+            "di": "80808080",
+            "data": None,
+        }
+        meter_filter.return_value.exists.return_value = True
+        handler = self.make_handler()
+
+        handler.process_frame(b"\x68")
+        handler.process_frame(b"\x68")
+
+        self.assertEqual(command_filter.call_count, 1)
+        self.assertEqual(meter_filter.call_count, 1)
+        self.assertEqual(record_contact.call_count, 2)
+
+    @patch("smart_meter.management.commands.meter_listener.clear_meter_connection")
+    @patch("smart_meter.management.commands.meter_listener.MeterCommand.objects.filter")
+    def test_newer_connection_replaces_older_and_old_cannot_return_or_unregister(
+        self, _command_filter, clear_presence
+    ):
+        old = self.make_handler()
+        new = self.make_handler()
+        old.accepted_at_monotonic = 10
+        new.accepted_at_monotonic = 20
+
+        self.assertTrue(_register_handler("260305510012", old))
+        self.assertTrue(_register_handler("260305510012", new))
+        self.assertIs(ACTIVE_HANDLERS["260305510012"], new)
+        self.assertFalse(old.alive)
+
+        self.assertFalse(_register_handler("260305510012", old))
+        self.assertIs(ACTIVE_HANDLERS["260305510012"], new)
+        _unregister_handler("260305510012", old)
+        self.assertIs(ACTIVE_HANDLERS["260305510012"], new)
+        clear_presence.assert_not_called()
 
 
 class DbCommandPollerConnectionLifecycleTests(TestCase):
@@ -380,3 +455,28 @@ class ReadingPersistenceRegressionTests(TestCase):
         self.assertEqual(str(live.voltage_a), "230.1")
         self.assertEqual(str(live.current_a), "1.250")
         self.assertEqual(history.total_energy, live.total_energy)
+
+    @patch("smart_meter.management.commands.meter_listener.record_meter_contact")
+    @patch("smart_meter.management.commands.meter_listener.parse_frame")
+    @patch(
+        "smart_meter.management.commands.meter_listener.verify_checksum",
+        return_value=(True, "standard"),
+    )
+    def test_heartbeat_records_contact_without_refreshing_live_timestamp(
+        self, _verify_checksum, parse_frame, record_contact
+    ):
+        reading = LiveReading.objects.create(meter=self.meter, total_energy="1.000")
+        old_ts = timezone.now() - timezone.timedelta(hours=1)
+        LiveReading.objects.filter(pk=reading.pk).update(ts=old_ts)
+        parse_frame.return_value = {
+            "meter_number": self.meter.meter_number,
+            "control_code": 0x91,
+            "di": "80808080",
+            "data": None,
+        }
+
+        self.handler.process_frame(b"\x68")
+
+        record_contact.assert_called_once()
+        reading.refresh_from_db()
+        self.assertEqual(reading.ts, old_ts)

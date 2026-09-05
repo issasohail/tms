@@ -76,7 +76,11 @@ from smart_meter.services.relay_status import (
     parse_authoritative_relay_state,
     reconcile_live_relay_command_state,
 )
-from smart_meter.status import online_threshold_minutes
+from smart_meter.status import (
+    online_threshold_minutes,
+    resolve_meter_online_status,
+    resolve_meter_online_statuses,
+)
 
 # You will write these
 from smart_meter.utils import send_cutoff_command, send_restore_command
@@ -513,8 +517,7 @@ def view_bills(request, unit_id):
 
 def meter_status(request, meter_id: int):
     """
-    Returns whether the meter is 'online' based on last LiveReading.ts.
-    Online if ts is within the shared persisted-reading freshness window.
+    Return transport reachability and measurement freshness independently.
     """
     try:
         meter = Meter.objects.get(pk=meter_id)
@@ -527,13 +530,17 @@ def meter_status(request, meter_id: int):
     lr = getattr(meter, "live", None)
     ts = lr.ts if isinstance(lr, LiveReading) else None
 
-    online = False
-    if ts:
-        online = (timezone.now() - ts) <= timedelta(minutes=minutes)
+    status = resolve_meter_online_status(meter, lr)
 
     return JsonResponse(
         {
-            "online": online,
+            "online": status["is_online"],
+            "is_online": status["is_online"],
+            "connection_state": status["connection_state"],
+            "is_connected": status["is_connected"],
+            "measurement_is_fresh": status["measurement_is_fresh"],
+            "last_contact_at": _ts_iso(status["last_contact_at"]),
+            "last_measurement_at": _ts_iso(status["last_measurement_at"]),
             "last_reading_ts": ts.isoformat() if ts else None,
             "minutes_window": minutes,
         }
@@ -931,7 +938,16 @@ def meter_list(request):
     page_obj.object_list = attach_active_meter_counts(page_obj.object_list)
     from smart_meter.rates import resolve_electricity_rate
 
+    page_statuses = resolve_meter_online_statuses(
+        (meter, meter.last_ts) for meter in page_obj.object_list
+    )
     for meter in page_obj.object_list:
+        meter_status = page_statuses[meter.pk]
+        meter.is_online = meter_status["is_online"]
+        meter.is_connected = meter_status["is_connected"]
+        meter.measurement_is_fresh = meter_status["measurement_is_fresh"]
+        meter.connection_state = meter_status["connection_state"]
+        meter.last_contact_at = meter_status["last_contact_at"]
         meter.display_electricity_rate = resolve_electricity_rate(meter=meter)
         meter.confirmed_relay_state = parse_authoritative_relay_state(
             meter.last_status_word
@@ -2932,10 +2948,15 @@ def live_custom(request):
     qs = qs.filter(meter_id__in=meter_scope_qs.values("id"))
 
     # 5) Compute 'is_online' and apply offline-only filter if requested
-    cutoff = timezone.now() - timedelta(minutes=online_minutes)
     rows = []
+    status_by_meter_id = resolve_meter_online_statuses(
+        (reading.meter, reading) for reading in qs
+    )
+    qs = list(qs)
     for r in qs:
-        r.is_online = bool(r.ts and r.ts >= cutoff)
+        status = status_by_meter_id[r.meter_id]
+        for field, value in status.items():
+            setattr(r, field, value)
         if offline_only and r.is_online:
             continue
         rows.append(r)
@@ -2962,7 +2983,7 @@ def live_custom(request):
             reading.latest_relay_command,
             reading.status_word,
             reading.ts,
-            is_fresh=reading.is_online,
+            is_fresh=reading.measurement_is_fresh,
         )
         reading.confirmed_relay_state = relay_state["confirmed_state"]
         reading.relay_confirmed_at = (
@@ -5498,7 +5519,6 @@ def live_custom_data(request):
 
     qs = qs.filter(meter_id__in=meter_scope_qs.values("id"))
 
-    cutoff = timezone.now() - timedelta(minutes=online_threshold_minutes())
     tenant_info = active_tenant_info_for_units(
         qs.values_list("meter__unit_id", flat=True)
     )
@@ -5511,9 +5531,12 @@ def live_custom_data(request):
         command_type="relay",
     ).order_by("meter_id", "-created_at"):
         latest_relay_commands.setdefault(command.meter_id, command)
+    status_by_meter_id = resolve_meter_online_statuses(
+        (reading.meter, reading) for reading in rows
+    )
     for r in rows:
-        is_online = bool(r.ts and r.ts >= cutoff)
-        if offline_only and is_online:
+        status = status_by_meter_id[r.meter_id]
+        if offline_only and status["is_online"]:
             continue
 
         m = r.meter
@@ -5525,14 +5548,19 @@ def live_custom_data(request):
             latest_command,
             r.status_word,
             r.ts,
-            is_fresh=is_online,
+            is_fresh=status["measurement_is_fresh"],
         )
         confirmed_state = relay_state["confirmed_state"]
 
         payload.append(
             {
                 "meter_id": m.id,
-                "is_online": is_online,
+                "is_online": status["is_online"],
+                "connection_state": status["connection_state"],
+                "is_connected": status["is_connected"],
+                "measurement_is_fresh": status["measurement_is_fresh"],
+                "last_contact_at": _ts_iso(status["last_contact_at"]),
+                "last_measurement_at": _ts_iso(status["last_measurement_at"]),
                 "power_status": (m.power_status or "OFF").upper(),
                 "relay_confirmed": bool(confirmed_state),
                 "relay_confirmed_state": confirmed_state or "",
@@ -5554,8 +5582,8 @@ def live_custom_data(request):
                 "meter_role_display": m.get_meter_role_display(),
                 "updated_ts": _ts_iso(r.ts),
                 # optional: pre-formatted display strings
-                "source_ip": r.source_ip or "",
-                "port": r.source_port or "",
+                "source_ip": status["source_ip"] or r.source_ip or "",
+                "port": status["source_port"] or r.source_port or "",
                 "balance": _fmt(r.balance, 2),
                 "total_energy": _fmt(r.total_energy, 3),
                 "forward_energy": _fmt(

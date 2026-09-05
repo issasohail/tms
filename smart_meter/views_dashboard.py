@@ -59,7 +59,7 @@ from openpyxl.utils import get_column_letter
 
 from properties.models import Property, Unit
 from smart_meter.models import Meter, MeterReading, LiveReading, MeterBalance, MeterInstallation
-from smart_meter.status import online_threshold_minutes
+from smart_meter.status import online_threshold_minutes, resolve_meter_online_status, resolve_meter_online_statuses
 from smart_meter.utils.display import attach_active_meter_counts, display_labels_for_units
 import json
 from django.utils.safestring import mark_safe
@@ -792,14 +792,17 @@ def energy_dashboard(request):
             total_energy = getattr(snap, "total_energy",
                                    None) if snap else None
 
-        cutoff_dt = timezone.now() - timedelta(minutes=online_threshold_minutes())
-        is_online = bool(lr and lr.ts >= cutoff_dt)
+        meter_status = resolve_meter_online_status(selected_meter, lr)
+        is_online = meter_status["is_online"]
         bal_obj = MeterBalance.objects.filter(unit=selected_meter.unit).first()
 
         live_panel = {
             "unit_name": selected_meter.display_location_name,
             "meter_number": selected_meter.meter_number,
             "is_online": is_online,
+            "connection_state": meter_status["connection_state"],
+            "is_connected": meter_status["is_connected"],
+            "measurement_is_fresh": meter_status["measurement_is_fresh"],
             "last_ts": last_ts,
             "voltage_a": voltage_a,
             "current_a": current_a,
@@ -852,15 +855,17 @@ def energy_dashboard(request):
     online_count = offline_count = 0
     online_set = set()
     if not per_meter_mode:
-        cutoff = timezone.now() - timedelta(minutes=online_threshold_minutes())
         # get latest live-reading timestamps for all selected meters
-        live_map = {lr.meter_id: lr.ts for lr in LiveReading.objects.filter(
-            meter__in=display_meters)}
-        for mid in display_meters.values_list("id", flat=True):
-            ts = live_map.get(mid)
-            if ts and ts >= cutoff:
+        display_meter_list = list(display_meters)
+        live_map = {lr.meter_id: lr for lr in LiveReading.objects.filter(
+            meter__in=display_meter_list)}
+        status_map = resolve_meter_online_statuses(
+            (meter, live_map.get(meter.pk)) for meter in display_meter_list
+        )
+        for meter in display_meter_list:
+            if status_map[meter.pk]["is_online"]:
                 online_count += 1
-                online_set.add(mid)
+                online_set.add(meter.pk)
             else:
                 offline_count += 1
 

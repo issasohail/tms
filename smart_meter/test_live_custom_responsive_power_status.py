@@ -75,3 +75,10 @@ class LiveCustomResponsivePowerStatusTests(SimpleTestCase):
         self.assertIn("'sent', 'retry'].includes(status)", self.source)
         self.assertIn("status === 'acknowledged'", self.source)
         self.assertIn("setRowOperationStatus(tr, '', '');", self.source)
+
+    def test_connectivity_badge_supports_online_stale_and_offline(self):
+        self.assertIn('b.textContent = "Online"', self.source)
+        self.assertIn('b.textContent = "Data stale"', self.source)
+        self.assertIn('b.textContent = "Offline"', self.source)
+        self.assertIn('setRowOnlineState(tr, r.connection_state);', self.source)
+        self.assertIn("r.connection_state == 'stale'", self.source)

@@ -44,7 +44,7 @@ from expenses.models import Expense
 from properties.models import BuildingType, Property, Unit
 from leases.models import Lease, LeaseRenewal
 from smart_meter.models import LiveReading
-from smart_meter.status import online_threshold_minutes
+from smart_meter.status import online_threshold_minutes, resolve_meter_online_statuses
 from django.contrib.auth.decorators import login_required
 
 logger = logging.getLogger(__name__)
@@ -2197,8 +2197,7 @@ def dashboard(request):
     )
 
     meter_online_minutes = online_threshold_minutes()
-    meter_offline_cutoff = timezone.now() - timedelta(minutes=meter_online_minutes)
-    offline_meter_readings = (
+    meter_reading_candidates = list(
         LiveReading.objects.select_related(
             "meter",
             "meter__unit",
@@ -2206,10 +2205,17 @@ def dashboard(request):
         )
         .filter(
             meter__is_active=True,
-            ts__lt=meter_offline_cutoff,
         )
-        .order_by("ts", "meter__unit__property__property_name", "meter__unit__unit_number")[:50]
+        .order_by("ts", "meter__unit__property__property_name", "meter__unit__unit_number")
     )
+    meter_statuses = resolve_meter_online_statuses(
+        (reading.meter, reading) for reading in meter_reading_candidates
+    )
+    offline_meter_readings = [
+        reading
+        for reading in meter_reading_candidates
+        if meter_statuses[reading.meter_id]["connection_state"] == "offline"
+    ][:50]
 
     dashboard_lease_base = Lease.objects.select_related(
         "tenant",

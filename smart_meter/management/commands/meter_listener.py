@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import itertools
 import json
 import logging
 import os
@@ -13,6 +14,7 @@ import stat
 import struct  # for Windows keepalive ioctl
 import threading
 import time
+import uuid
 from datetime import datetime as dt
 from pathlib import Path
 
@@ -56,6 +58,10 @@ from smart_meter.services.relay_status import (
     classify_relay_ack,
     parse_authoritative_relay_state,
     sync_authoritative_relay_status,
+)
+from smart_meter.services.meter_presence import (
+    clear_meter_connection,
+    record_meter_contact,
 )
 from smart_meter.utils.frames import build_read_028011FF
 
@@ -198,6 +204,7 @@ BIDIRECTIONAL_ENERGY_METERS = {"260305510019", "260305510020", "260305510021"}
 # =========================
 ACTIVE_HANDLERS: dict[str, ClientHandler] = {}
 ACTIVE_LOCK = threading.Lock()
+CONNECTION_REGISTRATION_SEQUENCE = itertools.count(1)
 
 REPLY_WAITERS: dict[str, list[dict]] = {}
 REPLY_LOCK = threading.Lock()
@@ -217,11 +224,33 @@ def _meter_request_lock(meter_number: str) -> threading.Lock:
 
 def _register_handler(meter_number: str, handler: ClientHandler):
     if not meter_number:
-        return
-    # UPDATED: ensure a single live connection per meter. Replace atomically.
+        return False
+    genuine_registration = False
     with ACTIVE_LOCK:
         old = ACTIVE_HANDLERS.get(meter_number)
-        if old and old is not handler:
+        if old is handler:
+            return True
+        candidate_order = (
+            getattr(handler, "accepted_at_monotonic", 0),
+            getattr(handler, "registration_generation", 0),
+        )
+        current_order = (
+            getattr(old, "accepted_at_monotonic", 0),
+            getattr(old, "registration_generation", 0),
+        ) if old else None
+        if old and candidate_order <= current_order:
+            logger.info(
+                "Ignoring older duplicate connection for meter %s from %s "
+                "(accepted=%s); current peer is %s (accepted=%s)",
+                meter_number,
+                handler.peer,
+                getattr(handler, "accepted_at_monotonic", 0),
+                getattr(old, "peer", "?"),
+                getattr(old, "accepted_at_monotonic", 0),
+            )
+            handler.close(reason="older_duplicate")
+            return False
+        if old:
             try:
                 logger.info(
                     "ðŸ” Meter %s reconnected from %s; closing old peer %s",
@@ -233,6 +262,9 @@ def _register_handler(meter_number: str, handler: ClientHandler):
             except Exception:
                 pass
         ACTIVE_HANDLERS[meter_number] = handler
+        genuine_registration = True
+    if not genuine_registration:
+        return True
     # Wake deferred DB commands after the socket identity is known. This is
     # fail-open for the reading path; the periodic poller remains the fallback.
     try:
@@ -261,15 +293,23 @@ def _register_handler(meter_number: str, handler: ClientHandler):
             meter_number,
             exc,
         )
+    return True
 
 
 def _unregister_handler(meter_number: str | None, handler: ClientHandler):
     if not meter_number:
         return
+    removed = False
     with ACTIVE_LOCK:
         cur = ACTIVE_HANDLERS.get(meter_number)
         if cur is handler:
             ACTIVE_HANDLERS.pop(meter_number, None)
+            removed = True
+    if removed:
+        clear_meter_connection(
+            meter_number,
+            getattr(handler, "connection_identity", None),
+        )
 
 
 def _get_handler(meter_number: str) -> ClientHandler | None:
@@ -540,9 +580,14 @@ class ClientHandler(threading.Thread):
 
         # Learned from parsed frames
         self.meter_number: str | None = None
+        self.recognized_meter_number: str | None = None
         self.last_seen = time.time()
         self.peer = f"{addr[0]}:{addr[1]}"
         self.disconnect_reason = "shutdown"
+        self.accepted_at_monotonic = time.monotonic_ns()
+        self.registration_generation = next(CONNECTION_REGISTRATION_SEQUENCE)
+        self.connection_generation = time.time_ns()
+        self.connection_identity = uuid.uuid4().hex
 
         # UPDATED: heartbeat thread control
         self._hb_stop = threading.Event()
@@ -851,9 +896,9 @@ class ClientHandler(threading.Thread):
         di = parsed.get("di")
         data = parsed.get("data")
 
-        # Diagnostic replies are intercepted before handler registration or any
-        # model lookup/update. parse_frame has already enforced checksum, address,
-        # control and DI extraction; the caller performs the stricter value decode.
+        # Diagnostic replies are intentionally consumed before registration and
+        # model access. In normal operation they travel on an already recognised
+        # handler, so they can still refresh contact without adding a DB query.
         if (
             di != "80808080"
             and ctrl_code in (0x91, 0xD1)
@@ -862,6 +907,14 @@ class ClientHandler(threading.Thread):
                 meter_number, di, ctrl_code, frame, consume_only=True
             ) == 2
         ):
+            if ok and meter_number == self.recognized_meter_number:
+                record_meter_contact(
+                    meter_number,
+                    self.addr[0],
+                    self.addr[1],
+                    connection_identity=self.connection_identity,
+                    connection_generation=self.connection_generation,
+                )
             logger.info(
                 "DIAGNOSTIC_RX_CONSUMED meter=%s di=%s frame=%s",
                 meter_number,
@@ -869,6 +922,39 @@ class ClientHandler(threading.Thread):
                 frame.hex().upper(),
             )
             return
+
+        # Remember/register meter number for this socket. Repeated frames on the
+        # current handler return immediately from registration without touching
+        # MeterCommand. An older duplicate is stopped before it can take over.
+        if meter_number:
+            self.meter_number = meter_number
+            if not _register_handler(meter_number, self):
+                return
+
+        contact_recorded = False
+        known_meter = meter_number == self.recognized_meter_number
+        needs_early_recognition = bool(
+            meter_number
+            and ok
+            and (
+                known_meter
+                or not data
+            )
+        )
+        if needs_early_recognition:
+            if not known_meter:
+                known_meter = Meter.objects.filter(meter_number=meter_number).exists()
+                if known_meter:
+                    self.recognized_meter_number = meter_number
+            if known_meter:
+                record_meter_contact(
+                    meter_number,
+                    self.addr[0],
+                    self.addr[1],
+                    connection_identity=self.connection_identity,
+                    connection_generation=self.connection_generation,
+                )
+                contact_recorded = True
 
         if not di:
             logger.info(
@@ -881,11 +967,6 @@ class ClientHandler(threading.Thread):
             )
 
         self.last_seen = time.time()
-
-        # Remember/register meter number for this socket
-        if meter_number:
-            self.meter_number = meter_number
-            _register_handler(meter_number, self)
 
         msg = f"ðŸ“¥ Meter {meter_number} DI={di} "
         msg += "(data parsed)" if data else "(no data)"
@@ -948,6 +1029,16 @@ class ClientHandler(threading.Thread):
                 f"ðŸ†• Unknown meter discovered: {meter_number} (seen {um.seen_count}x)"
             )
             return
+
+        self.recognized_meter_number = meter_number
+        if ok and not contact_recorded:
+            record_meter_contact(
+                meter_number,
+                self.addr[0],
+                self.addr[1],
+                connection_identity=self.connection_identity,
+                connection_generation=self.connection_generation,
+            )
 
         # Keep every valid decoded frame in an append-only ledger.  The bulk
         # 028011FF layout varies by firmware, so its extended values are kept

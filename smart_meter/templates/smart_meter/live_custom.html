@@ -351,6 +351,10 @@
     background-image: linear-gradient(to right, rgba(108, 117, 125, .05), transparent);
   }
 
+  .row-stale {
+    background-image: linear-gradient(to right, rgba(255, 193, 7, .07), transparent);
+  }
+
   /* Compact badges + power control (global) */
   .online-badge,
   .power-badge {
@@ -876,13 +880,16 @@
   const DATA_URL = "{% url 'smart_meter:smart_meter_live_custom_data' %}";
   const LIVE_CURRENCY_SYMBOL = "{{ CURRENCY_SYMBOL|escapejs }}";
 
-  function setRowOnlineState(tr, isOnline) {
-    tr.classList.toggle("row-online", !!isOnline);
-    tr.classList.toggle("row-offline", !isOnline);
+  function setRowOnlineState(tr, connectionState) {
+    const state = connectionState || "offline";
+    tr.classList.toggle("row-online", state === "online");
+    tr.classList.toggle("row-stale", state === "stale");
+    tr.classList.toggle("row-offline", state === "offline");
 
     tr.querySelectorAll(".online-badge").forEach(b => {
-      b.classList.remove("bg-success", "bg-secondary");
-      if (isOnline) { b.classList.add("bg-success"); b.textContent = "Online"; }
+      b.classList.remove("bg-success", "bg-warning", "bg-secondary", "text-dark");
+      if (state === "online") { b.classList.add("bg-success"); b.textContent = "Online"; }
+      else if (state === "stale") { b.classList.add("bg-warning", "text-dark"); b.textContent = "Data stale"; }
       else { b.classList.add("bg-secondary"); b.textContent = "Offline"; }
     });
   }
@@ -1049,7 +1056,7 @@
         const tr = document.querySelector(`tr[data-meter-id="${r.meter_id}"]`);
         if (!tr) continue;
 
-        setRowOnlineState(tr, r.is_online);
+        setRowOnlineState(tr, r.connection_state);
         setRowPowerState(tr, r.power_status);
         setRelayWorkflowState(tr, r);
 
@@ -1718,7 +1725,7 @@
         <tbody>
           {% for r in rows %}
           {% with m=r.meter u=r.meter.unit p=r.meter.unit.property %}
-          <tr class="row-{% if r.is_online %}online{% else %}offline{% endif %}" data-meter-row
+          <tr class="row-{{ r.connection_state }}" data-meter-row
             data-meter-id="{{ m.id }}">
             <td class="mobile-meter-card-v2" colspan="17">
               <div class="mobile-line mobile-line-one">
@@ -1730,7 +1737,7 @@
                 <div class="mobile-unit-name">{{ m.display_location_name|default:"" }}</div>
                 <span class="power-operation-status mobile-operation {{ r.relay_indicator_class }}" role="status" aria-live="polite" {% if not r.relay_indicator_label %}hidden{% endif %}>{{ r.relay_indicator_label }}</span>
                 <div class="mobile-state-badges">
-                  <span class="badge rounded-pill online-badge {% if r.is_online %}bg-success{% else %}bg-secondary{% endif %}">{% if r.is_online %}Online{% else %}Offline{% endif %}</span>
+                  <span class="badge rounded-pill online-badge {% if r.connection_state == 'online' %}bg-success{% elif r.connection_state == 'stale' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{% if r.connection_state == 'online' %}Online{% elif r.connection_state == 'stale' %}Data stale{% else %}Offline{% endif %}</span>
                   <span class="badge rounded-pill power-badge {% if m.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">{% if m.power_status|lower == 'on' %}ON{% else %}OFF{% endif %}</span>
                 </div>
               </div>
@@ -1801,15 +1808,15 @@
                 {% else %}
                   <span class="badge bg-success">Billing</span>
                 {% endif %}
-                <span class="badge online-badge {% if r.is_online %}bg-success{% else %}bg-secondary{% endif %}">
-                  {% if r.is_online %}Online{% else %}Offline{% endif %}
+                <span class="badge online-badge {% if r.connection_state == 'online' %}bg-success{% elif r.connection_state == 'stale' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                  {% if r.connection_state == 'online' %}Online{% elif r.connection_state == 'stale' %}Data stale{% else %}Offline{% endif %}
                 </span>
               </div>
               <!-- Small-screen: place 3 controls under Meter # -->
               <div class="mobile-actions">
                 <span
-                  class="badge rounded-pill online-badge {% if r.is_online %}bg-success{% else %}bg-secondary{% endif %}">
-                  {% if r.is_online %}Online{% else %}Offline{% endif %}
+                  class="badge rounded-pill online-badge {% if r.connection_state == 'online' %}bg-success{% elif r.connection_state == 'stale' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                  {% if r.connection_state == 'online' %}Online{% elif r.connection_state == 'stale' %}Data stale{% else %}Offline{% endif %}
                 </span>
                 <span
                   class="badge rounded-pill power-badge {% if m.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">
@@ -1821,8 +1828,8 @@
             <!-- Status column (hidden on small) remains for desktop -->
             <td class="sticky-left col-status text-center">
               <span
-                class="badge rounded-pill online-badge {% if r.is_online %}bg-success{% else %}bg-secondary{% endif %}">
-                {% if r.is_online %}Online{% else %}Offline{% endif %}
+                class="badge rounded-pill online-badge {% if r.connection_state == 'online' %}bg-success{% elif r.connection_state == 'stale' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                {% if r.connection_state == 'online' %}Online{% elif r.connection_state == 'stale' %}Data stale{% else %}Offline{% endif %}
               </span>
             </td>
 

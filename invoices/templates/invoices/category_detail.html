@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ category.name }} Items{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h4 class="mb-0">{{ category.name }}</h4>
+      <div class="small text-muted">Invoice items using this category</div>
+    </div>
+    <a href="{% url 'invoices:category_list' %}" class="btn btn-secondary btn-sm">Back to Categories</a>
+  </div>
+
+  <div class="card border-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr class="table-light">
+            <th>Invoice</th>
+            <th>Tenant</th>
+            <th>Occupancy</th>
+            <th>Lease</th>
+            <th>Date</th>
+            <th>Description</th>
+            <th class="text-end">Amount</th>
+            <th class="text-end"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in page_obj %}
+            {% with invoice=item.invoice lease=item.invoice.lease unit=item.invoice.historical_unit %}
+              <tr>
+                <td class="fw-medium">{{ invoice.invoice_number }}</td>
+                <td>{{ lease.tenant.get_full_name }}</td>
+                <td>
+                  {% if unit %}
+                    {{ unit.property.property_name }} - {{ unit.unit_number }}
+                  {% else %}
+                    <span class="text-muted">-</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div>#{{ lease.pk }} <span class="badge bg-secondary">{{ lease.get_status_display }}</span></div>
+                  <div class="small text-muted">{{ lease.start_date|date:"d M Y" }} - {{ lease.end_date|date:"d M Y" }}</div>
+                </td>
+                <td>
+                  <div>{{ invoice.issue_date|date:"d M Y" }}</div>
+                  <div class="small text-muted">Due {{ invoice.due_date|date:"d M Y" }}</div>
+                </td>
+                <td>{{ item.description|default:"-" }}</td>
+                <td class="text-end">{{ item.amount|floatformat:2 }}</td>
+                <td class="text-end">
+                  <a href="{% url 'invoices:invoice_detail' invoice.pk %}" class="btn btn-outline-primary btn-sm">Detail</a>
+                </td>
+              </tr>
+            {% endwith %}
+          {% empty %}
+            <tr><td colspan="8" class="text-center text-muted py-4">No invoice items use this category.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page_obj.has_other_pages %}
+      <div class="card-body">
+        <nav aria-label="Pagination">
+          <ul class="pagination pagination-sm justify-content-end mb-0">
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Prev</a></li>{% endif %}
+            <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} / {{ paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>{% endif %}
+          </ul>
+        </nav>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

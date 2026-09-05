@@ -147,6 +147,55 @@ class BidirectionalPersistenceTests(TestCase):
         self.assertEqual(history.total_energy, Decimal("10.000"))
         self.assertEqual(history.reverse_active_energy_kwh, Decimal("0.500"))
 
+    def test_bulk_energy_is_preserved_for_ordinary_billing_meter(self):
+        meter = Meter.objects.create(meter_number="260305510012")
+        parsed = {
+            "meter_number": meter.meter_number,
+            "control_code": 0x91,
+            "di": "028011FF",
+            "data": {"total_energy": Decimal("123.456"), "voltage_a": Decimal("230.1")},
+            "cs_style": "std",
+        }
+        with patch(
+            "smart_meter.management.commands.meter_listener.parse_frame",
+            return_value=parsed,
+        ), patch(
+            "smart_meter.management.commands.meter_listener.verify_checksum",
+            return_value=(True, "std"),
+        ), patch("smart_meter.management.commands.meter_listener._register_handler"):
+            self.handler.process_frame(b"\x68")
+
+        live = LiveReading.objects.get(meter=meter)
+        history = MeterReading.objects.get(meter=meter)
+        self.assertEqual(live.total_energy, Decimal("123.456"))
+        self.assertEqual(live.forward_active_energy_kwh, Decimal("123.456"))
+        self.assertEqual(history.total_energy, Decimal("123.456"))
+        self.assertEqual(history.forward_active_energy_kwh, Decimal("123.456"))
+
+    def test_bulk_combined_energy_is_not_billing_authority_for_bidirectional_meter(self):
+        parsed = {
+            "meter_number": self.meter.meter_number,
+            "control_code": 0x91,
+            "di": "028011FF",
+            "data": {"total_energy": Decimal("123.456"), "voltage_a": Decimal("230.1")},
+            "cs_style": "std",
+        }
+        with patch(
+            "smart_meter.management.commands.meter_listener.parse_frame",
+            return_value=parsed,
+        ), patch(
+            "smart_meter.management.commands.meter_listener.verify_checksum",
+            return_value=(True, "std"),
+        ), patch("smart_meter.management.commands.meter_listener._register_handler"):
+            self.handler.process_frame(b"\x68")
+
+        live = LiveReading.objects.get(meter=self.meter)
+        history = MeterReading.objects.get(meter=self.meter)
+        self.assertIsNone(live.total_energy)
+        self.assertIsNone(live.forward_active_energy_kwh)
+        self.assertIsNone(history.total_energy)
+        self.assertEqual(history.voltage_a, Decimal("230.1"))
+
     def test_malformed_reply_does_not_overwrite_valid_reading(self):
         LiveReading.objects.create(
             meter=self.meter,

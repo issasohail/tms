@@ -20,6 +20,7 @@ from django.core import signing
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import EmailMessage
+from django.core.paginator import Paginator
 from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import (
@@ -1514,6 +1515,38 @@ class CategoryListView(ListView):
         order = sort if direction == "asc" else f"-{sort}"
         return qs.order_by(order, "id")  # stable tiebreaker
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["merge_targets"] = ItemCategory.objects.filter(is_active=True).order_by(
+            "name", "id"
+        )
+        return ctx
+
+
+class CategoryDetailView(DetailView):
+    model = ItemCategory
+    template_name = "invoices/category_detail.html"
+    context_object_name = "category"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        items = (
+            InvoiceItem.objects.filter(category=self.object)
+            .select_related(
+                "invoice",
+                "invoice__lease",
+                "invoice__lease__tenant",
+                "invoice__lease__unit",
+                "invoice__lease__unit__property",
+            )
+            .prefetch_related(historical_unit_prefetch("invoice__"))
+            .order_by("-invoice__issue_date", "-invoice_id", "id")
+        )
+        paginator = Paginator(items, 50)
+        ctx["page_obj"] = paginator.get_page(self.request.GET.get("page"))
+        ctx["paginator"] = paginator
+        return ctx
+
 
 class CategoryCreateView(CreateView):
     model = ItemCategory
@@ -1566,20 +1599,88 @@ def category_inline_update(request, pk):
     except json.JSONDecodeError:
         return HttpResponseBadRequest("Invalid JSON")
 
-    name = (data.get("name") or "").strip()
-    if not name:
-        return JsonResponse({"ok": False, "error": "Name is required."}, status=400)
+    update_fields = []
+    if "name" in data:
+        name = (data.get("name") or "").strip()
+        if not name:
+            return JsonResponse({"ok": False, "error": "Name is required."}, status=400)
 
-    # enforce uniqueness (case-insensitive)
-    if ItemCategory.objects.exclude(pk=cat.pk).filter(name__iexact=name).exists():
+        # enforce uniqueness (case-insensitive)
+        if ItemCategory.objects.exclude(pk=cat.pk).filter(name__iexact=name).exists():
+            return JsonResponse(
+                {"ok": False, "error": "A category with that name already exists."},
+                status=400,
+            )
+        cat.name = name
+        update_fields.append("name")
+
+    if "is_active" in data:
+        if not isinstance(data["is_active"], bool):
+            return JsonResponse(
+                {"ok": False, "error": "Status must be active or inactive."},
+                status=400,
+            )
+        cat.is_active = data["is_active"]
+        update_fields.append("is_active")
+
+    if not update_fields:
         return JsonResponse(
-            {"ok": False, "error": "A category with that name already exists."},
-            status=400,
+            {"ok": False, "error": "No category changes were supplied."}, status=400
         )
 
-    cat.name = name
-    cat.save(update_fields=["name"])
-    return JsonResponse({"ok": True, "id": cat.pk, "name": cat.name})
+    cat.save(update_fields=update_fields)
+    return JsonResponse(
+        {
+            "ok": True,
+            "id": cat.pk,
+            "name": cat.name,
+            "is_active": cat.is_active,
+            "status_label": "Active" if cat.is_active else "Inactive",
+        }
+    )
+
+
+@require_POST
+def category_merge(request):
+    selected_ids = request.POST.getlist("category_ids")
+    target_id = request.POST.get("target_category")
+    redirect_url = reverse("invoices:category_list")
+    if request.GET.get("embed") == "1":
+        redirect_url = f"{redirect_url}?embed=1"
+
+    if not selected_ids or not target_id:
+        messages.error(request, "Select at least one source category and a destination category.")
+        return redirect(redirect_url)
+
+    target = get_object_or_404(ItemCategory, pk=target_id, is_active=True)
+    source_ids = [pk for pk in selected_ids if str(pk) != str(target.pk)]
+    sources = list(ItemCategory.objects.filter(pk__in=source_ids).exclude(pk=target.pk))
+    if not sources:
+        messages.error(request, "Select at least one category other than the destination.")
+        return redirect(redirect_url)
+
+    source_ids = [source.pk for source in sources]
+    with transaction.atomic():
+        invoice_items = InvoiceItem.objects.filter(category_id__in=source_ids).update(
+            category=target
+        )
+        recurring_charges = RecurringCharge.objects.filter(
+            category_id__in=source_ids
+        ).update(category=target)
+        Expense = apps.get_model("expenses", "Expense")
+        expenses = Expense.objects.filter(category_id__in=source_ids).update(category=target)
+        ItemCategory.objects.filter(pk__in=source_ids).update(is_active=False)
+        cache.delete(CATEGORY_CACHE_KEY)
+
+    messages.success(
+        request,
+        (
+            f"Merged {len(sources)} categor{'y' if len(sources) == 1 else 'ies'} into "
+            f"{target.name}. Reassigned {invoice_items} invoice item(s), "
+            f"{recurring_charges} recurring charge(s), and {expenses} expense(s)."
+        ),
+    )
+    return redirect(redirect_url)
 
 
 # invoices/views.py

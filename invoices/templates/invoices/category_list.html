@@ -27,13 +27,37 @@
     </div>
   </form>
 
+  <form id="category-merge-form" class="row g-2 align-items-center mb-2" method="post" action="{% url 'invoices:category_merge' %}{% if tms_embedded %}?embed=1{% endif %}">
+    {% csrf_token %}
+    <div class="col-auto">
+      <label for="target-category" class="col-form-label col-form-label-sm">Merge selected into</label>
+    </div>
+    <div class="col-auto">
+      <select id="target-category" name="target_category" class="form-select form-select-sm" required>
+        <option value="">Choose destination category</option>
+        {% for target in merge_targets %}
+          <option value="{{ target.pk }}">{{ target.name }} (ID {{ target.pk }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-warning btn-sm" id="merge-selected" disabled>Merge Selected</button>
+    </div>
+    <div class="col-auto"><span class="small text-muted" id="selection-count">0 selected</span></div>
+  </form>
+
   <div class="card border-0">
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
         <thead>
           <tr class="table-light">
             <th style="width:8%" class="text-muted">S.N#</th>
-            <th style="width:8%" class="text-muted">Id#</th>
+            <th style="width:10%" class="text-muted">
+              <span class="d-inline-flex align-items-center gap-2">
+                <input class="form-check-input mt-0" type="checkbox" id="select-all" aria-label="Select all categories on this page">
+                ID#
+              </span>
+            </th>
             <th style="width:44%">
               <a class="link-body-emphasis text-decoration-none" href="?sort=name&dir={% if request.GET.sort == 'name' and request.GET.dir == 'asc' %}desc{% else %}asc{% endif %}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">
                 Name
@@ -58,25 +82,33 @@
                 {% endif %}
               </td>
               <td class="fw-medium">
-                <span class="name-id">{{ cat.pk }}</span>
-                
+                <span class="d-inline-flex align-items-center gap-2">
+                  <input class="form-check-input mt-0 category-checkbox" type="checkbox" name="category_ids" value="{{ cat.pk }}" form="category-merge-form" aria-label="Select {{ cat.name }}">
+                  <span class="name-id">{{ cat.pk }}</span>
+                </span>
               </td>
               <td class="fw-medium">
-                <span class="name-text">{{ cat.name }}</span>
+                <span class="name-text" role="button" tabindex="0" title="Click to edit">{{ cat.name }}</span>
                 <input type="text" class="form-control form-control-sm d-none name-input"
                       value="{{ cat.name }}" maxlength="80">
                 
               </td>
 
               <td>
-                {% if cat.is_active %}
-                  <span class="badge bg-success">Active</span>
-                {% else %}
-                  <span class="badge bg-secondary">Inactive</span>
-                {% endif %}
+                <span class="status-display" role="button" tabindex="0" title="Click to edit status">
+                  {% if cat.is_active %}
+                    <span class="badge bg-success">Active</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Inactive</span>
+                  {% endif %}
+                </span>
+                <select class="form-select form-select-sm d-none status-input">
+                  <option value="true" {% if cat.is_active %}selected{% endif %}>Active</option>
+                  <option value="false" {% if not cat.is_active %}selected{% endif %}>Inactive</option>
+                </select>
               </td>
-              <td class="text-end text-muted">
-                {{ cat.item_count|default:cat.invoiceitem_set.count }}
+              <td class="text-end">
+                <a href="{% url 'invoices:category_detail' cat.pk %}" class="text-decoration-none" title="View invoice items">{{ cat.item_count|default:cat.invoiceitem_set.count }}</a>
               </td>
               <td class="text-end">
                 <div class="btn-group" role="group">
@@ -104,11 +136,23 @@
       const table = document.querySelector('table');
       const tokenInput = document.querySelector('#csrf-form input[name=csrfmiddlewaretoken]');
       const csrfToken = tokenInput ? tokenInput.value : '';
+      const mergeForm = document.querySelector('#category-merge-form');
+      const targetSelect = document.querySelector('#target-category');
+      const selectAll = document.querySelector('#select-all');
+      const mergeButton = document.querySelector('#merge-selected');
+      const selectionCount = document.querySelector('#selection-count');
+
+      table.querySelectorAll('tbody tr[data-id]').forEach(tr => {
+        tr.dataset.active = tr.querySelector('.status-input').value;
+      });
 
       function enterEdit(tr){
+        if(tr.classList.contains('editing')) return;
         tr.classList.add('editing');
         tr.querySelector('.name-text').classList.add('d-none');
         tr.querySelector('.name-input').classList.remove('d-none');
+        tr.querySelector('.status-display').classList.add('d-none');
+        tr.querySelector('.status-input').classList.remove('d-none');
         tr.querySelector('.btn-edit').classList.add('d-none');
         tr.querySelector('.btn-save').classList.remove('d-none');
         tr.querySelector('.btn-cancel').classList.remove('d-none');
@@ -119,10 +163,13 @@
           const input = tr.querySelector('.name-input');
           const text = tr.querySelector('.name-text');
           input.value = text.textContent.trim();
+          tr.querySelector('.status-input').value = tr.dataset.active;
         }
         tr.classList.remove('editing');
         tr.querySelector('.name-text').classList.remove('d-none');
         tr.querySelector('.name-input').classList.add('d-none');
+        tr.querySelector('.status-display').classList.remove('d-none');
+        tr.querySelector('.status-input').classList.add('d-none');
         tr.querySelector('.btn-edit').classList.remove('d-none');
         tr.querySelector('.btn-save').classList.add('d-none');
         tr.querySelector('.btn-cancel').classList.add('d-none');
@@ -130,15 +177,17 @@
 
       table.addEventListener('click', function(e){
         const btn = e.target.closest('button');
-        if(!btn) return;
-        const tr = btn.closest('tr');
-        if(btn.classList.contains('btn-edit')){
+        const editable = e.target.closest('.name-text, .status-display');
+        if(!btn && !editable) return;
+        const tr = (btn || editable).closest('tr');
+        if(editable || btn.classList.contains('btn-edit')){
           enterEdit(tr);
         } else if(btn.classList.contains('btn-cancel')){
           exitEdit(tr, true);
         } else if(btn.classList.contains('btn-save')){
           const url = tr.getAttribute('data-update-url');
           const newName = tr.querySelector('.name-input').value.trim();
+          const isActive = tr.querySelector('.status-input').value === 'true';
           if(!newName){
             alert('Name is required.');
             return;
@@ -150,18 +199,69 @@
               'X-CSRFToken': csrfToken,
               'X-Requested-With': 'XMLHttpRequest'
             },
-            body: JSON.stringify({ name: newName })
+            body: JSON.stringify({ name: newName, is_active: isActive })
           }).then(async res => ({ ok: res.ok, data: await res.json().catch(()=>({})) }))
             .then(({ok, data})=>{
               if(!ok || data.ok === false){
                 throw new Error(data.error || 'Unable to save');
               }
               tr.querySelector('.name-text').textContent = data.name;
+              tr.dataset.active = data.is_active ? 'true' : 'false';
+              tr.querySelector('.status-display').innerHTML = data.is_active
+                ? '<span class="badge bg-success">Active</span>'
+                : '<span class="badge bg-secondary">Inactive</span>';
+              const targetOption = targetSelect.querySelector('option[value="' + data.id + '"]');
+              if(data.is_active && !targetOption){
+                const option = document.createElement('option');
+                option.value = data.id;
+                option.textContent = data.name + ' (ID ' + data.id + ')';
+                targetSelect.appendChild(option);
+              } else if(!data.is_active && targetOption){
+                targetOption.remove();
+              } else if(targetOption){
+                targetOption.textContent = data.name + ' (ID ' + data.id + ')';
+              }
               exitEdit(tr);
             })
             .catch(err=>{
               alert(err.message || 'Save failed');
             });
+        }
+      });
+
+      function categoryCheckboxes(){
+        return Array.from(table.querySelectorAll('.category-checkbox'));
+      }
+      function updateSelection(){
+        const boxes = categoryCheckboxes();
+        const selected = boxes.filter(box => box.checked);
+        selectionCount.textContent = selected.length + ' selected';
+        mergeButton.disabled = selected.length === 0;
+        selectAll.checked = boxes.length > 0 && selected.length === boxes.length;
+        selectAll.indeterminate = selected.length > 0 && selected.length < boxes.length;
+      }
+      table.addEventListener('change', function(e){
+        if(e.target.classList.contains('category-checkbox')) updateSelection();
+      });
+      selectAll.addEventListener('change', function(){
+        categoryCheckboxes().forEach(box => { box.checked = selectAll.checked; });
+        updateSelection();
+      });
+      mergeForm.addEventListener('submit', function(e){
+        const selected = categoryCheckboxes().filter(box => box.checked);
+        if(!selected.length || !targetSelect.value){
+          e.preventDefault();
+          alert('Select source categories and a destination category.');
+          return;
+        }
+        if(selected.length === 1 && selected[0].value === targetSelect.value){
+          e.preventDefault();
+          alert('Select at least one category other than the destination.');
+          return;
+        }
+        const targetName = targetSelect.options[targetSelect.selectedIndex].text;
+        if(!confirm('Merge the selected categories into ' + targetName + '? The source categories will become inactive.')){
+          e.preventDefault();
         }
       });
     })();

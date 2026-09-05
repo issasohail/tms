@@ -986,10 +986,18 @@ class ClientHandler(threading.Thread):
             # Reverse energy is deliberately never netted into this value.
             data["total_energy"] = data["forward_active_energy_kwh"]
         elif di == "028011FF" and data.get("total_energy") is not None:
-            # The bulk register is forward plus reverse energy, not the
-            # authoritative forward/import billing register. Do not persist
-            # it into either legacy billing field.
-            data.pop("total_energy", None)
+            if (
+                meter_number in BIDIRECTIONAL_ENERGY_METERS
+                or meter.reading_profile == Meter.READING_PROFILE_TOTAL_AND_PER_PHASE
+                or meter.reverse_energy_capability == Meter.REVERSE_CAPABILITY_SUPPORTED
+            ):
+                # On a confirmed bidirectional meter the bulk register combines
+                # forward and reverse energy, so direct registers remain authoritative.
+                data.pop("total_energy", None)
+            else:
+                # Ordinary billing meters only report this cumulative bulk value.
+                # Preserve the legacy billing value and expose it in the Energy column.
+                data["forward_active_energy_kwh"] = data["total_energy"]
 
         live_field_names = {
             field.name for field in LiveReading._meta.concrete_fields

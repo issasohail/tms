@@ -1,0 +1,963 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-16" />
+    <meta name="keywords" content="iescobill, mepcobill, pescobill, hescobill, sepcobill, qescobill, gepcobill, fescobill, tescobill" />
+    <meta name="description" content="Consumer electricity bills" />
+
+    <title>IESCO ONLINE BILL</title>
+
+    <noscript>
+        <h3>You must have JavaScript enabled in order to use this order form. Please enable JavaScript and then reload this page in order to continue. 
+        </h3>
+        <meta http-equiv="refresh" content="0;" url="/maintenance.aspx" />
+    </noscript>
+
+    <link href="/styles/bill-fonts/fonts.css" rel="stylesheet" type="text/css" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&amp;family=Roboto:wght@400;500;700;900&amp;display=swap" rel="stylesheet" />
+    <link href="/styles/gbill-design.css?v=20260811e" rel="stylesheet" type="text/css" />
+    <link href="/styles/gbill-design-app.css?v=20260811e" rel="stylesheet" type="text/css" />
+    <link href="/styles/img-zoom/multizoom.css" rel="stylesheet" type="text/css" />
+
+    <style>
+        /* Header disco wordmark — inline to avoid cache/override issues */
+        .bill-header .header-brand-mark--split {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            line-height: 1;
+        }
+
+        .bill-header .header-brand-mark--split .header-brand-text {
+            font-family: 'Roboto', Arial, sans-serif !important;
+            font-size: 37px !important;
+            font-weight: 400 !important;
+            line-height: 0.9 !important;
+            letter-spacing: -1px !important;
+        }
+
+        .bill-header .header-brand-mark--split .header-brand-emblem {
+            width: 34px !important;
+            height: 34px !important;
+            max-width: 34px !important;
+            max-height: 34px !important;
+            object-fit: contain !important;
+            flex-shrink: 0;
+            margin-left: 2px;
+        }
+
+        .bill-header .header-brand-mark--logo-only .header-brand-logo {
+            width: auto;
+            max-width: 120px;
+            height: 38px;
+            object-fit: contain;
+            display: block;
+        }
+    </style>
+
+    <style>
+        #normal_bill_qrcode[title],
+        #det_bill_qrcode[title] 
+        {
+            pointer-events: none;
+        }
+    </style>
+
+    
+    <style>
+        body.gbn-print-root {
+            font-size: 9pt;
+            margin: 0;
+        }
+
+        .certificate-container {
+            background: #ffffff;
+            color: #000000;
+            border: 3px double #000000;
+            border-radius: 0;
+            box-shadow: none;
+            padding: 16px 18px 18px;
+            max-width: 794px;
+            margin: 14px auto;
+            font-size: 10pt !important;
+            font-family: "Times New Roman", Times, serif;
+        }
+
+        .certificate-container h1 {
+            margin: 0 0 4px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.8px;
+            color: #000000;
+            text-transform: uppercase;
+        }
+
+        .certificate-container h2 {
+            margin: 0;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: #000000;
+            text-transform: uppercase;
+        }
+
+        .certificate-container .info-table,
+        .certificate-container .bills-table,
+        .certificate-container .issued-by-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            margin-bottom: 12px;
+            background: #ffffff;
+        }
+
+        .certificate-container .info-table td:first-child,
+        .certificate-container .issued-by-table td:first-child {
+            width: 180pt;
+            font-weight: 700;
+            color: #000000;
+            background: #f0f0f0;
+        }
+
+        .certificate-container .info-table td,
+        .certificate-container .issued-by-table td {
+            padding: 7px 9px;
+            border: 2px solid #000000;
+            font-size: 10pt !important;
+            vertical-align: top;
+            color: #000000;
+        }
+
+        .certificate-container .bills-table th,
+        .certificate-container .bills-table td {
+            padding: 7px 9px;
+            border: 2px solid #000000;
+            text-align: center;
+            font-size: 10pt !important;
+            color: #000000;
+        }
+
+        .certificate-container .bills-table th {
+            background: #000000;
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        .certificate-container .bills-table td:nth-child(2),
+        .certificate-container .bills-table td:nth-child(3),
+        .certificate-container .bills-table td:nth-child(4),
+        .certificate-container .bills-table td:nth-child(5) {
+            text-align: right;
+        }
+
+        .certificate-container .bills-table tbody tr:last-child td {
+            background: #e6e6e6;
+            font-weight: 700;
+            color: #000000;
+        }
+
+        .certificate-container p {
+            margin: 8px 0;
+            font-size: 10pt !important;
+            line-height: 1.5;
+            color: #000000;
+        }
+
+        .certificate-container .footer-text {
+            margin-top: 14px;
+            font-size: 10pt;
+            line-height: 1.55;
+            text-align: justify;
+            color: #000000;
+        }
+
+        .certificate-container .note {
+            margin-top: 14px;
+            font-size: 9pt;
+            text-align: center;
+            font-style: italic;
+            color: #000000;
+            border-top: 2px solid #000000;
+            padding-top: 8px;
+        }
+
+        .text-align-left {
+            text-align: left;
+        }
+
+        .certificate-container b,
+        .certificate-container strong {
+            display: inline-block;
+            margin-top: 6px;
+            color: #000000;
+            letter-spacing: 0.3px;
+        }
+
+        .certificate-container .noprint select,
+        .certificate-container .noprint .aspNetDisabled {
+            min-width: 130px;
+            border: 2px solid #000000;
+            border-radius: 0;
+            padding: 3px 6px;
+            font-size: 10pt;
+            background: #ffffff;
+            color: #000000;
+        }
+
+        .tax-cert-empty {
+            max-width: 640px;
+            margin: 28px auto;
+            padding: 36px 32px 32px;
+            text-align: center;
+            background: #ffffff;
+            color: #000000;
+            border: 3px double #000000;
+            font-family: "Times New Roman", Times, serif;
+        }
+
+        .tax-cert-empty__icon {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 16px;
+            border: 2px solid #000000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tax-cert-empty__icon svg {
+            width: 30px;
+            height: 30px;
+        }
+
+        .tax-cert-empty__title {
+            margin: 0 0 10px;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            color: #000000;
+        }
+
+        .tax-cert-empty__text {
+            margin: 0 auto;
+            max-width: 480px;
+            font-size: 11pt;
+            line-height: 1.55;
+            color: #000000;
+        }
+
+        .bill-payment-logo {
+            position: absolute;
+            top: 30px;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-repeat: no-repeat;
+            background-position: center center;
+            background-size: 50%;
+            opacity: 1;
+            pointer-events: none;
+        }
+    </style>
+
+    
+
+    
+    <style>
+        @media print {
+            body {
+                margin: 0;
+                padding: 0;
+            }
+        }
+    </style>
+
+    
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 10% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 40%;
+            max-height: 70%;
+            overflow-y: auto;
+            border-radius: 5px;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+            .close:hover,
+            .close:focus {
+                color: black;
+                text-decoration: none;
+                cursor: pointer;
+            }
+    </style>
+
+    <script src="/js/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+</head>
+<body class="gbn-print-root">
+    <span id="lblSnapError" style="color:Red;"></span>
+    <div id="loader-container">
+        <div class="bill-loader" role="status" aria-live="polite" aria-label="Loading bill">
+            <div class="bill-loader__icon" aria-hidden="true"></div>
+            <div class="bill-loader__title">Loading your bill</div>
+            <div id="loading-bar" class="bill-loader__bar">
+                <div id="progress"></div>
+            </div>
+            <div class="bill-loader__meta">
+                <div id="loading-text">Preparing document…</div>
+                <div id="loading-percent">0%</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="gbn-app-shell">
+        <div class="tabs noprint">
+            <div class="tabs__list">
+                <div class="tab active" onclick="showTab(0)">Bill</div>
+                <div class="tab" onclick="showTab(1)">Tax Certificate</div>
+                
+                <div class="tab" onclick="showTab(2)">Tariff Guide</div>
+                
+            </div>
+            
+            <div class="tabs__actions">
+                <button type="button" class="gbn-print-btn gbn-print-btn--icon" onclick="window.print()" aria-label="Print" title="Print">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M6 9V2h12v7"></path>
+                        <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"></path>
+                        <path d="M6 14h12v8H6z"></path>
+                    </svg>
+                </button>
+            </div>
+            
+        </div>
+
+        
+        <div class="tab-content active">
+
+        
+
+        <div class="bill-canvas-viewport canvas-viewport" id="viewport-1" data-bill-index="1">
+            <div class="a4-container maincontent" id="maincontent-1">
+
+                <header class="bill-header">
+                    <div class="header-left">
+                        <div class="header-brand-mark header-brand-mark--split">
+                            
+                            <span class="header-brand-text brand-green" style="font-family: 'Roboto', Arial, sans-serif; font-size: 37px; font-weight: 400; line-height: 0.9; letter-spacing: -1px;">IESC</span>
+                            <img class="header-brand-emblem" src="/images/companies/iesco/logo.png" alt="IESCO" width="34" height="34" style="width: 34px; height: 34px; max-width: 34px; max-height: 34px; object-fit: contain;" />
+                            
+                        </div>
+                        <div class="ellipsis-protect" style="font-size: 8px; font-weight: bold; margin-top: 2px;">IESCO GST NO: 26-00-2716-001-91</div>
+                        <div class="ellipsis-protect" style="font-size: 8px; color: #475569; line-height: 1;"><a href="http://www.iesco.com.pk" style="color: inherit; text-decoration: none;">www.iesco.com.pk</a></div>
+                        <div class="text-danger ellipsis-protect" style="font-weight: 800; font-size: 9px; margin-top: 1px;">Say No To Corruption</div>
+                    </div>
+                    <div class="header-center">
+                        <h1 class="brand-green ellipsis-protect" style="font-size: 13px; font-weight: 800; letter-spacing: -0.3px; margin: 0;">ISLAMABAD ELECTRIC SUPPLY COMPANY</h1>
+                        <h2 class="ellipsis-protect" style="font-size: 9px; font-weight: 700; color: #475569; margin: 0;">YOUR BETTER SERVICE – OUR PRIDE</h2>
+                        <h3 class="brand-blue ellipsis-protect" style="font-size: 11px; font-weight: 800; margin: 1px 0 0 0;">ELECTRICITY CONSUMER BILL</h3>
+                    </div>
+                    <div class="header-right">
+                        
+                    </div>
+                </header>
+
+                <main class="main-dashboard-grid">
+                    <section class="inner-stack">
+
+                        <div class="component-card consumer-detail-card--gbn">
+                            <div class="card-header">☰ CONSUMER DETAIL</div>
+                            <div class="grid-4col">
+                                <div class="grid-col-cell">
+                                    <div class="label-row"><span class="en-lbl">REFERENCE NO</span><span class="ur-lbl">حوالہ نمبر</span></div>
+                                    <div class="val-space">17146151548911</div>
+                                    <div class="label-row"><span class="en-lbl">CONSUMER ID</span><span class="ur-lbl">کنزیومر نمبر</span></div>
+                                    <div class="val-space">1143090750</div>
+                                    <div class="label-row">
+                                        <span class="en-lbl">NAME & ADDRESS</span>
+                                        <span class="ur-lbl">نام و پتہ</span>
+                                    </div>
+                                    <div class="val-space val-space--address">
+                                        <span>Sohail Iqbal Issa, Iqbal Issa, F#56 F 56/2 St.No.05-Bg.J.C.H.S Rwp</span>
+                                        
+                                    </div>
+                                </div>
+                                <div class="grid-col-cell border-divider-left">
+                                    <div class="label-row"><span class="en-lbl">TRANSFORMER</span><span class="ur-lbl">ٹرانسفارمر</span></div>
+                                    <div class="val-space">Chaudary Akram Markett,</div>
+                                    <div class="label-row"><span class="en-lbl">FEEDER</span><span class="ur-lbl">فیڈر</span></div>
+                                    <div class="val-space">087418 Mahboob Shaheed</div>
+                                    <div class="label-row"><span class="en-lbl">SUB DIVISION</span><span class="ur-lbl">سب ڈویژن</span></div>
+                                    <div class="val-space">Swan</div>
+                                </div>
+                                <div class="grid-col-cell border-divider-left">
+                                    <div class="label-row"><span class="en-lbl">CATEGORY</span><span class="ur-lbl">قسم</span></div>
+                                    <div class="val-space">Lifeline</div>
+                                    <div class="label-row"><span class="en-lbl">STATUS</span><span class="ur-lbl">حالت میٹر</span></div>
+                                    <div class="val-space"></div>
+                                    <div class="label-row"><span class="en-lbl">TARIFF CATEGORY</span><span class="ur-lbl">ٹیرف قسم</span></div>
+                                    <div class="val-space">Domestic</div>
+                                </div>
+                                <div class="grid-col-cell border-divider-left">
+                                    <div class="label-row"><span class="en-lbl">SAN LOAD</span><span class="ur-lbl">لوڈ</span></div>
+                                    <div class="val-space">1</div>
+                                    <div class="label-row"><span class="en-lbl">CURR MDI</span><span class="ur-lbl">ایم ڈی آئی</span></div>
+                                    <div class="val-space"></div>
+                                    <div class="label-row"><span class="en-lbl">TARIFF</span><span class="ur-lbl">ٹیرف</span></div>
+                                    <div class="val-space">A-1A(01)</div>
+                                </div>
+                            </div>
+                            
+                            <div class="consumer-detail-extra">
+                                <div class="consumer-extra-grid">
+                                
+                                
+                                </div>
+                            </div>
+                            
+                        </div>
+
+                        <div class="component-card meter-info-card--gbn">
+                            <div class="card-header">⏳ METER INFO</div>
+                            <div class="meter-info-grid">
+                                <div class="meter-info-cell">
+                                    <div class="label-row"><span class="en-lbl">METER NO</span><span class="ur-lbl">میٹر نمبر</span></div>
+                                    <div class="val-space">S-P  01112300057483<br></div>
+                                </div>
+                                <div class="meter-info-cell">
+                                    <div class="label-row"><span class="en-lbl">MF</span><span class="ur-lbl">جزو ضرب</span></div>
+                                    <div class="val-space">1<br></div>
+                                </div>
+                                <div class="meter-info-cell">
+                                    <div class="label-row"><span class="en-lbl">PREVIOUS READING</span><span class="ur-lbl">سابقہ ریڈنگ</span></div>
+                                    <div class="val-space">1044.5<br></div>
+                                </div>
+                                <div class="meter-info-cell">
+                                    <div class="label-row"><span class="en-lbl">PRESENT READING</span><span class="ur-lbl">موجودہ ریڈنگ</span></div>
+                                    <div class="val-space">1044.5<br></div>
+                                </div>
+                                <div class="meter-info-cell">
+                                    <div class="label-row"><span class="en-lbl">UNITS</span><span class="ur-lbl">یونٹ</span></div>
+                                    <div class="val-space">0<br></div>
+                                </div>
+                            </div>
+                            
+                            <table class="roshni-banner-table" cellspacing="0" cellpadding="0" role="presentation">
+                                <tr id="roshniMsg" class="roshni-row" style="height: 30px">
+	<td style="padding: 4px 8px;">
+                                        <img style="max-width: 100%; max-height: 35%" src="/images/companies/iesco/roshniMsg.jpg" alt="Roshni Message" />
+                                    </td>
+</tr>
+
+                            </table>
+                        </div>
+
+                        <div class="component-card charges-breakdown-card">
+                            <div class="card-header">BILL CHARGES BREAKDOWN <span class="charges-breakdown-rs">(RS.)</span></div>
+                            <div class="charges-breakdown-grid">
+                                <div class="charges-breakdown-col charges-breakdown-col--left">
+                                    <div class="charges-bd-row">
+                                        <div class="charges-bd-label">
+                                            <span class="charges-bd-en">Total Electricity Charges</span>
+                                            <span class="charges-bd-ur">کل چارجز</span>
+                                        </div>
+                                        <span class="charges-bd-val">75</span>
+                                    </div>
+                                    <div class="charges-bd-row">
+                                        <div class="charges-bd-label">
+                                            <span class="charges-bd-en">Subsidies</span>
+                                            <span class="charges-bd-ur">رعایت</span>
+                                        </div>
+                                        <span class="charges-bd-val">0</span>
+                                    </div>
+                                    <div class="charges-bd-row">
+                                        <div class="charges-bd-label">
+                                            <span class="charges-bd-en">Net Electricity Charges</span>
+                                            <span class="charges-bd-pct">84.27 %</span>
+                                            <span class="charges-bd-ur">نیٹ چارجز</span>
+                                        </div>
+                                        <span class="charges-bd-val">75</span>
+                                    </div>
+                                    <div class="charges-bd-row">
+                                        <div class="charges-bd-label">
+                                            <span class="charges-bd-en">Taxes</span>
+                                            <span class="charges-bd-pct">15.73 %</span>
+                                            <span class="charges-bd-ur">کل ٹیکس</span>
+                                        </div>
+                                        <span class="charges-bd-val">14</span>
+                                    </div>
+                                    <div class="charges-bd-row charges-bd-row--current">
+                                        <div class="charges-bd-label">
+                                            <span class="charges-bd-en">Current Bill</span>
+                                            <span class="charges-bd-ur">موجودہ بل</span>
+                                        </div>
+                                        <span class="charges-bd-val">89</span>
+                                    </div>
+                                    
+                                </div>
+                                <div class="charges-breakdown-col charges-breakdown-col--right">
+                                    <div class="charges-bd-row">
+                                        <div class="charges-bd-label">
+                                            <span class="charges-bd-en charges-bd-en--strong">Arrears</span>
+                                            <span class="charges-bd-ur">بقایاجات</span>
+                                        </div>
+                                        <span class="charges-bd-val">-3148/1</span>
+                                    </div>
+                                    <div class="charges-bd-row">
+                                        <div class="charges-bd-label">
+                                            <span class="charges-bd-en charges-bd-en--strong">Installment</span>
+                                            <span class="charges-bd-ur">قسط</span>
+                                        </div>
+                                        <span class="charges-bd-val">0</span>
+                                    </div>
+                                    <div class="charges-bd-row">
+                                        <div class="charges-bd-label">
+                                            <span class="charges-bd-en charges-bd-en--strong">Adjustments</span>
+                                            <span class="charges-bd-ur">ایڈجسٹمنٹ</span>
+                                        </div>
+                                        <span class="charges-bd-val charges-bd-val--strong">0</span>
+                                    </div>
+                                    <div class="charges-bd-row">
+                                        <div class="charges-bd-label">
+                                            <span class="charges-bd-en charges-bd-en--strong">W.E Credit</span>
+                                        </div>
+                                        <span class="charges-bd-val charges-bd-val--strong">0</span>
+                                    </div>
+                                    <div class="charges-bd-row">
+                                        <div class="charges-bd-label">
+                                            <span class="charges-bd-en charges-bd-en--strong">Lock Open Credit</span>
+                                        </div>
+                                        <span class="charges-bd-val charges-bd-val--strong">0</span>
+                                    </div>
+                                    <div class="charges-bd-row" >
+                                        <div class="charges-bd-label">
+                                            <span class="charges-bd-en charges-bd-en--strong">Total FPA</span>
+                                        </div>
+                                        <span class="charges-bd-val charges-bd-val--strong">60</span>
+                                    </div>
+                                    
+                                    
+                                </div>
+                                <div class="charges-bd-row charges-bd-row--spacer" aria-hidden="true">
+                                    
+                                </div>
+                                <div class="charges-bd-row charges-bd-row--spacer charges-bd-row--spacer-alt" aria-hidden="true"></div>
+                                <div class="charges-bd-row charges-bd-row--grand">
+                                    <div class="charges-bd-label">
+                                        <span class="charges-bd-en">Grand Total</span>
+                                        <span class="charges-bd-ur">کل واجبات</span>
+                                    </div>
+                                    <span class="charges-bd-val">-2999 CR</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        
+                        <div class="ibn-bill-messages ibn-bill-messages--mdi">
+                            
+                            <div class="ibn-bill-messages__section ibn-bill-messages__section--primary">
+                                
+                                <div class="ibn-bill-messages__cell ibn-bill-messages__cell--fpa">
+                                    <div class="ibn-bill-messages__fpa-body" dir="rtl" lang="ur">آپکے اس بل میں جون 26 کے صرف شدہ یونٹس<strong>67</strong> کے ایندھن کی قیمت<strong>(FPA)</strong> کے <strong>60</strong> روپے بھی شامل ہیں</div>
+                                    
+                                </div>
+                                
+                            </div>
+                            
+                        </div>
+                        
+
+                        <div class="component-card">
+                            <div style="display: flex; justify-content: space-between; align-items: center; background-color: #0c2356; color: #ffffff; padding: 4px 10px 3px;">
+                                <span style="font-weight: 800; font-size: 13px;">BILL HISTORY</span>
+                                <span style="font-size: 8px; text-align: right; line-height: 1.1;">IESCO<br />Consumer</span>
+                            </div>
+                            <div class="history-data-wrapper">
+                                <div class="history-block-grid">
+                                    <div class="history-header-row">
+                                        <div class="history-header-cell">MONTH</div><div class="history-header-cell">STATUS</div><div class="history-header-cell">UNITS</div><div class="history-header-cell">BILL (RS.)</div><div class="history-header-cell">PAYMENT (RS.)</div>
+                                    </div>
+                                    <div class="history-row"><div class="history-cell">Aug25</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">10</div><div class="history-cell">113</div><div class="history-cell">122</div></div>
+                                    <div class="history-row"><div class="history-cell">Sep25</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">13</div><div class="history-cell">143</div><div class="history-cell">0</div></div>
+                                    <div class="history-row"><div class="history-cell">Oct25</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">98</div><div class="history-cell">1221</div><div class="history-cell">0</div></div>
+                                    <div class="history-row"><div class="history-cell">Nov25</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">43</div><div class="history-cell">1802</div><div class="history-cell">1310</div></div>
+                                    <div class="history-row"><div class="history-cell">Dec25</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">63</div><div class="history-cell">1367</div><div class="history-cell">1437</div></div>
+                                    <div class="history-row"><div class="history-cell">Jan26</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">61</div><div class="history-cell">825</div><div class="history-cell">0</div></div>
+                                </div>
+                                <div class="history-block-grid history-center-divider">
+                                    <div class="history-header-row">
+                                        <div class="history-header-cell">MONTH</div><div class="history-header-cell">STATUS</div><div class="history-header-cell">UNITS</div><div class="history-header-cell">BILL (RS.)</div><div class="history-header-cell">PAYMENT (RS.)</div>
+                                    </div>
+                                    <div class="history-row"><div class="history-cell">Feb26</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">58</div><div class="history-cell">1701</div><div class="history-cell">0</div></div>
+                                    <div class="history-row"><div class="history-cell">Mar26</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">55</div><div class="history-cell">2832</div><div class="history-cell">2832</div></div>
+                                    <div class="history-row"><div class="history-cell">Apr26</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">66</div><div class="history-cell">1229</div><div class="history-cell">0</div></div>
+                                    <div class="history-row"><div class="history-cell">May26</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">19</div><div class="history-cell">1818</div><div class="history-cell">0</div></div>
+                                    <div class="history-row"><div class="history-cell">Jun26</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">67</div><div class="history-cell">3056</div><div class="history-cell">0</div></div>
+                                    <div class="history-row"><div class="history-cell">Jul26</div><div class="history-cell"><span class="history-status-pill"></span></div><div class="history-cell">27</div><div class="history-cell">3682</div><div class="history-cell">6874</div></div>
+                                </div>
+                            </div>
+                            <div class="history-footer-banner">
+                                <div class="history-footer-cell">
+                                    <div class="label-row"><span class="en-lbl">Deferred Amount</span><span class="ur-lbl">مؤخر شدہ رقم</span></div>
+                                    <div style="font-size: 8px; font-weight: 700; margin-left: 8px;"></div>
+                                </div>
+                                <div class="history-footer-cell" style="border-left: 1px solid #cbd5e1;">
+                                    <div class="label-row"><span class="en-lbl">Outstanding Install.</span><span class="ur-lbl">بقایا اقساط</span></div>
+                                    <div style="font-size: 8px; font-weight: 700; margin-left: 8px;"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </section>
+
+                    <section class="inner-stack right-sidebar--gbn">
+                        <div class="right-panel-box">
+                            <div class="right-section-cell">
+                                <div class="right-panel-label-row">
+                                    <span class="right-panel-en">BILL MONTH</span>
+                                    <span class="ur-lbl">مہینہ بل</span>
+                                </div>
+                                <div class="right-main-val">AUG 26</div>
+                            </div>
+                            <div class="right-grid-2col">
+                                <div class="right-grid-cell">
+                                    <span class="right-panel-en right-panel-en--block">READING DATE</span>
+                                    <span class="ur-lbl right-panel-ur--block">تاریخ ریڈنگ</span>
+                                    <span class="right-panel-date-val">08 AUG 26</span>
+                                </div>
+                                <div class="right-grid-cell">
+                                    <span class="right-panel-en right-panel-en--block">ISSUE DATE</span>
+                                    <span class="ur-lbl right-panel-ur--block">تاریخ اجراء</span>
+                                    <span class="right-panel-date-val">09 AUG 26</span>
+                                </div>
+                            </div>
+                            <div class="right-section-cell right-section-cell--due">
+                                <div class="right-panel-label-row">
+                                    <span class="right-panel-en right-panel-en--due">&#9888; DUE DATE</span>
+                                    <span class="ur-lbl">مقررہ تاریخ</span>
+                                </div>
+                                <div class="right-main-val right-main-val--due">24 AUG 26</div>
+                            </div>
+                        </div>
+
+                        <div class="payable-card">
+                            
+                            <div class="payable-card-copy">
+                                <span class="payable-card-title">PAYABLE WITHIN</span>
+                                <span class="payable-card-title">DUE DATE</span>
+                                <span class="ur-lbl payable-card-urdu">مقررہ تاریخ تک واجب الادا</span>
+                            </div>
+                            <div class="payable-card-amount">
+                                -2999 CR<span class="payable-card-credit-note">NOT TO BE PAID</span>
+                            </div>
+                            
+                        </div>
+
+                        <div class="lp-surcharge-card">
+                            <div class="lp-surcharge-grid">
+                                <div class="lp-surcharge-label-col">
+                                    <div class="lp-surcharge-label-block">
+                                        <span class="lp-surcharge-line">L.P</span>
+                                        <span class="lp-surcharge-line">SURCHARGE</span>
+                                        <span class="ur-lbl lp-surcharge-urdu">تاخیر ادائیگی سرچارج</span>
+                                    </div>
+                                    <div class="lp-surcharge-label-divider"></div>
+                                    <div class="lp-surcharge-label-block">
+                                        <span class="lp-surcharge-line">PAYABLE</span>
+                                        <span class="lp-surcharge-line">AFTER DUE</span>
+                                        <span class="lp-surcharge-line">DATE</span>
+                                        <span class="ur-lbl lp-surcharge-urdu">مقررہ تاریخ کے بعد واجب الادا</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="lp-surcharge-data-col lp-surcharge-data-col--wide">
+                                    <div class="lp-surcharge-top-val">0</div>
+                                    <div class="lp-surcharge-bottom-block">
+                                        <div class="lp-surcharge-bottom-val">-2,999 CR</div>
+                                    </div>
+                                </div>
+                                
+                            </div>
+                        </div>
+
+                        
+                        <div class="component-card qr-charges-card qr-charges-card--gbn">
+                            <textarea id="charges_qr_text_1" class="gbn-is-hidden" readonly>----- CONSUMER DETAILS -----
+REF NO: 17146151548911
+CONSUMER ID: 1143090750
+OLD REF: 01146151548911
+NTN NO: 0
+STRN NO: 0
+AC: 
+CONN DATE: 31-07-2020
+SAN LOAD: 1
+----- ENERGY DETAILS = 125.27 -----
+UNITS: 0
+VARIABLE CHRG: 75
+FIXED CHRG: 0
+METER RENT: 0
+SERVICE RENT: 0
+FPA ENERGY: 50.27
+F.C. SUR: 0
+QTA: 0
+----- TAXES = 14 -----
+ED: 0
+TV FEE: 0
+GST: 14
+ITAX: 0
+----- TAXES ON FPA = 9.75 -----
+IT: 0
+ED: .75
+STAX: 0
+FTAX: 0
+ETAX: 0
+GST: 9
+----- BILL CALC -----
+0</textarea>
+                            <div class="qr-charges-qr-row">
+                                <button type="button" class="qr-charges-trigger" title="Tap to enlarge for scanning">
+                                    <span class="qr-charges-host" id="charges_qrcode_1"></span>
+                                </button>
+                                <div class="qr-charges-tap-hint qr-charges-tap-hint--vertical noprint">Tap QR to enlarge for scanning</div>
+                            </div>
+                            <div class="ur-lbl qr-charges-urdu">چارجز کی تفصیل دیکھنے کے لیے QR کوڈ اسکین کریں</div>
+                        </div>
+                        
+                        <div class="component-card meter-snaps-card">
+                            <div class="meter-snaps-grid meter-snaps-grid--layout-1">
+                                <div class="meter-snap-cell meter-snap-cell--message">
+                                    <h2 class="meter-snap-ami-msg">Billing through Advance Metering Infrastructure (AMI)</h2>
+                                </div>
+                            </div>
+                        </div>
+                        
+
+                    </section>
+                </main>
+
+                <footer class="perforated-slip">
+                    <div class="slip-branding-grid">
+                        <div style="position: relative; min-height: 105px;">
+                            <img class="disco-logo-slip" src="/images/companies/iesco/logo.png" alt="" width="56" height="56" style="position: absolute; top: 0; left: 0;" />
+                            <div class="bank-stamp-container">
+                                <div class="bank-stamp-circle">BANK STAMP</div>
+                            </div>
+                        </div>
+                        <div class="slip-title-area">
+                            <h4 class="brand-green">ISLAMABAD ELECTRIC SUPPLY COMPANY</h4>
+                            <h4 class="brand-green">ELECTRICITY CONSUMER BILL</h4>
+                            <div class="slip-subtitle">YOUR BETTER SERVICE - OUR PRIDE</div>
+                            
+                            <div class="slip-urdu-line">وزیر اعظم انرجی ایفیشینٹ فین ریپلیسمنٹ پروگرام کا آغاز</div>
+                            <div class="slip-url"><a href="https://efan.gov.pk/" target="_blank" rel="noopener noreferrer">https://efan.gov.pk/</a></div>
+                            
+                        </div>
+                        <div>
+                            <div class="barcode-placeholder" aria-label="Payment barcode">
+                                
+                                <svg id="normal_bill_barcode"></svg>
+                                
+                            </div>
+                            
+                            <div class="barcode-caption">AUG 26 - 17 14615 1548911 - 00-2999CR - 24 AUG 26 - 0000-2999 - 270826 - 6</div>
+                            
+                            <script>
+                            
+                            JsBarcode("#normal_bill_barcode", 'E1714615154891108262408260000-29990000-29992708260000-29996E', { width: 1, height: 50, margin: 5, displayValue: false });
+                            
+                            </script>
+                            <div class="slip-id-box">
+                                <div class="slip-id-row">
+                                    <div class="id-label"><span>CONSUMER ID</span><span class="ur-lbl">کنزیومر نمبر</span></div>
+                                    <div class="slip-id-value">1143090750</div>
+                                </div>
+                                <div class="slip-id-row">
+                                    <div class="id-label"><span>REFERENCE NO</span><span class="ur-lbl">حوالہ نمبر</span></div>
+                                    <div class="slip-id-value"> 17146151548911 </div>
+                                </div>
+                            </div>
+                            
+                        </div>
+                    </div>
+
+                    <div class="slip-matrix-grid">
+                        <div class="slip-matrix-cell">BILL MONTH <span class="ur-lbl">مہینہ بل</span></div>
+                        <div class="slip-matrix-cell">DUE DATE <span class="ur-lbl">مقررہ تاریخ</span></div>
+                        <div class="slip-matrix-cell slip-payable-within-title">PAYABLE WITHIN DUE DATE <span class="ur-lbl">مقررہ تاریخ تک واجب الادا</span></div>
+                        <div class="slip-matrix-value slip-main-amount">
+                            -2999 CR
+                        </div>
+                        <div class="slip-matrix-value">AUG 26</div>
+                        <div class="slip-matrix-value">24 AUG 26</div>
+                        <div class="slip-matrix-cell slip-payable-after-title">PAYABLE AFTER DUE DATE <span class="ur-lbl">مقررہ تاریخ کے بعد واجب الادا</span></div>
+                        
+                        <div class="slip-matrix-value slip-late-box" style="grid-column: 5 / 7;">
+                            -2999 CR
+                        </div>
+                        
+                    </div>
+                </footer>
+
+            </div>
+        </div>
+
+        
+    </div>
+    
+    <div class="tab-content">
+
+        
+        <div class="tax-cert-empty" role="status">
+            <div class="tax-cert-empty__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M7 3.5h7.2L19.5 9v11.5H7V3.5Z" stroke="#000" stroke-width="1.6" stroke-linejoin="round"/>
+                    <path d="M14.2 3.5V9H19.5" stroke="#000" stroke-width="1.6" stroke-linejoin="round"/>
+                    <path d="M9.5 13h7M9.5 16.2h5" stroke="#000" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <h2 class="tax-cert-empty__title">Tax Certificate Not Found!</h2>
+            <p class="tax-cert-empty__text">Tax Certificate is available only for those consumers from whom Income Tax has been deducted in electricity bills</p>
+        </div>
+        
+
+    </div>
+
+    
+    
+
+    <div class="tab-content">
+        <div class="gbn-tariff-panel">
+            <div class="gbn-tariff-toolbar noprint">
+                <p class="gbn-tariff-hint">Tariff guide is shown below on this page. If it does not load, open it on the IESCO website.</p>
+                <a href="https://iesco.com.pk/tariff-guide" target="_blank" rel="noopener noreferrer" class="gbn-tariff-link gbn-tariff-link--secondary">Open on IESCO website</a>
+            </div>
+            <div class="gbn-tariff-frame-wrap">
+                <iframe id="gbn-tariff-frame" class="gbn-tariff-frame" title="IESCO Tariff Guide" data-src="https://iesco.com.pk/tariff-guide"></iframe>
+            </div>
+        </div>
+    </div>
+
+    
+
+    </div>
+
+    <script src="/js/bill-qr.js?v=20260630"></script>
+    <script src="/js/meter-snap-zoom.js?v=20260724"></script>
+    <script src="/js/meter-snaps-loader.js?v=20260702"></script>
+    <script src="/js/jquery-3.6.0.min.js"></script>
+    <script type="text/javascript" src="/js/implementation_zoomJs.js"></script>
+    <script type="text/javascript" src="/js/multizoom.js"></script>
+
+    
+    <script>
+        function showTab(index) {
+            const tabs = document.querySelectorAll('.tab');
+            const contents = document.querySelectorAll('.tab-content');
+
+            tabs.forEach((tab, i) => {
+                tab.classList.toggle('active', i === index);
+                contents[i].classList.toggle('active', i === index);
+            });
+
+            var tariffFrame = document.getElementById('gbn-tariff-frame');
+            if (tariffFrame && index === 2 && !tariffFrame.getAttribute('src')) {
+                tariffFrame.setAttribute('src', tariffFrame.getAttribute('data-src'));
+            }
+        }
+        
+    </script>
+
+    <script>
+        function showLoadingBar() {
+            const progressBar = document.getElementById('progress');
+            const loaderContainer = document.getElementById('loader-container');
+            const percentLabel = document.getElementById('loading-percent');
+            const duration = Math.floor(Math.random() * (5000 - 3000 + 1)) + 3000;
+            const startTime = performance.now();
+
+            function animate(time) {
+                const elapsed = time - startTime;
+                const progress = Math.min((elapsed / duration) * 100, 100);
+                progressBar.style.width = `${progress}%`;
+                if (percentLabel) {
+                    percentLabel.textContent = Math.round(progress) + '%';
+                }
+
+                if (progress < 100) {
+                    requestAnimationFrame(animate);
+                } else {
+                    loaderContainer.classList.add('bill-loader--hide');
+                    setTimeout(function () {
+                        loaderContainer.style.display = 'none';
+                    }, 450);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        window.onload = showLoadingBar;
+    </script>
+
+    <script>
+        function handleCanvasScaling() {
+            if (window.matchMedia('print').matches) {
+                return;
+            }
+
+            var billWidth = 794;
+            var billHeight = 1123;
+            var readabilityScale = 1.5;
+            var horizontalPadding = 48;
+            var availableWidth = Math.max(window.innerWidth - horizontalPadding, billWidth * 0.5);
+            var scale = Math.min(readabilityScale, availableWidth / billWidth);
+            var tabHorizontalPad = 26;
+            var shellWidth = Math.ceil(billWidth * scale + tabHorizontalPad);
+            var shell = document.querySelector('.gbn-app-shell');
+
+            if (shell) {
+                shell.style.maxWidth = shellWidth + 'px';
+            }
+
+            document.querySelectorAll('.bill-canvas-viewport').forEach(function (viewport) {
+                viewport.style.width = billWidth + 'px';
+                viewport.style.transform = 'scale(' + scale + ')';
+                viewport.style.transformOrigin = 'top center';
+                viewport.style.marginBottom = (billHeight * (scale - 1)) + 'px';
+            });
+        }
+
+        window.addEventListener('resize', handleCanvasScaling);
+        window.addEventListener('DOMContentLoaded', function () {
+            handleCanvasScaling();
+        });
+    </script>
+
+</body>
+</html>

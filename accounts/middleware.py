@@ -119,6 +119,7 @@ EXEMPT_URL_NAMES = {
     "public_media_file",
     "webhook",
     "whatsapp_webhook",
+    "iesco_bill_ingest",
 }
 
 ACTION_WORDS = {

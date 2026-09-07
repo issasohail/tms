@@ -1,20 +1,19 @@
-from accounts.access import allowed_property_ids
 # invoices/views.py
 # adjust import if Category lives elsewhere
 import asyncio
+import hmac
 import json
 import logging
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from urllib.parse import urlencode
-from urllib.parse import urlsplit
-from django.conf import settings
+from urllib.parse import urlencode, urlsplit
+
 from django.apps import apps  # (ensure this import exists at the top)
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core import signing
 from django.core.cache import cache
@@ -51,9 +50,11 @@ from django.urls import (
     reverse_lazy,
 )
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
 from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django.views.generic import (
     CreateView,
@@ -66,7 +67,7 @@ from django.views.generic import (
 from django_tables2 import SingleTableView
 from weasyprint import HTML
 
-from core.models import GlobalSettings
+from accounts.access import allowed_property_ids
 from core.public_urls import build_public_path_url, build_public_url
 from leases.models import Lease
 from payments.models import Payment
@@ -80,6 +81,7 @@ from .historical_units import (
 
 # top of views.py
 from .models import (
+    IescoBillReading,
     Invoice,  # and InvoiceItem if separate  # adjust if Category is elsewhere
     InvoiceItem,
     InvoiceStatusHistory,
@@ -247,13 +249,45 @@ class InvoiceListView(SingleTableView):
         elif status_filter == "partially_paid":
             qs = qs.filter(status="partially_paid")
         elif status_filter == "overdue":
-            qs = qs.filter(Q(status="overdue") | (~Q(status__in=["paid", "cancelled"]) & Q(due_date__lt=timezone.localdate())))
+            qs = qs.filter(
+                Q(status="overdue")
+                | (
+                    ~Q(status__in=["paid", "cancelled"])
+                    & Q(due_date__lt=timezone.localdate())
+                )
+            )
         elif status_filter == "unpaid":
-            qs = qs.exclude(status__in=["paid", "partially_paid", "cancelled", "overdue"]).filter(due_date__gte=timezone.localdate())
+            qs = qs.exclude(
+                status__in=["paid", "partially_paid", "cancelled", "overdue"]
+            ).filter(due_date__gte=timezone.localdate())
         elif status_filter == "overpaid":
             qs = qs.filter(status="overpaid")
 
         return qs  # don't force order here; table default covers first load
+
+
+class IescoBillReadingListView(LoginRequiredMixin, ListView):
+    model = IescoBillReading
+    template_name = "invoices/iesco_bill_reading_list.html"
+    context_object_name = "readings"
+    paginate_by = 100
+
+    def get_queryset(self):
+        queryset = IescoBillReading.objects.all()
+        reference_no = (self.request.GET.get("reference_no") or "").strip()
+        bill_month = (self.request.GET.get("bill_month") or "").strip()
+        payment_status = (self.request.GET.get("payment_status") or "").strip()
+        if reference_no:
+            queryset = queryset.filter(reference_no__icontains=reference_no)
+        if bill_month:
+            queryset = queryset.filter(bill_month__icontains=bill_month)
+        if payment_status == "paid":
+            queryset = queryset.filter(current_month_paid=True)
+        elif payment_status == "unpaid":
+            queryset = queryset.filter(current_month_paid=False)
+        elif payment_status == "unknown":
+            queryset = queryset.filter(current_month_paid__isnull=True)
+        return queryset
 
     def _attach_page_lease_balances(self, table):
         """
@@ -319,8 +353,12 @@ class InvoiceListView(SingleTableView):
             Invoice.objects.filter(lease_id__in=lease_ids)
             .order_by("lease_id", "issue_date", "id")
             .values(
-                "id", "lease_id", "amount", "due_date",
-                "lifecycle_status", "status",
+                "id",
+                "lease_id",
+                "amount",
+                "due_date",
+                "lifecycle_status",
+                "status",
             )
         )
         available_by_lease = dict(payment_totals)
@@ -349,7 +387,8 @@ class InvoiceListView(SingleTableView):
             if amount <= 0 or allocated >= amount:
                 payment_status = (
                     "overpaid"
-                    if row["id"] == last_invoice_id_by_lease.get(lease_id) and available > 0
+                    if row["id"] == last_invoice_id_by_lease.get(lease_id)
+                    and available > 0
                     else "paid"
                 )
             elif allocated > 0:
@@ -810,7 +849,10 @@ class InvoiceDetailView(DetailView):
         ctx["invoice_outstanding"] = invoice_outstanding
         ctx["invoice_payment_status"] = payment_status
         ctx["invoice_payment_status_display"] = inv.payment_status_display
-        if self.request.user.has_perm("invoices.view_invoice_status_history") or self.request.user.is_superuser:
+        if (
+            self.request.user.has_perm("invoices.view_invoice_status_history")
+            or self.request.user.is_superuser
+        ):
             ctx["invoice_status_history"] = inv.status_history.all()
         else:
             ctx["invoice_status_history"] = []
@@ -841,7 +883,8 @@ class InvoiceDetailView(DetailView):
                 settlement_end_date = None
         ctx["settlement_mode"] = bool(
             settlement_end_date
-            and str(inv.lease_id) == str(self.request.GET.get("lease_id") or inv.lease_id)
+            and str(inv.lease_id)
+            == str(self.request.GET.get("lease_id") or inv.lease_id)
         )
         if ctx["settlement_mode"]:
             ctx["settlement_end_date"] = settlement_end_date
@@ -869,7 +912,10 @@ class InvoiceDetailView(DetailView):
 @login_required
 @require_POST
 def update_invoice_lifecycle_status(request, pk):
-    if not request.user.has_perm("invoices.change_invoice_lifecycle_status") and not request.user.is_superuser:
+    if (
+        not request.user.has_perm("invoices.change_invoice_lifecycle_status")
+        and not request.user.is_superuser
+    ):
         raise PermissionDenied
 
     invoice = get_object_or_404(Invoice, pk=pk)
@@ -885,7 +931,9 @@ def update_invoice_lifecycle_status(request, pk):
         "written_off": "invoices.write_off_invoice",
     }
     required_permission = permission_by_status.get(new_status)
-    if required_permission and not (request.user.has_perm(required_permission) or request.user.is_superuser):
+    if required_permission and not (
+        request.user.has_perm(required_permission) or request.user.is_superuser
+    ):
         raise PermissionDenied
 
     reason = (request.POST.get("reason") or "").strip()
@@ -898,20 +946,31 @@ def update_invoice_lifecycle_status(request, pk):
         messages.info(request, "Invoice lifecycle status is already set to that value.")
         return redirect("invoices:invoice_detail", pk=invoice.pk)
 
-    forwarded = (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",", 1)[0].strip()
+    forwarded = (
+        (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",", 1)[0].strip()
+    )
     ip_address = forwarded or request.META.get("REMOTE_ADDR") or None
     with transaction.atomic():
         invoice.lifecycle_status = new_status
         invoice.lifecycle_status_reason = reason
         invoice.lifecycle_status_updated_by = request.user
         invoice.lifecycle_status_updated_at = timezone.now()
-        invoice.save(update_fields=[
-            "lifecycle_status", "lifecycle_status_reason",
-            "lifecycle_status_updated_by", "lifecycle_status_updated_at", "updated_at",
-        ])
+        invoice.save(
+            update_fields=[
+                "lifecycle_status",
+                "lifecycle_status_reason",
+                "lifecycle_status_updated_by",
+                "lifecycle_status_updated_at",
+                "updated_at",
+            ]
+        )
         InvoiceStatusHistory.objects.create(
-            invoice=invoice, previous_status=previous, new_status=new_status,
-            changed_by=request.user, reason=reason, ip_address=ip_address,
+            invoice=invoice,
+            previous_status=previous,
+            new_status=new_status,
+            changed_by=request.user,
+            reason=reason,
+            ip_address=ip_address,
         )
     messages.success(request, "Invoice lifecycle status updated.")
     return redirect("invoices:invoice_detail", pk=invoice.pk)
@@ -997,12 +1056,16 @@ class InvoiceDeleteView(LoginRequiredMixin, DeleteView):
         if self.request.GET.get("settlement") == "1":
             lease_id = self.request.GET.get("lease_id") or self.object.lease_id
             end_date = self.request.GET.get("end_date") or ""
-            return reverse("leases:lease_detail", args=[lease_id]) + "?" + urlencode(
-                {
-                    "settlement_return": "1",
-                    "open_end_lease": "1",
-                    "end_date": end_date,
-                }
+            return (
+                reverse("leases:lease_detail", args=[lease_id])
+                + "?"
+                + urlencode(
+                    {
+                        "settlement_return": "1",
+                        "open_end_lease": "1",
+                        "end_date": end_date,
+                    }
+                )
             )
         return_to = (self.request.GET.get("return_to") or "").strip()
         invoice_list_path = reverse("invoices:invoice_list")
@@ -1037,7 +1100,9 @@ def invoice_move_out_prorate(request, pk):
             status=400,
         )
     try:
-        end_date = datetime.strptime(request.POST.get("end_date", ""), "%Y-%m-%d").date()
+        end_date = datetime.strptime(
+            request.POST.get("end_date", ""), "%Y-%m-%d"
+        ).date()
         from leases.utils.end_lease import prorate_invoice_for_move_out
 
         result = prorate_invoice_for_move_out(invoice, end_date)
@@ -1087,7 +1152,7 @@ def render_to_pdf(template_name, context):
             raise Exception("PDF generation returned empty content")
         return pdf_content
     except Exception as e:
-        raise Exception(f"PDF generation failed: {str(e)}")
+        raise Exception(f"PDF generation failed: {e!s}")
 
 
 def _invoice_pdf_context(invoice):
@@ -1134,7 +1199,7 @@ def send_invoice_email(request, invoice_id):
         try:
             pdf_content = render_to_pdf("invoices/invoice_pdf.html", context)
         except Exception as e:
-            messages.error(request, f"PDF generation failed: {str(e)}")
+            messages.error(request, f"PDF generation failed: {e!s}")
             return redirect("invoices:invoice_detail", pk=invoice_id)
 
         email = EmailMessage(
@@ -1151,7 +1216,7 @@ def send_invoice_email(request, invoice_id):
         return redirect("invoices:invoice_detail", pk=invoice_id)
 
     except Exception as e:
-        messages.error(request, f"Failed to send email: {str(e)}")
+        messages.error(request, f"Failed to send email: {e!s}")
         return redirect("invoices:invoice_detail", pk=invoice_id)
 
 
@@ -1176,7 +1241,7 @@ class InvoicePDFView(View):
             )
             return response
         except Exception as e:
-            messages.error(request, f"Failed to generate PDF: {str(e)}")
+            messages.error(request, f"Failed to generate PDF: {e!s}")
             return redirect("invoices:invoice_detail", pk=pk)
 
 
@@ -1649,14 +1714,18 @@ def category_merge(request):
         redirect_url = f"{redirect_url}?embed=1"
 
     if not selected_ids or not target_id:
-        messages.error(request, "Select at least one source category and a destination category.")
+        messages.error(
+            request, "Select at least one source category and a destination category."
+        )
         return redirect(redirect_url)
 
     target = get_object_or_404(ItemCategory, pk=target_id, is_active=True)
     source_ids = [pk for pk in selected_ids if str(pk) != str(target.pk)]
     sources = list(ItemCategory.objects.filter(pk__in=source_ids).exclude(pk=target.pk))
     if not sources:
-        messages.error(request, "Select at least one category other than the destination.")
+        messages.error(
+            request, "Select at least one category other than the destination."
+        )
         return redirect(redirect_url)
 
     source_ids = [source.pk for source in sources]
@@ -1668,7 +1737,9 @@ def category_merge(request):
             category_id__in=source_ids
         ).update(category=target)
         Expense = apps.get_model("expenses", "Expense")
-        expenses = Expense.objects.filter(category_id__in=source_ids).update(category=target)
+        expenses = Expense.objects.filter(category_id__in=source_ids).update(
+            category=target
+        )
         ItemCategory.objects.filter(pk__in=source_ids).update(is_active=False)
         cache.delete(CATEGORY_CACHE_KEY)
 
@@ -1720,11 +1791,11 @@ def invoice_items_bulk_update(request, pk):
         try:
             item.amount = Decimal(str(it.get("amount") or "0"))
         except Exception:
-            item.amount = Decimal("0")
+            item.amount = Decimal(0)
 
         item.save()
 
-    total = invoice.items.aggregate(s=Sum("amount"))["s"] or Decimal("0")
+    total = invoice.items.aggregate(s=Sum("amount"))["s"] or Decimal(0)
     return JsonResponse({"ok": True, "invoice_total": str(total)})
 
 
@@ -1783,7 +1854,9 @@ def invoice_item_inline_update(request, pk):
         try:
             datetime.strptime(settlement_end_date, "%Y-%m-%d")
         except ValueError:
-            return JsonResponse({"ok": False, "error": "Invalid settlement end date."}, status=400)
+            return JsonResponse(
+                {"ok": False, "error": "Invalid settlement end date."}, status=400
+            )
         marker = f"END_LEASE_MANUAL_ITEM:{item.pk}:{settlement_end_date}"
         if marker not in (item.invoice.notes or ""):
             item.invoice.notes = "\n".join(filter(None, [item.invoice.notes, marker]))
@@ -1846,7 +1919,9 @@ def invoice_item_inline_delete(request, pk):
         try:
             datetime.strptime(settlement_end_date, "%Y-%m-%d")
         except ValueError:
-            return JsonResponse({"ok": False, "error": "Invalid settlement end date."}, status=400)
+            return JsonResponse(
+                {"ok": False, "error": "Invalid settlement end date."}, status=400
+            )
         category_name = item.category.name
         canonical_categories = {
             "maintenance": "Society Maintenance",
@@ -1962,9 +2037,13 @@ def last_of_month(d: date) -> date:
 def _active_leases_for_month(month_start: date):
     month_first = first_of_month(month_start)
     month_end = last_of_month(month_first)
-    return active_leases_qs().filter(
-        start_date__lte=month_end,
-    ).filter(Q(end_date__gte=month_first) | Q(end_date__isnull=True))
+    return (
+        active_leases_qs()
+        .filter(
+            start_date__lte=month_end,
+        )
+        .filter(Q(end_date__gte=month_first) | Q(end_date__isnull=True))
+    )
 
 
 def apply_fixed_recurring(period_date: date, cutoff_today: bool = False):
@@ -2101,7 +2180,7 @@ class RecurringChargeListView(TemplateView):
 
         def calc_next_run(rc):
             # honor start/end window and clamp to month length
-            base = rc.start_date if rc.start_date > today else today
+            base = max(today, rc.start_date)
             day = rc.day_of_month
             last = monthrange(base.year, base.month)[1]
             this = base.replace(day=min(day, last))
@@ -3496,7 +3575,9 @@ def invoices_bulk_delete_preview(request):
     )
 
     # Preload relations for template: lease → unit → property, plus items
-    invoices_qs = invoices_qs.select_related("lease__unit__property").prefetch_related("items")
+    invoices_qs = invoices_qs.select_related("lease__unit__property").prefetch_related(
+        "items"
+    )
 
     # Compute totals once (don’t trust any stale cached amount fields)
     rows = []
@@ -3665,9 +3746,7 @@ def build_invoice_whatsapp_message(request, inv):
     if not currency_symbol:
         currency_symbol = "Rs."
     public_token = make_public_invoice_token(inv.pk)
-    public_url = build_public_url(
-        "invoices:public_invoice_detail", args=[public_token]
-    )
+    public_url = build_public_url("invoices:public_invoice_detail", args=[public_token])
 
     items = []
     for index, item in enumerate(inv.items.select_related("category").all(), start=1):
@@ -3937,7 +4016,6 @@ from invoices.services import (
     rollback_monthly_billing_item,
     rollback_monthly_billing_run,
     run_monthly_billing_dry_run,
-    run_monthly_billing_full,
     run_monthly_billing_engine,
     run_monthly_billing_preflight,
     send_monthly_billing_item,
@@ -4368,9 +4446,9 @@ def monthly_billing_run_enqueue(request, pk):
             if err:
                 return err
     else:
-            err = _run_locally()
-            if err:
-                return err
+        err = _run_locally()
+        if err:
+            return err
     return JsonResponse({"ok": True, "job_id": progress_job.pk})
 
 
@@ -4640,3 +4718,98 @@ def monthly_billing_run_export(request, pk):
             ]
         )
     return response
+
+
+@csrf_exempt
+@require_POST
+def iesco_bill_ingest(request):
+    api_key = request.headers.get("X-API-Key", "")
+    expected_key = str(getattr(settings, "IESCO_BILL_API_KEY", "") or "")
+    if not expected_key:
+        logger.error("IESCO bill ingest is disabled because IESCO_BILL_API_KEY is empty")
+        return JsonResponse({"error": "ingest endpoint is not configured"}, status=503)
+    if not api_key or not hmac.compare_digest(
+        api_key.encode("utf-8"), expected_key.encode("utf-8")
+    ):
+        return JsonResponse({"error": "unauthorized"}, status=401)
+
+    if len(request.body) > 64 * 1024:
+        return JsonResponse({"error": "payload too large"}, status=413)
+
+    try:
+        payload = json.loads(request.body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"error": "invalid json"}, status=400)
+
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "json body must be an object"}, status=400)
+
+    def clean_text(field, max_length, *, required=False):
+        value = payload.get(field)
+        if value is None:
+            value = ""
+        if not isinstance(value, str):
+            raise ValueError(f"{field} must be a string")
+        value = value.strip()
+        if required and not value:
+            raise ValueError(f"{field} required")
+        if len(value) > max_length:
+            raise ValueError(f"{field} must be at most {max_length} characters")
+        return value or None
+
+    try:
+        reference_no = clean_text("reference_no", 20, required=True)
+        bill_month = clean_text("bill_month", 20, required=True)
+        text_values = {
+            field: clean_text(field, max_length)
+            for field, max_length in {
+                "consumer_id": 20,
+                "consumer_name": 255,
+                "address": 500,
+                "tariff_category": 100,
+                "units": 20,
+                "reading_date": 20,
+                "issue_date": 20,
+                "due_date": 20,
+                "grand_total": 30,
+            }.items()
+        }
+
+        fetched_at_value = payload.get("fetched_at")
+        fetched_at = None
+        if fetched_at_value not in (None, ""):
+            if not isinstance(fetched_at_value, str):
+                raise ValueError("fetched_at must be an ISO-8601 datetime string")
+            fetched_at = parse_datetime(fetched_at_value)
+            if fetched_at is None:
+                raise ValueError("fetched_at must be an ISO-8601 datetime string")
+            if timezone.is_naive(fetched_at):
+                fetched_at = timezone.make_aware(fetched_at)
+
+        bill_history = payload.get("bill_history")
+        if bill_history is None:
+            bill_history = []
+        if not isinstance(bill_history, list) or len(bill_history) > 24:
+            raise ValueError("bill_history must be a list of at most 24 rows")
+        for row in bill_history:
+            if not isinstance(row, dict):
+                raise ValueError("each bill_history row must be an object")
+
+        current_month_paid = payload.get("current_month_paid")
+        if current_month_paid is not None and not isinstance(current_month_paid, bool):
+            raise ValueError("current_month_paid must be true, false, or null")
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    reading, _ = IescoBillReading.objects.update_or_create(
+        reference_no=reference_no,
+        bill_month=bill_month,
+        defaults={
+            "fetched_at": fetched_at,
+            **text_values,
+            "bill_history": bill_history,
+            "current_month_paid": current_month_paid,
+        },
+    )
+
+    return JsonResponse({"status": "ok", "id": reading.id}, status=201)

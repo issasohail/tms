@@ -37,6 +37,9 @@ load_dotenv(BASE_DIR / ".env", override=True)
 LOG_DIR = Path(os.getenv("LOG_DIR", str(BASE_DIR / "logs"))).expanduser()
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 APPEND_SLASH = True  # or False if you prefer
+# The ingest view reads this setting directly; the local fetcher receives the same
+# value through its TMS_IESCO_API_KEY environment variable.
+IESCO_BILL_API_KEY = "iesco_bill_api_key_2026"
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/

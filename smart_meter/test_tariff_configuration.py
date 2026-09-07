@@ -203,11 +203,34 @@ class TariffUiAndMigrationTests(TestCase):
         self.assertContains(response, "Write Schedule to Meter")
         self.assertContains(response, "disabled")
 
-    def test_data_migration_uses_opaque_nonblank_rule(self):
+    def test_data_migration_classifies_only_valid_wire_meter_numbers(self):
+        invalid = Meter.objects.create(
+            meter_number="INVALID-METER",
+            tariff_capability="multi_rate",
+        )
         Meter.objects.filter(pk=self.single.pk).update(tariff_capability="unknown")
         Meter.objects.filter(pk=self.multi.pk).update(tariff_capability="unknown")
-        migration = importlib.import_module("smart_meter.migrations.0036_meter_tariff_capability_and_more")
-        migration.classify_existing_meter_tariffs(apps, None)
-        self.single.refresh_from_db(); self.multi.refresh_from_db()
-        self.assertEqual(self.single.tariff_capability, "single_rate")
-        self.assertEqual(self.multi.tariff_capability, "multi_rate")
+        migration = importlib.import_module(
+            "smart_meter.migrations.0037_correct_invalid_tariff_capabilities"
+        )
+        migration.classify_valid_meter_tariffs(apps, None)
+        self.single.refresh_from_db()
+        self.multi.refresh_from_db()
+        invalid.refresh_from_db()
+        self.assertEqual(self.single.tariff_capability, "unknown")
+        self.assertEqual(self.multi.tariff_capability, "unknown")
+        self.assertEqual(invalid.tariff_capability, "unknown")
+
+        valid_single = Meter.objects.create(
+            meter_number="260305510001",
+            tariff_capability="unknown",
+        )
+        valid_multi = Meter.objects.create(
+            meter_number="123456789012",
+            tariff_capability="unknown",
+        )
+        migration.classify_valid_meter_tariffs(apps, None)
+        valid_single.refresh_from_db()
+        valid_multi.refresh_from_db()
+        self.assertEqual(valid_single.tariff_capability, "single_rate")
+        self.assertEqual(valid_multi.tariff_capability, "multi_rate")

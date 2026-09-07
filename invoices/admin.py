@@ -1,5 +1,12 @@
 from django.contrib import admin
-from .models import Invoice, InvoiceItem, InvoiceLateFeeReminder, MonthlyBillingRun, MonthlyBillingRunItem
+from .models import (
+    IescoBillReading,
+    Invoice,
+    InvoiceItem,
+    InvoiceLateFeeReminder,
+    MonthlyBillingRun,
+    MonthlyBillingRunItem,
+)
 
 
 class InvoiceItemInline(admin.TabularInline):
@@ -90,3 +97,30 @@ class InvoiceLateFeeReminderAdmin(admin.ModelAdmin):
         "invoice__lease__tenant__last_name",
     )
     readonly_fields = ("created_at", "whatsapp_message", "late_fee_item")
+
+
+@admin.register(IescoBillReading)
+class IescoBillReadingAdmin(admin.ModelAdmin):
+    list_display = (
+        "reference_no",
+        "bill_month",
+        "grand_total",
+        "payment_status_display",
+        "due_date",
+        "received_at",
+        "updated_at",
+    )
+    list_filter = ("reference_no", "bill_month", "current_month_paid")
+    search_fields = ("reference_no", "consumer_id", "consumer_name")
+    readonly_fields = tuple(
+        field.name for field in IescoBillReading._meta.fields
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}IESCO Bill Readings{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-2">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+      <h2 class="h4 mb-0">IESCO Bill Readings</h2>
+      <small class="text-muted">Read-only readings received from the local PITC fetcher.</small>
+    </div>
+    <a href="{% url 'invoices:invoice_list' %}" class="btn btn-sm btn-secondary">
+      <i class="fas fa-arrow-left me-1"></i>Invoices
+    </a>
+  </div>
+
+  <form method="get" class="card card-body py-2 mb-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-3">
+        <label class="form-label small mb-1" for="id_iesco_reference">Reference number</label>
+        <input id="id_iesco_reference" name="reference_no" value="{{ request.GET.reference_no }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1" for="id_iesco_month">Bill month</label>
+        <input id="id_iesco_month" name="bill_month" value="{{ request.GET.bill_month }}" class="form-control form-control-sm" placeholder="AUG 26">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1" for="id_iesco_status">Latest history status</label>
+        <select id="id_iesco_status" name="payment_status" class="form-select form-select-sm">
+          <option value="">All</option>
+          <option value="paid" {% if request.GET.payment_status == "paid" %}selected{% endif %}>Paid</option>
+          <option value="unpaid" {% if request.GET.payment_status == "unpaid" %}selected{% endif %}>Unpaid</option>
+          <option value="unknown" {% if request.GET.payment_status == "unknown" %}selected{% endif %}>Unknown</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-3 d-flex gap-2">
+        <button class="btn btn-sm btn-primary" type="submit"><i class="fas fa-filter me-1"></i>Filter</button>
+        <a class="btn btn-sm btn-secondary" href="{% url 'invoices:iesco_bill_reading_list' %}">Clear</a>
+      </div>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Reference</th>
+            <th>Bill month</th>
+            <th>Consumer</th>
+            <th class="text-end">Units</th>
+            <th class="text-end">Grand total</th>
+            <th>Latest history status</th>
+            <th>Due date</th>
+            <th>Received</th>
+            <th>Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for reading in readings %}
+          <tr>
+            <td class="text-nowrap"><strong>{{ reading.reference_no }}</strong></td>
+            <td class="text-nowrap">{{ reading.bill_month }}</td>
+            <td>{{ reading.consumer_name|default:reading.consumer_id|default:"—" }}</td>
+            <td class="text-end">{{ reading.units|default:"—" }}</td>
+            <td class="text-end fw-semibold">{{ reading.grand_total|default:"—" }}</td>
+            <td>
+              {% if reading.current_month_paid is True %}
+                <span class="badge bg-success">Paid</span>
+              {% elif reading.current_month_paid is False %}
+                <span class="badge bg-danger">Unpaid</span>
+              {% else %}
+                <span class="badge bg-secondary">Unknown</span>
+              {% endif %}
+            </td>
+            <td class="text-nowrap">{{ reading.due_date|default:"—" }}</td>
+            <td class="text-nowrap">{{ reading.received_at|date:"Y-m-d H:i" }}</td>
+            <td class="text-nowrap">{{ reading.updated_at|date:"Y-m-d H:i" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9" class="text-center text-muted py-4">No IESCO bill readings found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if is_paginated %}
+  <nav class="mt-3" aria-label="IESCO bill reading pages">
+    <ul class="pagination pagination-sm justify-content-end">
+      {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&reference_no={{ request.GET.reference_no|urlencode }}&bill_month={{ request.GET.bill_month|urlencode }}&payment_status={{ request.GET.payment_status|urlencode }}">Previous</a></li>{% endif %}
+      <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&reference_no={{ request.GET.reference_no|urlencode }}&bill_month={{ request.GET.bill_month|urlencode }}&payment_status={{ request.GET.payment_status|urlencode }}">Next</a></li>{% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}

@@ -2,7 +2,7 @@
 
 ## Operator workflow
 
-Before using tariff controls, set and verify each meter's stored **Tariff Capability**. Meter identifiers are stored as opaque values: the migration classifies nonblank identifiers beginning with `26` as single-rate and all other nonblank identifiers as multi-rate. Blank identifiers remain unknown. Runtime operations use only the saved capability and never infer it again.
+Before using tariff controls, set and verify each meter's stored **Tariff Capability**. The migration classifies valid numeric DL/T645 addresses beginning with `26` as single-rate, other valid numeric addresses as multi-rate, and missing or invalid identifiers as unknown. Runtime operations use only the saved capability and never infer it again.
 
 To set Rs. 40.0000 for all confirmed meters:
 

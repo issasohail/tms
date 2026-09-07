@@ -21,6 +21,7 @@ from .views import (
     api_recurring_delete, invoices_bulk_delete,
     api_recurring_list, api_recurring_create,   api_recurring_backfill,
 
+
 )
 from .views import api_billing_preview_current, api_billing_generate_current
 from .views import api_units_for_property, api_tenants_for_property
@@ -46,6 +47,11 @@ urlpatterns = [
 
     # List/Create
     path('', InvoiceListView.as_view(), name='invoice_list'),
+    path(
+        'iesco-bills/',
+        views.IescoBillReadingListView.as_view(),
+        name='iesco_bill_reading_list',
+    ),
     path('create/', InvoiceCreateView.as_view(), name='invoice_create'),
 
     # Detail/Update/Delete
@@ -109,6 +115,9 @@ urlpatterns = [
     path('water-bills/<int:pk>/edit/',
          WaterBillUpdateView.as_view(), name='waterbill_edit'),
     path('water-bills/<int:pk>/post/', waterbill_post, name='waterbill_post'),
+
+
+    path("api/iesco-bill/ingest/", views.iesco_bill_ingest, name="iesco_bill_ingest"),
 
 
     # One-click monthly run

@@ -278,6 +278,11 @@
                   <a class="btn btn-success" href="{% url 'smart_meter:reading_list' %}?meter={{ m.id }}" title="Readings">
                     <i class="fas fa-list"></i>
                   </a>
+                  {% if perms.smart_meter.read_meter_tariff %}
+                  <a class="btn btn-warning" href="{% url 'smart_meter:tariff_configure' m.id %}" title="Tariff Settings" aria-label="Tariff settings for meter {{ m.meter_number }}">
+                    <i class="fas fa-gear"></i>
+                  </a>
+                  {% endif %}
                 </div>
               </td>
             </tr>
@@ -331,6 +336,7 @@
               <a class="btn btn-outline-primary" href="{% url 'smart_meter:meter_detail' m.id %}" title="View"><i class="fas fa-eye"></i></a>
               <a class="btn btn-outline-secondary" href="{% url 'smart_meter:meter_edit' m.id %}" title="Edit"><i class="fas fa-pen"></i></a>
               <a class="btn btn-outline-success" href="{% url 'smart_meter:reading_list' %}?meter={{ m.id }}" title="Readings"><i class="fas fa-list"></i></a>
+              {% if perms.smart_meter.read_meter_tariff %}<a class="btn btn-outline-warning" href="{% url 'smart_meter:tariff_configure' m.id %}" title="Tariff Settings" aria-label="Tariff settings for meter {{ m.meter_number }}"><i class="fas fa-gear"></i></a>{% endif %}
             </div>
           </div>
         </article>

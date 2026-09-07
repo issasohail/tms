@@ -1,45 +1,49 @@
+from decimal import ROUND_CEILING, Decimal
+
 from django.conf import settings
-from django.dispatch import receiver
 from django.core.cache import cache
-from django.db.models.signals import post_save, post_delete
-from django.db import models
 from django.core.validators import MinValueValidator
-from django.utils import timezone
+from django.db import models
 from django.db.models import Sum
-from properties.models import Property
-from decimal import Decimal, ROUND_CEILING
+from django.db.models.signals import post_delete, post_save
+from django.dispatch import receiver
+from django.utils import timezone
+
 from core.utils.text import smart_title
+from properties.models import Property
 
 
 def round_amount_up_to_nearest_10(amount):
     if amount is None:
         return amount
     amount = Decimal(amount)
-    return ((amount / Decimal('10')).to_integral_value(rounding=ROUND_CEILING) * Decimal('10')).quantize(Decimal('0.01'))
+    return (
+        (amount / Decimal(10)).to_integral_value(rounding=ROUND_CEILING) * Decimal(10)
+    ).quantize(Decimal("0.01"))
 
 
 class Invoice(models.Model):
     INVOICE_STATUS = (
-        ('draft', 'Draft'),
-        ('sent', 'Sent'),
-        ('paid', 'Paid'),
-        ('overdue', 'Overdue'),
-        ('cancelled', 'Cancelled'),
+        ("draft", "Draft"),
+        ("sent", "Sent"),
+        ("paid", "Paid"),
+        ("overdue", "Overdue"),
+        ("cancelled", "Cancelled"),
     )
     LIFECYCLE_STATUS_CHOICES = (
-        ('draft', 'Draft'),
-        ('issued', 'Issued'),
-        ('disputed', 'Disputed'),
-        ('cancelled', 'Cancelled'),
-        ('void', 'Void'),
-        ('written_off', 'Written Off'),
+        ("draft", "Draft"),
+        ("issued", "Issued"),
+        ("disputed", "Disputed"),
+        ("cancelled", "Cancelled"),
+        ("void", "Void"),
+        ("written_off", "Written Off"),
     )
 
     # Replace direct import with string reference: 'leases.Lease'
     lease = models.ForeignKey(
-        'leases.Lease',  # String reference instead of direct import
+        "leases.Lease",  # String reference instead of direct import
         on_delete=models.CASCADE,
-        related_name='invoices'
+        related_name="invoices",
     )
     invoice_number = models.CharField(max_length=20, unique=True, blank=True)
     issue_date = models.DateField()
@@ -50,18 +54,28 @@ class Invoice(models.Model):
         db_index=True,
         help_text="Do not send reminders or apply reminder-based late fees through this date.",
     )
-    late_fee_hold_reason = models.CharField(max_length=255, blank=True, default='')
+    late_fee_hold_reason = models.CharField(max_length=255, blank=True, default="")
     amount = models.DecimalField(
-        max_digits=10, decimal_places=2, validators=[MinValueValidator(0)], blank=True, null=True, default=Decimal('0.00'))
-    status = models.CharField(
-        max_length=20, choices=INVOICE_STATUS, default='sent', blank=True)
-    lifecycle_status = models.CharField(
-        max_length=20, choices=LIFECYCLE_STATUS_CHOICES, default='issued', db_index=True
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        blank=True,
+        null=True,
+        default=Decimal("0.00"),
     )
-    lifecycle_status_reason = models.CharField(max_length=255, blank=True, default='')
+    status = models.CharField(
+        max_length=20, choices=INVOICE_STATUS, default="sent", blank=True
+    )
+    lifecycle_status = models.CharField(
+        max_length=20, choices=LIFECYCLE_STATUS_CHOICES, default="issued", db_index=True
+    )
+    lifecycle_status_reason = models.CharField(max_length=255, blank=True, default="")
     lifecycle_status_updated_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='invoice_lifecycle_updates',
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="invoice_lifecycle_updates",
     )
     lifecycle_status_updated_at = models.DateTimeField(null=True, blank=True)
     description = models.TextField(blank=True, null=True)
@@ -70,13 +84,13 @@ class Invoice(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-issue_date']
+        ordering = ["-issue_date"]
         permissions = [
-            ('change_invoice_lifecycle_status', 'Can change invoice lifecycle status'),
-            ('cancel_invoice', 'Can cancel invoice'),
-            ('void_invoice', 'Can void invoice'),
-            ('write_off_invoice', 'Can write off invoice'),
-            ('view_invoice_status_history', 'Can view invoice status history'),
+            ("change_invoice_lifecycle_status", "Can change invoice lifecycle status"),
+            ("cancel_invoice", "Can cancel invoice"),
+            ("void_invoice", "Can void invoice"),
+            ("write_off_invoice", "Can write off invoice"),
+            ("view_invoice_status_history", "Can view invoice status history"),
         ]
 
     def __str__(self):
@@ -108,40 +122,43 @@ class Invoice(models.Model):
         PaymentDetail.lease_amount is used when a split payment exists; otherwise
         the full Payment.amount applies to the lease. This mirrors migration 0022.
         """
-        cached = getattr(self, '_accounting_allocation_cache', None)
+        cached = getattr(self, "_accounting_allocation_cache", None)
         if cached is not None:
             return cached
 
         from django.db.models import Case, DecimalField, F, Sum, When
         from django.db.models.functions import Coalesce
+
         from payments.models import Payment
 
-        zero = Decimal('0.00')
+        zero = Decimal("0.00")
         money_field = DecimalField(max_digits=12, decimal_places=2)
         available = (
-            Payment.objects.filter(lease_id=self.lease_id)
-            .aggregate(
+            Payment.objects.filter(lease_id=self.lease_id).aggregate(
                 total=Coalesce(
                     Sum(
                         Case(
-                            When(detail__isnull=False, then=F('detail__lease_amount')),
-                            default=F('amount'),
+                            When(detail__isnull=False, then=F("detail__lease_amount")),
+                            default=F("amount"),
                             output_field=money_field,
                         )
                     ),
                     zero,
                     output_field=money_field,
                 )
-            )['total']
+            )["total"]
             or zero
         )
-        eligible = Invoice.objects.filter(lease_id=self.lease_id).exclude(
-            lifecycle_status__in=('cancelled', 'void')
-        ).exclude(status='cancelled').order_by('issue_date', 'id')
+        eligible = (
+            Invoice.objects.filter(lease_id=self.lease_id)
+            .exclude(lifecycle_status__in=("cancelled", "void"))
+            .exclude(status="cancelled")
+            .order_by("issue_date", "id")
+        )
 
         allocated = zero
         remaining_after = zero
-        eligible_rows = list(eligible.only('id', 'amount', 'due_date'))
+        eligible_rows = list(eligible.only("id", "amount", "due_date"))
         self_is_last_eligible = bool(eligible_rows and eligible_rows[-1].pk == self.pk)
         for invoice in eligible_rows:
             amount = invoice.amount or zero
@@ -156,14 +173,16 @@ class Invoice(models.Model):
         outstanding = max(amount - allocated, zero)
         if amount <= zero or allocated >= amount:
             payment_status = (
-                'overpaid' if self_is_last_eligible and remaining_after > zero else 'paid'
+                "overpaid"
+                if self_is_last_eligible and remaining_after > zero
+                else "paid"
             )
         elif allocated > zero:
-            payment_status = 'partially_paid'
+            payment_status = "partially_paid"
         elif self.due_date and self.due_date < timezone.localdate():
-            payment_status = 'overdue'
+            payment_status = "overdue"
         else:
-            payment_status = 'unpaid'
+            payment_status = "unpaid"
         result = (allocated, outstanding, payment_status)
         self._accounting_allocation_cache = result
         return result
@@ -183,26 +202,25 @@ class Invoice(models.Model):
     @property
     def payment_status_display(self):
         return {
-            'unpaid': 'Unpaid',
-            'partially_paid': 'Partially Paid',
-            'paid': 'Paid',
-            'overpaid': 'Overpaid',
-            'overdue': 'Overdue',
+            "unpaid": "Unpaid",
+            "partially_paid": "Partially Paid",
+            "paid": "Paid",
+            "overpaid": "Overpaid",
+            "overdue": "Overdue",
         }.get(self.payment_status, smart_title(self.payment_status))
 
     def _generate_invoice_number(self):
         # Example for Sept 2, 2025 → 202509245-001  (245th day of 2025)
         prefix = timezone.localdate().strftime("%Y%m%j")  # yyyymmddd (day-of-year)
         last = (
-            Invoice.objects
-            .filter(invoice_number__startswith=f"{prefix}-")
-            .order_by('-invoice_number')
+            Invoice.objects.filter(invoice_number__startswith=f"{prefix}-")
+            .order_by("-invoice_number")
             .first()
         )
         last_seq = 0
         if last:
             try:
-                last_seq = int(last.invoice_number.split('-', 1)[1])
+                last_seq = int(last.invoice_number.split("-", 1)[1])
             except Exception:
                 last_seq = 0
         return f"{prefix}-{last_seq + 1:03d}"
@@ -216,7 +234,7 @@ class Invoice(models.Model):
                     return super().save(*args, **kwargs)
                 except Exception as e:
                     # If unique collision, loop and try next number
-                    if 'unique' in str(e).lower():
+                    if "unique" in str(e).lower():
                         continue
                     raise
             # final attempt
@@ -224,38 +242,43 @@ class Invoice(models.Model):
 
 
 class InvoiceStatusHistory(models.Model):
-    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='status_history')
-    previous_status = models.CharField(max_length=20, blank=True, default='')
+    invoice = models.ForeignKey(
+        Invoice, on_delete=models.CASCADE, related_name="status_history"
+    )
+    previous_status = models.CharField(max_length=20, blank=True, default="")
     new_status = models.CharField(max_length=20)
     changed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='invoice_status_history_changes',
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="invoice_status_history_changes",
     )
-    reason = models.CharField(max_length=255, blank=True, default='')
+    reason = models.CharField(max_length=255, blank=True, default="")
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ('-created_at', '-id')
+        ordering = ("-created_at", "-id")
 
     def __str__(self):
         return f"Invoice {self.invoice_id}: {self.previous_status} -> {self.new_status}"
 
 
 class InvoiceItem(models.Model):
-    invoice = models.ForeignKey(
-        Invoice, on_delete=models.CASCADE, related_name='items')
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="items")
 
     category = models.ForeignKey(
-        'ItemCategory', on_delete=models.PROTECT)  # NEW (required)
+        "ItemCategory", on_delete=models.PROTECT
+    )  # NEW (required)
     description = models.CharField(max_length=500, blank=True, null=True)
     amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         null=False,
         blank=False,
-        default=Decimal('0.00'),
-        validators=[MinValueValidator(0)]
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
     )
 
     is_recurring = models.BooleanField(default=False)
@@ -295,6 +318,7 @@ class ItemCategory(models.Model):
         cache.delete("invoices.active_item_categories")
         return super().delete(*args, **kwargs)
 
+
 # models.py
 
 # invoices/models.py
@@ -302,28 +326,33 @@ class ItemCategory(models.Model):
 
 class RecurringCharge(models.Model):
     KIND = [
-        ('FIXED', 'Fixed amount'),
-        ('WATER_SPLIT', 'Water split (per property)'),
+        ("FIXED", "Fixed amount"),
+        ("WATER_SPLIT", "Water split (per property)"),
     ]
     SCOPE = [
-        ('LEASE', 'One lease'),
-        ('PROPERTY', 'All active leases in a property'),
-        ('GLOBAL', 'All active leases'),
+        ("LEASE", "One lease"),
+        ("PROPERTY", "All active leases in a property"),
+        ("GLOBAL", "All active leases"),
     ]
 
-    kind = models.CharField(max_length=20, choices=KIND, default='FIXED')
-    scope = models.CharField(max_length=20, choices=SCOPE, default='LEASE')
+    kind = models.CharField(max_length=20, choices=KIND, default="FIXED")
+    scope = models.CharField(max_length=20, choices=SCOPE, default="LEASE")
 
     lease = models.ForeignKey(
-        'leases.Lease', null=True, blank=True, on_delete=models.CASCADE)
+        "leases.Lease", null=True, blank=True, on_delete=models.CASCADE
+    )
     property = models.ForeignKey(
-        Property, null=True, blank=True, on_delete=models.CASCADE)
+        Property, null=True, blank=True, on_delete=models.CASCADE
+    )
 
     category = models.ForeignKey(ItemCategory, on_delete=models.PROTECT)
     description = models.CharField(max_length=200, blank=True)
     amount = models.DecimalField(
         # used by FIXED
-        max_digits=10, decimal_places=2, default=Decimal('0.00'))
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
     day_of_month = models.PositiveSmallIntegerField(default=1)
 
     start_date = models.DateField()
@@ -335,12 +364,12 @@ class RecurringCharge(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['active', 'scope', 'kind', 'start_date']),
+            models.Index(fields=["active", "scope", "kind", "start_date"]),
         ]
 
 
 def _recalc_invoice_amount(invoice: Invoice):
-    total = invoice.items.aggregate(total=Sum('amount'))['total'] or 0
+    total = invoice.items.aggregate(total=Sum("amount"))["total"] or 0
     # store as field for reporting/filters; user can't edit in form
     Invoice.objects.filter(pk=invoice.pk).update(amount=total)
 
@@ -354,22 +383,23 @@ def on_item_save(sender, instance, **kwargs):
 def on_item_delete(sender, instance, **kwargs):
     _recalc_invoice_amount(instance.invoice)
 
+
 # invoices/models.py
 
 
 class WaterBill(models.Model):
     property = models.ForeignKey(Property, on_delete=models.CASCADE)
-    period = models.DateField(
-        help_text="Use first day of month, e.g. 2025-09-01")
+    period = models.DateField(help_text="Use first day of month, e.g. 2025-09-01")
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.CharField(max_length=200, blank=True)
     posted = models.BooleanField(default=False)
 
     class Meta:
-        unique_together = [('property', 'period')]  # prevent double posting
+        unique_together = [("property", "period")]  # prevent double posting
+
+
 # invoices/models.py
 from decimal import Decimal
-from django.utils import timezone
 
 # ...existing models: Invoice, InvoiceItem, RecurringCharge, WaterBill...
 
@@ -377,18 +407,19 @@ from django.utils import timezone
 class SecurityDepositTransaction(models.Model):
     payment_detail = models.OneToOneField(
         "payments.PaymentDetail",
-        null=True, blank=True,
+        null=True,
+        blank=True,
         on_delete=models.SET_NULL,
         related_name="security_amt",
         db_column="allocation_id",
     )
 
     TYPE_CHOICES = [
-        ('REQUIRED', 'Required (Agreed Deposit)'),
-        ('PAYMENT', 'Payment In'),
-        ('REFUND', 'Refund Out'),
-        ('DAMAGE', 'Damage / Adjustment'),
-        ('ADJUST', 'Manual Adjustment'),
+        ("REQUIRED", "Required (Agreed Deposit)"),
+        ("PAYMENT", "Payment In"),
+        ("REFUND", "Refund Out"),
+        ("DAMAGE", "Damage / Adjustment"),
+        ("ADJUST", "Manual Adjustment"),
     ]
     REFUND_STATUS_CHOICES = [
         ("PENDING", "Pending"),
@@ -399,30 +430,26 @@ class SecurityDepositTransaction(models.Model):
     ]
 
     lease = models.ForeignKey(
-        'leases.Lease',
-        on_delete=models.CASCADE,
-        related_name='security_transactions'
+        "leases.Lease", on_delete=models.CASCADE, related_name="security_transactions"
     )
     date = models.DateField(default=timezone.now)
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     amount = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=Decimal('0.00')
+        max_digits=10, decimal_places=2, default=Decimal("0.00")
     )
     notes = models.TextField(blank=True, null=True)
     deduction_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=Decimal('0.00'),
+        default=Decimal("0.00"),
     )
     deduction_reason = models.TextField(blank=True, null=True)
     refund_payment_method = models.ForeignKey(
-        'core.PaymentMethod',
+        "core.PaymentMethod",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='security_refunds',
+        related_name="security_refunds",
     )
     refund_status = models.CharField(
         max_length=20,
@@ -434,20 +461,22 @@ class SecurityDepositTransaction(models.Model):
 
     # optional links (for traceability)
     payment = models.ForeignKey(
-        'payments.Payment',
-        null=True, blank=True,
+        "payments.Payment",
+        null=True,
+        blank=True,
         on_delete=models.SET_NULL,
-        related_name='security_deposit_movements'
+        related_name="security_deposit_movements",
     )
     invoice_item = models.ForeignKey(
-        'invoices.InvoiceItem',
-        null=True, blank=True,
+        "invoices.InvoiceItem",
+        null=True,
+        blank=True,
         on_delete=models.SET_NULL,
-        related_name='security_deposit_movements'
+        related_name="security_deposit_movements",
     )
 
     class Meta:
-        ordering = ['date', 'id']
+        ordering = ["date", "id"]
 
     def __str__(self):
         return f"{self.lease_id} {self.type} {self.amount} on {self.date}"
@@ -455,39 +484,60 @@ class SecurityDepositTransaction(models.Model):
 
 class SecurityDepositLedgerTransfer(models.Model):
     lease = models.ForeignKey(
-        'leases.Lease', on_delete=models.PROTECT, related_name='security_ledger_transfers'
+        "leases.Lease",
+        on_delete=models.PROTECT,
+        related_name="security_ledger_transfers",
     )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     transaction_date = models.DateField(default=timezone.localdate)
     reason = models.CharField(max_length=255)
     reference = models.CharField(max_length=80, unique=True)
     ledger_credit_payment = models.OneToOneField(
-        'payments.Payment', on_delete=models.PROTECT, related_name='security_ledger_transfer_credit'
+        "payments.Payment",
+        on_delete=models.PROTECT,
+        related_name="security_ledger_transfer_credit",
     )
     security_movement = models.OneToOneField(
-        SecurityDepositTransaction, on_delete=models.PROTECT, related_name='ledger_transfer_event'
+        SecurityDepositTransaction,
+        on_delete=models.PROTECT,
+        related_name="ledger_transfer_event",
     )
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='security_ledger_transfers_created',
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="security_ledger_transfers_created",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     reversed_at = models.DateTimeField(null=True, blank=True)
     reversed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='security_ledger_transfers_reversed',
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="security_ledger_transfers_reversed",
     )
-    reversal_reason = models.CharField(max_length=255, blank=True, default='')
+    reversal_reason = models.CharField(max_length=255, blank=True, default="")
     reversal_payment = models.OneToOneField(
-        'payments.Payment', null=True, blank=True, on_delete=models.PROTECT,
-        related_name='security_ledger_transfer_reversal',
+        "payments.Payment",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="security_ledger_transfer_reversal",
     )
 
     class Meta:
-        ordering = ('-transaction_date', '-id')
+        ordering = ("-transaction_date", "-id")
         permissions = [
-            ('transfer_security_deposit_to_ledger', 'Can transfer refundable security deposit to ledger'),
-            ('reverse_security_deposit_ledger_transfer', 'Can reverse security deposit ledger transfer'),
+            (
+                "transfer_security_deposit_to_ledger",
+                "Can transfer refundable security deposit to ledger",
+            ),
+            (
+                "reverse_security_deposit_ledger_transfer",
+                "Can reverse security deposit ledger transfer",
+            ),
         ]
 
     @property
@@ -523,7 +573,9 @@ class MonthlyBillingRun(models.Model):
 
     billing_month = models.DateField(help_text="First day of the month being billed.")
     run_date = models.DateField(default=timezone.localdate)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT
+    )
     total_active_leases = models.PositiveIntegerField(default=0)
     recurring_created_count = models.PositiveIntegerField(default=0)
     missing_recurring_count = models.PositiveIntegerField(default=0)
@@ -568,7 +620,9 @@ class MonthlyBillingRun(models.Model):
         ]
 
     def __str__(self):
-        return f"Monthly billing {self.billing_month:%b %Y} ({self.get_status_display()})"
+        return (
+            f"Monthly billing {self.billing_month:%b %Y} ({self.get_status_display()})"
+        )
 
 
 class MonthlyBillingRunItem(models.Model):
@@ -629,12 +683,28 @@ class MonthlyBillingRunItem(models.Model):
         on_delete=models.CASCADE,
         related_name="items",
     )
-    lease = models.ForeignKey("leases.Lease", on_delete=models.CASCADE, related_name="monthly_billing_items")
-    tenant = models.ForeignKey("tenants.Tenant", null=True, blank=True, on_delete=models.SET_NULL)
-    property = models.ForeignKey("properties.Property", null=True, blank=True, on_delete=models.SET_NULL)
-    unit = models.ForeignKey("properties.Unit", null=True, blank=True, on_delete=models.SET_NULL)
-    invoice = models.ForeignKey(Invoice, null=True, blank=True, on_delete=models.SET_NULL, related_name="monthly_billing_items")
-    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    lease = models.ForeignKey(
+        "leases.Lease", on_delete=models.CASCADE, related_name="monthly_billing_items"
+    )
+    tenant = models.ForeignKey(
+        "tenants.Tenant", null=True, blank=True, on_delete=models.SET_NULL
+    )
+    property = models.ForeignKey(
+        "properties.Property", null=True, blank=True, on_delete=models.SET_NULL
+    )
+    unit = models.ForeignKey(
+        "properties.Unit", null=True, blank=True, on_delete=models.SET_NULL
+    )
+    invoice = models.ForeignKey(
+        Invoice,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="monthly_billing_items",
+    )
+    status = models.CharField(
+        max_length=30, choices=STATUS_CHOICES, default=STATUS_DRAFT
+    )
     issue_code = models.CharField(max_length=80, choices=ISSUE_CHOICES, blank=True)
     issue_message = models.TextField(blank=True)
     recurring_invoice_found = models.BooleanField(default=False)
@@ -642,15 +712,26 @@ class MonthlyBillingRunItem(models.Model):
     electric_required = models.BooleanField(default=False)
     electric_ready = models.BooleanField(default=False)
     manual_electric = models.BooleanField(default=False)
-    electric_charge = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    electric_charge = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
     electric_period_start = models.DateField(null=True, blank=True)
     electric_period_end = models.DateField(null=True, blank=True)
     latest_meter_reading_date = models.DateField(null=True, blank=True)
     water_required = models.BooleanField(default=False)
-    water_charge = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    water_charge = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
     water_resolved = models.BooleanField(default=False)
-    invoice_total = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
-    invoice_pdf = models.FileField(upload_to="invoices/monthly_billing_pdfs/", null=True, blank=True, max_length=255)
+    invoice_total = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    invoice_pdf = models.FileField(
+        upload_to="invoices/monthly_billing_pdfs/",
+        null=True,
+        blank=True,
+        max_length=255,
+    )
     whatsapp_message_id = models.CharField(max_length=160, blank=True)
     whatsapp_status = models.CharField(max_length=30, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
@@ -676,7 +757,9 @@ class MonthlyBillingRunItem(models.Model):
     class Meta:
         ordering = ["billing_run", "property_id", "unit_id", "lease_id"]
         constraints = [
-            models.UniqueConstraint(fields=["billing_run", "lease"], name="uniq_monthly_billing_run_lease"),
+            models.UniqueConstraint(
+                fields=["billing_run", "lease"], name="uniq_monthly_billing_run_lease"
+            ),
         ]
         indexes = [
             models.Index(fields=["billing_run", "status"]),
@@ -684,7 +767,9 @@ class MonthlyBillingRunItem(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.billing_run_id} lease {self.lease_id} {self.get_status_display()}"
+        return (
+            f"{self.billing_run_id} lease {self.lease_id} {self.get_status_display()}"
+        )
 
 
 class InvoiceLateFeeReminder(models.Model):
@@ -712,8 +797,12 @@ class InvoiceLateFeeReminder(models.Model):
         related_name="late_fee_reminders",
     )
     reminder_number = models.PositiveIntegerField()
-    sent_via = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUAL)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_SENT)
+    sent_via = models.CharField(
+        max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUAL
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_SENT
+    )
     whatsapp_message = models.ForeignKey(
         "whatsapp.WhatsAppMessageLog",
         null=True,
@@ -728,7 +817,9 @@ class InvoiceLateFeeReminder(models.Model):
         on_delete=models.SET_NULL,
         related_name="+",
     )
-    fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    fee_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("0.00")
+    )
     error_text = models.TextField(blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -797,7 +888,9 @@ class BillingProgressJob(models.Model):
         related_name="progress_jobs",
     )
     action = models.CharField(max_length=40, choices=ACTION_CHOICES)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_QUEUED)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_QUEUED
+    )
     rq_job_id = models.CharField(max_length=120, blank=True)
     current_step = models.CharField(max_length=120, blank=True)
     current_tenant = models.CharField(max_length=160, blank=True)
@@ -808,7 +901,9 @@ class BillingProgressJob(models.Model):
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     elapsed_seconds = models.PositiveIntegerField(default=0)
-    average_seconds = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    average_seconds = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("0.00")
+    )
     estimated_remaining_seconds = models.PositiveIntegerField(default=0)
     message = models.TextField(blank=True)
     error_text = models.TextField(blank=True)
@@ -832,3 +927,46 @@ class BillingProgressJob(models.Model):
 
     def __str__(self):
         return f"{self.get_action_display()} for run {self.billing_run_id}: {self.get_status_display()}"
+
+
+class IescoBillReading(models.Model):
+    reference_no = models.CharField(max_length=20)
+    fetched_at = models.DateTimeField(null=True, blank=True)
+    consumer_id = models.CharField(max_length=20, blank=True, null=True)
+    consumer_name = models.CharField(max_length=255, blank=True, null=True)
+    address = models.CharField(max_length=500, blank=True, null=True)
+    tariff_category = models.CharField(max_length=100, blank=True, null=True)
+    units = models.CharField(max_length=20, blank=True, null=True)
+    bill_month = models.CharField(max_length=20)
+    reading_date = models.CharField(max_length=20, blank=True, null=True)
+    issue_date = models.CharField(max_length=20, blank=True, null=True)
+    due_date = models.CharField(max_length=20, blank=True, null=True)
+    grand_total = models.CharField(max_length=30, blank=True, null=True)
+    bill_history = models.JSONField(blank=True, default=list)
+    current_month_paid = models.BooleanField(
+        blank=True,
+        null=True,
+        help_text="Paid status of the most recent completed month in PITC bill history.",
+    )
+    received_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-received_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("reference_no", "bill_month"),
+                name="uniq_iesco_reference_bill_month",
+            )
+        ]
+
+    @property
+    def payment_status_display(self):
+        if self.current_month_paid is True:
+            return "Paid"
+        if self.current_month_paid is False:
+            return "Unpaid"
+        return "Unknown"
+
+    def __str__(self):
+        return f"{self.reference_no} — {self.bill_month} — {self.grand_total}"

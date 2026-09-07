@@ -437,6 +437,8 @@ class IescoBillReadingListView(LoginRequiredMixin, ListView):
         return table
 
     def get_context_data(self, **kwargs):
+        return super().get_context_data(**kwargs)
+
         Property = apps.get_model("properties", "Property")
         Lease = apps.get_model("leases", "Lease")
         Unit = apps.get_model("properties", "Unit")

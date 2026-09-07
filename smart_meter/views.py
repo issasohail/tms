@@ -848,6 +848,9 @@ def meter_list(request):
         _meters_annotated_qs(request, online_minutes=online_minutes)
     )
     meters_base_qs = restrict_queryset_to_properties(meters_base_qs, request.user, "unit__property")
+    tariff_filter = (request.GET.get("tariff") or "").strip().lower()
+    if tariff_filter in {"single_rate", "multi_rate", "unknown"}:
+        meters_base_qs = meters_base_qs.filter(tariff_capability=tariff_filter)
     current_chip = _normalized_meter_chip(request)
     if active_filter in {"active", "inactive"} and "chip" not in request.GET:
         current_chip = "total"
@@ -861,6 +864,7 @@ def meter_list(request):
         "name",
         "billing_mode",
         "meter_role",
+        "tariff_capability",
         "unit_rate",
         "min_balance_alert",
         "min_balance_cutoff",
@@ -1026,6 +1030,7 @@ def meter_list(request):
             "current_meter": meter_param,
             "current_role": (request.GET.get("role") or "").strip().lower(),
             "current_active": active_filter,
+            "current_tariff": tariff_filter,
             "q": q,
             # Backward-compat alias if the partial uses a different key
             "properties": all_properties,
@@ -1076,6 +1081,7 @@ def meter_edit(request, pk):
     old_unit = meter.unit
     old_lease = meter.current_lease
     old_role = meter.meter_role
+    verified_tariff_history = meter.tariff_audits.filter(status="verified").exists()
     if request.method == "POST":
         form = MeterForm(request.POST, instance=meter)
         if form.is_valid():
@@ -1140,7 +1146,7 @@ def meter_edit(request, pk):
                     return render(
                         request,
                         "smart_meter/meter_form.html",
-                        {"form": form, "edit": True, "original_meter_role": old_role},
+                        {"form": form, "edit": True, "original_meter_role": old_role, "verified_tariff_history": verified_tariff_history},
                     )
                 messages.success(
                     request,
@@ -1236,7 +1242,7 @@ def meter_edit(request, pk):
     return render(
         request,
         "smart_meter/meter_form.html",
-        {"form": form, "edit": True, "original_meter_role": old_role},
+        {"form": form, "edit": True, "original_meter_role": old_role, "verified_tariff_history": verified_tariff_history},
     )
 
 
@@ -2511,7 +2517,7 @@ def meter_detail(request, pk):
         reading.day_max_voltage = max_voltage_by_day.get(reading.local_day)
         recent_daily_readings.append(reading)
 
-    from smart_meter.models import MeterCommand, MeterCreditAccount, MeterPrepaidPilot
+    from smart_meter.models import MeterCommand, MeterCreditAccount, MeterPrepaidPilot, MeterTariffConfiguration
 
     credit_account = (
         MeterCreditAccount.objects.filter(meter=meter)
@@ -2523,6 +2529,8 @@ def meter_detail(request, pk):
         :20
     ]
     prepaid_pilot = MeterPrepaidPilot.objects.filter(meter=meter).first()
+    tariff_configuration = MeterTariffConfiguration.objects.filter(meter=meter).first()
+    latest_tariff_audit = meter.tariff_audits.first()
     meter_feature_flags = {
         "credit_eval": bool(
             getattr(settings, "METER_ENABLE_AUTOMATIC_CREDIT_EVALUATION", False)
@@ -2572,6 +2580,8 @@ def meter_detail(request, pk):
             "recent_commands": recent_commands,
             "prepaid_pilot": prepaid_pilot,
             "meter_feature_flags": meter_feature_flags,
+            "tariff_configuration": tariff_configuration,
+            "latest_tariff_audit": latest_tariff_audit,
         },
     )
 

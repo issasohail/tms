@@ -21,6 +21,7 @@
     <div class="no-export">
       <div class="d-none d-lg-flex flex-wrap gap-2">
         <a href="{% url 'smart_meter:meter_check_group_list' %}" class="btn btn-sm btn-outline-info"><i class="fas fa-scale-balanced me-1"></i> Check Groups</a>
+        {% if perms.smart_meter.bulk_write_meter_tariff %}<a href="{% url 'smart_meter:tariff_bulk_setup' %}" class="btn btn-sm btn-outline-danger"><i class="fas fa-tags me-1"></i> Bulk Tariffs</a>{% endif %}
         <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meters_export_xlsx' %}?{{ qs }}"><i class="fas fa-file-excel me-1"></i> Excel</a>
         <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meters_export_csv' %}?{{ qs }}"><i class="fas fa-file-csv me-1"></i> CSV</a>
         <button type="button" class="btn btn-sm btn-outline-secondary" data-export-jpg><i class="fas fa-file-image me-1"></i> JPG</button>
@@ -121,6 +122,7 @@
                 </a>
               </th>
               <th class="ld-col-role"><span class="th2">Role</span></th>
+              <th class="col-narrow"><span class="th2">Tariff<span class="sub">Type</span></span></th>
               <th class="col-prop">
                 <a href="{{ header_links.property }}">
                   Property
@@ -206,6 +208,7 @@
                 </select>
                 </div>
               </td>
+              <td class="col-narrow"><span class="badge {% if m.tariff_capability == 'single_rate' %}bg-primary{% elif m.tariff_capability == 'multi_rate' %}bg-info text-dark{% else %}bg-secondary{% endif %}">{{ m.get_tariff_capability_display }}</span></td>
               <td class="col-prop" title="{{ m.unit.property.property_name }}">{{ m.unit.property.property_name|truncatechars:8 }}</td>
               <td class="col-unit" title="{{ m.display_location_name }}">{{ m.display_location_name }}</td>
               <td class="col-tenant" title="{{ m.tenant_name }}">{{ m.tenant_name|default:"Vacant" }}</td>
@@ -279,7 +282,7 @@
               </td>
             </tr>
           {% empty %}
-            <tr><td colspan="21" class="py-4 text-center text-muted">No meters found.</td></tr>
+            <tr><td colspan="22" class="py-4 text-center text-muted">No meters found.</td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -292,6 +295,7 @@
               <input type="checkbox" class="form-check-input rowcheck mt-0 no-export" name="meters" value="{{ m.id }}" form="bulkForm" data-balance="{{ m.balance|default_if_none:0|default:0 }}" aria-label="Select meter {{ m.meter_number }}">
               <span class="meter-mobile-seq">{% if page_obj %}{{ page_obj.start_index|add:forloop.counter0 }}.{% else %}{{ forloop.counter }}.{% endif %}</span>
               <a href="{% url 'smart_meter:meter_detail' m.id %}" class="meter-mobile-number">{{ m.meter_number }}</a>
+              <span class="badge bg-light text-dark border">{{ m.get_tariff_capability_display }}</span>
               {% if m.is_online %}<span class="badge bg-success meter-mobile-online">Online</span>{% else %}<span class="badge bg-secondary meter-mobile-online">Offline</span>{% endif %}
             </div>
             <div class="ld-role-editor meter-mobile-role" data-role-editor>

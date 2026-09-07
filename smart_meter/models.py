@@ -1,4 +1,5 @@
 import os
+import uuid
 from decimal import Decimal, ROUND_HALF_UP
 from django.db.models.signals import post_save
 
@@ -75,6 +76,14 @@ class Meter(models.Model):
         (REVERSE_CAPABILITY_SUPPORTED, "Supported"),
         (REVERSE_CAPABILITY_NOT_SUPPORTED, "Not supported"),
     ]
+    TARIFF_CAPABILITY_SINGLE = "single_rate"
+    TARIFF_CAPABILITY_MULTI = "multi_rate"
+    TARIFF_CAPABILITY_UNKNOWN = "unknown"
+    TARIFF_CAPABILITY_CHOICES = [
+        (TARIFF_CAPABILITY_SINGLE, "Single-rate"),
+        (TARIFF_CAPABILITY_MULTI, "Multi-rate"),
+        (TARIFF_CAPABILITY_UNKNOWN, "Unknown / not confirmed"),
+    ]
     unit = models.ForeignKey(
         "properties.Unit",
         on_delete=models.SET_NULL,
@@ -120,6 +129,16 @@ class Meter(models.Model):
         choices=REVERSE_CAPABILITY_CHOICES,
         default=REVERSE_CAPABILITY_UNKNOWN,
         help_text="Updated to Supported after a valid reverse-energy register response. Set Not supported only for meters known not to provide that register.",
+    )
+    tariff_capability = models.CharField(
+        max_length=16,
+        choices=TARIFF_CAPABILITY_CHOICES,
+        default=TARIFF_CAPABILITY_UNKNOWN,
+        db_index=True,
+        help_text=(
+            "Single-rate copies one price to all tariff slots. Multi-rate can use "
+            "a flat price or multiple scheduled rates. Unknown disables tariff writes."
+        ),
     )
     power_status = models.CharField(
         max_length=10, choices=[("on", "On"), ("off", "Off")], default="on")
@@ -1730,6 +1749,8 @@ class MeterCommand(models.Model):
     COMMAND_TYPES = [
         ("relay", "Relay"),
         ("read", "Read"),
+        ("tariff_read", "Tariff Read"),
+        ("tariff_write", "Tariff Write"),
         ("prepaid_read", "Prepaid Read"),
         ("prepaid_write", "Prepaid Write"),
         ("prepaid_recharge", "Prepaid Recharge"),
@@ -1746,6 +1767,7 @@ class MeterCommand(models.Model):
         ("energy_probe", "Energy Probe (No Persistence)"),
         ("energy_probe_persist", "Energy Probe (Persist)"),
         ("energy_auto_poll", "Automatic Bidirectional Energy Poll"),
+        ("tariff", "Tariff Configuration"),
     ]
 
     meter = models.ForeignKey(
@@ -2081,4 +2103,125 @@ class MeterPrepaidRecharge(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="prepaid_recharges")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class MeterTariffConfiguration(models.Model):
+    MODES = [("flat", "Flat"), ("time_of_use", "Time-of-use")]
+    STATUSES = [
+        ("not_configured", "Not configured"),
+        ("read", "Live configuration read"),
+        ("draft", "Draft"),
+        ("offline_queued", "Offline / queued / not verified"),
+        ("sent_pending_verification", "Sent pending verification"),
+        ("verified", "Verified"),
+        ("no_change", "No change"),
+        ("failed", "Failed"),
+        ("unsafe_readback", "Unsafe read-back"),
+    ]
+
+    meter = models.OneToOneField(
+        Meter, on_delete=models.CASCADE, related_name="tariff_configuration"
+    )
+    mode = models.CharField(max_length=16, choices=MODES, blank=True, default="")
+    active_rate_count = models.PositiveSmallIntegerField(null=True, blank=True)
+    rate_1_label = models.CharField(max_length=64, default="Valley")
+    rate_2_label = models.CharField(max_length=64, default="Flat")
+    rate_3_label = models.CharField(max_length=64, default="Peak")
+    rate_4_label = models.CharField(max_length=64, default="Shoulder")
+    rate_1_price = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+    rate_2_price = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+    rate_3_price = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+    rate_4_price = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
+    schedule_draft = models.JSONField(default=list, blank=True)
+    latest_verified_schedule_summary = models.JSONField(default=list, blank=True)
+    last_configuration_read_at = models.DateTimeField(null=True, blank=True)
+    last_verified_at = models.DateTimeField(null=True, blank=True)
+    last_status = models.CharField(
+        max_length=32, choices=STATUSES, default="not_configured", db_index=True
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        permissions = [
+            ("read_meter_tariff", "Can read meter tariff configuration"),
+            ("write_meter_tariff", "Can write meter tariff configuration"),
+            ("bulk_write_meter_tariff", "Can configure meter tariffs in bulk"),
+            ("view_meter_tariff_audit", "Can view meter tariff audit history"),
+        ]
+
+
+class MeterTariffAudit(models.Model):
+    CONFIGURATION_TYPES = [
+        ("read", "Read"),
+        ("flat", "Flat tariff"),
+        ("time_of_use", "Time-of-use tariff"),
+        ("schedule_draft", "Schedule draft"),
+        ("schedule_write", "Schedule write"),
+    ]
+    STATUSES = MeterTariffConfiguration.STATUSES
+
+    meter = models.ForeignKey(Meter, on_delete=models.PROTECT, related_name="tariff_audits")
+    initiating_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="meter_tariff_audits",
+    )
+    capability = models.CharField(max_length=16, choices=Meter.TARIFF_CAPABILITY_CHOICES)
+    configuration_type = models.CharField(max_length=20, choices=CONFIGURATION_TYPES)
+    values_before = models.JSONField(default=dict, blank=True)
+    requested_values = models.JSONField(default=dict, blank=True)
+    values_after = models.JSONField(default=dict, blank=True)
+    raw_read_before_frame = models.TextField(blank=True)
+    raw_write_frame = models.TextField(blank=True)
+    raw_write_reply_frame = models.TextField(blank=True)
+    raw_read_back_frame = models.TextField(blank=True)
+    command_ids = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=32, choices=STATUSES, db_index=True)
+    error = models.TextField(blank=True)
+    submission_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["meter", "-created_at"])]
+
+
+class MeterTariffBulkRun(models.Model):
+    STATUSES = [
+        ("draft", "Draft"), ("running", "Running"),
+        ("completed", "Completed"), ("partial", "Partial"),
+    ]
+    requested_price = models.DecimalField(max_digits=10, decimal_places=4)
+    status = models.CharField(max_length=16, choices=STATUSES, default="draft", db_index=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+        related_name="meter_tariff_bulk_runs",
+    )
+    submission_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
+class MeterTariffBulkItem(models.Model):
+    run = models.ForeignKey(MeterTariffBulkRun, on_delete=models.CASCADE, related_name="items")
+    meter = models.ForeignKey(Meter, on_delete=models.PROTECT, related_name="tariff_bulk_items")
+    capability = models.CharField(max_length=16, choices=Meter.TARIFF_CAPABILITY_CHOICES)
+    status = models.CharField(
+        max_length=32, choices=MeterTariffConfiguration.STATUSES, default="not_configured"
+    )
+    old_prices = models.JSONField(default=list, blank=True)
+    error = models.TextField(blank=True)
+    audit = models.ForeignKey(
+        MeterTariffAudit, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="bulk_items",
+    )
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["run", "meter"], name="uniq_tariff_bulk_run_meter")
+        ]
 

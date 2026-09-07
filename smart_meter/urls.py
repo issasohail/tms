@@ -13,6 +13,7 @@ from . import views_dashboard
 from django.contrib import admin
 from django.urls import path, include
 from . import views_prepaid
+from . import views_tariff
 from .views_invoice import electric_bill_preview, electric_bill_commit
 from . import views_dashboard
 from .views_invoice import electric_bill_preview, electric_bill_commit
@@ -62,6 +63,12 @@ urlpatterns = [
     path('meters/schedules/<int:meter_id>/copy/', views_schedule.meter_schedule_copy, name='meter_schedule_copy'),
     path('meters/<int:meter_id>/schedule/', views_schedule.meter_schedule_detail, name='meter_schedule_detail'),
     path('meters/add/', views.add_meter, name='add_meter'),
+    path('meters/tariffs/bulk/', views_tariff.tariff_bulk_setup, name='tariff_bulk_setup'),
+    path('meters/tariffs/bulk/<int:run_id>/', views_tariff.tariff_bulk_result, name='tariff_bulk_result'),
+    path('meters/tariffs/bulk/<int:run_id>/items/<int:item_id>/process/', views_tariff.tariff_bulk_process_item, name='tariff_bulk_process_item'),
+    path('meters/tariffs/audits/<int:audit_id>/', views_tariff.tariff_audit_detail, name='tariff_audit_detail'),
+    path('meters/<int:meter_id>/tariff/', views_tariff.tariff_configure, name='tariff_configure'),
+    path('meters/<int:meter_id>/tariff/audits/', views_tariff.tariff_audit_list, name='tariff_audit_list'),
     path('meters/<int:pk>/raw-readings/export/xlsx/', views.meter_raw_frame_history_xlsx, name='meter_raw_frame_history_xlsx'),
     path('meters/<int:pk>/raw-readings/', views.meter_raw_frame_history, name='meter_raw_frame_history'),
     path('meters/<int:pk>/', views.meter_detail, name='meter_detail'),

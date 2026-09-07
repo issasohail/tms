@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3" style="max-width:1100px">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div><h3 class="mb-0">Tariff Configuration</h3><small class="text-muted">Meter {{ meter.meter_number }}</small></div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_detail' meter.pk %}">Meter Detail</a>
+      {% if perms.smart_meter.view_meter_tariff_audit %}<a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:tariff_audit_list' meter.pk %}">Audit History</a>{% endif %}
+    </div>
+  </div>
+
+  <div class="alert {% if meter.tariff_capability == 'unknown' %}alert-warning{% else %}alert-info{% endif %} py-2">
+    <strong>{{ meter.get_tariff_capability_display }}</strong> —
+    {% if meter.tariff_capability == 'single_rate' %}one price is copied to all four tariff slots.
+    {% elif meter.tariff_capability == 'multi_rate' %}supports a flat price or multiple rate prices; schedule transmission is currently disabled.
+    {% else %}tariff reads and writes are disabled until capability is confirmed.{% endif %}
+  </div>
+
+  <div class="card mb-3"><div class="card-body">
+    <h5>1. Read current configuration</h5>
+    <p class="small text-muted">A successful live read is required. No assumed meter prices are used.</p>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="read">
+      <button class="btn btn-primary" {% if meter.tariff_capability == 'unknown' %}disabled{% endif %}>Read Current Meter Configuration</button>
+    </form>
+    {% if latest_read %}
+      <hr><div class="small"><strong>Live meter data</strong> — read {{ latest_read.completed_at|date:"Y-m-d H:i:s" }}</div>
+      <div class="table-responsive mt-2"><table class="table table-sm mb-0"><thead><tr><th>Slot</th><th>Live price</th></tr></thead><tbody>
+      {% for price in live_values.prices %}<tr><td>Tariff {{ forloop.counter }}</td><td>{{ price }}</td></tr>{% endfor %}
+      </tbody></table></div>
+    {% endif %}
+  </div></div>
+
+  <div class="card"><div class="card-body">
+    <h5>2. Configure tariff</h5>
+    {% if not latest_read %}<div class="alert alert-secondary py-2">Read the live configuration before entering a tariff.</div>{% endif %}
+    {% if meter.tariff_capability == 'multi_rate' %}<div class="alert alert-warning py-2">Live schedule write requires vendor-confirmed 070105FF byte mapping. Schedule editing is draft-only.</div>{% endif %}
+    {% if latest_read %}<form method="post" id="tariff-form" onsubmit="return confirm('Confirm this tariff operation for meter {{ meter.meter_number|escapejs }}? A live read-modify-write and immediate read-back will be performed once.');">
+      {% csrf_token %}<input type="hidden" name="submission_token" value="{{ submission_token }}">
+      <input type="hidden" name="confirm_write" value="yes">
+      {{ form.non_field_errors }}{{ form.schedule_json }}
+      {% if meter.tariff_capability == 'single_rate' %}
+        <input type="hidden" name="mode" value="flat"><input type="hidden" name="active_rate_count" value="1">
+        <div class="mb-3"><label class="form-label">Flat unit rate</label>{{ form.flat_rate }}{{ form.flat_rate.errors }}</div>
+        <div class="small text-muted mb-3">Preview: the chosen value will be copied to Tariff 1, 2, 3, and 4. All other bytes remain unchanged.</div>
+      {% elif meter.tariff_capability == 'multi_rate' %}
+        <div class="mb-3">{{ form.mode }}</div>
+        <div id="flat-fields"><label class="form-label">Flat unit rate</label>{{ form.flat_rate }}{{ form.flat_rate.errors }}<div class="form-text">Copied to all four Rate Set 1 price fields; schedule data remains unchanged.</div></div>
+        <div id="tou-fields" class="mt-3">
+          <div class="row g-2"><div class="col-md-3"><label class="form-label">Active rate count</label>{{ form.active_rate_count }}{{ form.active_rate_count.errors }}</div></div>
+          <div class="row g-2 mt-1">
+            <div class="col-6 col-md-3">{{ form.rate_1_label.label_tag }}{{ form.rate_1_label }}{{ form.rate_1_label.errors }}{{ form.rate_1_price.label_tag }}{{ form.rate_1_price }}{{ form.rate_1_price.errors }}</div>
+            <div class="col-6 col-md-3">{{ form.rate_2_label.label_tag }}{{ form.rate_2_label }}{{ form.rate_2_label.errors }}{{ form.rate_2_price.label_tag }}{{ form.rate_2_price }}{{ form.rate_2_price.errors }}</div>
+            <div class="col-6 col-md-3">{{ form.rate_3_label.label_tag }}{{ form.rate_3_label }}{{ form.rate_3_label.errors }}{{ form.rate_3_price.label_tag }}{{ form.rate_3_price }}{{ form.rate_3_price.errors }}</div>
+            <div class="col-6 col-md-3">{{ form.rate_4_label.label_tag }}{{ form.rate_4_label }}{{ form.rate_4_label.errors }}{{ form.rate_4_price.label_tag }}{{ form.rate_4_price }}{{ form.rate_4_price.errors }}</div>
+          </div>
+          <hr><div class="d-flex justify-content-between"><h6>Daily schedule draft</h6><button type="button" id="add-period" class="btn btn-sm btn-outline-primary">Add period</button></div>
+          <div id="schedule-rows"></div>{{ form.schedule_json.errors }}
+        </div>
+      {% endif %}
+      {% if perms.smart_meter.write_meter_tariff %}
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <button name="action" value="write_tariff" class="btn btn-danger" {% if not latest_read or meter.tariff_capability == 'unknown' %}disabled{% endif %}>Write Tariff Once and Verify</button>
+        {% if meter.tariff_capability == 'multi_rate' %}<button name="action" value="save_draft" class="btn btn-outline-primary" {% if meter.tariff_capability == 'unknown' %}disabled{% endif %}>Save Schedule Draft Only</button>{% endif %}
+      </div>{% endif %}
+    </form>{% endif %}
+    {% if meter.tariff_capability == 'multi_rate' %}<button type="button" class="btn btn-secondary mt-3" disabled>Write Schedule to Meter</button>{% endif %}
+  </div></div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('tariff-form'), hidden = document.getElementById('id_schedule_json');
+  const rows = document.getElementById('schedule-rows'), add = document.getElementById('add-period');
+  const flat = document.getElementById('flat-fields'), tou = document.getElementById('tou-fields');
+  function syncMode(){ const mode=form?.querySelector('input[name="mode"]:checked')?.value || 'flat'; flat?.classList.toggle('d-none',mode!=='flat'); tou?.classList.toggle('d-none',mode!=='time_of_use'); }
+  form?.querySelectorAll('input[name="mode"]').forEach(el=>el.addEventListener('change',syncMode)); syncMode();
+  let data=[]; try { data=JSON.parse(hidden?.value || '{{ schedule_draft_json|escapejs }}' || '[]'); } catch(e){ data=[]; }
+  function render(){ if(!rows)return; rows.innerHTML=''; data.forEach((row,i)=>{ const div=document.createElement('div'); div.className='row g-2 align-items-end mb-2'; div.innerHTML=`<div class="col-4"><label class="form-label small">Start</label><input type="time" class="form-control" data-k="start" value="${row.start||''}"></div><div class="col-4"><label class="form-label small">End</label><input type="time" class="form-control" data-k="end" value="${row.end||''}"></div><div class="col-3"><label class="form-label small">Rate</label><select class="form-select" data-k="rate">${[1,2,3,4].map(n=>`<option value="${n}" ${Number(row.rate)===n?'selected':''}>Rate ${n}</option>`).join('')}</select></div><div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger">×</button></div>`; div.querySelectorAll('[data-k]').forEach(el=>el.addEventListener('change',()=>{data[i][el.dataset.k]=el.dataset.k==='rate'?Number(el.value):el.value; hidden.value=JSON.stringify(data);})); div.querySelector('button').onclick=()=>{data.splice(i,1); hidden.value=JSON.stringify(data); render();}; rows.appendChild(div); }); hidden.value=JSON.stringify(data); }
+  add?.addEventListener('click',()=>{data.push({start:'00:00',end:'',rate:1});render();}); render();
+});
+</script>
+{% endblock %}

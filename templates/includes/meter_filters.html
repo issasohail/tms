@@ -45,6 +45,15 @@
     </select>
   </div>
 
+  <div class="meter-filter-field meter-filter-tariff">
+    <select name="tariff" class="form-select form-select-sm" id="mf_tariff" aria-label="Tariff type filter">
+      <option value="">All Tariff Types</option>
+      <option value="single_rate" {% if current_tariff == "single_rate" %}selected{% endif %}>Single-rate</option>
+      <option value="multi_rate" {% if current_tariff == "multi_rate" %}selected{% endif %}>Multi-rate</option>
+      <option value="unknown" {% if current_tariff == "unknown" %}selected{% endif %}>Unknown</option>
+    </select>
+  </div>
+
   <div class="meter-filter-actions">
     <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-filter"></i><span> Filter</span></button>
     {% if request.GET %}
@@ -56,7 +65,7 @@
 <style>
   .meter-filter-grid {
     display: grid;
-    grid-template-columns: minmax(150px, 1fr) minmax(130px, .8fr) minmax(180px, 1fr) minmax(135px, .75fr) minmax(130px, .7fr) auto;
+    grid-template-columns: minmax(150px, 1fr) minmax(130px, .8fr) minmax(180px, 1fr) minmax(135px, .75fr) minmax(130px, .7fr) minmax(145px, .8fr) auto;
     gap: .5rem;
     align-items: center;
   }
@@ -73,7 +82,8 @@
     .meter-filter-unit { grid-column: span 6; }
     .meter-filter-meter { grid-column: span 5; }
     .meter-filter-role,
-    .meter-filter-active { grid-column: span 4; }
+    .meter-filter-active,
+    .meter-filter-tariff { grid-column: span 4; }
     .meter-filter-actions { grid-column: span 3; }
     .meter-filter-actions .btn { min-height: 31px; }
     .meter-filter-actions .btn-primary span { display: none; }
@@ -88,11 +98,13 @@ document.addEventListener("DOMContentLoaded", function () {
   const meter = document.getElementById('mf_meter');
   const role = document.getElementById('mf_role');
   const active = document.getElementById('mf_active');
+  const tariff = document.getElementById('mf_tariff');
 
   property?.addEventListener('change', () => { unit.value = ''; meter.value = ''; form.submit(); });
   unit?.addEventListener('change', () => { meter.value = ''; form.submit(); });
   meter?.addEventListener('change', () => form.submit());
   role?.addEventListener('change', () => form.submit());
   active?.addEventListener('change', () => form.submit());
+  tariff?.addEventListener('change', () => form.submit());
 });
 </script>

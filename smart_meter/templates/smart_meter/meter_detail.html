@@ -259,6 +259,7 @@
       <div class="meter-kv-grid">
         <div class="meter-kv"><span class="meter-kv-label">Meter Number</span><div class="meter-kv-value">{{ meter.meter_number }}</div></div>
         <div class="meter-kv"><span class="meter-kv-label">Billing Mode</span><div class="meter-kv-value">{{ meter.get_billing_mode_display }}</div></div>
+        <div class="meter-kv"><span class="meter-kv-label">Tariff Capability</span><div class="meter-kv-value"><span class="badge {% if meter.tariff_capability == 'single_rate' %}bg-primary{% elif meter.tariff_capability == 'multi_rate' %}bg-info text-dark{% else %}bg-secondary{% endif %}">{{ meter.get_tariff_capability_display }}</span></div></div>
         <div class="meter-kv"><span class="meter-kv-label">Reading Profile</span><div class="meter-kv-value">{% if perms.smart_meter.change_meter %}<form method="post" action="{% url 'smart_meter:meter_reading_profile_update' meter.pk %}" class="d-flex gap-2">{% csrf_token %}{{ reading_profile_form.reading_profile }}<button class="btn btn-sm btn-outline-primary">Save</button></form>{% else %}{{ meter.get_reading_profile_display }}{% endif %}</div></div>
         <div class="meter-kv"><span class="meter-kv-label">Unit / Meter</span><div class="meter-kv-value">{{ meter.display_location_name|default:"-" }}</div></div>
         <div class="meter-kv"><span class="meter-kv-label">Property</span><div class="meter-kv-value">{{ meter.unit.property.property_name|default:"-" }}</div></div>
@@ -291,6 +292,19 @@
         <div class="meter-kv"><span class="meter-kv-label">Alert</span><div class="meter-kv-value">{{ CURRENCY_SYMBOL }} {{ meter.min_balance_alert }}</div></div>
         <div class="meter-kv"><span class="meter-kv-label">Cutoff</span><div class="meter-kv-value">{{ CURRENCY_SYMBOL }} {{ meter.min_balance_cutoff }}</div></div>
       </div>
+    </div>
+  </div>
+
+  <div class="meter-detail-card bg-white p-3 mt-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><h5 class="meter-panel-title mb-0">Tariff Configuration</h5><div class="d-flex gap-2">{% if perms.smart_meter.read_meter_tariff %}<a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:tariff_configure' meter.pk %}">Configure Tariff</a>{% endif %}{% if perms.smart_meter.view_meter_tariff_audit %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:tariff_audit_list' meter.pk %}">View Tariff Audit History</a>{% endif %}</div></div>
+    <div class="meter-kv-grid">
+      <div class="meter-kv"><span class="meter-kv-label">Capability</span><div class="meter-kv-value">{{ meter.get_tariff_capability_display }}</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Mode</span><div class="meter-kv-value">{% if tariff_configuration.mode %}{{ tariff_configuration.get_mode_display }}{% else %}Not configured{% endif %}</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Active rates</span><div class="meter-kv-value">{{ tariff_configuration.active_rate_count|default:"—" }}</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Last verified</span><div class="meter-kv-value">{{ tariff_configuration.last_verified_at|date:"Y-m-d H:i:s"|default:"Never" }}</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Last status</span><div class="meter-kv-value">{% if tariff_configuration %}{{ tariff_configuration.get_last_status_display }}{% else %}Not configured{% endif %}</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Rates</span><div class="meter-kv-value">{% if tariff_configuration.rate_1_price is not None %}{{ tariff_configuration.rate_1_label }}: {{ tariff_configuration.rate_1_price }}{% if tariff_configuration.active_rate_count > 1 %}<br>{{ tariff_configuration.rate_2_label }}: {{ tariff_configuration.rate_2_price }}{% endif %}{% if tariff_configuration.active_rate_count > 2 %}<br>{{ tariff_configuration.rate_3_label }}: {{ tariff_configuration.rate_3_price }}{% endif %}{% if tariff_configuration.active_rate_count > 3 %}<br>{{ tariff_configuration.rate_4_label }}: {{ tariff_configuration.rate_4_price }}{% endif %}{% else %}No verified prices{% endif %}</div></div>
+      {% if tariff_configuration.schedule_draft %}<div class="meter-kv"><span class="meter-kv-label">Schedule</span><div class="meter-kv-value">Draft saved; live write disabled pending confirmed mapping.</div></div>{% endif %}
     </div>
   </div>
 

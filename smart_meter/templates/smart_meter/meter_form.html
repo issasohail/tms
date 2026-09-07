@@ -200,6 +200,16 @@
           <div class="meter-field meter-span-1">{{ form.name.label_tag }}{{ form.name }}{{ form.name.errors }}</div>
           <div class="meter-field meter-span-1">{{ form.meter_type.label_tag }}{{ form.meter_type }}{{ form.meter_type.errors }}</div>
           <div class="meter-field meter-span-1">{{ form.billing_mode.label_tag }}{{ form.billing_mode }}{{ form.billing_mode.errors }}</div>
+          <div class="meter-field meter-span-2">
+            {{ form.tariff_capability.label_tag }}{{ form.tariff_capability }}{{ form.tariff_capability.errors }}
+            <div class="form-text">Single-rate: one price is copied to all tariff slots. Multi-rate: can use one flat price today or multiple prices with a time schedule later. Unknown: tariff writes are disabled until confirmed.</div>
+          </div>
+          {% if edit and verified_tariff_history %}
+          <div class="meter-field meter-span-2 alert alert-warning py-2 mb-0">
+            Verified tariff history exists. Changing capability will not alter stored prices or schedules.
+            <div class="form-check mt-1">{{ form.confirm_tariff_capability_change }} {{ form.confirm_tariff_capability_change.label_tag }}{{ form.confirm_tariff_capability_change.errors }}</div>
+          </div>
+          {% endif %}
           <div class="meter-field meter-span-1">
             {{ form.meter_role.label_tag }}{{ form.meter_role }}{{ form.meter_role.errors }}
             <div id="ld-check-meter-help" class="form-text d-none">

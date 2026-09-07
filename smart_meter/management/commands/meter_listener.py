@@ -360,7 +360,7 @@ def _deliver_if_match(
                 continue
             negative_without_di = (
                 item.get("accept_negative_without_di")
-                and control_code == 0xD1
+                and control_code in {0xC3, 0xD1}
                 and not di
             )
             if exp and exp != di and not negative_without_di:
@@ -1293,16 +1293,29 @@ class DbCommandPoller(threading.Thread):
 
             h = _get_handler(meter_no)
             if not h:
-                self._wait_online(cmd, f"meter {meter_no} not connected")
+                if getattr(cmd, "command_type", "") in {"tariff_read", "tariff_write"}:
+                    self._fail(cmd, f"meter {meter_no} not connected")
+                else:
+                    self._wait_online(cmd, f"meter {meter_no} not connected")
                 return
 
             is_relay = getattr(cmd, "command_type", "") == "relay" and getattr(
                 cmd, "desired_state", ""
             ) in {"on", "off"}
+            is_tariff_write = getattr(cmd, "command_type", "") == "tariff_write"
             waiter = None
             if is_relay:
                 waiter = queue.Queue()
                 _push_waiter(meter_no, waiter, None, expect_controls={0x9C, 0xDC})
+            elif is_tariff_write:
+                waiter = queue.Queue()
+                _push_waiter(
+                    meter_no,
+                    waiter,
+                    None,
+                    expect_controls={0x83, 0xC3},
+                    accept_negative_without_di=True,
+                )
             elif (cmd.expect_di or "").strip():
                 waiter = queue.Queue()
                 _push_waiter(
@@ -1369,7 +1382,7 @@ class DbCommandPoller(threading.Thread):
 
                 self._ack(cmd, reply.hex().upper())
                 self._verify_relay(cmd, h, ttl)
-            elif (cmd.expect_di or "").strip():
+            elif waiter is not None:
                 if is_money:
                     MeterCommand.objects.filter(pk=cmd.pk).update(
                         status="sent", next_attempt_at=None

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <h3>Bulk Tariff Run #{{ run.pk }}</h3>
+  <p>Requested flat rate: {{ run.requested_price }}. Meters are processed sequentially with no automatic write retry.</p>
+  <div class="card"><div class="table-responsive"><table class="table table-sm mb-0">
+    <thead><tr><th>Meter</th><th>Capability</th><th>Old prices</th><th>Requested</th><th>Result</th><th>Error</th><th>Audit</th><th>Action</th></tr></thead>
+    <tbody>{% for item in run.items.all %}
+      <tr data-item="{{ item.pk }}" data-url="{% url 'smart_meter:tariff_bulk_process_item' run.pk item.pk %}">
+        <td>{{ item.meter.meter_number }}</td><td>{{ item.get_capability_display }}</td>
+        <td class="old">{{ item.old_prices|default:"—" }}</td><td>{{ run.requested_price }}</td>
+        <td class="status">{{ item.get_status_display }}</td><td class="error">{{ item.error|default:"—" }}</td>
+        <td class="audit">{% if item.audit_id %}<a href="{% url 'smart_meter:tariff_audit_detail' item.audit_id %}">#{{ item.audit_id }}</a>{% endif %}</td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger retry {% if not item.processed_at or item.status == 'verified' or item.status == 'no_change' %}d-none{% endif %}">Retry manually</button></td>
+      </tr>
+    {% endfor %}</tbody>
+  </table></div></div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const csrf = '{{ csrf_token }}';
+  const auditBase = '{% url "smart_meter:tariff_audit_detail" 0 %}';
+  async function processRow(row, retry) {
+    const body = new URLSearchParams();
+    if (retry) {
+      if (!window.confirm('Retry this live tariff write? A fresh read and explicit read-back verification will be performed.')) return;
+      body.set('manual_retry', 'yes'); body.set('confirm_write', 'yes');
+    }
+    row.querySelector('.status').textContent = 'Processing…';
+    row.querySelector('.retry').classList.add('d-none');
+    try {
+      const response = await fetch(row.dataset.url, {method: 'POST', headers: {'X-CSRFToken': csrf}, body});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      row.querySelector('.status').textContent = data.status;
+      row.querySelector('.error').textContent = data.error || '—';
+      row.querySelector('.old').textContent = JSON.stringify(data.old_prices || []);
+      if (data.audit_id) row.querySelector('.audit').innerHTML = `<a href="${auditBase.replace('/0/', '/' + data.audit_id + '/')}">#${data.audit_id}</a>`;
+      if (!['verified', 'no_change'].includes(data.status)) row.querySelector('.retry').classList.remove('d-none');
+    } catch (error) {
+      row.querySelector('.status').textContent = 'Failed';
+      row.querySelector('.error').textContent = error.message;
+      row.querySelector('.retry').classList.remove('d-none');
+    }
+  }
+  const rows = [...document.querySelectorAll('tr[data-item]')];
+  rows.forEach(row => row.querySelector('.retry').addEventListener('click', () => processRow(row, true)));
+  (async () => {
+    for (const row of rows) {
+      if (row.querySelector('.audit a')) continue;
+      await processRow(row, false);
+    }
+  })();
+});
+</script>
+{% endblock %}

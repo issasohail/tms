@@ -30,6 +30,7 @@ from .models import (
     MeterSettings, Meter, LiveReading, MeterReading, Tariff, Bill, MeterBalance,
     MeterInstallation, MeterCheckGroup, MeterCheckGroupMembership,
     MeterCreditAccount,
+    MeterTariffAudit,
 )
 
 
@@ -79,6 +80,10 @@ class MeterSettingsForm(forms.ModelForm):
 
 
 class MeterForm(forms.ModelForm):
+    confirm_tariff_capability_change = forms.BooleanField(
+        required=False,
+        label="I confirm this capability change does not alter meter prices or schedules.",
+    )
     reading_profile = forms.ChoiceField(
         choices=Meter.READING_PROFILE_CHOICES,
         required=False,
@@ -101,6 +106,7 @@ class MeterForm(forms.ModelForm):
             'unit': forms.Select(attrs={'class': 'form-select'}),
             'billing_mode': forms.Select(attrs={'class': 'form-select'}),
             'meter_role': forms.Select(attrs={'class': 'form-select'}),
+            'tariff_capability': forms.Select(attrs={'class': 'form-select'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'balance': forms.NumberInput(attrs={'class': 'form-control'}),
             'credit_balance': forms.NumberInput(attrs={'class': 'form-control'}),
@@ -110,6 +116,14 @@ class MeterForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.original_meter_role = self.instance.meter_role if self.instance.pk else None
+        self.original_tariff_capability = (
+            self.instance.tariff_capability if self.instance.pk else None
+        )
+        self.fields["tariff_capability"].label = "Tariff Capability"
+        # Older integrations and existing form posts do not include this newly
+        # introduced field. Preserve the stored value on edits and default new
+        # meters to Unknown instead of breaking those callers.
+        self.fields["tariff_capability"].required = False
         self.fields["unit_rate"].label = "Meter rate override"
         self.fields["unit_rate"].widget.attrs.update({"step": "0.0001", "min": "0"})
         self.fields["unit"].queryset = _ordered_units()
@@ -132,6 +146,22 @@ class MeterForm(forms.ModelForm):
                 or Meter.READING_PROFILE_AUTO
             )
         new_role = cleaned.get("meter_role")
+        new_capability = cleaned.get("tariff_capability") or (
+            self.original_tariff_capability or Meter.TARIFF_CAPABILITY_UNKNOWN
+        )
+        cleaned["tariff_capability"] = new_capability
+        if (
+            self.instance.pk
+            and new_capability != self.original_tariff_capability
+            and MeterTariffAudit.objects.filter(
+                meter=self.instance, status="verified"
+            ).exists()
+            and not cleaned.get("confirm_tariff_capability_change")
+        ):
+            self.add_error(
+                "confirm_tariff_capability_change",
+                "Verified tariff history exists. Confirm the capability change to continue.",
+            )
         if (
             self.instance.pk
             and self.original_meter_role == Meter.METER_ROLE_CHECK

@@ -7,7 +7,7 @@
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
     <div>
       <h2 class="h4 mb-0">IESCO Bill Readings</h2>
-      <small class="text-muted">Read-only readings received from the local PITC fetcher.</small>
+      <small class="text-muted">All electric meters from the unit list, with the latest received IESCO update.</small>
     </div>
     <a href="{% url 'invoices:invoice_list' %}" class="btn btn-sm btn-secondary">
       <i class="fas fa-arrow-left me-1"></i>Invoices
@@ -45,6 +45,7 @@
       <table class="table table-sm table-hover align-middle mb-0">
         <thead>
           <tr>
+            <th>Property / Unit</th>
             <th>Reference</th>
             <th>Bill month</th>
             <th>Consumer</th>
@@ -52,20 +53,23 @@
             <th class="text-end">Grand total</th>
             <th>Latest history status</th>
             <th>Due date</th>
-            <th>Received</th>
-            <th>Updated</th>
+            <th>Last update</th>
           </tr>
         </thead>
         <tbody>
-          {% for reading in readings %}
+          {% for unit in meter_rows %}
+          {% with reading=unit.latest_iesco_reading %}
           <tr>
-            <td class="text-nowrap"><strong>{{ reading.reference_no }}</strong></td>
+            <td><strong>{{ unit.property.property_name }}</strong><br><small>{{ unit.unit_number }}</small></td>
+            <td class="text-nowrap"><a href="{% url 'invoices:iesco_bill_reading_detail' unit.electric_meter_num %}"><strong>{{ unit.electric_meter_num }}</strong></a></td>
             <td class="text-nowrap">{{ reading.bill_month }}</td>
             <td>{{ reading.consumer_name|default:reading.consumer_id|default:"—" }}</td>
             <td class="text-end">{{ reading.units|default:"—" }}</td>
             <td class="text-end fw-semibold">{{ reading.grand_total|default:"—" }}</td>
             <td>
-              {% if reading.current_month_paid is True %}
+              {% if not reading %}
+                <span class="badge bg-secondary">No reading</span>
+              {% elif reading.current_month_paid is True %}
                 <span class="badge bg-success">Paid</span>
               {% elif reading.current_month_paid is False %}
                 <span class="badge bg-danger">Unpaid</span>
@@ -74,11 +78,11 @@
               {% endif %}
             </td>
             <td class="text-nowrap">{{ reading.due_date|default:"—" }}</td>
-            <td class="text-nowrap">{{ reading.received_at|date:"Y-m-d H:i" }}</td>
-            <td class="text-nowrap">{{ reading.updated_at|date:"Y-m-d H:i" }}</td>
+            <td class="text-nowrap">{{ reading.updated_at|date:"Y-m-d H:i"|default:"—" }}</td>
           </tr>
+          {% endwith %}
           {% empty %}
-          <tr><td colspan="9" class="text-center text-muted py-4">No IESCO bill readings found.</td></tr>
+          <tr><td colspan="9" class="text-center text-muted py-4">No electric meters found in the unit list.</td></tr>
           {% endfor %}
         </tbody>
       </table>

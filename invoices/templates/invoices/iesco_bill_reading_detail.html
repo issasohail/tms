@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}IESCO Readings - {{ unit.electric_meter_num }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-2">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+      <h2 class="h4 mb-0">IESCO readings: {{ unit.electric_meter_num }}</h2>
+      <small class="text-muted">{{ unit.property.property_name }} / {{ unit.unit_number }}</small>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{% url 'properties:unit_detail' unit.pk %}" class="btn btn-sm btn-outline-secondary">Unit</a>
+      <a href="{% url 'invoices:iesco_bill_reading_list' %}" class="btn btn-sm btn-secondary">All meters</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Bill month</th><th>Consumer</th><th>Units</th><th>Grand total</th>
+            <th>Status</th><th>Due date</th><th>Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for reading in readings %}
+          <tr>
+            <td class="text-nowrap"><strong>{{ reading.bill_month }}</strong></td>
+            <td>{{ reading.consumer_name|default:reading.consumer_id|default:"—" }}</td>
+            <td>{{ reading.units|default:"—" }}</td>
+            <td class="fw-semibold">{{ reading.grand_total|default:"—" }}</td>
+            <td>{{ reading.payment_status_display }}</td>
+            <td>{{ reading.due_date|default:"—" }}</td>
+            <td class="text-nowrap">{{ reading.updated_at|date:"Y-m-d H:i" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="text-center text-muted py-4">No monthly IESCO readings received for this meter.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

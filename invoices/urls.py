@@ -52,6 +52,11 @@ urlpatterns = [
         views.IescoBillReadingListView.as_view(),
         name='iesco_bill_reading_list',
     ),
+     path(
+          'iesco-bills/<str:reference_no>/',
+          views.IescoBillReadingDetailView.as_view(),
+          name='iesco_bill_reading_detail',
+     ),
     path('create/', InvoiceCreateView.as_view(), name='invoice_create'),
 
     # Detail/Update/Delete

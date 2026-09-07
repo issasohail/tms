@@ -125,6 +125,11 @@ class UnitTable(ExportableTable):
     )
     electric_meter_num = tables.Column(
         verbose_name="Electric Meter#",
+        linkify=lambda record: (
+            reverse("invoices:iesco_bill_reading_detail", args=[record.electric_meter_num])
+            if record.electric_meter_num
+            else None
+        ),
         attrs={"td": {"class": "unit-col meter-col"}, "th": {"class": "unit-col meter-col rotate-col"}},
     )
     gas_meter_num = tables.Column(

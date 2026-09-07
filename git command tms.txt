@@ -25,10 +25,12 @@ sudo systemctl restart tms-billing-worker.service
 sudo systemctl status tms-kirayas.service --no-pager
 sudo systemctl status tms-billing-worker.service --no-pager
 
+sudo systemctl restart tms-meter-listener.service
+
 curl -I http://127.0.0.1:8002/
 curl -I https://kirayas.com/
 
-
+sudo systemctl restart tms-meter-listener.service
 
 python -m pip install -r requirements.txt
 

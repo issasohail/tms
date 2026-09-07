@@ -183,11 +183,14 @@ def verify_checksum(frame: bytes, start: int) -> Tuple[bool, str]:
 
 def parse_bulk_summary_frame(frame: bytes, start_idx: int) -> Dict:
     """
-    Parse DI=0x028011FF bulk summary with extended counters.
+    Parse the validated 0x45 or extended 0x81 DI=0x028011FF layout.
     Returns dict with present fields (missing omitted).
     """
     L = frame[start_idx + 9]
     dat = frame[start_idx + 10: start_idx + 10 + L]
+    if L not in {0x45, 0x81} or len(dat) != L:
+        return {}
+    status_pos = L - 2
 
     # skip the DI bytes at the head of DATA
     pos = 4
@@ -270,15 +273,14 @@ def parse_bulk_summary_frame(frame: bytes, start_idx: int) -> Dict:
     ]
 
     for key in extended_order:
-        if pos + 4 <= len(dat):
+        if pos + 4 <= status_pos:
             out[key] = _decode_bcd(dat[pos:pos+4], 2)
             pos += 4
         else:
             break
 
-    # Optional final status word (2 bytes)
-    if pos + 2 <= len(dat):
-        out["status_word"] = _decode_hex_no33(dat[pos:pos+2])
+    # Both supported layouts end with the authoritative two-byte status word.
+    out["status_word"] = _decode_hex_no33(dat[status_pos:status_pos + 2])
 
     return out
 
@@ -344,6 +346,10 @@ def parse_frame(frame: bytes, accept_bad_checksum: bool = False) -> Optional[dic
     if start < 0 or len(frame) < start + 12:
         return None
 
+    declared_length = frame[start + 9]
+    if len(frame) != start + 12 + declared_length or frame[-1] != 0x16:
+        return None
+
     ok, style = verify_checksum(frame, start)
     # still parse further if accept_bad_checksum; otherwise enforce ok
     if not ok and not accept_bad_checksum:
@@ -371,6 +377,8 @@ def parse_frame(frame: bytes, accept_bad_checksum: bool = False) -> Optional[dic
     # Bulk summary with extended counters
     if di == "028011FF":
         parsed["data"] = parse_bulk_summary_frame(frame, start_idx=start)
+        if not parsed["data"]:
+            return None
         return parsed
 
     if di in DIRECT_REGISTER_SPECS:

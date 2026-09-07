@@ -6,6 +6,32 @@ from django.utils import timezone
 from smart_meter.models import Meter, MeterCommand
 
 
+RELAY_ACTIVE_STATUSES = {
+    "new", "pending", "waiting_online", "claimed", "sent", "retry"
+}
+
+
+def _relay_pending_result(command, *, acknowledged=False):
+    message = (
+        "Acknowledged; verifying physical relay state."
+        if acknowledged
+        else "Command sent; waiting for meter acknowledgement."
+    )
+    return {
+        "ok": True,
+        "queued": True,
+        "pending": True,
+        "verification_required": True,
+        "meter_acknowledged": acknowledged,
+        "reply": command.raw_ack_hex or command.reply_hex or "",
+        "error": "",
+        "message": message,
+        "status": command.status,
+        "command_id": command.pk,
+        "desired_state": command.desired_state,
+    }
+
+
 def send_via_db(
     *,
     meter_number: str,
@@ -110,6 +136,8 @@ def send_via_db(
                     "status": c.status,
                     "command_id": cmd.pk,
                 }
+            if c.command_type == "relay" and c.status == "acknowledged":
+                return _relay_pending_result(c, acknowledged=True)
             ok = c.status in {"verified", "ok"} or (
                 c.command_type != "relay" and c.status == "acknowledged"
             )
@@ -126,6 +154,7 @@ def send_via_db(
                 ),
                 "status": c.status,
                 "command_id": cmd.pk,
+                "desired_state": desired_state,
             }
             if is_money:
                 result.update(
@@ -136,6 +165,8 @@ def send_via_db(
                 )
             return result
         if c.status == "waiting_online":
+            if c.command_type == "relay":
+                return _relay_pending_result(c)
             result = {
                 "ok": False,
                 "queued": True,
@@ -146,7 +177,14 @@ def send_via_db(
             if is_money:
                 result.update(retryable=False, verification_required=False)
             return result
-    c = MeterCommand.objects.only("status", "error").get(pk=cmd.pk)
+    c = MeterCommand.objects.only(
+        "status", "reply_hex", "raw_ack_hex", "error", "command_type",
+        "desired_state",
+    ).get(pk=cmd.pk)
+    if c.command_type == "relay" and c.status in RELAY_ACTIVE_STATUSES:
+        return _relay_pending_result(c)
+    if c.command_type == "relay" and c.status == "acknowledged":
+        return _relay_pending_result(c, acknowledged=True)
     result = {"ok": False, "error": c.error or "timeout", "status": c.status, "command_id": cmd.pk}
     if is_money:
         result.update(

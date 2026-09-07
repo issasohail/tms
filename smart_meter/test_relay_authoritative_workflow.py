@@ -1,10 +1,12 @@
 import json
 import inspect
 from datetime import timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from smart_meter import views
@@ -47,9 +49,11 @@ class ExplicitRelayActionTests(TestCase):
 
     def test_turn_on_always_sends_close_regardless_of_cached_state(self):
         for cached_state in ("on", "off"):
-            _response, kwargs = self._request(views.restore_meter, cached_state)
+            response, kwargs = self._request(views.restore_meter, cached_state)
             self.assertEqual(kwargs["desired_state"], "on")
             self.assertIn("4E34", kwargs["frame"].hex().upper())
+            self.assertTrue(json.loads(response.content)["success"])
+            self.assertTrue(json.loads(response.content)["pending"])
             self.meter.refresh_from_db()
             self.assertEqual(self.meter.power_status, cached_state)
 
@@ -64,6 +68,7 @@ class ExplicitRelayActionTests(TestCase):
 
 class AuthoritativeRelayStatusTests(TestCase):
     def setUp(self):
+        self.factory = RequestFactory()
         self.meter = Meter.objects.create(meter_number="260305510007", power_status="on")
 
     def test_valid_status_synchronizes_cached_meter_state(self):
@@ -191,6 +196,34 @@ class AuthoritativeRelayStatusTests(TestCase):
         self.assertEqual(state["status"], "verified")
         self.assertEqual(state["operation_label"], "")
 
+    def test_status_endpoint_reconciles_delayed_authoritative_verification(self):
+        self.meter.power_status = "off"
+        self.meter.save(update_fields=["power_status"])
+        command = queue_relay_command(self.meter, "on", source="manual")
+        MeterCommand.objects.filter(pk=command.pk).update(status="acknowledged")
+        LiveReading.objects.create(
+            meter=self.meter,
+            status_word="0000",
+            ts=timezone.now() + timedelta(seconds=1),
+        )
+        request = self.factory.get(f"/relay-command/{command.pk}/status/")
+        request.user = MagicMock(is_authenticated=True)
+
+        with patch.object(
+            views,
+            "resolve_meter_online_status",
+            return_value={"measurement_is_fresh": True},
+        ):
+            response = views.relay_command_status(request, command.pk)
+
+        payload = json.loads(response.content)
+        command.refresh_from_db()
+        self.meter.refresh_from_db()
+        self.assertTrue(payload["verified"])
+        self.assertEqual(payload["command_status"], "verified")
+        self.assertEqual(command.status, "verified")
+        self.assertEqual(self.meter.power_status, "on")
+
     def test_live_acknowledged_off_is_reconciled_by_fresh_matching_status(self):
         command = queue_relay_command(self.meter, "off", source="manual")
         MeterCommand.objects.filter(pk=command.pk).update(status="acknowledged")
@@ -203,7 +236,7 @@ class AuthoritativeRelayStatusTests(TestCase):
         self.assertEqual(state["confirmed_state"], "off")
         self.assertEqual(state["operation_label"], "")
 
-    def test_live_acknowledged_mismatch_remains_unverified_and_not_working(self):
+    def test_live_acknowledged_mismatch_remains_verification_pending(self):
         command = queue_relay_command(self.meter, "on", source="manual")
         MeterCommand.objects.filter(pk=command.pk).update(status="acknowledged")
         command.refresh_from_db()
@@ -214,12 +247,12 @@ class AuthoritativeRelayStatusTests(TestCase):
         self.assertEqual(command.status, "acknowledged")
         self.assertIsNone(command.verified_at)
         self.assertEqual(state["status"], "acknowledged")
-        self.assertEqual(state["operation_label"], "")
+        self.assertIn("verifying physical relay state", state["operation_label"])
 
     def test_live_pending_and_sent_commands_remain_working(self):
         for status, desired_state, label in (
             ("pending", "on", "Restoring…"),
-            ("sent", "off", "Connecting…"),
+            ("sent", "off", "Turning OFF…"),
         ):
             command = MeterCommand.objects.create(
                 meter=self.meter,
@@ -277,6 +310,38 @@ class AuthoritativeRelayStatusTests(TestCase):
         self.assertIn("reconcile_live_relay_command_state", polling_source)
         self.assertIn('relay_state["indicator_label"]', initial_source)
         self.assertIn('"relay_indicator_label": relay_state["indicator_label"]', polling_source)
+
+    @override_settings(FORCE_SCRIPT_NAME=None)
+    def test_relay_status_url_preserves_tms_prefix(self):
+        canonical_url = reverse(
+            "smart_meter:smart_meter_relay_command_status", args=[123]
+        )
+        request = self.factory.post("/tms/smart-meter/action/cutoff/1/")
+
+        payload = views._relay_ajax_payload(
+            {
+                "ok": True,
+                "status": "retry",
+                "command_id": 123,
+                "message": "Command sent; waiting for meter acknowledgement.",
+            },
+            "off",
+            request,
+        )
+        self.assertEqual(canonical_url, "/smart-meter/relay-command/123/status/")
+        self.assertEqual(
+            payload["status_url"], "/tms/smart-meter/relay-command/123/status/"
+        )
+
+        template_source = (
+            Path(views.__file__).parent
+            / "templates"
+            / "smart_meter"
+            / "live_custom.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("withCurrentMount", template_source)
+        self.assertIn("const url = withCurrentMount(btn.dataset.url);", template_source)
+        self.assertIn("const DATA_URL = withCurrentMount", template_source)
 
 
 class RelayAcknowledgementTests(TestCase):
@@ -348,6 +413,68 @@ class RelayAcknowledgementTests(TestCase):
         self.assertEqual(command.status, "acknowledged")
         self.assertIsNone(command.verified_at)
         self.assertIn("acknowledged but not verified", command.error)
+
+    def test_late_attempt_three_9c_is_acknowledged(self):
+        meter = Meter.objects.create(meter_number="260305510099")
+        command = queue_relay_command(meter, "on", source="manual")
+        MeterCommand.objects.filter(pk=command.pk).update(
+            status="retry", attempt_count=2
+        )
+        command.refresh_from_db()
+        command.timeout = 0.001
+        command.save(update_fields=["timeout"])
+        handler = MagicMock()
+
+        def send_ok(_frame, expire_at=None, transport_q=None):
+            transport_q.put_nowait((True, ""))
+
+        handler.enqueue_send.side_effect = send_ok
+
+        def register_waiter(_meter_number, waiter, _di, expect_controls=None):
+            if 0x9C in (expect_controls or ()):
+                waiter.put_nowait(b"late-ack")
+
+        parsed_ack = {
+            "meter_number": meter.meter_number,
+            "control_code": 0x9C,
+            "di": "",
+            "data": None,
+        }
+        with patch(
+            "smart_meter.management.commands.meter_listener.revalidate_command",
+            return_value=SimpleNamespace(allowed=True, reason="test"),
+        ), patch(
+            "smart_meter.management.commands.meter_listener._get_handler",
+            return_value=handler,
+        ), patch(
+            "smart_meter.management.commands.meter_listener._push_waiter",
+            side_effect=register_waiter,
+        ), patch(
+            "smart_meter.management.commands.meter_listener.parse_frame",
+            return_value=parsed_ack,
+        ):
+            DbCommandPoller()._process_command(command)
+
+        command.refresh_from_db()
+        self.assertEqual(command.attempt_count, 3)
+        self.assertEqual(command.status, "acknowledged")
+        self.assertIsNotNone(command.acknowledged_at)
+        self.assertIsNone(command.verified_at)
+
+    def test_duplicate_9c_does_not_verify_or_change_physical_state(self):
+        meter = Meter.objects.create(meter_number="260305510098", power_status="off")
+        command = queue_relay_command(meter, "on", source="manual")
+        poller = DbCommandPoller()
+
+        poller._ack(command, "FIRST9C")
+        poller._ack(command, "DUPLICATE9C")
+
+        command.refresh_from_db()
+        meter.refresh_from_db()
+        self.assertEqual(command.status, "acknowledged")
+        self.assertEqual(command.raw_ack_hex, "DUPLICATE9C")
+        self.assertIsNone(command.verified_at)
+        self.assertEqual(meter.power_status, "off")
 
     def test_dc_marks_command_failed(self):
         command = self._run_ack(0xDC)

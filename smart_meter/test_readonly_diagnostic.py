@@ -12,7 +12,7 @@ from smart_meter.diagnostic import (
     decode_diagnostic_response,
     validate_diagnostic_request_frame,
 )
-from smart_meter.dlt645 import parse_frame
+from smart_meter.dlt645 import _add_33, build_frame, parse_frame
 from smart_meter.management.commands.meter_listener import (
     ClientHandler,
     _deliver_if_match,
@@ -35,6 +35,17 @@ CAPTURED_BULK_REPLY = bytes.fromhex(
     "4A83B74C83B733333334333395BC95BC3343334398C67933333333333333333398C6793333"
     "3333333633D916"
 )
+
+
+def bulk_reply(length, status_word="0100"):
+    payload_length = length - 4
+    status_little_endian = bytes.fromhex(status_word)[::-1]
+    plain_data = (
+        bytes.fromhex("FF118002")
+        + bytes(payload_length - 2)
+        + status_little_endian
+    )
+    return build_frame(METER, 0x91, _add_33(plain_data), checksum_mode="std")
 
 
 class FakeSocket:
@@ -149,6 +160,43 @@ class DiagnosticFrameTests(SimpleTestCase):
     def test_bulk_parser_uses_the_same_phase_c_voltage_scale_as_diagnostics(self):
         parsed = parse_frame(CAPTURED_BULK_REPLY)
         self.assertEqual(parsed["data"]["voltage_c"], Decimal("240.0"))
+
+    def test_normal_0x45_bulk_layout_uses_authoritative_tail_status(self):
+        frame = bulk_reply(0x45, "0100")
+        parsed = parse_frame(frame)
+
+        self.assertEqual(parsed["meter_number"], METER)
+        self.assertEqual(parsed["di"], "028011FF")
+        self.assertEqual(parsed["data"]["status_word"], "0100")
+        diagnostic = decode_diagnostic_response(
+            frame, expected_meter=METER, expected_di="028011FF"
+        )
+        self.assertEqual(diagnostic["value"]["status_word"], "0100")
+
+    def test_extended_0x81_bulk_layout_uses_authoritative_tail_status(self):
+        frame = bulk_reply(0x81, "0100")
+        parsed = parse_frame(frame)
+
+        self.assertEqual(parsed["meter_number"], METER)
+        self.assertEqual(parsed["di"], "028011FF")
+        self.assertEqual(parsed["data"]["status_word"], "0100")
+        diagnostic = decode_diagnostic_response(
+            frame, expected_meter=METER, expected_di="028011FF"
+        )
+        self.assertEqual(diagnostic["value"]["status_word"], "0100")
+
+    def test_bulk_bad_checksum_and_malformed_layout_are_rejected(self):
+        valid = bulk_reply(0x45, "0100")
+        bad_checksum = bytearray(valid)
+        bad_checksum[-2] ^= 0x01
+        self.assertIsNone(parse_frame(bytes(bad_checksum)))
+
+        malformed = bulk_reply(0x46, "0100")
+        self.assertIsNone(parse_frame(malformed))
+        with self.assertRaisesMessage(ValueError, "supported 0x45/0x81"):
+            decode_diagnostic_response(
+                malformed, expected_meter=METER, expected_di="028011FF"
+            )
 
     def test_response_address_di_checksum_length_and_bcd_are_enforced(self):
         with self.assertRaisesMessage(ValueError, "does not match"):

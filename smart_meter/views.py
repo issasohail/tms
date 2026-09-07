@@ -2990,6 +2990,7 @@ def live_custom(request):
             reading.ts if reading.confirmed_relay_state else None
         )
         reading.relay_command_status = relay_state["status"]
+        reading.relay_command_id = relay_state["command_id"]
         reading.relay_command_desired_state = relay_state["desired_state"]
         reading.relay_command_error = relay_state["error"]
         reading.relay_operation_label = relay_state["operation_label"]
@@ -3087,6 +3088,49 @@ def recharge_meter(request, meter_id):
 
 def _redirect_back(request, fallback_name="smart_meter:meter_list"):
     return redirect(request.META.get("HTTP_REFERER") or reverse(fallback_name))
+
+
+def _relay_ajax_payload(result, desired_state, request=None):
+    status = result.get("status") or ""
+    pending = status in {
+        "new", "pending", "waiting_online", "claimed", "sent", "retry",
+        "acknowledged",
+    }
+    success = bool(result.get("ok")) or pending
+    command_id = result.get("command_id")
+    if status == "acknowledged":
+        message = "Acknowledged; verifying physical relay state."
+    elif pending:
+        message = result.get("message") or "Command sent; waiting for meter acknowledgement."
+    elif status == "verified":
+        message = "Relay state verified."
+    else:
+        message = result.get("message") or ""
+    payload = {
+        "success": success,
+        "pending": pending,
+        "verified": status == "verified",
+        "error": "" if success else result.get("error"),
+        "message": message,
+        "command_id": command_id,
+        "command_status": status,
+        "desired_state": desired_state,
+    }
+    if command_id:
+        status_url = reverse(
+            "smart_meter:smart_meter_relay_command_status",
+            args=[command_id],
+        )
+        marker = "/smart-meter/"
+        if (
+            request is not None
+            and marker in request.path
+            and status_url.startswith(marker)
+        ):
+            mount_prefix = request.path.split(marker, 1)[0].rstrip("/")
+            status_url = f"{mount_prefix}{status_url}"
+        payload["status_url"] = status_url
+    return payload
 
 
 @require_POST
@@ -3223,16 +3267,7 @@ def cutoff_meter(request, meter_id):
     # Respond depending on caller
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         # blank line separator
-
-        return JsonResponse(
-            {
-                "success": success,
-                "error": res.get("error"),
-                "command_id": res.get("command_id"),
-                "command_status": res.get("status"),
-                "desired_state": "off",
-            }
-        )
+        return JsonResponse(_relay_ajax_payload(res, "off", request))
     else:
         if success:
             messages.success(request, f"Cut off sent to {meter.meter_number}.")
@@ -3326,15 +3361,7 @@ def restore_meter(request, meter_id):
     success = bool(res.get("ok"))
 
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return JsonResponse(
-            {
-                "success": success,
-                "error": res.get("error"),
-                "command_id": res.get("command_id"),
-                "command_status": res.get("status"),
-                "desired_state": "on",
-            }
-        )
+        return JsonResponse(_relay_ajax_payload(res, "on", request))
     else:
         if success:
             messages.success(request, f"Restore sent to {meter.meter_number}.")
@@ -5379,6 +5406,68 @@ def _ts_iso(dt):
 
 
 @login_required
+def relay_command_status(request, command_id):
+    """Return the persisted state of one original relay command."""
+    command = get_object_or_404(
+        MeterCommand.objects.select_related("meter"),
+        pk=command_id,
+        command_type="relay",
+    )
+    meter = command.meter
+    relay_state = None
+    if meter is not None:
+        reading = LiveReading.objects.filter(meter=meter).first()
+        online = resolve_meter_online_status(meter, reading)
+        relay_state = reconcile_live_relay_command_state(
+            meter,
+            command,
+            getattr(reading, "status_word", None),
+            getattr(reading, "ts", None),
+            is_fresh=online["measurement_is_fresh"],
+        )
+        command.refresh_from_db()
+        meter.refresh_from_db(fields=["power_status"])
+
+    status = command.status
+    active = status in {
+        "new", "pending", "waiting_online", "claimed", "sent", "retry"
+    }
+    acknowledged = status == "acknowledged"
+    terminal_failure = status in {
+        "failed", "cancelled", "expired", "error", "timeout"
+    }
+    if status == "verified":
+        message = "Relay state verified."
+    elif acknowledged:
+        message = "Acknowledged; verifying physical relay state."
+    elif active:
+        message = "Command sent; waiting for meter acknowledgement."
+    elif status == "cancelled":
+        message = command.cancelled_reason or "Relay command cancelled."
+    else:
+        message = command.error or status
+
+    return JsonResponse(
+        {
+            "success": not terminal_failure,
+            "pending": active or acknowledged,
+            "acknowledged": acknowledged,
+            "verified": status == "verified",
+            "terminal": status == "verified" or terminal_failure,
+            "command_id": command.pk,
+            "command_status": status,
+            "desired_state": command.desired_state,
+            "message": message,
+            "error": command.error if terminal_failure else "",
+            "power_status": meter.power_status if meter is not None else "",
+            "relay_confirmed_state": (
+                relay_state["confirmed_state"] if relay_state is not None else ""
+            ),
+        }
+    )
+
+
+@login_required
 @require_POST
 def instant_live_reading(request, meter_id):
     """Request one fresh DL/T645 0x028011FF reading without changing the normal reader."""
@@ -5566,6 +5655,7 @@ def live_custom_data(request):
                 "relay_confirmed_state": confirmed_state or "",
                 "relay_confirmed_at": _ts_iso(r.ts) if confirmed_state else None,
                 "relay_command_status": relay_state["status"],
+                "relay_command_id": relay_state["command_id"],
                 "relay_command_desired_state": relay_state["desired_state"],
                 "relay_command_error": relay_state["error"],
                 "relay_operation_label": relay_state["operation_label"],

@@ -60,3 +60,10 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 #to change backup files #
 # BACKUP RETENTION: Change 3 below to the number of latest TMS backup ZIPs to keep.
 [ValidateRange(1, 200)][int]$KeepLatestBackups = 3
+
+
+#Please create and upload a small code-only ZIP from your local TMS folder:
+cd E:\tenant_management_system
+
+git status -sb
+git archive --format=zip --output ..\TMS_CODE_ONLY.zip HEAD

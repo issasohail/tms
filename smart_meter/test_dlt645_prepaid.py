@@ -106,7 +106,9 @@ class DLT645PrimitiveTests(SimpleTestCase):
         request = build_read_frame_for_di(METER, "028011FF")
         self.assertEqual(_plain_data(request), bytes.fromhex("FF118002"))
 
-        reply_data = _add_33(bytes.fromhex("FF11800200000000"))
+        # 028011FF has two validated response layouts; use the normal L=0x45
+        # layout rather than the old synthetic short payload.
+        reply_data = _add_33(bytes.fromhex("FF118002") + bytes(65))
         reply = build_frame(METER, 0x91, reply_data, checksum_mode="std")
         parsed = parse_frame(reply)
         self.assertEqual(parsed["di"], "028011FF")

@@ -126,6 +126,11 @@ urlpatterns = [
          views.cutoff_meter, name="smart_meter_cutoff"),
     path("action/restore/<int:meter_id>/",
          views.restore_meter, name="smart_meter_restore"),
+    path(
+        "relay-command/<int:command_id>/status/",
+        views.relay_command_status,
+        name="smart_meter_relay_command_status",
+    ),
     path("unknown/", views.unknown_meter_list, name="unknown_meter_list"),
     path("unknown/<int:pk>/convert/", views.unknown_meter_convert,
          name="unknown_meter_convert"),

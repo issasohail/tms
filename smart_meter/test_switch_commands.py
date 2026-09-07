@@ -136,7 +136,7 @@ class ManualSwitchQueueTests(TestCase):
         self.assertEqual(completed.status, "acknowledged")
 
     @patch("smart_meter.services.command_lifecycle.queue_relay_command")
-    def test_relay_acknowledgement_without_verification_is_not_ui_success(self, queue):
+    def test_relay_acknowledgement_is_pending_not_verified(self, queue):
         command = MeterCommand.objects.create(
             meter=self.meter,
             meter_number=self.meter.meter_number,
@@ -156,9 +156,60 @@ class ManualSwitchQueueTests(TestCase):
             source="manual",
         )
 
-        self.assertFalse(result["ok"])
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["pending"])
         self.assertEqual(result["status"], "acknowledged")
-        self.assertIn("not verified", result["error"])
+        self.assertEqual(result["desired_state"], "on")
+        self.assertIn("verifying physical relay state", result["message"])
+
+    @patch("smart_meter.services.command_lifecycle.queue_relay_command")
+    def test_http_wait_expiry_returns_active_retry_as_pending(self, queue):
+        command = queue_relay_command(self.meter, "off", source="manual")
+        MeterCommand.objects.filter(pk=command.pk).update(status="retry")
+        command.refresh_from_db()
+        queue.return_value = command
+
+        with patch("smart_meter.utils.db_send.time.time", side_effect=[100.0, 200.0]):
+            result = send_via_db(
+                meter_number=self.meter.meter_number,
+                frame_hex=EXPECTED_OFF_FRAME,
+                timeout=32.0,
+                command_type="relay",
+                desired_state="off",
+                source="manual",
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["pending"])
+        self.assertEqual(result["command_id"], command.pk)
+        self.assertEqual(result["status"], "retry")
+        self.assertEqual(result["desired_state"], "off")
+        self.assertEqual(
+            result["message"], "Command sent; waiting for meter acknowledgement."
+        )
+
+    @patch("smart_meter.services.command_lifecycle.queue_relay_command")
+    def test_http_wait_expiry_preserves_genuine_terminal_failure(self, queue):
+        command = queue_relay_command(self.meter, "off", source="manual")
+        MeterCommand.objects.filter(pk=command.pk).update(
+            status="failed", error="all relay attempts exhausted"
+        )
+        command.refresh_from_db()
+        queue.return_value = command
+
+        with patch("smart_meter.utils.db_send.time.time", side_effect=[100.0, 200.0]):
+            result = send_via_db(
+                meter_number=self.meter.meter_number,
+                frame_hex=EXPECTED_OFF_FRAME,
+                timeout=32.0,
+                command_type="relay",
+                desired_state="off",
+                source="manual",
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"], "all relay attempts exhausted")
 
 
 class AutomaticSourceFrameTests(TestCase):

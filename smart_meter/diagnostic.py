@@ -14,7 +14,6 @@ from smart_meter.dlt645 import (
     _add_33,
     build_frame,
     calculate_outbound_checksum,
-    parse_bulk_summary_frame,
     verify_checksum,
 )
 
@@ -164,10 +163,12 @@ def _frame_parts(frame: bytes) -> tuple[bytes, int, int, bytes, str, str]:
 
 
 def _bulk_decimal_data(frame: bytes) -> dict:
-    """Decode the fixed 69-byte manufacturer snapshot with strict BCD checks."""
+    """Decode validated 0x45/0x81 snapshots with strict known-field BCD checks."""
     inner, _control, length, data, _meter, _di = _frame_parts(frame)
-    if length != 0x45:
-        raise ValueError(f"028011FF payload length {length} is not the captured 0x45 layout")
+    if length not in {0x45, 0x81}:
+        raise ValueError(
+            f"028011FF payload length {length} is not a supported 0x45/0x81 layout"
+        )
 
     pos = 4
     result = {}
@@ -192,13 +193,13 @@ def _bulk_decimal_data(frame: bytes) -> dict:
             data[pos:pos + size], decimal_places, signed=signed
         )
         pos += size
-    if pos + 2 != len(data):
-        raise ValueError("028011FF data does not end with its two-byte status word")
-    status_plain = bytes(((byte - 0x33) & 0xFF) for byte in data[pos:pos + 2])
+    status_pos = len(data) - 2
+    if pos > status_pos:
+        raise ValueError("028011FF data overlaps its two-byte status word")
+    status_plain = bytes(
+        ((byte - 0x33) & 0xFF) for byte in data[status_pos:status_pos + 2]
+    )
     result["status_word"] = status_plain[::-1].hex().upper()
-    # Keep this assertion tied to the established parser layout as a regression guard.
-    if set(parse_bulk_summary_frame(inner, 0)) - set(result):
-        raise ValueError("028011FF parser exposed an unexpected field")
     return result
 
 

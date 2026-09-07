@@ -877,7 +877,15 @@
 <script>
   // Poll JSON and update only cells (no full page reload)
   const POLL_MS = 15000;
-  const DATA_URL = "{% url 'smart_meter:smart_meter_live_custom_data' %}";
+  function withCurrentMount(url) {
+    const marker = '/smart-meter/';
+    const currentPath = window.location.pathname || '';
+    if (currentPath.includes(marker) && url.startsWith(marker)) {
+      return currentPath.split(marker, 1)[0].replace(/\/$/, '') + url;
+    }
+    return url;
+  }
+  const DATA_URL = withCurrentMount("{% url 'smart_meter:smart_meter_live_custom_data' %}");
   const LIVE_CURRENCY_SYMBOL = "{{ CURRENCY_SYMBOL|escapejs }}";
 
   function setRowOnlineState(tr, connectionState) {
@@ -910,32 +918,33 @@
   function setRelayWorkflowState(tr, reading) {
     const confirmed = !!reading.relay_confirmed;
     const state = (reading.power_status || '').toLowerCase();
+    const status = reading.relay_command_status || '';
+    const commandActive = ['new', 'pending', 'waiting_online', 'claimed', 'sent', 'retry', 'acknowledged'].includes(status);
     tr.querySelectorAll('.relay-action[data-action="on"]').forEach(btn => {
-      btn.disabled = confirmed && state === 'on';
+      btn.disabled = commandActive || (confirmed && state === 'on');
     });
     tr.querySelectorAll('.relay-action[data-action="off"]').forEach(btn => {
-      btn.disabled = confirmed && state === 'off';
+      btn.disabled = commandActive || (confirmed && state === 'off');
     });
 
-    const status = reading.relay_command_status || '';
     const desired = reading.relay_command_desired_state || '';
-    const operation = reading.relay_operation_label || (desired === 'on' ? 'Restoring…' : 'Connecting…');
+    const operation = reading.relay_operation_label || (desired === 'on' ? 'Restoring…' : 'Turning OFF…');
     if (['new', 'pending', 'waiting_online', 'claimed', 'sent', 'retry'].includes(status)) {
       setRowOperationStatus(tr, operation, 'is-working');
     } else if (status === 'acknowledged') {
-      setRowOperationStatus(tr, '', '');
-    } else if (['failed', 'error', 'timeout', 'expired'].includes(status)) {
-      setRowOperationStatus(tr, 'Failed', 'is-error');
+      setRowOperationStatus(tr, 'Acknowledged; verifying physical relay state…', 'is-working');
+    } else if (['failed', 'error', 'timeout', 'expired', 'cancelled'].includes(status)) {
+      setRowOperationStatus(tr, status === 'cancelled' ? 'Cancelled' : 'Failed', 'is-error');
     } else {
       setRowOperationStatus(tr, '', '');
     }
 
     tr.querySelectorAll('.mobile-confirmed-at').forEach(el => {
       if (status === 'acknowledged') {
-        el.textContent = 'Acknowledged, not verified';
+        el.textContent = 'Acknowledged; verifying physical relay state…';
       } else if (['new', 'pending', 'waiting_online', 'claimed', 'sent', 'retry'].includes(status)) {
         el.textContent = 'Command pending';
-      } else if (['failed', 'error', 'timeout', 'expired'].includes(status)) {
+      } else if (['failed', 'error', 'timeout', 'expired', 'cancelled'].includes(status)) {
         el.textContent = reading.relay_command_error || 'Command failed';
       } else if (confirmed && reading.relay_confirmed_at) {
         const confirmedAt = new Date(reading.relay_confirmed_at);
@@ -1016,7 +1025,7 @@
     button.disabled = true;
     button.textContent = "Reading...";
     try {
-      const response = await fetch(button.dataset.url, {
+      const response = await fetch(withCurrentMount(button.dataset.url), {
         method: "POST",
         headers: {
           "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]")?.value || "{{ csrf_token }}",
@@ -1205,6 +1214,62 @@
   }
 
   let _headingMsgClearTimer = null;
+  const _relayCommandPolls = new Map();
+
+  function setRelayButtonsDisabled(row, disabled) {
+    if (!row) return;
+    row.querySelectorAll('.relay-action').forEach(button => { button.disabled = disabled; });
+  }
+
+  function finishRelayCommand(meterId, data, unitNumber) {
+    const row = document.querySelector(`[data-meter-row][data-meter-id="${meterId}"]`);
+    const status = data.command_status || '';
+    if (status === 'verified') {
+      setHeaderMsg(`Relay state verified for unit ${unitNumber}.`, 'text-success');
+      setRowOperationStatus(row, '', '');
+      _relayCommandPolls.delete(String(meterId));
+      refreshLiveRows();
+      return true;
+    }
+    if (['failed', 'error', 'timeout', 'expired', 'cancelled'].includes(status)) {
+      const message = data.error || data.message || `Relay command ${status}`;
+      setHeaderMsg(`Relay command ${status} for unit ${unitNumber}: ${message}`, 'text-danger');
+      setRowOperationStatus(row, status === 'cancelled' ? 'Cancelled' : 'Failed', 'is-error');
+      _relayCommandPolls.delete(String(meterId));
+      refreshLiveRows();
+      return true;
+    }
+    if (status === 'acknowledged') {
+      setHeaderMsg(`Acknowledged for unit ${unitNumber}; verifying physical relay state…`, 'text-warning', true);
+      setRowOperationStatus(row, 'Acknowledged; verifying physical relay state…', 'is-working');
+    } else {
+      const desired = data.desired_state || '';
+      setHeaderMsg(data.message || 'Command sent; waiting for meter acknowledgement.', 'text-warning', true);
+      setRowOperationStatus(row, desired === 'on' ? 'Restoring…' : 'Turning OFF…', 'is-working');
+    }
+    setRelayButtonsDisabled(row, true);
+    return false;
+  }
+
+  async function pollRelayCommand(meterId) {
+    const key = String(meterId);
+    const tracked = _relayCommandPolls.get(key);
+    if (!tracked) return;
+    try {
+      const res = await fetch(tracked.statusUrl, {
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Unable to read command status');
+      if (finishRelayCommand(key, data, tracked.unitNumber)) return;
+    } catch (error) {
+      setHeaderMsg(`Unable to refresh relay status for unit ${tracked.unitNumber}: ${error.message}`, 'text-warning');
+    }
+    if (_relayCommandPolls.has(key)) {
+      tracked.timer = window.setTimeout(() => pollRelayCommand(key), 3000);
+    }
+  }
 
   async function requestRelayAction(btn) {
     if (_headingMsgClearTimer) { clearTimeout(_headingMsgClearTimer); _headingMsgClearTimer = null; }
@@ -1212,9 +1277,9 @@
     const row = btn.closest('[data-meter-row]') || btn.closest('tr') || document;
     const desiredState = btn.dataset.action;
     const isOnAction = desiredState === 'on';
-    const url = btn.dataset.url;
+    const url = withCurrentMount(btn.dataset.url);
     const unitNumber = btn.dataset.unitNumber || '';
-    const actionLabel = isOnAction ? 'Restoring…' : 'Connecting…';
+    const actionLabel = isOnAction ? 'Restoring…' : 'Turning OFF…';
     const confirmation = isOnAction
       ? `Turn ON / close the circuit for ${unitNumber}?`
       : `Turn OFF / open the circuit for ${unitNumber}?`;
@@ -1223,7 +1288,9 @@
     setHeaderMsg(`${isOnAction ? 'Turning ON' : 'Turning OFF'} power for unit ${unitNumber}…`, 'text-warning', true);
     setRowOperationStatus(row, actionLabel, 'is-working');
 
-    btn.disabled = true;
+    if (_relayCommandPolls.has(String(btn.dataset.meterId))) return;
+    setRelayButtonsDisabled(row, true);
+    let commandAccepted = false;
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -1237,15 +1304,22 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) throw new Error(data.error || 'Request failed');
+      if (!data.command_id || !data.status_url) throw new Error('Command status tracking was unavailable');
 
-      setHeaderMsg(`Relay command acknowledged for unit ${unitNumber}; awaiting physical verification`, 'text-warning', true);
-      setRowOperationStatus(row, actionLabel, 'is-working');
-      _headingMsgClearTimer = setTimeout(() => setHeaderMsg('', 'text-muted', false), 6000);
+      commandAccepted = true;
+      const key = String(btn.dataset.meterId);
+      _relayCommandPolls.set(key, {
+        commandId: data.command_id,
+        statusUrl: data.status_url,
+        unitNumber: unitNumber,
+        timer: null
+      });
+      if (!finishRelayCommand(key, data, unitNumber)) pollRelayCommand(key);
     } catch (e) {
       setHeaderMsg(`Relay command failed for unit ${unitNumber}: ${e.message || 'Request failed'}`, 'text-danger');
       setRowOperationStatus(row, 'Failed', 'is-error');
     } finally {
-      btn.disabled = false;
+      if (!commandAccepted) refreshLiveRows();
     }
   }
 
@@ -1753,13 +1827,13 @@
                 <button type="button" class="btn btn-sm btn-outline-success relay-action" data-action="on"
                   data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
                   data-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
-                  {% if r.confirmed_relay_state == 'on' %}disabled{% endif %}>Turn ON</button>
+                  {% if r.relay_operation_label or r.confirmed_relay_state == 'on' %}disabled{% endif %}>Turn ON</button>
                 <button type="button" class="btn btn-sm btn-outline-danger relay-action" data-action="off"
                   data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
                   data-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
-                  {% if r.confirmed_relay_state == 'off' %}disabled{% endif %}>Turn OFF</button>
+                  {% if r.relay_operation_label or r.confirmed_relay_state == 'off' %}disabled{% endif %}>Turn OFF</button>
                 <small class="mobile-confirmed-at">
-                  {% if r.relay_command_status == 'acknowledged' %}Acknowledged, not verified{% elif r.relay_operation_label %}Command pending{% elif r.relay_indicator_class == 'is-error' %}{{ r.relay_command_error|default:"Command failed" }}{% elif r.relay_confirmed_at %}Confirmed {{ r.relay_confirmed_at|date:"Y-m-d H:i:s" }}{% else %}Unknown relay status{% endif %}
+                  {% if r.relay_command_status == 'acknowledged' %}Acknowledged; verifying physical relay state…{% elif r.relay_operation_label %}Command pending{% elif r.relay_indicator_class == 'is-error' %}{{ r.relay_command_error|default:"Command failed" }}{% elif r.relay_confirmed_at %}Confirmed {{ r.relay_confirmed_at|date:"Y-m-d H:i:s" }}{% else %}Unknown relay status{% endif %}
                 </small>
               </div>
             </td>
@@ -1843,11 +1917,11 @@
                 <button type="button" class="btn btn-sm btn-outline-success relay-action" data-action="on"
                   data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
                   data-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
-                  {% if r.confirmed_relay_state == 'on' %}disabled{% endif %}>ON</button>
+                  {% if r.relay_operation_label or r.confirmed_relay_state == 'on' %}disabled{% endif %}>ON</button>
                 <button type="button" class="btn btn-sm btn-outline-danger relay-action" data-action="off"
                   data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
                   data-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}"
-                  {% if r.confirmed_relay_state == 'off' %}disabled{% endif %}>OFF</button>
+                  {% if r.relay_operation_label or r.confirmed_relay_state == 'off' %}disabled{% endif %}>OFF</button>
               </div>
             </td>
 

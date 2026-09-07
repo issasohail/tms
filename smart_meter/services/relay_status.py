@@ -14,7 +14,9 @@ STATUS_WORD_RE = re.compile(r"^[0-9A-Fa-f]{4}$")
 LIVE_RELAY_ACTIVE_STATUSES = frozenset(
     {"new", "pending", "waiting_online", "claimed", "sent", "retry"}
 )
-LIVE_RELAY_FAILURE_STATUSES = frozenset({"failed", "error", "timeout", "expired"})
+LIVE_RELAY_FAILURE_STATUSES = frozenset(
+    {"failed", "error", "timeout", "expired", "cancelled"}
+)
 LIVE_RELAY_FAILURE_DISPLAY_AGE = timedelta(minutes=5)
 
 
@@ -144,15 +146,18 @@ def reconcile_live_relay_command_state(
 
     operation_label = ""
     if status in LIVE_RELAY_ACTIVE_STATUSES:
-        operation_label = "Restoring…" if command.desired_state == "on" else "Connecting…"
+        operation_label = "Restoring…" if command.desired_state == "on" else "Turning OFF…"
+    elif status == "acknowledged":
+        operation_label = "Acknowledged; verifying physical relay state…"
     indicator_label = operation_label
     indicator_class = "is-working" if operation_label else ""
     if status in LIVE_RELAY_FAILURE_STATUSES:
-        indicator_label = "Failed"
+        indicator_label = "Cancelled" if status == "cancelled" else "Failed"
         indicator_class = "is-error"
 
     return {
         "confirmed_state": confirmed_state,
+        "command_id": command.pk if command is not None else None,
         "status": status,
         "desired_state": command.desired_state if command is not None else "",
         "error": error,

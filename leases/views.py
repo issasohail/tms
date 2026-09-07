@@ -5834,6 +5834,64 @@ def send_ledger_email(request, lease_id):
         return redirect("leases:lease_ledger", lease_id=lease_id)
 
 
+@login_required
+@require_POST
+def send_ledger_whatsapp(request, lease_id):
+    lease = get_object_or_404(
+        Lease.objects.select_related("tenant", "unit", "unit__property"),
+        pk=lease_id,
+    )
+    phone = (getattr(lease.tenant, "phone", "") or "").strip()
+    if not phone:
+        return JsonResponse(
+            {"ok": False, "error": "Tenant has no WhatsApp phone number."},
+            status=400,
+        )
+
+    ledger_image = request.FILES.get("ledger_image")
+    if not ledger_image:
+        return JsonResponse(
+            {"ok": False, "error": "Ledger JPG was not received."}, status=400
+        )
+    if ledger_image.size > 5 * 1024 * 1024:
+        return JsonResponse(
+            {"ok": False, "error": "Ledger JPG is larger than the 5 MB WhatsApp limit."},
+            status=400,
+        )
+
+    image_bytes = ledger_image.read()
+    if not image_bytes.startswith(b"\xff\xd8\xff"):
+        return JsonResponse(
+            {"ok": False, "error": "The uploaded ledger is not a valid JPG image."},
+            status=400,
+        )
+
+    caption = (
+        f"Lease ledger for {lease.tenant.get_full_name()} - "
+        f"{lease.unit.property.property_name}-{lease.unit.unit_number}"
+    )
+    try:
+        result = WhatsAppService(created_by=request.user).send_image_bytes(
+            phone,
+            image_bytes,
+            filename=f"lease-{lease.pk}-ledger.jpg",
+            mime_type="image/jpeg",
+            caption=caption,
+            tenant=lease.tenant,
+            lease=lease,
+        )
+    except Exception as exc:
+        logger.exception("Failed to send lease %s ledger JPG via WhatsApp", lease.pk)
+        return JsonResponse({"ok": False, "error": str(exc)}, status=502)
+
+    if not result.get("ok"):
+        return JsonResponse(
+            {"ok": False, "error": result.get("error") or "WhatsApp send failed."},
+            status=502,
+        )
+    return JsonResponse({"ok": True, "message": "Ledger JPG sent via WhatsApp."})
+
+
 def export_ledger_excel(request, lease_id):
     try:
         lease = get_object_or_404(

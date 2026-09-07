@@ -61,8 +61,8 @@
 
     {# Row 3 (mobile): Buttons #}
     <div class="btn-row d-flex align-items-center gap-2 ms-auto">
-      <button class="btn btn-secondary btn-slim" type="button" onclick="history.back()">
-        <i class="fas fa-arrow-left me-1"></i> Back
+      <button class="btn btn-secondary btn-slim" type="button" onclick="history.back()" title="Back" aria-label="Back">
+        <i class="fas fa-arrow-left"></i>
       </button>
       {% if lease %}
       <a href="{% url 'leases:lease_ledger_pdf' lease.id %}" class="btn btn-primary btn-slim" target="_blank">
@@ -74,15 +74,12 @@
       <a href="{% url 'leases:export_ledger_excel' lease.id %}" class="btn btn-success btn-slim">
         <i class="fas fa-file-excel"></i> Excel
       </a>
-      <a href="{% url 'leases:send_ledger_email' lease.id %}" class="btn btn-info btn-slim">
-        <i class="fas fa-envelope"></i> Email
+      <a href="{% url 'leases:send_ledger_email' lease.id %}" class="btn btn-info btn-slim" title="Email ledger" aria-label="Email ledger">
+        <i class="fas fa-envelope"></i>
       </a>
-      {% if security_currently_held > 0 %}
-      <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=REFUND&amp;amount={{ security_currently_held }}&amp;security_amount={{ security_currently_held }}&amp;security_type=REFUND"
-         class="btn btn-danger btn-slim">
-        <i class="fas fa-undo"></i> Refund Security
-      </a>
-      {% endif %}
+      <button type="button" id="sendLedgerWhatsAppBtn" class="btn btn-success btn-slim" onclick="sendLeaseLedgerWhatsApp()">
+        <i class="fab fa-whatsapp"></i> WhatsApp
+      </button>
       {% if lease.status == "ended" and current_balance > 0 %}
       <a href="{% url 'payments:payment_create' %}?lease={{ lease.id }}&amp;payment_type=LEASE_REFUND&amp;amount={{ current_balance }}"
          class="btn btn-warning btn-slim">
@@ -174,7 +171,7 @@
       </div>
       <div class="divider">•</div>
 
-      <div class="summary-item">
+      <div class="summary-item summary-deposit-item">
         <span class="muted">Deposit Paid In:</span>
         <strong>Rs. {{ security_paid_in|intcomma }}</strong>
         {% if security_paid_in > 0 %}
@@ -204,31 +201,31 @@
   <div class="deposit-summary-panel">
     <h4 class="section-title">Security Deposit</h4>
     <div class="deposit-summary-row">
-      <div class="deposit-summary-item">
+      <div class="deposit-summary-item deposit-summary-required">
         <span>Required</span><strong>{{ security_required|intcomma }}</strong>
       </div>
-      <div class="deposit-summary-item">
+      <div class="deposit-summary-item deposit-summary-paid">
         <span>Paid In</span><strong>{{ security_paid_in|intcomma }}</strong>
       </div>
-      <div class="deposit-summary-item">
+      <div class="deposit-summary-item deposit-summary-refunded">
         <span>Refunded</span><strong>{{ security_refunded|intcomma }}</strong>
       </div>
-      <div class="deposit-summary-item">
-        <span>Transferred to Ledger</span><strong>{{ security_transferred_to_ledger|intcomma }}</strong>
+      <div class="deposit-summary-item deposit-summary-transferred">
+        <span><span class="security-label-desktop">Transferred to Ledger</span><span class="security-label-mobile">Transfer</span></span><strong>{{ security_transferred_to_ledger|intcomma }}</strong>
       </div>
-      <div class="deposit-summary-item table-warning">
-        <span>Balance to Collect</span><strong>{{ security_balance_to_collect|intcomma }}</strong>
+      <div class="deposit-summary-item deposit-summary-balance table-warning">
+        <span><span class="security-label-desktop">Balance to Collect</span><span class="security-label-mobile">Balance</span></span><strong>{{ security_balance_to_collect|intcomma }}</strong>
       </div>
-      <div class="deposit-summary-item table-success">
+      <div class="deposit-summary-item deposit-summary-held table-success">
         <span>Currently Held</span><strong>{{ security_currently_held|intcomma }}</strong>
       </div>
     </div>
   </div>
 
   <div class="deposit-ledger-panel">
-    <div class="d-flex justify-content-between align-items-center mb-1">
+    <div class="deposit-ledger-header d-flex justify-content-between align-items-center mb-1">
       <h5 class="section-title mb-0">Security Deposit Ledger</h5>
-      <div class="d-flex gap-1">
+      <div class="deposit-ledger-actions d-flex gap-1">
         {% if lease.status == "ended" and security_currently_held > 0 and perms.invoices.transfer_security_deposit_to_ledger %}
         <form method="post" action="{% url 'leases:lease_transfer_full_security' lease.id %}" class="d-flex gap-1 align-items-center flex-wrap"
               onsubmit="return confirm('Transfer the full refundable security balance into the tenant ledger as an internal credit? This does NOT record a cash/bank refund.');">
@@ -277,7 +274,7 @@
             <td data-label="Amount" class="text-end">{{ t.amount|intcomma }}</td>
             <td data-label="Deposit Balance" class="text-end">{{ t.balance|intcomma }}</td>
             <td data-label="Actions" class="text-center">
-              <div class="d-flex justify-content-center gap-1">
+              <div class="deposit-entry-actions d-flex justify-content-center gap-1">
                 {% if t.obj.payment and t.obj.payment.detail %}
                 <a class="btn btn-success btn-slim"
                    href="{% url 'payments:api_payment_detail_receipt_whatsapp' t.obj.payment.detail.id %}?open=1"
@@ -384,41 +381,27 @@
   </div>
 </div>
 
-{# Mobile: single compact table (≤360px) — Description column hidden #}
+{# Mobile: compact ledger cards, independent of browser table-row sizing #}
 <div class="d-lg-none">
-  <div class="card">
+  <div class="card mobile-transaction-card">
     <div class="card-body">
-      <div class="table-responsive">
-        <table class="table table-striped table-sm text-center align-middle compact-table mobile-tiny ledger-mobile-cards">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Date</th>
-              <th>Type</th>
-              <th class="desc-col">Description</th>
-              <th>Amount</th>
-              <th>Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for t in transactions %}
-            <tr{% if t.is_focused %} id="focused-payment-row" class="table-warning focused-payment-row"{% endif %}>
-              <td data-label="#">{{ forloop.counter }}</td>
-              <td data-label="Date">{{ t.date|date:"M d, Y" }}</td>
-              <td data-label="Type">{{ t.type }}</td>
-              <td data-label="Description" class="desc-col" title="{{ t.description }}">{{ t.description }}</td>
-              <td data-label="Amount" class="{% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
-                <a href="{{ t.url }}"
-                  class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
-                  {{ t.amount|intcomma }}
-                </a>
-                {% if t.delete_url %}<a href="{{ t.delete_url }}" class="{% if t.delete_ajax %}js-ledger-delete {% endif %}ms-1 text-danger" data-delete-kind="{{ t.delete_kind }}" title="Delete {{ t.delete_kind }}"><i class="fas fa-trash-alt"></i></a>{% endif %}
-              </td>
-              <td data-label="Balance">{{ t.balance|intcomma }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div class="transaction-ledger-list">
+        {% for t in transactions %}
+        <div{% if t.is_focused %} id="focused-payment-row"{% endif %} class="transaction-ledger-entry{% if t.is_focused %} table-warning focused-payment-row{% endif %}">
+          <div class="transaction-ledger-cell transaction-number"><span>SN</span>{{ forloop.counter }}</div>
+          <div class="transaction-ledger-cell transaction-date"><span>Date</span>{{ t.date|date:"M d, Y" }}</div>
+          <div class="transaction-ledger-cell transaction-type"><span>Type</span>{{ t.type }}</div>
+          <div class="transaction-ledger-cell transaction-description" title="{{ t.description }}"><span>Description</span>{{ t.description }}</div>
+          <div class="transaction-ledger-cell transaction-amount {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+            <span>Amount</span>
+            <a href="{{ t.url }}" class="text-decoration-none {% if t.amount > 0 %}text-success{% else %}text-danger{% endif %}">{{ t.amount|intcomma }}</a>
+            {% if t.delete_url %}<a href="{{ t.delete_url }}" class="{% if t.delete_ajax %}js-ledger-delete {% endif %}ms-1 text-danger" data-delete-kind="{{ t.delete_kind }}" title="Delete {{ t.delete_kind }}"><i class="fas fa-trash-alt"></i></a>{% endif %}
+          </div>
+          <div class="transaction-ledger-cell transaction-balance"><span>Balance</span>{{ t.balance|intcomma }}</div>
+        </div>
+        {% empty %}
+        <p class="text-muted text-center small mb-0">No ledger transactions yet.</p>
+        {% endfor %}
       </div>
     </div>
   </div>
@@ -745,6 +728,8 @@
     border-right: 0;
   }
 
+  .security-label-mobile { display:none; }
+
   .deposit-ledger-table th,
   .deposit-ledger-table td {
     white-space: nowrap;
@@ -901,8 +886,57 @@
   }
 
   @media (max-width: 767.98px) {
+    .lease-ledger-page {
+      width: 100%;
+      max-width: 100%;
+      padding-right: .5rem;
+      padding-left: .5rem;
+      overflow-x: hidden;
+    }
+    .toolbar-grid,
+    .filters-row,
+    .lease-row,
+    .btn-row { width:100%; min-width:0; }
+    .filters-row { overflow-x:visible; }
+    .filter-property,
+    .filter-unit { width:auto; min-width:0; flex:1 1 0; }
+    .filter-lease { width:100%; min-width:0; }
+    .filter-lease .select2-container { width:100% !important; }
+    .btn-row {
+      margin-left:0 !important;
+      flex-wrap:wrap;
+      gap:.3rem !important;
+    }
     .mobile-heading{ align-items:stretch; flex-direction:column; }
     .ledger-total-box{ min-width:0; align-items:center; text-align:center; }
+
+    #leaseSummary .card-body { padding:.45rem !important; }
+    #leaseSummary .summary-line {
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:0;
+      white-space:normal;
+      overflow:visible;
+    }
+    #leaseSummary .summary-item {
+      display:block;
+      min-width:0;
+      padding:.3rem .35rem;
+      border-right:1px solid #e5e7eb;
+      border-bottom:1px solid #e5e7eb;
+      line-height:1.2;
+      overflow-wrap:anywhere;
+    }
+    #leaseSummary .summary-item:nth-child(6n - 1) { border-right:0; }
+    #leaseSummary .summary-item:nth-child(n + 7) { border-bottom:0; }
+    #leaseSummary .summary-item .muted {
+      display:block;
+      margin-bottom:.08rem;
+      font-size:.62rem;
+    }
+    #leaseSummary .summary-item strong { display:block; font-size:.7rem; }
+    #leaseSummary .divider,
+    #leaseSummary .summary-deposit-item { display:none; }
   }
 
   /* ===== Desktop ≥ 1200px ===== */
@@ -975,16 +1009,34 @@
   @media (max-width: 767.98px) {
     .deposit-section { display:block; min-width:0; }
     .deposit-summary-panel, .deposit-ledger-panel { width:100%; min-width:0; }
-    .deposit-summary-row { display:grid; grid-template-columns:1fr; gap:0; }
+    .deposit-summary-panel { display:block; }
+    .deposit-summary-panel .section-title { margin-bottom:.3rem; }
+    .deposit-summary-row { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:0; }
     .deposit-summary-item {
-      display:flex; justify-content:space-between; align-items:center; gap:.75rem;
-      width:100%; padding:.45rem .6rem; border-bottom:1px solid #e5e7eb;
+      display:block; min-width:0;
+      width:100%; padding:.32rem .45rem; border-right:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb;
+      line-height:1.2; white-space:normal;
     }
-    .deposit-summary-item strong { margin-left:auto; white-space:nowrap; }
-    .deposit-ledger-panel > .d-flex { align-items:flex-start !important; flex-wrap:wrap; }
-    .deposit-ledger-panel > .d-flex > .d-flex { width:100%; flex-wrap:wrap; }
+    .deposit-summary-balance,
+    .deposit-summary-held { border-right:0; }
+    .deposit-summary-refunded,
+    .deposit-summary-transferred,
+    .deposit-summary-held { border-bottom:0; }
+    .deposit-summary-item > span { display:block; color:#6c757d; font-size:.62rem; }
+    .deposit-summary-item strong { display:block; margin-top:.08rem; white-space:nowrap; font-size:.75rem; }
+    .deposit-summary-required { order:1; }
+    .deposit-summary-paid { order:2; }
+    .deposit-summary-balance { order:3; }
+    .deposit-summary-refunded { order:4; }
+    .deposit-summary-transferred { order:5; }
+    .deposit-summary-held { order:6; }
+    .security-label-desktop { display:none; }
+    .security-label-mobile { display:inline; }
+    .deposit-ledger-header { align-items:flex-start !important; flex-wrap:wrap; gap:.3rem; }
+    .deposit-ledger-actions { width:100%; flex-wrap:wrap; }
     .deposit-section .table-responsive,
     .card-body > .table-responsive { overflow-x:visible; }
+    .lease-ledger-page > .d-lg-none > .card > .card-body { padding:.45rem; }
     .ledger-mobile-cards,
     .ledger-mobile-cards tbody {
       display:block;
@@ -998,6 +1050,9 @@
       gap:.35rem .65rem;
       margin-bottom:.65rem;
       padding:.65rem;
+      height:auto !important;
+      min-height:0 !important;
+      align-content:start;
       border:1px solid #dee2e6;
       border-radius:.55rem;
       background:#fff;
@@ -1030,6 +1085,99 @@
     .ledger-mobile-cards td[data-label="Actions"] .d-flex {
       justify-content:flex-start !important;
       flex-wrap:wrap;
+    }
+
+    .deposit-ledger-table tr {
+      grid-template-columns:minmax(0, .9fr) minmax(0, 1.25fr) minmax(0, .9fr);
+      grid-template-areas:
+        "date type amount"
+        "description description description"
+        "actions actions balance";
+      gap:.35rem .45rem;
+      padding:.5rem .55rem;
+    }
+    .deposit-ledger-table td[data-label="Date"] { grid-area:date; }
+    .deposit-ledger-table td[data-label="Type"] { grid-area:type; text-align:center !important; }
+    .deposit-ledger-table td[data-label="Description"] {
+      grid-area:description;
+      padding-top:.28rem !important;
+      border-top:1px solid #edf0f3 !important;
+    }
+    .deposit-ledger-table td[data-label="Amount"] { grid-area:amount; text-align:right !important; }
+    .deposit-ledger-table td[data-label="Deposit Balance"] {
+      grid-area:balance;
+      align-self:center;
+      text-align:right !important;
+      white-space:nowrap !important;
+    }
+    .deposit-ledger-table td[data-label="Actions"] {
+      grid-area:actions;
+      align-self:center;
+    }
+    .deposit-ledger-table td[data-label="Type"]::before { text-align:center; }
+    .deposit-ledger-table td[data-label="Amount"]::before,
+    .deposit-ledger-table td[data-label="Deposit Balance"]::before { text-align:right; }
+    .deposit-entry-actions { justify-content:flex-start !important; flex-wrap:nowrap !important; }
+
+    .mobile-transaction-card .card-body { padding:.45rem; }
+    .transaction-ledger-list { display:block; width:100%; min-width:0; }
+    .transaction-ledger-entry {
+      display:grid;
+      grid-template-columns:1.6rem 4.7rem minmax(4.8rem, .8fr) minmax(4.3rem, 1fr);
+      grid-template-areas:
+        "number date amount type"
+        "description description description balance";
+      gap:.35rem .3rem;
+      width:100%;
+      min-width:0;
+      height:auto;
+      min-height:0;
+      margin-bottom:.55rem;
+      padding:.5rem .55rem;
+      border:1px solid #dee2e6;
+      border-radius:.55rem;
+      background:#fff;
+    }
+    .transaction-ledger-entry:nth-child(odd) { background:#fafbfc; }
+    .transaction-ledger-entry:last-child { margin-bottom:0; }
+    .transaction-ledger-cell {
+      min-width:0;
+      font-size:.76rem;
+      line-height:1.25;
+      overflow-wrap:anywhere;
+    }
+    .transaction-ledger-cell > span {
+      display:block;
+      margin-bottom:.08rem;
+      color:#6c757d;
+      font-size:.62rem;
+      font-weight:700;
+      letter-spacing:.025em;
+      text-transform:uppercase;
+    }
+    .transaction-number { grid-area:number; }
+    .transaction-date { grid-area:date; }
+    .transaction-type { grid-area:type; }
+    .transaction-description {
+      grid-area:description;
+      padding-top:.28rem;
+      border-top:1px solid #edf0f3;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .transaction-amount { grid-area:amount; }
+    .transaction-balance {
+      grid-area:balance;
+      padding-top:.28rem;
+      border-top:1px solid #edf0f3;
+      text-align:right;
+      white-space:nowrap;
+    }
+    .transaction-description > span,
+    .transaction-balance > span {
+      display:inline;
+      margin:0 .2rem 0 0;
     }
     .ledger-total-box { width:100%; max-width:none; margin-top:.5rem; }
     .mobile-heading { display:block; }
@@ -1159,20 +1307,19 @@ function loadLedgerHtml2Canvas() {
   });
 }
 
-async function downloadLeaseLedgerJPG() {
+async function captureLeaseLedgerCanvas() {
   const target = document.body;
   if (!target) {
-    alert("Ledger content not found.");
-    return;
+    throw new Error("Ledger content not found.");
   }
   document.body.classList.add("exporting-ledger-jpg");
   try {
     const html2canvas = await loadLedgerHtml2Canvas();
-    await new Promise(resolve => requestAnimationFrame(resolve));
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const doc = document.documentElement;
     const width = Math.ceil(Math.max(target.scrollWidth, doc.scrollWidth, target.offsetWidth)) + 80;
     const height = Math.ceil(Math.max(target.scrollHeight, doc.scrollHeight, target.offsetHeight)) + 120;
-    const canvas = await html2canvas(target, {
+    return await html2canvas(target, {
       backgroundColor: "#ffffff",
       scale: 2,
       useCORS: true,
@@ -1183,6 +1330,20 @@ async function downloadLeaseLedgerJPG() {
       width: width,
       height: height
     });
+  } finally {
+    document.body.classList.remove("exporting-ledger-jpg");
+  }
+}
+
+function ledgerCanvasToJpeg(canvas, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Could not create ledger JPG.")), "image/jpeg", quality);
+  });
+}
+
+async function downloadLeaseLedgerJPG() {
+  try {
+    const canvas = await captureLeaseLedgerCanvas();
     const link = document.createElement("a");
     link.href = canvas.toDataURL("image/jpeg", 0.95);
     link.download = "Lease_Ledger_{{ lease.id|default:'export' }}.jpg";
@@ -1191,8 +1352,49 @@ async function downloadLeaseLedgerJPG() {
     document.body.removeChild(link);
   } catch (error) {
     alert(error && error.message ? error.message : "Could not export JPG.");
+  }
+}
+
+async function sendLeaseLedgerWhatsApp() {
+  const button = document.getElementById("sendLedgerWhatsAppBtn");
+  if (!button || button.disabled) return;
+  const originalHtml = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending';
+
+  try {
+    const canvas = await captureLeaseLedgerCanvas();
+    let blob = await ledgerCanvasToJpeg(canvas, 0.88);
+    if (blob.size > 5 * 1024 * 1024) {
+      blob = await ledgerCanvasToJpeg(canvas, 0.65);
+    }
+    if (blob.size > 5 * 1024 * 1024) {
+      throw new Error("The ledger JPG is larger than WhatsApp's 5 MB image limit.");
+    }
+
+    const formData = new FormData();
+    formData.append("ledger_image", blob, "Lease_Ledger_{{ lease.id|default:'export' }}.jpg");
+    const sendUrl = "{% if lease %}{% url 'leases:send_ledger_whatsapp' lease.id %}{% endif %}";
+    if (!sendUrl) throw new Error("Please select a lease first.");
+    const response = await fetch(sendUrl, {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": leaseLedgerCookie("csrftoken"),
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: formData,
+      credentials: "same-origin"
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "Could not send the ledger through WhatsApp.");
+    }
+    alert(payload.message || "Ledger JPG sent via WhatsApp.");
+  } catch (error) {
+    alert(error && error.message ? error.message : "Could not send the ledger through WhatsApp.");
   } finally {
-    document.body.classList.remove("exporting-ledger-jpg");
+    button.disabled = false;
+    button.innerHTML = originalHtml;
   }
 }
 </script>

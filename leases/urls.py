@@ -406,6 +406,11 @@ urlpatterns = [
     ),
     path("<int:lease_id>/ledger/email/", send_ledger_email, name="send_ledger_email"),
     path(
+        "<int:lease_id>/ledger/whatsapp/",
+        views.send_ledger_whatsapp,
+        name="send_ledger_whatsapp",
+    ),
+    path(
         "lease/<int:pk>/generate-docx/",
         views.generate_agreement_docx,
         name="generate_agreement_docx",

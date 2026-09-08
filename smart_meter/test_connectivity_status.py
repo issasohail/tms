@@ -86,6 +86,52 @@ class RedisFailureTests(TestCase):
         self.assertFalse(presence.available)
 
 
+class ListenerStartupPresenceResetTests(TestCase):
+    class RecordingPipeline:
+        def __init__(self):
+            self.updates = []
+
+        def hset(self, key, field, value):
+            self.updates.append((key, field, value))
+            return self
+
+        def execute(self):
+            return [1] * len(self.updates)
+
+    class RecordingClient:
+        def __init__(self):
+            self.pipe = ListenerStartupPresenceResetTests.RecordingPipeline()
+
+        def scan_iter(self, match):
+            assert match == "smart_meter:presence:*"
+            return iter(
+                (
+                    "smart_meter:presence:241203510003",
+                    "smart_meter:presence:260305510012",
+                )
+            )
+
+        def pipeline(self, transaction=False):
+            assert transaction is False
+            return self.pipe
+
+    def test_listener_startup_marks_cached_connections_offline(self):
+        meter_presence._retry_after_monotonic = 0.0
+        client = self.RecordingClient()
+
+        with patch.object(meter_presence, "_get_redis_client", return_value=client):
+            reset = meter_presence.clear_all_meter_connections()
+
+        self.assertTrue(reset)
+        self.assertEqual(
+            client.pipe.updates,
+            [
+                ("smart_meter:presence:241203510003", "connected", "0"),
+                ("smart_meter:presence:260305510012", "connected", "0"),
+            ],
+        )
+
+
 class ConnectivityReportReadOnlyTests(TestCase):
     def setUp(self):
         self.meter = Meter.objects.create(

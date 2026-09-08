@@ -1190,6 +1190,7 @@
     row.querySelectorAll('.power-operation-status').forEach(el => {
       el.className = `power-operation-status ${state}`.trim();
       el.textContent = text || '';
+      el.title = text || '';
       el.hidden = !text;
     });
   }
@@ -1859,7 +1860,6 @@
                   {{ r.tenant_name|default:"Vacant"|slice:":20" }}
                 {% endif %}
               </span>
-              <span class="power-operation-status {{ r.relay_indicator_class }}" role="status" aria-live="polite" {% if not r.relay_indicator_label %}hidden{% endif %}>{{ r.relay_indicator_label }}</span>
             </td>
 
             <td class="sticky-left col-unit text-center" title="{{ m.display_location_name }}">
@@ -1886,6 +1886,8 @@
                   {% if r.connection_state == 'online' %}Online{% elif r.connection_state == 'stale' %}Data stale{% else %}Offline{% endif %}
                 </span>
               </div>
+              <span class="power-operation-status {{ r.relay_indicator_class }}" role="status" aria-live="polite"
+                title="{{ r.relay_indicator_label }}" {% if not r.relay_indicator_label %}hidden{% endif %}>{{ r.relay_indicator_label }}</span>
               <!-- Small-screen: place 3 controls under Meter # -->
               <div class="mobile-actions">
                 <span
@@ -2186,6 +2188,25 @@
     animation: power-status-spin .75s linear infinite;
   }
   @keyframes power-status-spin { to { transform: rotate(360deg); } }
+
+  @media (min-width: 992px) {
+    .col-meter .power-operation-status {
+      margin-top: .15rem;
+      padding: .12rem .2rem;
+      font-size: .6rem;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .col-meter .power-operation-status.is-working::before {
+      width: .5rem;
+      height: .5rem;
+      margin-right: .2rem;
+      border-width: 1px;
+    }
+  }
 
   @media (max-width: 991.98px) {
     #captureArea .card { border: 0; background: transparent; }

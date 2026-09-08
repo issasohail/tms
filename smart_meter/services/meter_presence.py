@@ -193,6 +193,32 @@ return 1
         return False
 
 
+def clear_all_meter_connections() -> bool:
+    """Mark cached connections offline when the sole listener starts.
+
+    Redis presence keys can outlive a listener process for the configured TTL.
+    Until a meter sends a valid frame to the new process, no socket is available
+    for commands, so retaining ``connected=1`` would make the UI misleading.
+    """
+    if _redis_is_in_backoff():
+        return False
+    client = _get_redis_client()
+    if client is None:
+        return False
+    try:
+        keys = list(client.scan_iter(match=f"{KEY_PREFIX}*"))
+        if not keys:
+            return True
+        pipe = client.pipeline(transaction=False)
+        for key in keys:
+            pipe.hset(key, "connected", "0")
+        pipe.execute()
+        return True
+    except (RedisError, OSError, ValueError) as exc:
+        _note_redis_failure(exc)
+        return False
+
+
 def get_meter_presence(meter_number) -> MeterPresence:
     return get_meter_presences([meter_number]).get(
         str(meter_number), MeterPresence(available=False)

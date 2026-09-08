@@ -60,6 +60,7 @@ from smart_meter.services.relay_status import (
     sync_authoritative_relay_status,
 )
 from smart_meter.services.meter_presence import (
+    clear_all_meter_connections,
     clear_meter_connection,
     record_meter_contact,
 )
@@ -1690,6 +1691,9 @@ class Command(BaseCommand):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, port))
+            # Binding proves this is the sole production listener. Clear Redis
+            # socket-presence left by a previous process before accepting meters.
+            clear_all_meter_connections()
             s.listen(50)
 
             # Bind the production meter port before starting any side threads or
@@ -1707,4 +1711,3 @@ class Command(BaseCommand):
                 ClientHandler(
                     conn, addr, debug=debug, dump_raw=dump_raw, accept_bad=accept_bad
                 ).start()
-

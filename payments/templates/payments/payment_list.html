@@ -797,8 +797,8 @@
       padding: .85rem 1rem !important;
       margin: 0 0 .6rem !important;
     }
-    .payment-list-dense table.table tbody tr.pc-negative { border-left-color: #ef4444 !important; }
-    .payment-list-dense table.table tbody tr.pc-positive { border-left-color: #12b76a !important; }
+    .payment-list-dense table.table tbody tr.pc-negative { border-left-color: #12b76a !important; }
+    .payment-list-dense table.table tbody tr.pc-positive { border-left-color: #ef4444 !important; }
     .payment-list-dense table.table tbody tr:nth-child(even) { background: var(--surface-2, #fff) !important; }
 
     .payment-list-dense td { border: none !important; padding: 0 !important; }
@@ -861,8 +861,8 @@
       white-space: nowrap !important;
       overflow: hidden !important; text-overflow: ellipsis !important;
     }
-    .payment-list-dense tr.pc-negative td.col-balance-row { color: #a32d2d !important; }
-    .payment-list-dense tr.pc-positive td.col-balance-row { color: #3b6d11 !important; }
+    .payment-list-dense tr.pc-negative td.col-balance-row { color: #3b6d11 !important; }
+    .payment-list-dense tr.pc-positive td.col-balance-row { color: #a32d2d !important; }
     .payment-list-dense td.col-balance-row i { margin-right: .3rem !important; }
 
     .payment-list-dense td.col-actions {
@@ -997,12 +997,39 @@
   .payment-page-compact h2 { font-size:1.28rem !important; font-weight:800; line-height:1.1; color:var(--pl-text); }
   .payment-list-dense table.table { border:1px solid var(--pl-border); border-radius:8px; overflow:hidden; color:var(--pl-text); }
   .payment-list-dense table.table thead th { background:#f8fafc !important; color:#475467 !important; font-weight:800 !important; text-transform:none; letter-spacing:.01em; border-bottom:1px solid var(--pl-border); }
+  .payment-list-dense table.table thead th a {
+    color: inherit !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    text-transform: inherit !important;
+    letter-spacing: inherit !important;
+    text-decoration: none !important;
+  }
   .payment-list-dense table.table tbody td { color:var(--pl-text); font-weight:600; border-top:1px solid #eaecf0; }
   .payment-list-dense table.table tbody tr:nth-child(even) td { background:#fbfcfe; }
   .payment-list-dense table.table tbody tr:hover td { background:#f2f6ff; }
   .payment-list-dense td.col-tenant a { color:var(--pl-text) !important; font-weight:800 !important; text-decoration:none !important; }
   .payment-list-dense td.col-tenant a:hover { color:var(--pl-blue) !important; text-decoration:underline !important; }
   .payment-list-dense td.col-property a { color:var(--pl-blue); font-weight:800; text-decoration:underline; text-underline-offset:2px; }
+  .payment-list-dense td.col-tenant,
+  .payment-list-dense td.col-tenant a,
+  .payment-list-dense td.col-unit,
+  .payment-list-dense td.col-date,
+  .payment-list-dense td.col-amount,
+  .payment-list-dense td.col-amount .fw-semibold,
+  .payment-list-dense td.col-lease-balance,
+  .payment-list-dense td.col-lease-balance .fw-semibold,
+  .payment-list-dense td.col-security-balance,
+  .payment-list-dense td.col-security-balance .fw-semibold,
+  .payment-list-dense td.col-balance,
+  .payment-list-dense td.col-balance .fw-semibold {
+    font-weight: 700 !important;
+  }
+  .payment-list-dense td.col-amount,
+  .payment-list-dense td.col-amount .text-success,
+  .payment-list-dense td.col-amount .text-danger {
+    color: #12b76a !important;
+  }
   .payment-page-compact .btn { font-weight:700; border-radius:6px; }
 
 </style>
@@ -1206,7 +1233,8 @@ document.addEventListener("DOMContentLoaded", function () {
       row.innerHTML = '<i class="fas fa-wallet"></i><span class="balance-text">Bal: ' + val + '</span>';
 
       tr.classList.remove('pc-negative', 'pc-positive');
-      const numeric = parseFloat(val.replace(/[^0-9.-]/g, ''));
+      const numericMatch = val.replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+      const numeric = numericMatch ? Number(numericMatch[0]) : NaN;
       if (!isNaN(numeric)) tr.classList.add(numeric < 0 ? 'pc-negative' : 'pc-positive');
     }
 

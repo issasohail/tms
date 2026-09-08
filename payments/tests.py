@@ -1,6 +1,38 @@
 from django.test import TestCase
 
 
+class PaymentListPresentationTests(TestCase):
+    def test_balance_colors_show_amount_due_in_red_and_credit_in_green(self):
+        from decimal import Decimal
+
+        from payments.tables_payment_list import PaymentListTable
+
+        table = PaymentListTable([])
+
+        self.assertIn(
+            'class="text-danger fw-semibold"',
+            str(table._balance_html(Decimal("1.00"))),
+        )
+        self.assertIn(
+            'class="text-success fw-semibold"',
+            str(table._balance_html(Decimal("-1.00"))),
+        )
+
+    def test_payment_amount_stays_green_for_positive_and_negative_movements(self):
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        from payments.tables_payment_list import PaymentListTable
+
+        table = PaymentListTable([])
+
+        for amount in (Decimal("1.00"), Decimal("-1.00")):
+            rendered = table.render_amount(
+                None, SimpleNamespace(amount=amount, is_split=False)
+            )
+            self.assertIn('class="text-success fw-semibold"', str(rendered))
+
+
 class SecurityDepositBalanceTests(TestCase):
     def setUp(self):
         from datetime import date, timedelta

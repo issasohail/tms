@@ -116,7 +116,7 @@ class PaymentListTable(tables.Table):
 
     def render_amount(self, value, record):
         amt = _to_decimal(record.amount)
-        css = "text-danger" if amt < 0 else "text-success"
+        css = "text-success"
 
         settings_obj = self.get_global_settings()
         total_s = format_money(amt, settings_obj)
@@ -154,11 +154,11 @@ class PaymentListTable(tables.Table):
 
     def _balance_html(self, amt):
         if amt < 0:
-            cls, sign = "text-danger", ""
+            cls = "text-success"
         elif amt > 0:
-            cls, sign = "text-success", ""
+            cls = "text-danger"
         else:
-            cls, sign = "text-muted", ""
+            cls = "text-muted"
         return format_html(
             '<span class="{} fw-semibold">{}</span>',
             cls,

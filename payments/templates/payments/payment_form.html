@@ -156,19 +156,19 @@
 
           <!-- Actions (add a little space between Save/New/Print) -->
           <div class="action-bar d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-            <div class="d-flex flex-wrap gap-2">
+            <div class="d-flex flex-wrap gap-2 payment-primary-actions">
               <button type="submit" name="save" class="btn btn-primary btn-sm">
                 <i class="fas fa-save"></i><span class="btn-label ms-1">Save</span>
               </button>
               <button type="submit" name="save_and_new" class="btn btn-primary btn-sm">
-                <i class="fas fa-plus"></i><span class="btn-label ms-1">New</span>
+                <i class="fas fa-plus"></i><span class="btn-label ms-1"><span class="d-none d-sm-inline">New</span><span class="d-inline d-sm-none">New Payment</span></span>
               </button>
               <button type="submit" name="save_and_print" class="btn btn-secondary btn-sm">
                 <i class="fas fa-print"></i><span class="btn-label ms-1">Print</span>
               </button>
             </div>
 
-            <div class="d-flex flex-wrap gap-2">
+            <div class="d-flex flex-wrap gap-2 payment-secondary-actions">
               <button class="btn btn-secondary btn-sm" type="button" onclick="history.back()">
                 <i class="fas fa-arrow-left"></i><span class="btn-label ms-1">Back</span>
               </button>
@@ -414,8 +414,24 @@
     html,body{height:auto;overflow-y:auto}
     .table-responsive{overflow-x:auto;-webkit-overflow-scrolling:touch}
 
-    /* Action bar: icons-only */
-    .action-bar .btn .btn-label{display:none!important}
+    /* Save/New/Print: text-only, equal-width controls across the available
+       space on narrow phones, capped at 360px on wider mobile screens. */
+    .action-bar .payment-primary-actions{
+      flex:1 1 100%;
+      flex-wrap:nowrap!important;
+      width:100%;
+      max-width:360px;
+    }
+    .action-bar .payment-primary-actions .btn{
+      flex:1 1 0;
+      min-width:0;
+    }
+    .action-bar .payment-primary-actions .btn i{display:none!important}
+    .action-bar .payment-primary-actions .btn-label{
+      display:inline!important;
+      margin-left:0!important;
+    }
+    .action-bar .payment-secondary-actions .btn-label{display:none!important}
 
     .recent-payments-table{
       --w-sn:      20px;

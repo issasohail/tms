@@ -1,1 +1,191 @@
-{% extends "base.html" %}{% block content %}<div class="container-fluid py-3"><h3>Bulk Flat Tariff Setup</h3><form method="get" class="row g-2 card card-body mb-3"><div class="col-md-3"><select name="capability" class="form-select"><option value="">All capabilities</option><option value="single_rate">Single-rate</option><option value="multi_rate">Multi-rate</option></select></div><div class="col-md-3"><select name="property" class="form-select"><option value="">All properties</option>{% for property in properties %}<option value="{{ property.pk }}">{{ property.property_name }}</option>{% endfor %}</select></div><div class="col-md-3"><select name="unit" class="form-select"><option value="">All units</option>{% for unit in units %}<option value="{{ unit.pk }}">{{ unit.property.property_name }} / {{ unit.unit_number }}</option>{% endfor %}</select></div><div class="col-md-2"><select name="online" class="form-select"><option value="">Any status</option><option value="online">Online</option><option value="offline">Offline</option></select></div><div class="col-md-1"><button class="btn btn-outline-primary">Filter</button></div></form><form method="post" onsubmit="return confirm('Confirm one-shot flat tariff processing for every selected meter?');">{% csrf_token %}<input type="hidden" name="confirm_write" value="yes"><div class="row g-2 align-items-end mb-3"><div class="col-md-3"><label class="form-label">Flat unit rate</label>{{ form.price }}{{ form.price.errors }}</div><div class="col-md-9"><button class="btn btn-danger">Confirm Selected Meters</button></div></div>{{ form.meter_ids }}{{ form.meter_ids.errors }}<div class="card"><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th><input type="checkbox" id="all"></th><th>Meter</th><th>Property / Unit</th><th>Capability</th><th>Status</th></tr></thead><tbody>{% for meter in meters %}<tr><td><input type="checkbox" class="meter-check" value="{{ meter.pk }}"></td><td>{{ meter.meter_number }}</td><td>{{ meter.unit.property.property_name|default:"—" }} / {{ meter.unit.unit_number|default:"—" }}</td><td>{{ meter.get_tariff_capability_display }}</td><td>{% if meter.is_online %}Online{% else %}Offline{% endif %}</td></tr>{% empty %}<tr><td colspan="5">No matching confirmed-capability meters.</td></tr>{% endfor %}</tbody></table></div></div></form></div><script>const all=document.getElementById('all'), checks=[...document.querySelectorAll('.meter-check')], hidden=document.getElementById('id_meter_ids'); function sync(){hidden.value=checks.filter(x=>x.checked).map(x=>x.value).join(',');} all?.addEventListener('change',()=>{checks.forEach(x=>x.checked=all.checked);sync();});checks.forEach(x=>x.addEventListener('change',sync));sync();</script>{% endblock %}
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .bulk-tariff-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    .bulk-tariff-table th,
+    .bulk-tariff-table td {
+        overflow-wrap: anywhere;
+        vertical-align: middle;
+    }
+    .bulk-tariff-table .select-column { width: 6%; }
+    .bulk-tariff-table .meter-column { width: 22%; }
+    .bulk-tariff-table .property-column { width: 38%; }
+    .bulk-tariff-table .capability-column { width: 20%; }
+    .bulk-tariff-table .status-column { width: 14%; }
+
+    @media (max-width: 767.98px) {
+        .bulk-tariff-table,
+        .bulk-tariff-table thead,
+        .bulk-tariff-table tbody,
+        .bulk-tariff-table tr,
+        .bulk-tariff-table th,
+        .bulk-tariff-table td {
+            display: block;
+            width: 100%;
+        }
+        .bulk-tariff-table thead th:not(:first-child) { display: none; }
+        .bulk-tariff-table thead tr {
+            padding: .5rem .75rem;
+            border-bottom: 1px solid var(--bs-border-color);
+        }
+        .bulk-tariff-table thead th:first-child {
+            border: 0;
+            padding: 0;
+        }
+        .bulk-tariff-table thead th:first-child::after {
+            content: " Select all meters";
+            font-weight: 600;
+            margin-left: .35rem;
+        }
+        .bulk-tariff-table tbody tr {
+            padding: .45rem .75rem;
+            border-bottom: 1px solid var(--bs-border-color);
+        }
+        .bulk-tariff-table tbody tr:last-child { border-bottom: 0; }
+        .bulk-tariff-table tbody td {
+            display: flex;
+            gap: .75rem;
+            justify-content: space-between;
+            padding: .25rem 0;
+            border: 0;
+            text-align: right;
+        }
+        .bulk-tariff-table tbody td::before {
+            content: attr(data-label);
+            flex: 0 0 38%;
+            font-weight: 600;
+            text-align: left;
+        }
+        .bulk-tariff-table tbody td.select-cell {
+            justify-content: flex-start;
+        }
+        .bulk-tariff-table tbody td.select-cell::before { content: "Select"; }
+        .bulk-tariff-table tbody td.empty-result {
+            display: block;
+            text-align: left;
+        }
+        .bulk-tariff-table tbody td.empty-result::before { content: none; }
+    }
+</style>
+
+<div class="container-fluid py-3">
+    <h3>Bulk Flat Tariff Setup</h3>
+
+    <div class="card card-body mb-3">
+        <form method="get" id="meter-filter-form" class="row g-2 align-items-center">
+            <div class="col-12 col-sm-6 col-lg-3">
+                <label for="property-filter" class="visually-hidden">Property</label>
+                <select name="property" id="property-filter" class="form-select auto-submit-filter">
+                    <option value="">All properties</option>
+                    {% for property in properties %}
+                    <option value="{{ property.pk }}"{% if selected_property == property.pk|stringformat:"s" %} selected{% endif %}>{{ property.property_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+                <label for="unit-filter" class="visually-hidden">Unit</label>
+                <select name="unit" id="unit-filter" class="form-select auto-submit-filter">
+                    <option value="">All units</option>
+                    {% for unit in units %}
+                    <option value="{{ unit.pk }}"{% if selected_unit == unit.pk|stringformat:"s" %} selected{% endif %}>{{ unit.property.property_name }} / {{ unit.unit_number }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-sm-4 col-lg-2">
+                <label for="capability-filter" class="visually-hidden">Capability</label>
+                <select name="capability" id="capability-filter" class="form-select auto-submit-filter">
+                    <option value="">All capabilities</option>
+                    <option value="single_rate"{% if selected_capability == "single_rate" %} selected{% endif %}>Single-rate</option>
+                    <option value="multi_rate"{% if selected_capability == "multi_rate" %} selected{% endif %}>Multi-rate</option>
+                </select>
+            </div>
+            <div class="col-12 col-sm-4 col-lg-2">
+                <label for="status-filter" class="visually-hidden">Status</label>
+                <select name="online" id="status-filter" class="form-select auto-submit-filter">
+                    <option value="">Any status</option>
+                    <option value="online"{% if selected_online == "online" %} selected{% endif %}>Online</option>
+                    <option value="offline"{% if selected_online == "offline" %} selected{% endif %}>Offline</option>
+                </select>
+            </div>
+            <div class="col-12 col-sm-4 col-lg-2 d-grid">
+                <button type="submit" class="btn btn-outline-primary">Filter</button>
+            </div>
+        </form>
+    </div>
+
+    <form method="post" onsubmit="return confirm('Confirm one-shot flat tariff processing for every selected meter?');">
+        {% csrf_token %}
+        <input type="hidden" name="confirm_write" value="yes">
+        <div class="row g-2 align-items-end mb-3">
+            <div class="col-12 col-sm-5 col-md-3">
+                <label class="form-label">Flat unit rate</label>
+                {{ form.price }}{{ form.price.errors }}
+            </div>
+            <div class="col-12 col-sm-7 col-md-9">
+                <button class="btn btn-danger">Confirm Selected Meters</button>
+            </div>
+        </div>
+        {{ form.meter_ids }}{{ form.meter_ids.errors }}
+        <div class="card overflow-hidden">
+            <table class="table table-sm mb-0 bulk-tariff-table">
+                <thead>
+                    <tr>
+                        <th class="select-column"><input type="checkbox" id="all" aria-label="Select all meters"></th>
+                        <th class="meter-column">Meter</th>
+                        <th class="property-column">Property / Unit</th>
+                        <th class="capability-column">Capability</th>
+                        <th class="status-column">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for meter in meters %}
+                    <tr>
+                        <td class="select-cell" data-label="Select"><input type="checkbox" class="meter-check" value="{{ meter.pk }}" aria-label="Select meter {{ meter.meter_number }}"></td>
+                        <td data-label="Meter">{{ meter.meter_number }}</td>
+                        <td data-label="Property / Unit">{{ meter.unit.property.property_name|default:"—" }} / {{ meter.unit.unit_number|default:"—" }}</td>
+                        <td data-label="Capability">{{ meter.get_tariff_capability_display }}</td>
+                        <td data-label="Status">
+                            {% if meter.is_online %}
+                            <span class="badge rounded-pill bg-success">Online</span>
+                            {% else %}
+                            <span class="badge rounded-pill bg-danger">Offline</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="empty-result">No matching confirmed-capability meters.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </form>
+</div>
+
+<script>
+    const filterForm = document.getElementById('meter-filter-form');
+    document.querySelectorAll('.auto-submit-filter').forEach(select => {
+        select.addEventListener('change', () => filterForm.requestSubmit());
+    });
+
+    const all = document.getElementById('all');
+    const checks = [...document.querySelectorAll('.meter-check')];
+    const hidden = document.getElementById('id_meter_ids');
+    function sync() {
+        hidden.value = checks.filter(checkbox => checkbox.checked).map(checkbox => checkbox.value).join(',');
+        if (all) {
+            all.checked = checks.length > 0 && checks.every(checkbox => checkbox.checked);
+            all.indeterminate = checks.some(checkbox => checkbox.checked) && !all.checked;
+        }
+    }
+    all?.addEventListener('change', () => {
+        checks.forEach(checkbox => { checkbox.checked = all.checked; });
+        sync();
+    });
+    checks.forEach(checkbox => checkbox.addEventListener('change', sync));
+    sync();
+</script>
+{% endblock %}

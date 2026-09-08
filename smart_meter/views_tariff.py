@@ -172,6 +172,8 @@ def tariff_bulk_setup(request):
     return render(request, "smart_meter/tariff_bulk_setup.html", {
         "meters": meter_list, "form": form, "properties": Property.objects.order_by("property_name"),
         "units": Unit.objects.select_related("property").order_by("property__property_name", "unit_number"),
+        "selected_property": property_id, "selected_unit": unit_id,
+        "selected_capability": capability, "selected_online": online,
     })
 
 

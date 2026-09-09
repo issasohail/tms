@@ -11,7 +11,7 @@ from properties.models import Unit
 class IescoStandaloneMeterForm(forms.ModelForm):
     class Meta:
         model = IescoStandaloneMeter
-        fields = ("reference_no", "description", "is_active")
+        fields = ("reference_no", "description", "phone", "is_active")
         widgets = {
             "reference_no": forms.TextInput(
                 attrs={
@@ -25,6 +25,13 @@ class IescoStandaloneMeterForm(forms.ModelForm):
                 attrs={
                     "class": "form-control form-control-sm",
                     "placeholder": "e.g. Office common meter",
+                }
+            ),
+            "phone": forms.TextInput(
+                attrs={
+                    "class": "form-control form-control-sm",
+                    "inputmode": "tel",
+                    "placeholder": "WhatsApp number",
                 }
             ),
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
@@ -102,6 +109,15 @@ class IescoMeterAssignmentForm(forms.Form):
         label="Active",
         help_text="Include this meter in Fetch All Active.",
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    phone = forms.CharField(
+        required=False,
+        max_length=32,
+        label="Standalone WhatsApp number",
+        help_text="Used for reminders only when no property/unit is assigned.",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "inputmode": "tel", "placeholder": "03xx xxxxxxx"}
+        ),
     )
 
     def __init__(self, *args, unit_queryset=None, current_unit=None, current_standalone=None, **kwargs):

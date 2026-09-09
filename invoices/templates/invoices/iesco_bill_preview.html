@@ -17,7 +17,7 @@
         <div class="col-6 col-md-3"><span class="text-muted">Arrears</span><br><strong>{{ bill.arrears_display }}</strong></div>
         <div class="col-6 col-md-3"><span class="text-muted">Current bill</span><br><strong>{{ bill.current_bill_display }}</strong></div>
         <div class="col-6 col-md-3"><span class="text-muted">Grand total</span><br><strong>{{ bill.grand_total_display }}</strong></div>
-        <div class="col-6 col-md-3"><span class="text-muted">Bill status</span><br>{% if bill.current_month_paid is True %}<span class="badge bg-success">Paid</span>{% elif bill.current_month_paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</div>
+        <div class="col-6 col-md-3"><span class="text-muted">Bill status</span><br>{% if bill.payment_status_display == "No payment due" %}<span class="badge bg-info text-dark">No payment due</span>{% elif bill.current_month_paid is True %}<span class="badge bg-success">Paid</span>{% elif bill.current_month_paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</div>
         <div class="col-6 col-md-3"><span class="text-muted">Due date</span><br>{{ bill.due_date|default:"—" }}</div>
         <div class="col-6 col-md-3"><span class="text-muted">Reading date</span><br>{{ bill.reading_date|default:"—" }}</div>
         <div class="col-6 col-md-3"><span class="text-muted">Issue date</span><br>{{ bill.issue_date|default:"—" }}</div>

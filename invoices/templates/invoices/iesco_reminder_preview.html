@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Review IESCO WhatsApp Reminders{% endblock %}
+{% block content %}
+<div class="container-fluid py-3" style="max-width: 1200px;">
+  <div class="d-flex justify-content-between align-items-center mb-3"><div><h2 class="h4 mb-1">Review IESCO WhatsApp Messages</h2><p class="text-muted mb-0">The message includes the saved bill amount and payment status. Bulk reminders remain limited to unpaid bills.</p></div><a class="btn btn-secondary btn-sm" href="{% url 'invoices:iesco_bill_reading_list' %}">Cancel</a></div>
+  {% if rows %}<form method="post" action="{% url 'invoices:iesco_bill_reminders_send' %}">{% csrf_token %}<input type="hidden" name="confirm" value="1">
+    <div class="card"><div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0"><thead><tr><th class="text-center">Property / Unit</th><th class="text-center">Reference</th><th class="text-center">Bill Month</th><th class="text-center">Payment Status</th><th class="text-center">Due Date</th><th class="text-center">Amount</th><th class="text-center">Recipient</th><th class="text-center">Phone</th></tr></thead><tbody>
+    {% for row in rows %}<tr><td><input type="hidden" name="reading_id" value="{{ row.reading.pk }}">{{ row.recipient.label }}</td><td>{{ row.reading.reference_no }}</td><td>{{ row.reading.bill_month }}</td><td>{{ row.reading.payment_status_display }}</td><td>{{ row.reading.due_date|default:"—" }}</td><td>{{ row.reading.grand_total_display }}</td><td>{{ row.recipient.recipient }} <small class="text-muted d-block">{{ row.recipient.source }}</small></td><td>{% if row.recipient.phone %}{{ row.recipient.phone }}{% else %}<span class="text-danger">Missing</span>{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div></div>
+    <div class="d-flex justify-content-end gap-2 mt-3"><a class="btn btn-secondary" href="{% url 'invoices:iesco_bill_reading_list' %}">Cancel</a><button class="btn btn-success" type="submit" {% if not has_sendable %}disabled{% endif %}><i class="fab fa-whatsapp me-1"></i>Send via Meta WhatsApp</button></div>
+  </form>{% else %}<div class="alert alert-info">No bill-status messages are available.</div>{% endif %}
+</div>
+{% endblock %}

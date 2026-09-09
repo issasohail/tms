@@ -246,6 +246,87 @@ class IescoInvoiceAmountChangeRequired(Exception):
         )
 
 
+def _invoice_meter_value(reading, field):
+    rows = reading.register_display_rows
+    if not rows:
+        return "Not available"
+    if len(rows) == 1:
+        return str(rows[0].get(field) or "Not available")
+    return ", ".join(
+        f"{row['short_label']} {row.get(field) or 'N/A'}" for row in rows
+    )
+
+
+def _invoice_usage_text(reading):
+    if reading.has_export_registers:
+        return (
+            f"I {reading.import_units_display}, E {reading.export_units_display}, "
+            f"N {reading.net_units_display}"
+        )
+    return reading.units_display
+
+
+def calculate_iesco_invoice_charge(reading, lease, posting_month):
+    """Return an auditable charge without rebilling verified prior electricity."""
+    current_amount = reading.current_bill_amount
+    grand_total = reading.grand_total_amount
+    arrears = max(reading.arrears_amount or Decimal("0"), Decimal("0"))
+    if current_amount is None:
+        current_amount = grand_total
+    if current_amount is None:
+        raise ValidationError("The IESCO current bill is not a valid amount.")
+
+    prior_item = None
+    credited_prior_amount = Decimal("0")
+    unbilled_arrears = Decimal("0")
+    if arrears > 0 and grand_total is not None:
+        prior_item = (
+            InvoiceItem.objects.select_related("invoice")
+            .filter(
+                invoice__lease=lease,
+                invoice__issue_date__lt=posting_month,
+                category__name="Electricity Charges",
+                description__contains=f"(Ref {reading.reference_no})",
+            )
+            .exclude(invoice__status="cancelled")
+            .exclude(invoice__lifecycle_status__in=("cancelled", "void"))
+            .order_by("-invoice__issue_date", "-id")
+            .first()
+        )
+        if prior_item is not None:
+            credited_prior_amount = min(
+                max(prior_item.amount or Decimal("0"), Decimal("0")),
+                arrears,
+            )
+            unbilled_arrears = arrears - credited_prior_amount
+
+    charge = current_amount + unbilled_arrears
+    if grand_total is not None and arrears > 0:
+        verified_charge = grand_total - credited_prior_amount - (
+            arrears if prior_item is None else Decimal("0")
+        )
+        if charge != verified_charge:
+            raise ValidationError(
+                "The IESCO current bill, arrears, and grand total do not reconcile. "
+                "Review the saved reading before invoicing."
+            )
+
+    if prior_item is not None:
+        explanation = (
+            f"Current Rs. {current_amount:,.2f}; prior billed credit "
+            f"Rs. {credited_prior_amount:,.2f}; new arrears/penalty "
+            f"Rs. {unbilled_arrears:,.2f}"
+        )
+    elif arrears > 0:
+        explanation = (
+            f"Current Rs. {current_amount:,.2f}; arrears Rs. {arrears:,.2f} "
+            "excluded because no prior matching IESCO invoice was verified"
+        )
+    else:
+        explanation = f"Current Rs. {current_amount:,.2f}; no arrears"
+    return charge, explanation, prior_item
+
+
 @transaction.atomic
 def post_reading_to_invoice(
     reading_id: int,
@@ -265,7 +346,10 @@ def post_reading_to_invoice(
         raise ValidationError("Assign this reference number to a unit before posting it.")
     if len(units) > 1:
         raise ValidationError(
-            "This reference number is assigned to more than one unit. Correct the unit records before posting."
+            "The bill reading is saved, but its tenant invoice was not created because "
+            "this reference number is assigned to multiple units. Open the IESCO meter "
+            "list, edit or remove the duplicate assignment so exactly one unit owns this "
+            "reference, then run Make Invoices again."
         )
     unit = units[0]
     month_end = (
@@ -278,15 +362,15 @@ def post_reading_to_invoice(
         Lease.objects.select_for_update()
         .filter(
             unit=unit,
-            status="active",
             start_date__lte=month_end,
             end_date__gte=posting_month,
         )
+        .exclude(status__in=("pending_approval", "rejected"))
         .order_by("-start_date", "-id")
         .first()
     )
     if lease is None:
-        raise ValidationError("No active lease covers the selected invoice month.")
+        raise ValidationError("No approved lease covers the selected invoice month.")
 
     monthly_invoices = list(
         Invoice.objects.select_for_update()
@@ -300,13 +384,19 @@ def post_reading_to_invoice(
         )
     invoice = monthly_invoices[0] if monthly_invoices else ensure_month_invoice(lease, posting_month)
     category, _ = ItemCategory.objects.get_or_create(name="Electricity Charges")
-    description = f"IESCO bill {reading.bill_month} (Ref {reading.reference_no})"
-    bill_amount = reading.current_bill_amount
-    if bill_amount is None:
-        bill_amount = parse_grand_total(reading.grand_total)
+    description_prefix = f"IESCO bill {reading.bill_month} (Ref {reading.reference_no})"
+    bill_amount, calculation, _prior_item = calculate_iesco_invoice_charge(
+        reading, lease, posting_month
+    )
     if bill_amount <= 0:
         raise ValidationError("The IESCO current bill must be greater than zero.")
     new_amount = round_amount_up_to_nearest_10(bill_amount)
+    description = (
+        f"{description_prefix} — Total units consumed {_invoice_usage_text(reading)}; "
+        f"Previous {_invoice_meter_value(reading, 'previous')}; "
+        f"Current {_invoice_meter_value(reading, 'present')}; "
+        f"Due {reading.due_date or 'Not available'} — {calculation}"
+    )
     item = None
     if reading.posted_invoice_item_id:
         item = (
@@ -317,7 +407,11 @@ def post_reading_to_invoice(
     if item is None:
         item = (
             InvoiceItem.objects.select_for_update()
-            .filter(invoice=invoice, category=category, description=description)
+            .filter(
+                invoice=invoice,
+                category=category,
+                description__startswith=description_prefix,
+            )
             .first()
         )
 
@@ -339,8 +433,12 @@ def post_reading_to_invoice(
                 new_amount=new_amount,
             )
         item.amount = new_amount
-        item.save(update_fields=["amount"])
+        item.description = description
+        item.save(update_fields=["amount", "description"])
         action = "updated"
+    elif item.description != description:
+        item.description = description
+        item.save(update_fields=["description"])
 
     reading.posted_invoice_item = item
     if not reading.posted_at:

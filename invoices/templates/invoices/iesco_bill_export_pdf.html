@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+@page { size: A4 landscape; margin: 12mm; }
+body { font-family: Arial, sans-serif; color: #111827; font-size: 7px; }
+h1 { color: #198754; margin: 0 0 12px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid #cbd5e1; padding: 3px; vertical-align: middle; }
+th { background: #198754; color: white; text-align: center; }
+.single { width: 82%; margin: 20px auto; font-size: 12px; }
+.single th { width: 34%; text-align: left; }
+</style></head><body>
+<h1>IESCO Bill {% if single %}Summary{% else %}Readings{% endif %}</h1>
+{% if single %}{% with row=rows.0 %}<table class="single">
+<tr><th>Property / Unit</th><td>{{ row.property_unit }}</td></tr>
+<tr><th>Bill Month / Active</th><td>{{ row.bill_active|linebreaksbr }}</td></tr>
+<tr><th>Reference / Meter #</th><td>{{ row.reference_meter|linebreaksbr }}</td></tr>
+<tr><th>Consumer / Occupant</th><td>{{ row.consumer_tenant|linebreaksbr }}</td></tr>
+<tr><th>Previous / Current</th><td>{{ row.readings|linebreaksbr }}</td></tr>
+<tr><th>Units</th><td>{{ row.units }}</td></tr>
+<tr><th>Per Unit</th><td>{{ row.per_unit }}</td></tr>
+<tr><th>Arrears / Current Bill</th><td>{{ row.charges|linebreaksbr }}</td></tr>
+<tr><th>Grand Total</th><td>{{ row.grand_total }}</td></tr>
+<tr><th>Due Date / Payment</th><td>{{ row.due_payment|linebreaksbr }}</td></tr>
+<tr><th>Last Update / Balance</th><td>{{ row.update_balance|linebreaksbr }}</td></tr>
+</table>{% endwith %}{% else %}<table><thead><tr><th>Property / Unit</th><th>Month / Active</th><th>Reference / Meter #</th><th>Consumer / Occupant</th><th>Previous / Current</th><th>Units</th><th>Per Unit</th><th>Arrears / Current</th><th>Grand Total</th><th>Due / Payment</th><th>Updated / Balance</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ row.property_unit|linebreaksbr }}</td><td>{{ row.bill_active|linebreaksbr }}</td><td>{{ row.reference_meter|linebreaksbr }}</td><td>{{ row.consumer_tenant|linebreaksbr }}</td><td>{{ row.readings|linebreaksbr }}</td><td>{{ row.units }}</td><td>{{ row.per_unit }}</td><td>{{ row.charges|linebreaksbr }}</td><td>{{ row.grand_total }}</td><td>{{ row.due_payment|linebreaksbr }}</td><td>{{ row.update_balance|linebreaksbr }}</td></tr>{% endfor %}
+</tbody></table>{% endif %}
+</body></html>

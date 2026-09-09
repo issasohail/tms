@@ -370,6 +370,7 @@ class IescoBillWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Office common meter")
         self.assertContains(response, "Fetch All Active")
+        self.assertContains(response, "PITC bill fetching should be run from the local Pakistan TMS")
         self.assertContains(response, "<th>#</th>", html=True)
 
         filtered = self.client.get(
@@ -387,10 +388,10 @@ class IescoBillWorkflowTests(TestCase):
             meter_type="3-P",
             units="603",
             meter_readings=[
-                {"direction": "import", "period": "off_peak", "units": "431"},
-                {"direction": "import", "period": "peak", "units": "172"},
-                {"direction": "export", "period": "off_peak", "units": "489"},
-                {"direction": "export", "period": "peak", "units": "0"},
+                {"direction": "import", "period": "off_peak", "previous": "3879", "present": "4310", "units": "431"},
+                {"direction": "import", "period": "peak", "previous": "1000", "present": "1172", "units": "172"},
+                {"direction": "export", "period": "off_peak", "previous": "2000", "present": "2489", "units": "489"},
+                {"direction": "export", "period": "peak", "previous": "0", "present": "0", "units": "0"},
             ],
             current_bill="12,566",
             arrears="0",
@@ -413,6 +414,10 @@ class IescoBillWorkflowTests(TestCase):
         self.assertContains(listing, "iesco-tablet-view")
         self.assertContains(listing, "View Bill")
         self.assertContains(listing, "Off<br>Peak", html=True)
+        self.assertContains(listing, "Imp OP 4310")
+        self.assertContains(listing, "Exp OP 2489")
+        self.assertContains(listing, "<th>Previous</th>", html=True)
+        self.assertContains(listing, "<th>Current</th>", html=True)
         self.assertContains(listing, "Reading Date")
         self.assertNotContains(listing, "iesco-mobile-actions-label")
         self.assertContains(listing, ">View</a>")
@@ -708,13 +713,20 @@ class IescoBillWorkflowTests(TestCase):
         start_data = started.json()
         self.assertEqual(start_data["total"], 3)
         self.assertEqual(
-            set(start_data["sources"]),
+            {source["reference_no"] for source in start_data["sources"]},
             {
                 self.active_unit.electric_meter_num,
                 self.unleased_unit.electric_meter_num,
                 self.standalone.reference_no,
             },
         )
+        active_source = next(
+            source
+            for source in start_data["sources"]
+            if source["reference_no"] == self.active_unit.electric_meter_num
+        )
+        self.assertIn(self.property.property_name, active_source["label"])
+        self.assertIn(self.active_unit.unit_number, active_source["label"])
         self.assertNotIn("iesco_bill_preview", self.client.session)
 
         first = self.client.post(
@@ -874,6 +886,17 @@ class IescoBillWorkflowTests(TestCase):
         reading = IescoBillReading.objects.create(
             reference_no=self.active_unit.electric_meter_num,
             bill_month="AUG 26",
+            units="27",
+            meter_readings=[
+                {
+                    "direction": "import",
+                    "period": "off_peak",
+                    "previous": "100",
+                    "present": "127",
+                    "units": "27",
+                }
+            ],
+            due_date="24 AUG 26",
             grand_total="3,680",
         )
         url = reverse("invoices:iesco_bill_post_to_invoice", args=[reading.pk])
@@ -885,9 +908,121 @@ class IescoBillWorkflowTests(TestCase):
         self.assertIsNotNone(reading.posted_at)
         self.assertIsNotNone(reading.posted_invoice_item_id)
         self.assertEqual(reading.posted_invoice_item.amount, Decimal("3680.00"))
+        self.assertIn("Total units consumed 27", reading.posted_invoice_item.description)
+        self.assertIn("Previous 100", reading.posted_invoice_item.description)
+        self.assertIn("Current 127", reading.posted_invoice_item.description)
+        self.assertIn("Due 24 AUG 26", reading.posted_invoice_item.description)
 
         self.client.post(url, {"posting_month": "2026-08"})
         self.assertEqual(InvoiceItem.objects.count(), 1)
+
+    def test_paid_bill_shows_tenant_balance_and_generated_invoice_state(self):
+        reading = IescoBillReading.objects.create(
+            reference_no=self.active_unit.electric_meter_num,
+            consumer_name="PITC Consumer",
+            bill_month="AUG 26",
+            current_bill="3,000",
+            arrears="0",
+            grand_total="3,000",
+            current_month_paid=True,
+        )
+        list_url = reverse("invoices:iesco_bill_reading_list")
+
+        before = self.client.get(list_url)
+        row = next(
+            item
+            for item in before.context["meter_rows"]
+            if item["reference_no"] == reading.reference_no
+        )
+        self.assertEqual(row["tenant_name"], "Iesco Tenant")
+        self.assertContains(before, "PITC Consumer")
+        self.assertContains(before, "Iesco Tenant")
+        self.assertContains(before, "Balance:")
+        self.assertContains(before, ">Invoice</button>")
+        self.assertContains(
+            before, reverse("leases:lease_detail", args=[self.lease.pk])
+        )
+        self.assertContains(
+            before, reverse("leases:lease_ledger_by_pk", args=[self.lease.pk])
+        )
+        self.assertContains(before, "data-no-invoice")
+        self.assertContains(before, "No WhatsApp phone number")
+
+        self.client.post(
+            reverse("invoices:iesco_bill_post_to_invoice", args=[reading.pk]),
+            {"return_to": "list"},
+        )
+
+        after = self.client.get(list_url)
+        reading.refresh_from_db()
+        self.assertIsNotNone(reading.posted_invoice_item_id)
+        self.assertContains(after, ">ReInvoice</button>")
+        self.assertContains(
+            after, reading.posted_invoice_item.invoice.invoice_number
+        )
+        self.assertContains(
+            after,
+            reverse(
+                "invoices:invoice_detail",
+                args=[reading.posted_invoice_item.invoice_id],
+            ),
+        )
+
+    def test_invoice_adds_only_arrears_above_verified_prior_iesco_charge(self):
+        july = IescoBillReading.objects.create(
+            reference_no=self.active_unit.electric_meter_num,
+            bill_month="JUL 26",
+            current_bill="21,195",
+            arrears="0",
+            grand_total="21,195",
+        )
+        self.client.post(
+            reverse("invoices:iesco_bill_post_to_invoice", args=[july.pk])
+        )
+        july.refresh_from_db()
+        self.assertEqual(july.posted_invoice_item.amount, Decimal("21200.00"))
+
+        august = IescoBillReading.objects.create(
+            reference_no=self.active_unit.electric_meter_num,
+            bill_month="AUG 26",
+            current_bill="21,677",
+            arrears="21,213",
+            grand_total="42,890",
+        )
+        self.client.post(
+            reverse("invoices:iesco_bill_post_to_invoice", args=[august.pk])
+        )
+
+        august.refresh_from_db()
+        self.assertEqual(august.posted_invoice_item.amount, Decimal("21690.00"))
+        self.assertIn(
+            "prior billed credit Rs. 21,200.00",
+            august.posted_invoice_item.description,
+        )
+        self.assertIn(
+            "new arrears/penalty Rs. 13.00",
+            august.posted_invoice_item.description,
+        )
+
+    def test_invoice_excludes_unverified_arrears_without_prior_matching_item(self):
+        reading = IescoBillReading.objects.create(
+            reference_no=self.active_unit.electric_meter_num,
+            bill_month="AUG 26",
+            current_bill="21,677",
+            arrears="21,213",
+            grand_total="42,890",
+        )
+
+        self.client.post(
+            reverse("invoices:iesco_bill_post_to_invoice", args=[reading.pk])
+        )
+
+        reading.refresh_from_db()
+        self.assertEqual(reading.posted_invoice_item.amount, Decimal("21680.00"))
+        self.assertIn(
+            "excluded because no prior matching IESCO invoice was verified",
+            reading.posted_invoice_item.description,
+        )
 
     def test_changed_bill_amount_requires_confirmation_before_invoice_update(self):
         reading = IescoBillReading.objects.create(

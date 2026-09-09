@@ -11,6 +11,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from core.utils.text import smart_title
+from core.model_fields import NormalizedPhoneField
 from properties.models import Property
 
 
@@ -933,6 +934,12 @@ class BillingProgressJob(models.Model):
 class IescoStandaloneMeter(models.Model):
     reference_no = models.CharField(max_length=20, unique=True)
     description = models.CharField(max_length=255)
+    phone = NormalizedPhoneField(
+        max_length=32,
+        blank=True,
+        null=True,
+        help_text="WhatsApp reminder number when this meter is not assigned to a unit.",
+    )
     is_active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -989,6 +996,9 @@ class IescoBillReading(models.Model):
         on_delete=models.SET_NULL,
         related_name="iesco_bill_readings_posted",
     )
+    reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    reminder_phone = NormalizedPhoneField(max_length=32, blank=True, null=True)
+    reminder_error = models.CharField(max_length=500, blank=True, default="")
     bill_pdf = models.FileField(
         upload_to=iesco_bill_pdf_upload_to,
         validators=[FileExtensionValidator(["pdf"])],
@@ -1010,6 +1020,11 @@ class IescoBillReading(models.Model):
 
     @property
     def payment_status_display(self):
+        if (
+            self.grand_total_amount is not None
+            and self.grand_total_amount <= Decimal("0")
+        ):
+            return "No payment due"
         if self.current_month_paid is True:
             return "Paid"
         if self.current_month_paid is False:

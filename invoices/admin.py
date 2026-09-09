@@ -12,9 +12,9 @@ from .models import (
 
 @admin.register(IescoStandaloneMeter)
 class IescoStandaloneMeterAdmin(admin.ModelAdmin):
-    list_display = ("reference_no", "description", "is_active", "updated_at")
+    list_display = ("reference_no", "description", "phone", "is_active", "updated_at")
     list_filter = ("is_active",)
-    search_fields = ("reference_no", "description")
+    search_fields = ("reference_no", "description", "phone")
 
 
 class InvoiceItemInline(admin.TabularInline):

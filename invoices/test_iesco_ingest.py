@@ -98,6 +98,27 @@ class IescoBillIngestTests(TestCase):
         self.assertIs(reading.current_month_paid, True)
         self.assertEqual(reading.payment_status_display, "Paid")
 
+    def test_ingest_derives_current_bill_and_average_rate_from_total_less_arrears(self):
+        payload = dict(
+            self.payload,
+            units="10",
+            current_bill="649",
+            arrears="0",
+            grand_total="845",
+        )
+
+        response = self.post(payload, **self.headers)
+
+        self.assertEqual(response.status_code, 201)
+        reading = IescoBillReading.objects.get()
+        self.assertEqual(reading.current_bill, "845")
+        self.assertEqual(reading.current_bill_amount, Decimal("845"))
+        self.assertEqual(reading.per_unit_rate, Decimal("84.5"))
+        self.assertEqual(
+            reading.per_unit_rate * reading.import_units,
+            reading.grand_total_amount - reading.arrears_amount,
+        )
+
     def test_duplicate_month_updates_without_resetting_received_at(self):
         self.post(**self.headers)
         original = IescoBillReading.objects.get()
@@ -416,12 +437,32 @@ class IescoBillWorkflowTests(TestCase):
         self.assertIn("meter_readings", csv_text)
         self.assertIn(reading.reference_no, csv_text)
 
-    def test_per_unit_rate_uses_current_bill_without_arrears(self):
+    def test_three_phase_meter_without_export_registers_uses_simple_units(self):
+        reading = IescoBillReading.objects.create(
+            reference_no=self.active_unit.electric_meter_num,
+            bill_month="AUG 26",
+            meter_type="3-P",
+            units="73",
+            meter_readings=[
+                {"direction": "import", "period": "off_peak", "units": "73"},
+                {"direction": "import", "period": "peak", "units": "0"},
+            ],
+            current_bill="1,440",
+            grand_total="1,440",
+        )
+
+        self.assertFalse(reading.has_export_registers)
+        self.assertEqual(reading.units_display, "73")
+
+        listing = self.client.get(reverse("invoices:iesco_bill_reading_list"))
+        self.assertNotContains(listing, "<th>Export</th>", html=True)
+
+    def test_per_unit_rate_uses_grand_total_less_arrears(self):
         reading = IescoBillReading.objects.create(
             reference_no=self.active_unit.electric_meter_num,
             bill_month="AUG 26",
             units="414",
-            current_bill="21,677",
+            current_bill="20,000",
             arrears="21,213/2",
             grand_total="42,890",
         )

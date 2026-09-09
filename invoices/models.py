@@ -1036,6 +1036,10 @@ class IescoBillReading(models.Model):
 
     @property
     def current_bill_amount(self):
+        grand_total = self.grand_total_amount
+        arrears = self.arrears_amount
+        if grand_total is not None and arrears is not None:
+            return grand_total - arrears
         return self._decimal_value(self.current_bill)
 
     @property
@@ -1144,6 +1148,13 @@ class IescoBillReading(models.Model):
     @property
     def export_units(self):
         return self._register_total("export")
+
+    @property
+    def has_export_registers(self):
+        return any(
+            isinstance(row, dict) and row.get("direction") == "export"
+            for row in (self.meter_readings or [])
+        )
 
     @property
     def net_units(self):

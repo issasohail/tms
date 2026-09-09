@@ -13,10 +13,20 @@
     --iesco-col-meter: 120px;
     --iesco-col-bill-month: 70px;
     --iesco-col-consumer: 145px;
-    --iesco-col-previous: 80px;
-    --iesco-col-current: 80px;
-    --iesco-col-units: 80px;
-    --iesco-col-per-unit: 80px;
+    --iesco-col-previous: 90px;
+    --iesco-col-current: 90px;
+    /* Units mini-grid: Import/Export label, Off Peak, Peak, and Total. */
+    --iesco-units-label-width: 48px;
+    --iesco-units-off-peak-width: 44px;
+    --iesco-units-peak-width: 48px;
+    --iesco-units-total-width: 52px;
+    --iesco-units-inner-gutter: 12px;
+    --iesco-col-units: calc(
+      var(--iesco-units-label-width) + var(--iesco-units-off-peak-width) +
+      var(--iesco-units-peak-width) + var(--iesco-units-total-width) +
+      var(--iesco-units-inner-gutter)
+    );
+    --iesco-col-per-unit: 90px;
     --iesco-col-arrears: 85px;
     --iesco-col-current-bill: 90px;
     --iesco-col-grand-total: 90px;
@@ -39,8 +49,12 @@
     margin-left: auto;
     margin-right: auto;
   }
-  .iesco-register-summary { width: 158px; min-width: 158px; font-size: .68rem; line-height: 1.1; table-layout: fixed; }
+  .iesco-register-summary { width: 100%; min-width: 0; font-size: .68rem; line-height: 1.1; table-layout: fixed; }
   .iesco-register-summary th, .iesco-register-summary td { padding: .1rem .12rem; white-space: normal; }
+  .iesco-register-summary th:nth-child(1), .iesco-register-summary td:nth-child(1) { width: var(--iesco-units-label-width); }
+  .iesco-register-summary th:nth-child(2), .iesco-register-summary td:nth-child(2) { width: var(--iesco-units-off-peak-width); }
+  .iesco-register-summary th:nth-child(3), .iesco-register-summary td:nth-child(3) { width: var(--iesco-units-peak-width); }
+  .iesco-register-summary th:nth-child(4), .iesco-register-summary td:nth-child(4) { width: var(--iesco-units-total-width); }
   .iesco-register-summary th:not(:first-child), .iesco-register-summary td:not(:first-child) { text-align: right; }
   .iesco-bills-table { width: var(--iesco-table-width); min-width: var(--iesco-table-width); table-layout: fixed; }
   .iesco-bills-table > thead > tr > th { text-align: center !important; vertical-align: middle; }
@@ -169,7 +183,7 @@
       <td data-label="Consumer">{% if reading %}{{ reading.consumer_name|default:reading.consumer_id|default:"—" }}{% else %}—{% endif %}</td>
       <td data-label="Previous Reading"><div class="iesco-reading-lines">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.previous|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<div><span class="text-muted iesco-reading-key">{{ register.short_label }}</span>{{ register.previous|default:"—" }}</div>{% endfor %}{% endif %}{% else %}—{% endif %}</div></td>
       <td data-label="Current Reading"><div class="iesco-reading-lines">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.present|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<div><span class="text-muted iesco-reading-key">{{ register.short_label }}</span>{{ register.present|default:"—" }}</div>{% endfor %}{% endif %}{% else %}—{% endif %}</div></td>
-      <td data-label="Units" class="iesco-units-col">{% if reading.meter_type == "3-P" and reading.meter_readings %}<table class="table table-bordered mb-0 iesco-register-summary"><thead><tr><th></th><th>Off<br>Peak</th><th>Peak</th><th>Total</th></tr></thead><tbody><tr><th>Export</th><td>{{ reading.export_off_peak_display }}</td><td>{{ reading.export_peak_display }}</td><td>{{ reading.export_units_display }}</td></tr><tr><th>Import</th><td>{{ reading.import_off_peak_display }}</td><td>{{ reading.import_peak_display }}</td><td>{{ reading.import_units_display }}</td></tr><tr><th>Net</th><td>{{ reading.net_off_peak_display }}</td><td>{{ reading.net_peak_display }}</td><td>{{ reading.net_units_display }}</td></tr></tbody></table>{% elif reading %}<div class="text-center text-nowrap">{{ reading.units_display }}</div>{% else %}<div class="text-center">—</div>{% endif %}</td>
+      <td data-label="Units" class="iesco-units-col">{% if reading.has_export_registers %}<table class="table table-bordered mb-0 iesco-register-summary"><thead><tr><th></th><th>Off<br>Peak</th><th>Peak</th><th>Total</th></tr></thead><tbody><tr><th>Export</th><td>{{ reading.export_off_peak_display }}</td><td>{{ reading.export_peak_display }}</td><td>{{ reading.export_units_display }}</td></tr><tr><th>Import</th><td>{{ reading.import_off_peak_display }}</td><td>{{ reading.import_peak_display }}</td><td>{{ reading.import_units_display }}</td></tr><tr><th>Net</th><td>{{ reading.net_off_peak_display }}</td><td>{{ reading.net_peak_display }}</td><td>{{ reading.net_units_display }}</td></tr></tbody></table>{% elif reading %}<div class="text-center text-nowrap">{{ reading.units_display }}</div>{% else %}<div class="text-center">—</div>{% endif %}</td>
       <td data-label="Per Unit" class="text-end text-nowrap">{% if reading %}{{ reading.per_unit_rate_display }}{% else %}—{% endif %}</td>
       <td data-label="Arrears" class="text-end text-nowrap">{% if reading %}{{ reading.arrears_display }}{% else %}—{% endif %}</td>
       <td data-label="Current Bill" class="text-end fw-semibold text-nowrap">{% if reading %}{{ reading.current_bill_display }}{% else %}—{% endif %}</td>
@@ -197,7 +211,7 @@
       </div>
       <div class="iesco-tablet-row iesco-tablet-row--8">
         <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Bill Month</span><span class="iesco-tablet-value">{{ reading.bill_month|default:"—" }}</span></div>
-        <div class="iesco-tablet-cell text-center"><span class="iesco-tablet-label">Units</span><span class="iesco-tablet-value">{% if reading.meter_type == "3-P" and reading.meter_readings %}I {{ reading.import_units_display }}<br>E {{ reading.export_units_display }} · N {{ reading.net_units_display }}{% elif reading %}{{ reading.units_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-tablet-cell text-center"><span class="iesco-tablet-label">Units</span><span class="iesco-tablet-value">{% if reading.has_export_registers %}I {{ reading.import_units_display }}<br>E {{ reading.export_units_display }} · N {{ reading.net_units_display }}{% elif reading %}{{ reading.units_display }}{% else %}—{% endif %}</span></div>
         <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Unit Rate</span><span class="iesco-tablet-value">{% if reading %}{{ reading.per_unit_rate_display }}{% else %}—{% endif %}</span></div>
         <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Current Bill</span><span class="iesco-tablet-value fw-semibold">{% if reading %}{{ reading.current_bill_display }}{% else %}—{% endif %}</span></div>
         <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Arrears</span><span class="iesco-tablet-value">{% if reading %}{{ reading.arrears_display }}{% else %}—{% endif %}</span></div>
@@ -235,7 +249,7 @@
         <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Reading Date</span><span class="iesco-mobile-value">{{ reading.reading_date|default:"—" }}</span></div>
       </div>
       <div class="iesco-mobile-row iesco-mobile-row--3">
-        <div class="iesco-mobile-cell text-center"><span class="iesco-mobile-label">Units</span><span class="iesco-mobile-value">{% if reading.meter_type == "3-P" and reading.meter_readings %}I {{ reading.import_units_display }} / E {{ reading.export_units_display }} / N {{ reading.net_units_display }}{% elif reading %}{{ reading.units_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-mobile-cell text-center"><span class="iesco-mobile-label">Units</span><span class="iesco-mobile-value">{% if reading.has_export_registers %}I {{ reading.import_units_display }} / E {{ reading.export_units_display }} / N {{ reading.net_units_display }}{% elif reading %}{{ reading.units_display }}{% else %}—{% endif %}</span></div>
         <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Unit Rate (Avg)</span><span class="iesco-mobile-value">{% if reading %}{{ reading.per_unit_rate_display }}{% else %}—{% endif %}</span></div>
         <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Current Bill</span><span class="iesco-mobile-value fw-semibold">{% if reading %}{{ reading.current_bill_display }}{% else %}—{% endif %}</span></div>
       </div>

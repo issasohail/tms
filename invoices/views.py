@@ -4800,72 +4800,11 @@ def iesco_bill_ingest(request):
     if not isinstance(payload, dict):
         return JsonResponse({"error": "json body must be an object"}, status=400)
 
-    def clean_text(field, max_length, *, required=False):
-        value = payload.get(field)
-        if value is None:
-            value = ""
-        if not isinstance(value, str):
-            raise ValueError(f"{field} must be a string")
-        value = value.strip()
-        if required and not value:
-            raise ValueError(f"{field} required")
-        if len(value) > max_length:
-            raise ValueError(f"{field} must be at most {max_length} characters")
-        return value or None
-
     try:
-        reference_no = clean_text("reference_no", 20, required=True)
-        bill_month = clean_text("bill_month", 20, required=True)
-        text_values = {
-            field: clean_text(field, max_length)
-            for field, max_length in {
-                "consumer_id": 20,
-                "consumer_name": 255,
-                "address": 500,
-                "tariff_category": 100,
-                "units": 20,
-                "reading_date": 20,
-                "issue_date": 20,
-                "due_date": 20,
-                "grand_total": 30,
-            }.items()
-        }
+        from .services_iesco import save_bill_payload
 
-        fetched_at_value = payload.get("fetched_at")
-        fetched_at = None
-        if fetched_at_value not in (None, ""):
-            if not isinstance(fetched_at_value, str):
-                raise ValueError("fetched_at must be an ISO-8601 datetime string")
-            fetched_at = parse_datetime(fetched_at_value)
-            if fetched_at is None:
-                raise ValueError("fetched_at must be an ISO-8601 datetime string")
-            if timezone.is_naive(fetched_at):
-                fetched_at = timezone.make_aware(fetched_at)
-
-        bill_history = payload.get("bill_history")
-        if bill_history is None:
-            bill_history = []
-        if not isinstance(bill_history, list) or len(bill_history) > 24:
-            raise ValueError("bill_history must be a list of at most 24 rows")
-        for row in bill_history:
-            if not isinstance(row, dict):
-                raise ValueError("each bill_history row must be an object")
-
-        current_month_paid = payload.get("current_month_paid")
-        if current_month_paid is not None and not isinstance(current_month_paid, bool):
-            raise ValueError("current_month_paid must be true, false, or null")
-    except ValueError as exc:
-        return JsonResponse({"error": str(exc)}, status=400)
-
-    reading, _ = IescoBillReading.objects.update_or_create(
-        reference_no=reference_no,
-        bill_month=bill_month,
-        defaults={
-            "fetched_at": fetched_at,
-            **text_values,
-            "bill_history": bill_history,
-            "current_month_paid": current_month_paid,
-        },
-    )
+        reading, _ = save_bill_payload(payload)
+    except ValidationError as exc:
+        return JsonResponse({"error": "; ".join(exc.messages)}, status=400)
 
     return JsonResponse({"status": "ok", "id": reading.id}, status=201)

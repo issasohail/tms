@@ -82,14 +82,20 @@ def _clean_text(payload, field, max_length, *, required=False):
     return value or None
 
 
-def _format_amount(value):
+def _decimal_amount(value):
     if not value:
-        return value
-    primary_value = value.split("/", 1)[0]
+        return None
+    primary_value = str(value).split("/", 1)[0]
     cleaned = re.sub(r"[^0-9.\-]", "", primary_value.replace(",", ""))
     try:
-        amount = Decimal(cleaned)
+        return Decimal(cleaned)
     except (InvalidOperation, ValueError):
+        return None
+
+
+def _format_amount(value):
+    amount = _decimal_amount(value)
+    if amount is None:
         return value
     return f"{amount:,.0f}" if amount == amount.to_integral_value() else f"{amount:,.2f}"
 
@@ -108,6 +114,10 @@ def normalize_bill_payload(payload) -> dict:
     values["current_bill"] = _format_amount(values["current_bill"])
     values["arrears"] = _format_amount(values["arrears"])
     values["amount_paid"] = _format_amount(values["amount_paid"])
+    grand_total_amount = _decimal_amount(values["grand_total"])
+    arrears_amount = _decimal_amount(values["arrears"])
+    if grand_total_amount is not None and arrears_amount is not None:
+        values["current_bill"] = _format_amount(grand_total_amount - arrears_amount)
 
     fetched_at_value = payload.get("fetched_at")
     fetched_at = None

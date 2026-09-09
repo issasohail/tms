@@ -167,11 +167,18 @@ def _charge_value(soup: BeautifulSoup, label_text: str) -> str | None:
 def _amount(value: str | None) -> Decimal | None:
     if not value:
         return None
-    cleaned = re.sub(r"[^0-9.\-]", "", value.replace(",", ""))
+    primary_value = str(value).split("/", 1)[0]
+    cleaned = re.sub(r"[^0-9.\-]", "", primary_value.replace(",", ""))
     try:
         return Decimal(cleaned)
     except (InvalidOperation, ValueError):
         return None
+
+
+def _format_amount(value: Decimal) -> str:
+    if value == value.to_integral_value():
+        return f"{value:,.0f}"
+    return f"{value:,.2f}"
 
 
 def parse_bill(html: str, reference_no: str) -> BillResult:
@@ -228,6 +235,10 @@ def parse_bill(html: str, reference_no: str) -> BillResult:
     result.current_bill = _charge_value(soup, "Current Bill")
     result.arrears = _charge_value(soup, "Arrears")
     result.grand_total = _charge_value(soup, "Grand Total")
+    grand_total_amount = _amount(result.grand_total)
+    arrears_amount = _amount(result.arrears)
+    if grand_total_amount is not None and arrears_amount is not None:
+        result.current_bill = _format_amount(grand_total_amount - arrears_amount)
 
     result.amount_paid = _paid_value(soup, "Amount Paid")
     result.payment_date = _paid_value(soup, "Payment Date")

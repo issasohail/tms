@@ -100,7 +100,7 @@ class IescoMeterAssignmentForm(forms.Form):
     is_active = forms.BooleanField(
         required=False,
         label="Active",
-        help_text="Assigned meters must also have a current active lease to be included in Fetch All Active.",
+        help_text="Include this meter in Fetch All Active.",
         widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
     )
 

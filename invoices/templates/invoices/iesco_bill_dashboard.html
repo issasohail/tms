@@ -33,7 +33,7 @@
     --iesco-col-payment-status: 90px;
     --iesco-col-due-date: 85px;
     --iesco-col-last-update: 100px;
-    --iesco-col-actions: 200px;
+    --iesco-col-actions: 300px;
     --iesco-table-width: calc(
       var(--iesco-col-number) + var(--iesco-col-property) + var(--iesco-col-active) +
       var(--iesco-col-reference) + var(--iesco-col-meter) + var(--iesco-col-bill-month) +
@@ -134,6 +134,7 @@
       <div class="d-flex flex-wrap justify-content-end gap-1">
         <a href="{% url 'invoices:iesco_bill_export' %}?{{ request.GET.urlencode }}" class="btn btn-sm btn-success"><i class="fas fa-file-csv me-1"></i>Download Bills CSV</a>
         {% if can_manage %}<form id="iescoCsvUploadForm" method="post" enctype="multipart/form-data" action="{% url 'invoices:iesco_bill_import' %}">{% csrf_token %}<input id="id_iesco_import" class="visually-hidden" type="file" name="file" accept=".csv,text/csv" required><label class="btn btn-sm btn-outline-primary" for="id_iesco_import"><i class="fas fa-upload me-1"></i>Upload Bills CSV</label></form><form id="iescoFetchAllForm" method="post" action="{% url 'invoices:iesco_bill_fetch_all' %}">{% csrf_token %}<input type="hidden" name="property" value="{{ request.GET.property }}"><button id="iescoFetchAllButton" class="btn btn-primary btn-sm" type="submit"><i class="fas fa-cloud-download-alt me-1"></i>Fetch All Active</button></form><a href="{% url 'invoices:iesco_reference_export' %}?property={{ request.GET.property }}" class="btn btn-sm btn-outline-success"><i class="fas fa-list me-1"></i>Download References</a><form id="iescoReferenceUploadForm" method="post" enctype="multipart/form-data" action="{% url 'invoices:iesco_reference_fetch' %}">{% csrf_token %}<input id="id_iesco_reference_import" class="visually-hidden" type="file" name="file" accept=".csv,text/csv" required><label class="btn btn-sm btn-outline-info" for="id_iesco_reference_import"><i class="fas fa-sync-alt me-1"></i>Fetch Reference CSV</label></form>{% endif %}
+        {% if can_post %}<form method="post" action="{% url 'invoices:iesco_bill_make_invoices_bulk' %}">{% csrf_token %}{% for row in meter_rows %}{% if row.reading and row.unit %}<input type="hidden" name="reading_id" value="{{ row.reading.pk }}">{% endif %}{% endfor %}<button class="btn btn-sm btn-warning" type="submit"><i class="fas fa-file-invoice-dollar me-1"></i>Make Invoices</button></form>{% endif %}
         {% if can_add_standalone %}<button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#standaloneMeterForm"><i class="fas fa-plus me-1"></i>Add Other Meter</button>{% endif %}
         <a href="{% url 'invoices:invoice_list' %}" class="btn btn-sm btn-secondary"><i class="fas fa-arrow-left me-1"></i>Invoices</a>
       </div>
@@ -198,6 +199,7 @@
           {% if row.unit %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'unit' row.unit.pk %}" title="Edit meter number"><i class="fas fa-pencil-alt"></i></a>{% elif row.standalone %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'standalone' row.standalone.pk %}" title="Edit meter"><i class="fas fa-pencil-alt"></i></a>{% endif %}
           <form method="post" action="{% url 'invoices:iesco_bill_fetch_one' row.reference_no %}" class="d-inline">{% csrf_token %}<button class="btn btn-primary btn-sm" type="submit" title="Fetch latest bill"><i class="fas fa-sync-alt"></i> Fetch</button></form>
         {% endif %}
+        {% if can_post and reading and row.unit %}<form method="post" action="{% url 'invoices:iesco_bill_post_to_invoice' reading.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="return_to" value="list"><button class="btn btn-success btn-sm" type="submit" title="Make or review the invoice for {{ reading.bill_month }}"><i class="fas fa-file-invoice-dollar"></i> Invoice</button></form>{% endif %}
       </div></td>
     </tr>{% endwith %}{% empty %}<tr><td colspan="18" class="text-center text-muted py-4">No valid IESCO meters found.</td></tr>{% endfor %}</tbody>
   </table></div>
@@ -225,6 +227,7 @@
           {% if reading.bill_pdf %}<a class="btn btn-danger btn-sm" href="{{ reading.bill_pdf.url }}" target="_blank" rel="noopener">PDF</a>{% endif %}
           <a class="btn btn-info btn-sm" href="{% url 'invoices:iesco_bill_pitc' row.reference_no %}" target="_blank" rel="noopener">View Bill</a>
           {% if can_manage %}{% if row.unit %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'unit' row.unit.pk %}">Edit</a>{% elif row.standalone %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'standalone' row.standalone.pk %}">Edit</a>{% endif %}<form method="post" action="{% url 'invoices:iesco_bill_fetch_one' row.reference_no %}">{% csrf_token %}<button class="btn btn-primary btn-sm" type="submit">Fetch</button></form>{% endif %}
+          {% if can_post and reading and row.unit %}<form method="post" action="{% url 'invoices:iesco_bill_post_to_invoice' reading.pk %}">{% csrf_token %}<input type="hidden" name="return_to" value="list"><button class="btn btn-success btn-sm" type="submit">Invoice</button></form>{% endif %}
         </div>
         <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Previous</span><span class="iesco-tablet-value">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.previous|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<span class="d-block"><span class="text-muted iesco-reading-key">{{ register.short_label }}</span>{{ register.previous|default:"—" }}</span>{% endfor %}{% endif %}{% else %}—{% endif %}</span></div>
         <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Current</span><span class="iesco-tablet-value">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.present|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<span class="d-block"><span class="text-muted iesco-reading-key">{{ register.short_label }}</span>{{ register.present|default:"—" }}</span>{% endfor %}{% endif %}{% else %}—{% endif %}</span></div>
@@ -267,6 +270,7 @@
         {% if reading.bill_pdf %}<a class="btn btn-danger btn-sm" href="{{ reading.bill_pdf.url }}" target="_blank" rel="noopener">PDF</a>{% endif %}
         <a class="btn btn-info btn-sm" href="{% url 'invoices:iesco_bill_pitc' row.reference_no %}" target="_blank" rel="noopener">View Bill</a>
         {% if can_manage %}{% if row.unit %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'unit' row.unit.pk %}">Edit</a>{% elif row.standalone %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'standalone' row.standalone.pk %}">Edit</a>{% endif %}<form method="post" action="{% url 'invoices:iesco_bill_fetch_one' row.reference_no %}">{% csrf_token %}<button class="btn btn-primary btn-sm" type="submit">Fetch</button></form>{% endif %}
+        {% if can_post and reading and row.unit %}<form method="post" action="{% url 'invoices:iesco_bill_post_to_invoice' reading.pk %}">{% csrf_token %}<input type="hidden" name="return_to" value="list"><button class="btn btn-success btn-sm" type="submit">Invoice</button></form>{% endif %}
       </div>
     </article>
     {% endwith %}{% empty %}<div class="alert alert-secondary">No valid IESCO meters found.</div>{% endfor %}

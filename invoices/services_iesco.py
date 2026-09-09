@@ -15,7 +15,13 @@ from leases.models import Lease
 from properties.models import Unit
 
 from .iesco_bill_fetch import get_bill
-from .models import IescoBillReading, InvoiceItem, ItemCategory
+from .models import (
+    IescoBillReading,
+    Invoice,
+    InvoiceItem,
+    ItemCategory,
+    round_amount_up_to_nearest_10,
+)
 from .services import ensure_month_invoice
 
 
@@ -227,11 +233,28 @@ def parse_grand_total(value) -> Decimal:
     return amount.quantize(Decimal("0.01"))
 
 
+class IescoInvoiceAmountChangeRequired(Exception):
+    def __init__(self, *, reading, invoice, item, new_amount):
+        self.reading = reading
+        self.invoice = invoice
+        self.item = item
+        self.old_amount = item.amount
+        self.new_amount = new_amount
+        super().__init__(
+            f"Invoice amount changed from Rs. {self.old_amount:,.2f} "
+            f"to Rs. {self.new_amount:,.2f}."
+        )
+
+
 @transaction.atomic
-def post_reading_to_invoice(reading_id: int, posting_month: date, *, user=None):
+def post_reading_to_invoice(
+    reading_id: int,
+    posting_month: date,
+    *,
+    user=None,
+    confirm_amount_change=False,
+):
     reading = IescoBillReading.objects.select_for_update().get(pk=reading_id)
-    if reading.posted_at:
-        raise ValidationError("This IESCO bill has already been posted to an invoice.")
 
     units = list(
         Unit.objects.select_related("property").filter(
@@ -252,7 +275,8 @@ def post_reading_to_invoice(reading_id: int, posting_month: date, *, user=None):
     )
     month_end = month_end - timezone.timedelta(days=1)
     lease = (
-        Lease.objects.filter(
+        Lease.objects.select_for_update()
+        .filter(
             unit=unit,
             status="active",
             start_date__lte=month_end,
@@ -264,24 +288,66 @@ def post_reading_to_invoice(reading_id: int, posting_month: date, *, user=None):
     if lease is None:
         raise ValidationError("No active lease covers the selected invoice month.")
 
-    invoice = ensure_month_invoice(lease, posting_month)
+    monthly_invoices = list(
+        Invoice.objects.select_for_update()
+        .filter(lease=lease, issue_date=posting_month)
+        .order_by("id")[:2]
+    )
+    if len(monthly_invoices) > 1:
+        raise ValidationError(
+            "More than one invoice already exists for this lease and billing month. "
+            "Resolve the duplicate invoices before posting the IESCO bill."
+        )
+    invoice = monthly_invoices[0] if monthly_invoices else ensure_month_invoice(lease, posting_month)
     category, _ = ItemCategory.objects.get_or_create(name="Electricity Charges")
     description = f"IESCO bill {reading.bill_month} (Ref {reading.reference_no})"
-    item, created = InvoiceItem.objects.get_or_create(
-        invoice=invoice,
-        category=category,
-        description=description,
-        defaults={"amount": parse_grand_total(reading.grand_total)},
-    )
-    if not created and item.amount != parse_grand_total(reading.grand_total):
-        item.amount = parse_grand_total(reading.grand_total)
+    bill_amount = reading.current_bill_amount
+    if bill_amount is None:
+        bill_amount = parse_grand_total(reading.grand_total)
+    if bill_amount <= 0:
+        raise ValidationError("The IESCO current bill must be greater than zero.")
+    new_amount = round_amount_up_to_nearest_10(bill_amount)
+    item = None
+    if reading.posted_invoice_item_id:
+        item = (
+            InvoiceItem.objects.select_for_update()
+            .filter(pk=reading.posted_invoice_item_id, invoice=invoice)
+            .first()
+        )
+    if item is None:
+        item = (
+            InvoiceItem.objects.select_for_update()
+            .filter(invoice=invoice, category=category, description=description)
+            .first()
+        )
+
+    action = "unchanged"
+    if item is None:
+        item = InvoiceItem.objects.create(
+            invoice=invoice,
+            category=category,
+            description=description,
+            amount=new_amount,
+        )
+        action = "created"
+    elif item.amount != new_amount:
+        if not confirm_amount_change:
+            raise IescoInvoiceAmountChangeRequired(
+                reading=reading,
+                invoice=invoice,
+                item=item,
+                new_amount=new_amount,
+            )
+        item.amount = new_amount
         item.save(update_fields=["amount"])
+        action = "updated"
 
     reading.posted_invoice_item = item
-    reading.posted_at = timezone.now()
+    if not reading.posted_at:
+        reading.posted_at = timezone.now()
     reading.posted_by = user if getattr(user, "is_authenticated", False) else None
     reading.save(update_fields=["posted_invoice_item", "posted_at", "posted_by", "updated_at"])
-    return invoice, item
+    return invoice, item, action
 
 
 def payload_to_csv_row(payload: dict) -> dict:

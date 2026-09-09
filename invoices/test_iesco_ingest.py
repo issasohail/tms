@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from invoices.models import IescoBillReading, IescoStandaloneMeter, InvoiceItem
+from invoices.models import IescoBillReading, IescoStandaloneMeter, Invoice, InvoiceItem
 from leases.models import Lease
 from properties.models import Property, Unit
 from tenants.models import Tenant
@@ -306,6 +306,7 @@ class IescoBillWorkflowTests(TestCase):
             property=self.other_property,
             unit_number="B-1",
             electric_meter_num="17146151548913",
+            iesco_bill_active=False,
         )
         tenant = Tenant.objects.create(
             first_name="IESCO",
@@ -673,7 +674,7 @@ class IescoBillWorkflowTests(TestCase):
         self.assertEqual(reading.grand_total, "4,000")
 
     @patch("invoices.views_iesco.fetch_bill_payload")
-    def test_fetch_all_uses_active_leases_and_active_standalone_meters(self, fetch):
+    def test_fetch_all_uses_iesco_active_units_and_active_standalone_meters(self, fetch):
         fetch.side_effect = lambda reference_no, description="": self._payload(
             reference_no, description=description
         )
@@ -686,9 +687,13 @@ class IescoBillWorkflowTests(TestCase):
         fetched_refs = {call.args[0] for call in fetch.call_args_list}
         self.assertEqual(
             fetched_refs,
-            {self.active_unit.electric_meter_num, self.standalone.reference_no},
+            {
+                self.active_unit.electric_meter_num,
+                self.unleased_unit.electric_meter_num,
+                self.standalone.reference_no,
+            },
         )
-        self.assertEqual(IescoBillReading.objects.count(), 2)
+        self.assertEqual(IescoBillReading.objects.count(), 3)
 
     @patch("invoices.views_iesco.fetch_bill_payload")
     def test_ajax_fetch_all_saves_one_meter_at_a_time(self, fetch):
@@ -701,10 +706,14 @@ class IescoBillWorkflowTests(TestCase):
 
         self.assertEqual(started.status_code, 200)
         start_data = started.json()
-        self.assertEqual(start_data["total"], 2)
+        self.assertEqual(start_data["total"], 3)
         self.assertEqual(
             set(start_data["sources"]),
-            {self.active_unit.electric_meter_num, self.standalone.reference_no},
+            {
+                self.active_unit.electric_meter_num,
+                self.unleased_unit.electric_meter_num,
+                self.standalone.reference_no,
+            },
         )
         self.assertNotIn("iesco_bill_preview", self.client.session)
 
@@ -830,7 +839,8 @@ class IescoBillWorkflowTests(TestCase):
         self.assertIn("reference_no,description", csv_text)
         self.assertIn(self.active_unit.electric_meter_num, csv_text)
         self.assertIn(self.standalone.reference_no, csv_text)
-        self.assertNotIn(self.unleased_unit.electric_meter_num, csv_text)
+        self.assertIn(self.unleased_unit.electric_meter_num, csv_text)
+        self.assertNotIn(self.other_unit.electric_meter_num, csv_text)
         self.assertNotIn("17146151548915", csv_text)
 
     @patch("invoices.views_iesco.fetch_bill_payload")
@@ -878,6 +888,97 @@ class IescoBillWorkflowTests(TestCase):
 
         self.client.post(url, {"posting_month": "2026-08"})
         self.assertEqual(InvoiceItem.objects.count(), 1)
+
+    def test_changed_bill_amount_requires_confirmation_before_invoice_update(self):
+        reading = IescoBillReading.objects.create(
+            reference_no=self.active_unit.electric_meter_num,
+            bill_month="AUG 26",
+            current_bill="3,680",
+            arrears="0",
+            grand_total="3,680",
+        )
+        url = reverse("invoices:iesco_bill_post_to_invoice", args=[reading.pk])
+        self.client.post(url)
+        reading.refresh_from_db()
+        item = reading.posted_invoice_item
+
+        reading.current_bill = "4,000"
+        reading.grand_total = "4,000"
+        reading.save(update_fields=["current_bill", "grand_total"])
+        review = self.client.post(url)
+
+        self.assertContains(review, "Confirm IESCO invoice update")
+        self.assertContains(review, "Existing Amount")
+        item.refresh_from_db()
+        self.assertEqual(item.amount, Decimal("3680.00"))
+
+        confirmed = self.client.post(
+            url, {"confirm_amount_change": "1"}, follow=True
+        )
+        self.assertContains(confirmed, "updated on invoice")
+        item.refresh_from_db()
+        self.assertEqual(item.amount, Decimal("4000.00"))
+        self.assertEqual(InvoiceItem.objects.count(), 1)
+
+    def test_bulk_make_invoices_is_idempotent_for_the_same_billing_month(self):
+        second_tenant = Tenant.objects.create(
+            first_name="Second",
+            last_name="Tenant",
+            cnic="12345-1234567-9",
+        )
+        Lease.objects.create(
+            tenant=second_tenant,
+            unit=self.unleased_unit,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+            monthly_rent=Decimal("20000.00"),
+            status="active",
+        )
+        readings = [
+            IescoBillReading.objects.create(
+                reference_no=unit.electric_meter_num,
+                bill_month="AUG 26",
+                current_bill=amount,
+                arrears="0",
+                grand_total=amount,
+            )
+            for unit, amount in (
+                (self.active_unit, "3,680"),
+                (self.unleased_unit, "2,500"),
+            )
+        ]
+        url = reverse("invoices:iesco_bill_make_invoices_bulk")
+        payload = {"reading_id": [str(reading.pk) for reading in readings]}
+
+        first = self.client.post(url, payload, follow=True)
+        self.assertContains(first, "2 created")
+        self.assertEqual(Invoice.objects.count(), 2)
+        self.assertEqual(InvoiceItem.objects.count(), 2)
+
+        second = self.client.post(url, payload, follow=True)
+        self.assertContains(second, "2 unchanged")
+        self.assertEqual(Invoice.objects.count(), 2)
+        self.assertEqual(InvoiceItem.objects.count(), 2)
+
+    def test_reference_detail_shows_august_and_september_saved_bills(self):
+        for month, amount in (("AUG 26", "3,680"), ("SEP 26", "4,100")):
+            IescoBillReading.objects.create(
+                reference_no=self.active_unit.electric_meter_num,
+                bill_month=month,
+                current_bill=amount,
+                arrears="0",
+                grand_total=amount,
+            )
+
+        response = self.client.get(
+            reverse(
+                "invoices:iesco_bill_reading_detail",
+                args=[self.active_unit.electric_meter_num],
+            )
+        )
+
+        self.assertContains(response, "AUG 26")
+        self.assertContains(response, "SEP 26")
 
     def test_standalone_bill_cannot_be_posted_to_invoice(self):
         reading = IescoBillReading.objects.create(

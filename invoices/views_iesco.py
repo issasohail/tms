@@ -30,6 +30,7 @@ from .forms import IescoMeterAssignmentForm, IescoStandaloneMeterForm
 from .models import IescoBillReading, IescoStandaloneMeter
 from .services_iesco import (
     IESCO_EXPORT_FIELDS,
+    IescoInvoiceAmountChangeRequired,
     bill_month_start,
     fetch_bill_payload,
     normalize_bill_payload,
@@ -59,13 +60,7 @@ def _valid_unit_meters(user, *, property_id=None, active_only=False):
     if property_id:
         queryset = queryset.filter(property_id=property_id)
     if active_only:
-        today = timezone.localdate()
-        queryset = queryset.filter(
-            iesco_bill_active=True,
-            leases__status="active",
-            leases__start_date__lte=today,
-            leases__end_date__gte=today,
-        )
+        queryset = queryset.filter(iesco_bill_active=True)
     return queryset.order_by("property__property_name", "unit_number", "id").distinct()
 
 
@@ -446,6 +441,9 @@ class IescoBillReadingListView(LoginRequiredMixin, ListView):
         context["standalone_form"] = IescoStandaloneMeterForm()
         context["can_manage"] = self.request.user.is_superuser or self.request.user.has_perm(
             "invoices.change_iescobillreading"
+        )
+        context["can_post"] = self.request.user.is_superuser or self.request.user.has_perm(
+            "invoices.add_invoiceitem"
         )
         context["can_add_standalone"] = has_all_property_access(
             self.request.user
@@ -1142,19 +1140,136 @@ def post_to_invoice(request, pk):
     if reading is None:
         raise Http404
     _ensure_reference_access(request.user, reading.reference_no)
-    month_value = (request.POST.get("posting_month") or "").strip()
     try:
-        posting_month = datetime.strptime(month_value, "%Y-%m").date().replace(day=1)
-        invoice, _item = post_reading_to_invoice(
-            reading.pk, posting_month, user=request.user
+        posting_month = bill_month_start(reading.bill_month)
+        invoice, _item, action = post_reading_to_invoice(
+            reading.pk,
+            posting_month,
+            user=request.user,
+            confirm_amount_change=request.POST.get("confirm_amount_change") == "1",
         )
-    except (ValueError, ValidationError) as exc:
+    except IescoInvoiceAmountChangeRequired as exc:
+        return render(
+            request,
+            "invoices/iesco_invoice_amount_changes.html",
+            {
+                "changes": [_invoice_change_row(exc)],
+                "confirm_url": reverse(
+                    "invoices:iesco_bill_post_to_invoice", args=[reading.pk]
+                ),
+                "return_url": reverse(
+                    "invoices:iesco_bill_reading_detail",
+                    args=[reading.reference_no],
+                ),
+                "title": "Confirm IESCO invoice update",
+            },
+        )
+    except ValidationError as exc:
         messages.error(request, _validation_message(exc))
     else:
+        success_text = {
+            "created": f"IESCO bill posted to invoice {invoice.invoice_number}.",
+            "updated": f"IESCO bill updated on invoice {invoice.invoice_number}.",
+            "unchanged": f"IESCO bill already matches invoice {invoice.invoice_number}.",
+        }[action]
+        messages.success(request, success_text)
+    if request.POST.get("return_to") == "list":
+        return redirect("invoices:iesco_bill_reading_list")
+    return redirect("invoices:iesco_bill_reading_detail", reference_no=reading.reference_no)
+
+
+def _invoice_change_row(change):
+    unit = (
+        Unit.objects.select_related("property")
+        .filter(electric_meter_num=change.reading.reference_no)
+        .first()
+    )
+    return {
+        "reading_id": change.reading.pk,
+        "reference_no": change.reading.reference_no,
+        "bill_month": change.reading.bill_month,
+        "unit_label": (
+            f"{unit.property.property_name} / {unit.unit_number}"
+            if unit
+            else "Unassigned meter"
+        ),
+        "invoice_number": change.invoice.invoice_number,
+        "old_amount": change.old_amount,
+        "new_amount": change.new_amount,
+        "difference": change.new_amount - change.old_amount,
+    }
+
+
+@login_required
+@require_POST
+def make_invoices_bulk(request):
+    if not (
+        request.user.is_superuser or request.user.has_perm("invoices.add_invoiceitem")
+    ):
+        raise PermissionDenied
+
+    raw_ids = list(dict.fromkeys(request.POST.getlist("reading_id")))
+    if len(raw_ids) > 100:
+        messages.error(request, "Bulk invoice creation is limited to 100 readings.")
+        return redirect("invoices:iesco_bill_reading_list")
+    try:
+        reading_ids = [int(value) for value in raw_ids]
+    except (TypeError, ValueError):
+        messages.error(request, "The selected IESCO readings are invalid.")
+        return redirect("invoices:iesco_bill_reading_list")
+    if not reading_ids:
+        messages.info(request, "No invoice-ready IESCO readings are visible.")
+        return redirect("invoices:iesco_bill_reading_list")
+
+    readings = {
+        reading.pk: reading
+        for reading in IescoBillReading.objects.filter(pk__in=reading_ids)
+    }
+    confirm_changes = request.POST.get("confirm_amount_change") == "1"
+    counts = {"created": 0, "updated": 0, "unchanged": 0}
+    changes = []
+    errors = []
+    for reading_id in reading_ids:
+        reading = readings.get(reading_id)
+        if reading is None:
+            errors.append(f"Reading {reading_id} was not found.")
+            continue
+        try:
+            _ensure_reference_access(request.user, reading.reference_no)
+            posting_month = bill_month_start(reading.bill_month)
+            _invoice, _item, action = post_reading_to_invoice(
+                reading.pk,
+                posting_month,
+                user=request.user,
+                confirm_amount_change=confirm_changes,
+            )
+            counts[action] += 1
+        except IescoInvoiceAmountChangeRequired as exc:
+            changes.append(_invoice_change_row(exc))
+        except (Http404, ValidationError) as exc:
+            errors.append(f"{reading.reference_no}: {_validation_message(exc)}")
+
+    if changes:
+        return render(
+            request,
+            "invoices/iesco_invoice_amount_changes.html",
+            {
+                "changes": changes,
+                "errors": errors,
+                "counts": counts,
+                "confirm_url": reverse("invoices:iesco_bill_make_invoices_bulk"),
+                "return_url": reverse("invoices:iesco_bill_reading_list"),
+                "title": "Confirm changed IESCO invoice amounts",
+            },
+        )
+
+    if any(counts.values()):
         messages.success(
             request,
-            f"IESCO bill posted to invoice {invoice.invoice_number}.",
+            "IESCO invoices processed: "
+            f"{counts['created']} created, {counts['updated']} updated, "
+            f"{counts['unchanged']} unchanged.",
         )
-    return redirect(
-        reverse("invoices:iesco_bill_reading_detail", args=[reading.reference_no])
-    )
+    if errors:
+        messages.warning(request, f"{len(errors)} reading(s) were skipped. {errors[0]}")
+    return redirect("invoices:iesco_bill_reading_list")

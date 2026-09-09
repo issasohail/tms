@@ -1,8 +1,9 @@
 from decimal import ROUND_CEILING, Decimal
+import re
 
 from django.conf import settings
 from django.core.cache import cache
-from django.core.validators import MinValueValidator
+from django.core.validators import FileExtensionValidator, MinValueValidator
 from django.db import models
 from django.db.models import Sum
 from django.db.models.signals import post_delete, post_save
@@ -929,6 +930,25 @@ class BillingProgressJob(models.Model):
         return f"{self.get_action_display()} for run {self.billing_run_id}: {self.get_status_display()}"
 
 
+class IescoStandaloneMeter(models.Model):
+    reference_no = models.CharField(max_length=20, unique=True)
+    description = models.CharField(max_length=255)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["description", "reference_no"]
+
+    def __str__(self):
+        return f"{self.description} — {self.reference_no}"
+
+
+def iesco_bill_pdf_upload_to(instance, _filename):
+    month = re.sub(r"[^A-Za-z0-9_-]+", "-", instance.bill_month or "unknown")
+    return f"invoices/iesco_bill_pdfs/{instance.reference_no}/{month}.pdf"
+
+
 class IescoBillReading(models.Model):
     reference_no = models.CharField(max_length=20)
     fetched_at = models.DateTimeField(null=True, blank=True)
@@ -936,18 +956,46 @@ class IescoBillReading(models.Model):
     consumer_name = models.CharField(max_length=255, blank=True, null=True)
     address = models.CharField(max_length=500, blank=True, null=True)
     tariff_category = models.CharField(max_length=100, blank=True, null=True)
+    meter_type = models.CharField(max_length=20, blank=True, null=True)
+    meter_readings = models.JSONField(blank=True, default=list)
     units = models.CharField(max_length=20, blank=True, null=True)
     bill_month = models.CharField(max_length=20)
     reading_date = models.CharField(max_length=20, blank=True, null=True)
     issue_date = models.CharField(max_length=20, blank=True, null=True)
     due_date = models.CharField(max_length=20, blank=True, null=True)
+    current_bill = models.CharField(max_length=30, blank=True, null=True)
+    arrears = models.CharField(max_length=30, blank=True, null=True)
     grand_total = models.CharField(max_length=30, blank=True, null=True)
+    amount_paid = models.CharField(max_length=30, blank=True, null=True)
+    payment_date = models.CharField(max_length=20, blank=True, null=True)
     bill_history = models.JSONField(blank=True, default=list)
     current_month_paid = models.BooleanField(
         blank=True,
         null=True,
-        help_text="Paid status of the most recent completed month in PITC bill history.",
+        help_text="Paid status of the currently displayed PITC bill.",
     )
+    posted_invoice_item = models.OneToOneField(
+        "InvoiceItem",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="iesco_bill_reading",
+    )
+    posted_at = models.DateTimeField(null=True, blank=True)
+    posted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="iesco_bill_readings_posted",
+    )
+    bill_pdf = models.FileField(
+        upload_to=iesco_bill_pdf_upload_to,
+        validators=[FileExtensionValidator(["pdf"])],
+        null=True,
+        blank=True,
+    )
+    pdf_uploaded_at = models.DateTimeField(null=True, blank=True)
     received_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -967,6 +1015,162 @@ class IescoBillReading(models.Model):
         if self.current_month_paid is False:
             return "Unpaid"
         return "Unknown"
+
+    @staticmethod
+    def _decimal_value(value):
+        primary_value = str(value or "").split("/", 1)[0]
+        cleaned = re.sub(r"[^0-9.\-]", "", primary_value.replace(",", ""))
+        try:
+            return Decimal(cleaned)
+        except Exception:
+            return None
+
+    @property
+    def grand_total_amount(self):
+        return self._decimal_value(self.grand_total)
+
+    @property
+    def grand_total_display(self):
+        amount = self.grand_total_amount
+        return f"Rs. {amount:,.0f}" if amount is not None else "—"
+
+    @property
+    def current_bill_amount(self):
+        return self._decimal_value(self.current_bill)
+
+    @property
+    def current_bill_display(self):
+        amount = self.current_bill_amount
+        return f"Rs. {amount:,.0f}" if amount is not None else "—"
+
+    @property
+    def arrears_amount(self):
+        return self._decimal_value(self.arrears)
+
+    @property
+    def arrears_display(self):
+        amount = self.arrears_amount
+        return f"Rs. {amount:,.0f}" if amount is not None else "—"
+
+    @property
+    def meter_number_display(self):
+        numbers = []
+        for row in self.meter_readings or []:
+            match = re.search(r"\d{6,}", str(row.get("meter_no") or ""))
+            if match and match.group(0) not in numbers:
+                numbers.append(match.group(0))
+        return ", ".join(numbers) if numbers else "—"
+
+    @property
+    def register_display_rows(self):
+        rows = []
+        for row in self.meter_readings or []:
+            direction = "Exp" if row.get("direction") == "export" else "Imp"
+            period = "OP" if row.get("period") == "off_peak" else "P"
+            rows.append({**row, "short_label": f"{direction} {period}"})
+        return rows
+
+    def _register_total(self, direction):
+        values = []
+        for row in self.meter_readings or []:
+            if row.get("direction") == direction:
+                value = self._decimal_value(row.get("units"))
+                if value is not None:
+                    values.append(value)
+        return sum(values, Decimal("0")) if values else None
+
+    def _register_value(self, direction, period):
+        for row in self.meter_readings or []:
+            if row.get("direction") == direction and row.get("period") == period:
+                return self._decimal_value(row.get("units"))
+        return None
+
+    @staticmethod
+    def _units_number_display(value):
+        if value is None:
+            return "—"
+        if value == value.to_integral_value():
+            return f"{value:,.0f}"
+        return f"{value:,.2f}"
+
+    @property
+    def import_off_peak_display(self):
+        return self._units_number_display(self._register_value("import", "off_peak"))
+
+    @property
+    def import_peak_display(self):
+        return self._units_number_display(self._register_value("import", "peak"))
+
+    @property
+    def export_off_peak_display(self):
+        return self._units_number_display(self._register_value("export", "off_peak"))
+
+    @property
+    def export_peak_display(self):
+        return self._units_number_display(self._register_value("export", "peak"))
+
+    @property
+    def net_off_peak_display(self):
+        imported = self._register_value("import", "off_peak")
+        exported = self._register_value("export", "off_peak")
+        return self._units_number_display(
+            imported - exported if imported is not None and exported is not None else None
+        )
+
+    @property
+    def net_peak_display(self):
+        imported = self._register_value("import", "peak")
+        exported = self._register_value("export", "peak")
+        return self._units_number_display(
+            imported - exported if imported is not None and exported is not None else None
+        )
+
+    @property
+    def import_units_display(self):
+        return self._units_number_display(self.import_units)
+
+    @property
+    def export_units_display(self):
+        return self._units_number_display(self.export_units)
+
+    @property
+    def net_units_display(self):
+        return self._units_number_display(self.net_units)
+
+    @property
+    def import_units(self):
+        return self._register_total("import") or self._decimal_value(self.units)
+
+    @property
+    def export_units(self):
+        return self._register_total("export")
+
+    @property
+    def net_units(self):
+        imported = self.import_units
+        exported = self.export_units
+        return imported - exported if imported is not None and exported is not None else None
+
+    @property
+    def per_unit_rate(self):
+        amount = self.current_bill_amount
+        units = self.import_units
+        return amount / units if amount is not None and units and units > 0 else None
+
+    @property
+    def per_unit_rate_display(self):
+        rate = self.per_unit_rate
+        return f"Rs. {rate:,.2f}" if rate is not None else "—"
+
+    @property
+    def units_display(self):
+        imported = self.import_units
+        exported = self.export_units
+        if imported is None:
+            return "—"
+        if exported is not None:
+            return f"Import {imported:,.0f} / Export {exported:,.0f} / Net {self.net_units:,.0f}"
+        return f"{imported:,.0f}"
 
     def __str__(self):
         return f"{self.reference_no} — {self.bill_month} — {self.grand_total}"

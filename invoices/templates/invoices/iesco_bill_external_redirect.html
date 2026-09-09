@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Opening PITC bill</title>
+</head>
+<body>
+  <p>Opening PITC bill {{ reference_no }}…</p>
+  <form id="pitcBillForm" method="post" action="https://bill.pitc.com.pk/gbill.aspx?refno={{ reference_no|urlencode }}">
+    <input type="hidden" name="refno" value="{{ reference_no }}">
+    <button type="submit">Continue to PITC bill</button>
+  </form>
+  <script>document.getElementById('pitcBillForm').submit();</script>
+</body>
+</html>

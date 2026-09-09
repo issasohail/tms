@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import sys
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -31,6 +32,7 @@ log = logging.getLogger("iesco_bill")
 
 BILL_URL = "https://bill.pitc.com.pk/gbill.aspx"
 TIMEOUT = 20
+PITC_FETCH_ATTEMPTS = 2
 HEADERS = {
     "accept": (
         "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,"
@@ -57,12 +59,18 @@ class BillResult:
     consumer_name: str | None = None
     address: str | None = None
     tariff_category: str | None = None
+    meter_type: str | None = None
+    meter_readings: list[dict] | None = None
     units: str | None = None
     bill_month: str | None = None
     reading_date: str | None = None
     issue_date: str | None = None
     due_date: str | None = None
+    current_bill: str | None = None
+    arrears: str | None = None
     grand_total: str | None = None
+    amount_paid: str | None = None
+    payment_date: str | None = None
     bill_history: list[dict] | None = None
     current_month_paid: bool | None = None
     raw_found: bool = False
@@ -77,15 +85,25 @@ def validate_reference_no(reference_no: str) -> str:
 
 def fetch_raw_html(reference_no: str) -> str:
     reference_no = validate_reference_no(reference_no)
-    response = requests.post(
-        BILL_URL,
-        params={"refno": reference_no},
-        data={"refno": reference_no},
-        headers=HEADERS,
-        timeout=TIMEOUT,
-    )
-    response.raise_for_status()
-    return response.text
+    last_error = None
+    for attempt in range(PITC_FETCH_ATTEMPTS):
+        try:
+            response = requests.post(
+                BILL_URL,
+                params={"refno": reference_no},
+                data={"refno": reference_no},
+                headers=HEADERS,
+                timeout=TIMEOUT,
+            )
+            response.raise_for_status()
+            return response.text
+        except (requests.exceptions.SSLError, requests.exceptions.ConnectionError) as exc:
+            last_error = exc
+            if attempt + 1 < PITC_FETCH_ATTEMPTS:
+                time.sleep(1)
+    raise requests.ConnectionError(
+        "PITC temporarily closed the secure connection. The meter was not changed; try again later."
+    ) from last_error
 
 
 def dump_html(reference_no: str, path: str = "iesco_raw.html") -> None:
@@ -113,6 +131,39 @@ def _val_after_label(soup: BeautifulSoup, label_text: str) -> str | None:
     return _clean(value.get_text()) if value else None
 
 
+def _values_after_label(soup: BeautifulSoup, label_text: str) -> list[str]:
+    label = soup.find(
+        "span",
+        class_="en-lbl",
+        string=lambda value: value and value.strip() == label_text,
+    )
+    if not label:
+        return []
+    cell = label.find_parent("div", class_="meter-info-cell")
+    value = cell.find("div", class_="val-space") if cell else None
+    return [_clean(item) for item in value.stripped_strings] if value else []
+
+
+def _paid_value(soup: BeautifulSoup, label_text: str) -> str | None:
+    label = soup.find(
+        "span",
+        class_="payable-card-paid-label",
+        string=lambda value: value and value.strip() == label_text,
+    )
+    value = label.find_next_sibling("span", class_="payable-card-paid-val") if label else None
+    return _clean(value.get_text()) if value else None
+
+
+def _charge_value(soup: BeautifulSoup, label_text: str) -> str | None:
+    label = soup.find(
+        "span",
+        class_="charges-bd-en",
+        string=lambda value: value and value.strip() == label_text,
+    )
+    value = label.find_next("span", class_="charges-bd-val") if label else None
+    return _clean(value.get_text()) if value else None
+
+
 def _amount(value: str | None) -> Decimal | None:
     if not value:
         return None
@@ -134,18 +185,52 @@ def parse_bill(html: str, reference_no: str) -> BillResult:
     result.consumer_id = _val_after_label(soup, "CONSUMER ID")
     result.address = _val_after_label(soup, "NAME & ADDRESS")
     result.tariff_category = _val_after_label(soup, "TARIFF CATEGORY")
-    result.units = _val_after_label(soup, "UNITS")
+    meter_numbers = _values_after_label(soup, "METER NO")
+    multipliers = _values_after_label(soup, "MF")
+    previous = _values_after_label(soup, "PREVIOUS READING")
+    present = _values_after_label(soup, "PRESENT READING")
+    meter_units = _values_after_label(soup, "UNITS")
+    result.meter_type = "3-P" if any("3-P" in value.upper() for value in meter_numbers) else "S-P"
+    if meter_units:
+        result.meter_readings = []
+        import_index = export_index = 0
+        for index, unit_value in enumerate(meter_units):
+            multiplier = multipliers[index] if index < len(multipliers) else ""
+            direction = "export" if "EXP" in multiplier.upper() else "import"
+            if direction == "export":
+                period = "off_peak" if export_index == 0 else "peak"
+                export_index += 1
+            else:
+                period = "off_peak" if import_index == 0 else "peak"
+                import_index += 1
+            result.meter_readings.append(
+                {
+                    "direction": direction,
+                    "period": period,
+                    "meter_no": meter_numbers[index] if index < len(meter_numbers) else None,
+                    "multiplier": multiplier or None,
+                    "previous": previous[index] if index < len(previous) else None,
+                    "present": present[index] if index < len(present) else None,
+                    "units": unit_value,
+                }
+            )
+        import_units = sum(
+            (_amount(row["units"]) or Decimal("0"))
+            for row in result.meter_readings
+            if row["direction"] == "import"
+        )
+        result.units = format(import_units, "f")
+        if "." in result.units:
+            result.units = result.units.rstrip("0").rstrip(".")
     if result.address:
         result.consumer_name = result.address.split(",", 1)[0].strip()
 
-    grand_label = soup.find(
-        "span",
-        class_="charges-bd-en",
-        string=lambda value: value and value.strip() == "Grand Total",
-    )
-    if grand_label:
-        value = grand_label.find_next("span", class_="charges-bd-val")
-        result.grand_total = _clean(value.get_text()) if value else None
+    result.current_bill = _charge_value(soup, "Current Bill")
+    result.arrears = _charge_value(soup, "Arrears")
+    result.grand_total = _charge_value(soup, "Grand Total")
+
+    result.amount_paid = _paid_value(soup, "Amount Paid")
+    result.payment_date = _paid_value(soup, "Payment Date")
 
     month_label = soup.find(
         "span",
@@ -199,12 +284,14 @@ def parse_bill(html: str, reference_no: str) -> BillResult:
         )
 
     result.bill_history = history or None
-    if history:
-        # PITC history excludes the bill currently displayed. This is therefore
-        # the paid state of the latest completed history month.
-        result.current_month_paid = history[-1]["paid"]
+    amount_paid = _amount(result.amount_paid)
+    grand_total = _amount(result.grand_total)
+    if amount_paid is not None and grand_total is not None:
+        result.current_month_paid = grand_total > 0 and amount_paid >= grand_total
 
     result.raw_found = bool(result.grand_total and result.due_date and result.bill_month)
+    if result.current_month_paid is None and result.raw_found:
+        result.current_month_paid = False
     if not result.raw_found:
         log.warning("Required bill fields are empty; PITC markup may have changed")
     return result

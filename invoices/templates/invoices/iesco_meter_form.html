@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Edit IESCO Meter{% endblock %}
+{% block content %}
+<div class="container py-3" style="max-width: 720px;">
+  <div class="d-flex justify-content-between align-items-center mb-3"><div><h2 class="h4 mb-0">Edit IESCO Meter</h2><small class="text-muted">{{ title }}</small></div><a class="btn btn-sm btn-secondary" href="{% url 'invoices:iesco_bill_reading_list' %}">Back</a></div>
+  <form method="post" class="card card-body">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>{% endif %}
+    {% for field in form %}<div class="mb-3">{% if field.field.widget.input_type == 'checkbox' %}<div class="form-check">{{ field }} <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label></div>{% else %}<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% endif %}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
+    <div class="alert alert-info py-2 small">Select a property/unit to assign the meter. Leave it unassigned and enter a description to keep it as a standalone meter. Changing the reference does not rewrite saved bills under the old reference.</div>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2"><button class="btn btn-danger" type="submit" formnovalidate formaction="{% url 'invoices:iesco_meter_delete' meter_kind meter_pk %}" onclick="return confirm('Remove this meter from the IESCO meter list? Saved bill history will be preserved.');"><i class="fas fa-trash-alt me-1"></i>Remove Meter</button><div class="d-flex gap-2"><a class="btn btn-secondary" href="{% url 'invoices:iesco_bill_reading_list' %}">Cancel</a><button class="btn btn-primary" type="submit">Save Meter</button></div></div>
+  </form>
+</div>
+{% endblock %}

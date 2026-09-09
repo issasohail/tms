@@ -446,6 +446,10 @@ class Unit(models.Model):
     electric_meter_num = models.CharField(
         max_length=20, null=True, blank=True, default="0000000000"
     )
+    iesco_bill_active = models.BooleanField(
+        default=True,
+        help_text="Include this unit meter in active IESCO bill fetching when the unit has an active lease.",
+    )
     is_smart_meter = models.BooleanField(default=False)
     electricity_unit_rate = models.DecimalField(
         max_digits=10,

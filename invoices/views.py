@@ -266,72 +266,6 @@ class InvoiceListView(SingleTableView):
         return qs  # don't force order here; table default covers first load
 
 
-class IescoBillReadingListView(LoginRequiredMixin, ListView):
-    model = Unit
-    template_name = "invoices/iesco_bill_reading_list.html"
-    context_object_name = "meter_rows"
-    paginate_by = 100
-
-    def get_queryset(self):
-        queryset = (
-            Unit.objects.select_related("property")
-            .filter(electric_meter_num__isnull=False)
-            .exclude(electric_meter_num="")
-            .order_by("property__property_name", "unit_number", "id")
-        )
-        queryset = restrict_queryset_to_properties(queryset, self.request.user, "property")
-        reference_no = (self.request.GET.get("reference_no") or "").strip()
-        bill_month = (self.request.GET.get("bill_month") or "").strip()
-        payment_status = (self.request.GET.get("payment_status") or "").strip()
-        if reference_no:
-            queryset = queryset.filter(electric_meter_num__icontains=reference_no)
-
-        references = list(queryset.values_list("electric_meter_num", flat=True))
-        readings = IescoBillReading.objects.filter(reference_no__in=references)
-        if bill_month:
-            readings = readings.filter(bill_month__icontains=bill_month)
-        readings = readings.order_by("reference_no", "-updated_at", "-id")
-        latest_by_reference = {}
-        for reading in readings:
-            latest_by_reference.setdefault(reading.reference_no, reading)
-
-        rows = []
-        for unit in queryset:
-            reading = latest_by_reference.get(unit.electric_meter_num)
-            if payment_status == "paid" and (not reading or reading.current_month_paid is not True):
-                continue
-            if payment_status == "unpaid" and (not reading or reading.current_month_paid is not False):
-                continue
-            if payment_status == "unknown" and reading and reading.current_month_paid is not None:
-                continue
-            unit.latest_iesco_reading = reading
-            rows.append(unit)
-        return rows
-
-
-class IescoBillReadingDetailView(LoginRequiredMixin, DetailView):
-    model = Unit
-    template_name = "invoices/iesco_bill_reading_detail.html"
-    context_object_name = "unit"
-    slug_url_kwarg = "reference_no"
-    slug_field = "electric_meter_num"
-
-    def get_queryset(self):
-        return restrict_queryset_to_properties(
-            Unit.objects.select_related("property")
-            .filter(electric_meter_num__isnull=False)
-            .exclude(electric_meter_num=""),
-            self.request.user,
-            "property",
-        )
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context["readings"] = IescoBillReading.objects.filter(
-            reference_no=self.object.electric_meter_num
-        ).order_by("-bill_month", "-updated_at", "-id")
-        return context
-
     def _attach_page_lease_balances(self, table):
         """
         The invoice list only needs lease balance for the WhatsApp button rows.
@@ -606,6 +540,83 @@ class IescoBillReadingDetailView(LoginRequiredMixin, DetailView):
             ("written_off", "Written Off"),
         ]
         return ctx
+
+
+class IescoBillReadingListView(LoginRequiredMixin, ListView):
+    model = Unit
+    template_name = "invoices/iesco_bill_reading_list.html"
+    context_object_name = "meter_rows"
+    paginate_by = 100
+
+    def get_queryset(self):
+        queryset = (
+            Unit.objects.select_related("property")
+            .filter(electric_meter_num__isnull=False)
+            .exclude(electric_meter_num="")
+            .order_by("property__property_name", "unit_number", "id")
+        )
+        queryset = restrict_queryset_to_properties(
+            queryset, self.request.user, "property"
+        )
+        reference_no = (self.request.GET.get("reference_no") or "").strip()
+        bill_month = (self.request.GET.get("bill_month") or "").strip()
+        payment_status = (self.request.GET.get("payment_status") or "").strip()
+        if reference_no:
+            queryset = queryset.filter(electric_meter_num__icontains=reference_no)
+
+        references = list(queryset.values_list("electric_meter_num", flat=True))
+        readings = IescoBillReading.objects.filter(reference_no__in=references)
+        if bill_month:
+            readings = readings.filter(bill_month__icontains=bill_month)
+        readings = readings.order_by("reference_no", "-updated_at", "-id")
+        latest_by_reference = {}
+        for reading in readings:
+            latest_by_reference.setdefault(reading.reference_no, reading)
+
+        rows = []
+        for unit in queryset:
+            reading = latest_by_reference.get(unit.electric_meter_num)
+            if payment_status == "paid" and (
+                not reading or reading.current_month_paid is not True
+            ):
+                continue
+            if payment_status == "unpaid" and (
+                not reading or reading.current_month_paid is not False
+            ):
+                continue
+            if (
+                payment_status == "unknown"
+                and reading
+                and reading.current_month_paid is not None
+            ):
+                continue
+            unit.latest_iesco_reading = reading
+            rows.append(unit)
+        return rows
+
+
+class IescoBillReadingDetailView(LoginRequiredMixin, DetailView):
+    model = Unit
+    template_name = "invoices/iesco_bill_reading_detail.html"
+    context_object_name = "unit"
+    slug_url_kwarg = "reference_no"
+    slug_field = "electric_meter_num"
+
+    def get_queryset(self):
+        return restrict_queryset_to_properties(
+            Unit.objects.select_related("property")
+            .filter(electric_meter_num__isnull=False)
+            .exclude(electric_meter_num=""),
+            self.request.user,
+            "property",
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["readings"] = IescoBillReading.objects.filter(
+            reference_no=self.object.electric_meter_num
+        ).order_by("-bill_month", "-updated_at", "-id")
+        return context
 
 
 class InvoiceCreateView(LoginRequiredMixin, CreateView):

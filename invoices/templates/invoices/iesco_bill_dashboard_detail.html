@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}IESCO Readings - {{ reference_no }}{% endblock %}
+{% block content %}
+<style>
+  .iesco-detail-mobile-row { display: grid; border-bottom: 1px solid #edf0f2; }
+  .iesco-detail-mobile-row--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .iesco-detail-mobile-row--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .iesco-detail-mobile-row--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .iesco-detail-mobile-cell { min-width: 0; padding: .4rem .3rem; border-right: 1px solid #edf0f2; }
+  .iesco-detail-mobile-cell:last-child { border-right: 0; }
+  .iesco-detail-mobile-label { display: block; color: #6c757d; font-size: .62rem; line-height: 1.1; margin-bottom: .15rem; }
+  .iesco-detail-mobile-value { display: block; font-size: .68rem; line-height: 1.25; overflow-wrap: anywhere; }
+  .iesco-detail-reading-key { display: inline-block; width: 38px; }
+</style>
+<div class="container-fluid py-2">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div><h2 class="h4 mb-0">IESCO readings: {{ reference_no }}</h2><small class="text-muted">{% if unit %}{{ unit.property.property_name }} / {{ unit.unit_number }}{% elif description %}{{ description }}{% else %}Unassigned meter{% endif %}</small></div>
+    <div class="d-flex gap-2 flex-wrap"><a class="btn btn-sm btn-info" href="{% url 'invoices:iesco_bill_pitc' reference_no %}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-1"></i>Current PITC Bill</a>{% if demo_mode %}<a class="btn btn-sm btn-outline-primary" href="{% url 'invoices:iesco_bill_reading_detail' reference_no %}">Actual History</a>{% else %}<a class="btn btn-sm btn-outline-primary" href="?demo=1">Preview Apr–Jul</a>{% endif %}{% if can_manage %}{% if unit %}<a class="btn btn-sm btn-warning" href="{% url 'invoices:iesco_meter_edit' 'unit' unit.pk %}"><i class="fas fa-pencil-alt me-1"></i>Edit Meter</a>{% elif standalone %}<a class="btn btn-sm btn-warning" href="{% url 'invoices:iesco_meter_edit' 'standalone' standalone.pk %}"><i class="fas fa-pencil-alt me-1"></i>Edit Meter</a>{% endif %}<form method="post" action="{% url 'invoices:iesco_bill_fetch_one' reference_no %}">{% csrf_token %}<button class="btn btn-sm btn-primary" type="submit"><i class="fas fa-sync-alt me-1"></i>Fetch Latest</button></form>{% endif %}<a href="{% url 'invoices:iesco_bill_reading_list' %}" class="btn btn-sm btn-secondary">All meters</a></div>
+  </div>
+
+  {% if demo_mode %}<div class="alert alert-warning py-2">Preview only: April–July values are dummy data and have not been saved.</div>{% endif %}
+
+  {% if units|length > 1 %}<div class="alert alert-danger py-2">This reference is assigned to multiple units. Invoice posting is blocked until the duplicate assignment is corrected.</div>{% elif not unit %}<div class="alert alert-info py-2">This standalone meter can be fetched and stored, but it cannot be posted to an invoice until its reference number is assigned to a unit with an active lease.</div>{% endif %}
+
+  {% if readings %}<div class="card card-body py-2 mb-3"><div class="row g-2 small"><div class="col-6 col-md"><span class="text-muted">Saved bills</span><br><strong>{{ summary.bill_count }}</strong></div><div class="col-6 col-md"><span class="text-muted">Paid bills</span><br><strong>{{ summary.paid_count }}</strong></div><div class="col-6 col-md"><span class="text-muted">Total current bills</span><br><strong>Rs. {{ summary.total_billed|floatformat:"0g" }}</strong></div><div class="col-6 col-md"><span class="text-muted">Average units</span><br><strong>{{ summary.average_units|floatformat:"0g"|default:"—" }}</strong></div><div class="col-6 col-md"><span class="text-muted">Weighted average unit rate</span><br><strong>{% if summary.average_unit_rate is not None %}Rs. {{ summary.average_unit_rate|floatformat:"2g" }}{% else %}—{% endif %}</strong><br><span class="text-muted">Total current bills ÷ total imported units</span></div></div></div>{% endif %}
+
+  {% for reading in readings %}
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"><strong>{{ reading.bill_month }}</strong><div>{% if reading.current_month_paid is True %}<span class="badge bg-success">Paid</span>{% elif reading.current_month_paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %} {% if reading.posted_at %}<span class="badge bg-primary">Posted to invoice</span>{% endif %}</div></div>
+    <div class="card-body py-2">
+      <div class="row g-2 small d-none d-md-flex">
+        <div class="col-6 col-md-3"><span class="text-muted">Consumer</span><br>{{ reading.consumer_name|default:reading.consumer_id|default:"—" }}</div><div class="col-6 col-md-3 text-center"><span class="text-muted">Units</span><br>{{ reading.units_display }}</div><div class="col-6 col-md-3"><span class="text-muted">Per unit rate</span><br><strong>{{ reading.per_unit_rate_display }}</strong><br><span class="text-muted">Current bill ÷ imported units</span></div><div class="col-6 col-md-3"><span class="text-muted">Arrears</span><br><strong>{{ reading.arrears_display }}</strong></div>
+        <div class="col-6 col-md-3"><span class="text-muted">Current bill</span><br><strong>{{ reading.current_bill_display }}</strong></div><div class="col-6 col-md-3"><span class="text-muted">Grand total</span><br><strong>{{ reading.grand_total_display }}</strong></div>
+        <div class="col-6 col-md-3"><span class="text-muted">Due date</span><br>{{ reading.due_date|default:"—" }}</div><div class="col-6 col-md-3"><span class="text-muted">Amount paid</span><br>{% if reading.amount_paid %}Rs. {{ reading.amount_paid }}{% else %}—{% endif %}</div><div class="col-6 col-md-3"><span class="text-muted">Payment date</span><br>{{ reading.payment_date|default:"—" }}</div><div class="col-6 col-md-3"><span class="text-muted">Meter type</span><br>{{ reading.meter_type|default:"—" }}</div>
+        <div class="col-6 col-md-3"><span class="text-muted">Reading date</span><br>{{ reading.reading_date|default:"—" }}</div><div class="col-6 col-md-3"><span class="text-muted">Issue date</span><br>{{ reading.issue_date|default:"—" }}</div><div class="col-6 col-md-3"><span class="text-muted">Tariff</span><br>{{ reading.tariff_category|default:"—" }}</div><div class="col-6 col-md-3"><span class="text-muted">Last saved</span><br>{{ reading.updated_at|date:"Y-m-d H:i" }}</div>
+        <div class="col-12"><span class="text-muted">Address</span><br>{{ reading.address|default:"—" }}</div>
+      </div>
+
+      <div class="d-md-none border rounded overflow-hidden">
+        <div class="iesco-detail-mobile-row iesco-detail-mobile-row--4">
+          <div class="iesco-detail-mobile-cell"><span class="iesco-detail-mobile-label">Bill Month</span><span class="iesco-detail-mobile-value">{{ reading.bill_month }}</span></div>
+          <div class="iesco-detail-mobile-cell"><span class="iesco-detail-mobile-label">Payment</span><span class="iesco-detail-mobile-value">{{ reading.payment_status_display }}</span></div>
+          <div class="iesco-detail-mobile-cell"><span class="iesco-detail-mobile-label">Due Date</span><span class="iesco-detail-mobile-value">{{ reading.due_date|default:"—" }}</span></div>
+          <div class="iesco-detail-mobile-cell"><span class="iesco-detail-mobile-label">Reading Date</span><span class="iesco-detail-mobile-value">{{ reading.reading_date|default:"—" }}</span></div>
+        </div>
+        <div class="iesco-detail-mobile-row iesco-detail-mobile-row--3">
+          <div class="iesco-detail-mobile-cell text-center"><span class="iesco-detail-mobile-label">Units</span><span class="iesco-detail-mobile-value">{{ reading.units_display }}</span></div>
+          <div class="iesco-detail-mobile-cell"><span class="iesco-detail-mobile-label">Unit Rate (Avg)</span><span class="iesco-detail-mobile-value">{{ reading.per_unit_rate_display }}</span></div>
+          <div class="iesco-detail-mobile-cell"><span class="iesco-detail-mobile-label">Current Bill</span><span class="iesco-detail-mobile-value fw-semibold">{{ reading.current_bill_display }}</span></div>
+        </div>
+        <div class="iesco-detail-mobile-row iesco-detail-mobile-row--2">
+          <div class="iesco-detail-mobile-cell"><span class="iesco-detail-mobile-label">Arrears</span><span class="iesco-detail-mobile-value">{{ reading.arrears_display }}</span></div>
+          <div class="iesco-detail-mobile-cell"><span class="iesco-detail-mobile-label">Grand Total</span><span class="iesco-detail-mobile-value fw-semibold">{{ reading.grand_total_display }}</span></div>
+        </div>
+        <div class="iesco-detail-mobile-row iesco-detail-mobile-row--3">
+          <div class="iesco-detail-mobile-cell"><span class="iesco-detail-mobile-label">Previous Reading</span><span class="iesco-detail-mobile-value">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.previous|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<span class="d-block"><span class="text-muted iesco-detail-reading-key">{{ register.short_label }}</span>{{ register.previous|default:"—" }}</span>{% endfor %}{% endif %}{% else %}—{% endif %}</span></div>
+          <div class="iesco-detail-mobile-cell"><span class="iesco-detail-mobile-label">Current Reading</span><span class="iesco-detail-mobile-value">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.present|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<span class="d-block"><span class="text-muted iesco-detail-reading-key">{{ register.short_label }}</span>{{ register.present|default:"—" }}</span>{% endfor %}{% endif %}{% else %}—{% endif %}</span></div>
+          <div class="iesco-detail-mobile-cell"><span class="iesco-detail-mobile-label">Last Update</span><span class="iesco-detail-mobile-value">{{ reading.updated_at|date:"Y-m-d H:i" }}</span></div>
+        </div>
+      </div>
+
+      <details class="d-md-none mt-2"><summary class="small text-primary">More bill details</summary><div class="small pt-2"><strong>{{ reading.consumer_name|default:reading.consumer_id|default:"—" }}</strong><br>Meter: {{ reading.meter_number_display }} · Tariff: {{ reading.tariff_category|default:"—" }}<br>Amount paid: {% if reading.amount_paid %}Rs. {{ reading.amount_paid }}{% else %}—{% endif %} · Payment date: {{ reading.payment_date|default:"—" }}<br>{{ reading.address|default:"—" }}</div></details>
+
+      {% if reading.meter_readings %}<div class="table-responsive mt-2 d-none d-md-block"><table class="table table-sm table-bordered mb-0"><thead><tr><th>Flow</th><th>Period</th><th>Meter</th><th class="text-end">Previous</th><th class="text-end">Present</th><th class="text-end">Units</th></tr></thead><tbody>{% for register in reading.meter_readings %}<tr><td>{{ register.direction|title }}</td><td>{% if register.period == "off_peak" %}Off Peak{% else %}Peak{% endif %}</td><td>{{ register.meter_no|default:"—" }}</td><td class="text-end">{{ register.previous|default:"—" }}</td><td class="text-end">{{ register.present|default:"—" }}</td><td class="text-end fw-semibold">{{ register.units|default:"—" }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+
+      {% if reading.bill_history %}<details class="mt-2"><summary class="small text-primary">Show bill history</summary><div class="table-responsive mt-2"><table class="table table-sm mb-0"><thead><tr><th>Month</th><th>Units</th><th>Bill</th><th>Payment</th><th>Paid</th></tr></thead><tbody>{% for history in reading.bill_history %}<tr><td>{{ history.month }}</td><td>{{ history.units }}</td><td>{{ history.bill }}</td><td>{{ history.payment }}</td><td>{% if history.paid is True %}Yes{% elif history.paid is False %}No{% else %}Unknown{% endif %}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+
+      {% if not reading.is_demo %}<div class="border-top mt-3 pt-2 d-flex justify-content-between align-items-end flex-wrap gap-2">
+        <div>{% if reading.bill_pdf %}<a class="btn btn-sm btn-danger" href="{{ reading.bill_pdf.url }}" target="_blank" rel="noopener"><i class="fas fa-file-pdf me-1"></i>View PDF</a> <small class="text-muted">Uploaded {{ reading.pdf_uploaded_at|date:"Y-m-d H:i" }}</small>{% elif can_manage %}<form method="post" enctype="multipart/form-data" action="{% url 'invoices:iesco_bill_pdf_upload' reading.pk %}" class="d-flex align-items-end gap-2">{% csrf_token %}<div><label class="form-label small mb-1">Attach saved IESCO PDF</label><input class="form-control form-control-sm" type="file" name="bill_pdf" accept="application/pdf,.pdf" required></div><button class="btn btn-sm btn-outline-danger" type="submit"><i class="fas fa-upload me-1"></i>Upload PDF</button></form>{% endif %}</div>
+        <div>{% if reading.posted_at %}{% if reading.posted_invoice_item %}<a class="btn btn-sm btn-outline-primary" href="{% url 'invoices:invoice_detail' reading.posted_invoice_item.invoice_id %}">Invoice {{ reading.posted_invoice_item.invoice.invoice_number }}</a>{% else %}<span class="text-muted small">Posted {{ reading.posted_at|date:"Y-m-d H:i" }}</span>{% endif %}{% elif can_post and unit and units|length == 1 %}<form method="post" action="{% url 'invoices:iesco_bill_post_to_invoice' reading.pk %}" class="d-flex align-items-end gap-2">{% csrf_token %}<div><label class="form-label small mb-1">Invoice month</label><input class="form-control form-control-sm" type="month" name="posting_month" value="{{ reading.posting_month_value }}" required></div><button class="btn btn-sm btn-warning" type="submit"><i class="fas fa-file-invoice-dollar me-1"></i>Post to Invoice</button></form>{% endif %}</div>
+      </div>{% endif %}
+    </div>
+  </div>
+  {% empty %}<div class="alert alert-secondary">No saved IESCO readings for this meter. Use Fetch Latest to retrieve one.</div>{% endfor %}
+</div>
+{% endblock %}

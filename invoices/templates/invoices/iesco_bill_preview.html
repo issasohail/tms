@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Review IESCO Bills{% endblock %}
+{% block content %}
+<div class="container-fluid py-2">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3"><div><h2 class="h4 mb-0">Review IESCO Data</h2><small class="text-muted">Nothing below is saved until you confirm.</small></div><a class="btn btn-sm btn-secondary" href="{% url 'invoices:iesco_bill_reading_list' %}">Back</a></div>
+
+  {% if batch.errors %}<div class="alert alert-warning py-2"><strong>{{ batch.errors|length }} fetch/import issue{{ batch.errors|length|pluralize }}:</strong><ul class="mb-0 mt-1">{% for error in batch.errors %}<li>{% if error.reference_no %}<strong>{{ error.reference_no }}:</strong> {% endif %}{{ error.error }}</li>{% endfor %}</ul></div>{% endif %}
+
+  {% for bill in batch.payloads %}
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between flex-wrap gap-2"><strong>{{ bill.reference_no }} · {{ bill.bill_month }}</strong><span>{{ bill.description }}</span></div>
+    <div class="card-body py-2">
+      <div class="row g-2 small">
+        <div class="col-6 col-md-3"><span class="text-muted">Consumer</span><br>{{ bill.consumer_name|default:bill.consumer_id|default:"—" }}</div>
+        <div class="col-6 col-md-3 text-center"><span class="text-muted">Units</span><br>{{ bill.units_display }}</div>
+        <div class="col-6 col-md-3"><span class="text-muted">Per unit rate</span><br><strong>{{ bill.per_unit_rate_display }}</strong><br><span class="text-muted">Current bill ÷ imported units</span></div>
+        <div class="col-6 col-md-3"><span class="text-muted">Arrears</span><br><strong>{{ bill.arrears_display }}</strong></div>
+        <div class="col-6 col-md-3"><span class="text-muted">Current bill</span><br><strong>{{ bill.current_bill_display }}</strong></div>
+        <div class="col-6 col-md-3"><span class="text-muted">Grand total</span><br><strong>{{ bill.grand_total_display }}</strong></div>
+        <div class="col-6 col-md-3"><span class="text-muted">Bill status</span><br>{% if bill.current_month_paid is True %}<span class="badge bg-success">Paid</span>{% elif bill.current_month_paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</div>
+        <div class="col-6 col-md-3"><span class="text-muted">Due date</span><br>{{ bill.due_date|default:"—" }}</div>
+        <div class="col-6 col-md-3"><span class="text-muted">Reading date</span><br>{{ bill.reading_date|default:"—" }}</div>
+        <div class="col-6 col-md-3"><span class="text-muted">Issue date</span><br>{{ bill.issue_date|default:"—" }}</div>
+        <div class="col-6 col-md-3"><span class="text-muted">Tariff</span><br>{{ bill.tariff_category|default:"—" }}</div>
+        <div class="col-6 col-md-3"><span class="text-muted">Amount paid</span><br>{% if bill.amount_paid %}Rs. {{ bill.amount_paid }}{% else %}—{% endif %}</div>
+        <div class="col-6 col-md-3"><span class="text-muted">Payment date</span><br>{{ bill.payment_date|default:"—" }}</div>
+        <div class="col-6 col-md-3"><span class="text-muted">Meter type</span><br>{{ bill.meter_type|default:"—" }}</div>
+        <div class="col-6 col-md-3"><span class="text-muted">Fetched</span><br>{{ bill.fetched_at|default:"—" }}</div>
+        <div class="col-12"><span class="text-muted">Address</span><br>{{ bill.address|default:"—" }}</div>
+      </div>
+      {% if bill.meter_readings %}<div class="table-responsive mt-2"><table class="table table-sm table-bordered mb-0"><thead><tr><th>Flow</th><th>Period</th><th>Meter</th><th class="text-end">Previous</th><th class="text-end">Present</th><th class="text-end">Units</th></tr></thead><tbody>{% for register in bill.meter_readings %}<tr><td>{{ register.direction|title }}</td><td>{% if register.period == "off_peak" %}Off Peak{% else %}Peak{% endif %}</td><td>{{ register.meter_no|default:"—" }}</td><td class="text-end">{{ register.previous|default:"—" }}</td><td class="text-end">{{ register.present|default:"—" }}</td><td class="text-end fw-semibold">{{ register.units|default:"—" }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+      {% if bill.bill_history %}<details class="mt-2"><summary class="small text-primary">Show {{ bill.bill_history|length }} history rows</summary><div class="table-responsive mt-2"><table class="table table-sm mb-0"><thead><tr><th>Month</th><th>Units</th><th>Bill</th><th>Payment</th><th>Paid</th></tr></thead><tbody>{% for history in bill.bill_history %}<tr><td>{{ history.month }}</td><td>{{ history.units }}</td><td>{{ history.bill }}</td><td>{{ history.payment }}</td><td>{% if history.paid is True %}Yes{% elif history.paid is False %}No{% else %}Unknown{% endif %}</td></tr>{% endfor %}</tbody></table></div></details>{% endif %}
+    </div>
+  </div>
+  {% empty %}<div class="alert alert-secondary">No valid bills were fetched or imported. Review the issues above and try again.</div>{% endfor %}
+
+  {% if batch.payloads %}<form method="post" action="{% url 'invoices:iesco_bill_preview_save' %}" class="d-flex justify-content-end gap-2">{% csrf_token %}<a class="btn btn-secondary" href="{% url 'invoices:iesco_bill_reading_list' %}">Cancel</a><button class="btn btn-success" type="submit"><i class="fas fa-save me-1"></i>Save &amp; Update List ({{ batch.payloads|length }})</button></form>{% endif %}
+</div>
+{% endblock %}

@@ -1,12 +1,20 @@
 from django.contrib import admin
 from .models import (
     IescoBillReading,
+    IescoStandaloneMeter,
     Invoice,
     InvoiceItem,
     InvoiceLateFeeReminder,
     MonthlyBillingRun,
     MonthlyBillingRunItem,
 )
+
+
+@admin.register(IescoStandaloneMeter)
+class IescoStandaloneMeterAdmin(admin.ModelAdmin):
+    list_display = ("reference_no", "description", "is_active", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("reference_no", "description")
 
 
 class InvoiceItemInline(admin.TabularInline):
@@ -106,6 +114,7 @@ class IescoBillReadingAdmin(admin.ModelAdmin):
         "bill_month",
         "grand_total",
         "payment_status_display",
+        "posted_at",
         "due_date",
         "received_at",
         "updated_at",

@@ -761,6 +761,33 @@
 {% block extra_js %}
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".unit-table-wrap th.rotate-col").forEach(function (header) {
+        const label = header.querySelector("a") || header;
+        const originalText = label.textContent.trim();
+        const words = originalText.split(/\s+/);
+
+        if (words.length < 2) return;
+
+        let splitAt = 1;
+        let smallestDifference = Infinity;
+        for (let index = 1; index < words.length; index += 1) {
+            const firstLength = words.slice(0, index).join(" ").length;
+            const secondLength = words.slice(index).join(" ").length;
+            const difference = Math.abs(firstLength - secondLength);
+            if (difference < smallestDifference) {
+                smallestDifference = difference;
+                splitAt = index;
+            }
+        }
+
+        label.setAttribute("aria-label", originalText);
+        label.replaceChildren(
+            document.createTextNode(words.slice(0, splitAt).join(" ")),
+            document.createElement("br"),
+            document.createTextNode(words.slice(splitAt).join(" "))
+        );
+    });
+
     const unitFilterForm = document.getElementById("unitFilterForm");
     if (unitFilterForm) {
         unitFilterForm.querySelectorAll("select").forEach(function (select) {

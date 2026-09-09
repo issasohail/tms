@@ -1,9 +1,146 @@
-from .models import RecurringCharge, WaterBill
+from .models import IescoStandaloneMeter, RecurringCharge, WaterBill
 from django import forms
 from .models import Invoice, InvoiceItem
 from django.forms import inlineformset_factory
 from django.utils import timezone
 from datetime import timedelta
+import re
+from properties.models import Unit
+
+
+class IescoStandaloneMeterForm(forms.ModelForm):
+    class Meta:
+        model = IescoStandaloneMeter
+        fields = ("reference_no", "description", "is_active")
+        widgets = {
+            "reference_no": forms.TextInput(
+                attrs={
+                    "class": "form-control form-control-sm",
+                    "inputmode": "numeric",
+                    "maxlength": "14",
+                    "placeholder": "14-digit reference",
+                }
+            ),
+            "description": forms.TextInput(
+                attrs={
+                    "class": "form-control form-control-sm",
+                    "placeholder": "e.g. Office common meter",
+                }
+            ),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+        }
+
+    def clean_reference_no(self):
+        value = (self.cleaned_data.get("reference_no") or "").strip()
+        if not re.fullmatch(r"\d{14}", value):
+            raise forms.ValidationError("Enter a valid 14-digit IESCO reference number.")
+        if Unit.objects.filter(electric_meter_num=value).exists():
+            raise forms.ValidationError(
+                "This reference number is already assigned to a property unit."
+            )
+        return value
+
+
+class IescoUnitReferenceForm(forms.ModelForm):
+    class Meta:
+        model = Unit
+        fields = ("electric_meter_num",)
+        labels = {"electric_meter_num": "IESCO reference number"}
+        widgets = {
+            "electric_meter_num": forms.TextInput(
+                attrs={
+                    "class": "form-control form-control-sm",
+                    "inputmode": "numeric",
+                    "maxlength": "14",
+                    "placeholder": "14-digit reference",
+                }
+            )
+        }
+
+    def clean_electric_meter_num(self):
+        value = (self.cleaned_data.get("electric_meter_num") or "").strip()
+        if not re.fullmatch(r"\d{14}", value):
+            raise forms.ValidationError("Enter a valid 14-digit IESCO reference number.")
+        duplicate_units = Unit.objects.filter(electric_meter_num=value)
+        if self.instance.pk:
+            duplicate_units = duplicate_units.exclude(pk=self.instance.pk)
+        if duplicate_units.exists():
+            raise forms.ValidationError(
+                "This reference number is already assigned to another unit."
+            )
+        if IescoStandaloneMeter.objects.filter(reference_no=value).exists():
+            raise forms.ValidationError(
+                "This reference number is registered as a standalone meter."
+            )
+        return value
+
+
+class IescoMeterAssignmentForm(forms.Form):
+    reference_no = forms.CharField(
+        max_length=14,
+        label="IESCO reference number",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "inputmode": "numeric", "maxlength": "14"}
+        ),
+    )
+    unit = forms.ModelChoiceField(
+        queryset=Unit.objects.none(),
+        required=False,
+        empty_label="No property/unit (standalone meter)",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    description = forms.CharField(
+        required=False,
+        max_length=255,
+        help_text="Required when no property/unit is selected.",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "e.g. Solar or common-area meter"}
+        ),
+    )
+    is_active = forms.BooleanField(
+        required=False,
+        label="Active",
+        help_text="Assigned meters must also have a current active lease to be included in Fetch All Active.",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
+    def __init__(self, *args, unit_queryset=None, current_unit=None, current_standalone=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current_unit = current_unit
+        self.current_standalone = current_standalone
+        self.fields["unit"].queryset = unit_queryset or Unit.objects.none()
+
+    def clean_reference_no(self):
+        value = (self.cleaned_data.get("reference_no") or "").strip()
+        if not re.fullmatch(r"\d{14}", value):
+            raise forms.ValidationError("Enter a valid 14-digit IESCO reference number.")
+        duplicate_units = Unit.objects.filter(electric_meter_num=value)
+        if self.current_unit:
+            duplicate_units = duplicate_units.exclude(pk=self.current_unit.pk)
+        if duplicate_units.exists():
+            raise forms.ValidationError("This reference number is already assigned to another unit.")
+        duplicate_standalone = IescoStandaloneMeter.objects.filter(reference_no=value)
+        if self.current_standalone:
+            duplicate_standalone = duplicate_standalone.exclude(pk=self.current_standalone.pk)
+        if duplicate_standalone.exists():
+            raise forms.ValidationError("This reference number is already registered as a standalone meter.")
+        return value
+
+    def clean(self):
+        cleaned = super().clean()
+        unit = cleaned.get("unit")
+        reference_no = cleaned.get("reference_no")
+        existing_unit_reference = str(getattr(unit, "electric_meter_num", "") or "").strip()
+        if (
+            unit
+            and unit != self.current_unit
+            and re.fullmatch(r"\d{14}", existing_unit_reference)
+            and existing_unit_reference != reference_no
+        ):
+            self.add_error("unit", "The selected unit already has another IESCO reference number.")
+        if not unit and not (cleaned.get("description") or "").strip():
+            self.add_error("description", "Enter a description for a standalone meter.")
+        return cleaned
 
 
 from django import forms

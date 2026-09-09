@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+{% block title %}IESCO Bill Readings{% endblock %}
+{% block main_container_class %}container-fluid iesco-main-container{% endblock %}
+{% block content %}
+<style>
+  /* Desktop sizing controls: adjust these values to tune the page and columns. */
+  .iesco-main-container {
+    --iesco-page-width: calc(100vw - 24px);
+    --iesco-col-number: 36px;
+    --iesco-col-property: 125px;
+    --iesco-col-active: 65px;
+    --iesco-col-reference: 130px;
+    --iesco-col-meter: 120px;
+    --iesco-col-bill-month: 70px;
+    --iesco-col-consumer: 145px;
+    --iesco-col-previous: 80px;
+    --iesco-col-current: 80px;
+    --iesco-col-units: 80px;
+    --iesco-col-per-unit: 80px;
+    --iesco-col-arrears: 85px;
+    --iesco-col-current-bill: 90px;
+    --iesco-col-grand-total: 90px;
+    --iesco-col-payment-status: 90px;
+    --iesco-col-due-date: 85px;
+    --iesco-col-last-update: 100px;
+    --iesco-col-actions: 200px;
+    --iesco-table-width: calc(
+      var(--iesco-col-number) + var(--iesco-col-property) + var(--iesco-col-active) +
+      var(--iesco-col-reference) + var(--iesco-col-meter) + var(--iesco-col-bill-month) +
+      var(--iesco-col-consumer) + var(--iesco-col-previous) + var(--iesco-col-current) +
+      var(--iesco-col-units) + var(--iesco-col-per-unit) + var(--iesco-col-arrears) +
+      var(--iesco-col-current-bill) + var(--iesco-col-grand-total) +
+      var(--iesco-col-payment-status) + var(--iesco-col-due-date) +
+      var(--iesco-col-last-update) + var(--iesco-col-actions)
+    );
+    width: 100%;
+    max-width: var(--iesco-page-width);
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .iesco-register-summary { width: 158px; min-width: 158px; font-size: .68rem; line-height: 1.1; table-layout: fixed; }
+  .iesco-register-summary th, .iesco-register-summary td { padding: .1rem .12rem; white-space: normal; }
+  .iesco-register-summary th:not(:first-child), .iesco-register-summary td:not(:first-child) { text-align: right; }
+  .iesco-bills-table { width: var(--iesco-table-width); min-width: var(--iesco-table-width); table-layout: fixed; }
+  .iesco-bills-table .iesco-col-number { width: var(--iesco-col-number); }
+  .iesco-bills-table .iesco-col-property { width: var(--iesco-col-property); }
+  .iesco-bills-table .iesco-col-active { width: var(--iesco-col-active); }
+  .iesco-bills-table .iesco-col-reference { width: var(--iesco-col-reference); }
+  .iesco-bills-table .iesco-col-meter { width: var(--iesco-col-meter); }
+  .iesco-bills-table .iesco-col-bill-month { width: var(--iesco-col-bill-month); }
+  .iesco-bills-table .iesco-col-consumer { width: var(--iesco-col-consumer); }
+  .iesco-bills-table .iesco-col-previous { width: var(--iesco-col-previous); }
+  .iesco-bills-table .iesco-col-current { width: var(--iesco-col-current); }
+  .iesco-bills-table .iesco-col-units { width: var(--iesco-col-units); }
+  .iesco-bills-table .iesco-col-per-unit { width: var(--iesco-col-per-unit); }
+  .iesco-bills-table .iesco-col-arrears { width: var(--iesco-col-arrears); }
+  .iesco-bills-table .iesco-col-current-bill { width: var(--iesco-col-current-bill); }
+  .iesco-bills-table .iesco-col-grand-total { width: var(--iesco-col-grand-total); }
+  .iesco-bills-table .iesco-col-payment-status { width: var(--iesco-col-payment-status); }
+  .iesco-bills-table .iesco-col-due-date { width: var(--iesco-col-due-date); }
+  .iesco-bills-table .iesco-col-last-update { width: var(--iesco-col-last-update); }
+  .iesco-bills-table .iesco-col-actions { width: var(--iesco-col-actions); }
+  .iesco-units-col { width: var(--iesco-col-units); max-width: var(--iesco-col-units); text-align: center !important; }
+  .iesco-property-col { width: var(--iesco-col-property); min-width: var(--iesco-col-property); max-width: var(--iesco-col-property); white-space: normal !important; overflow-wrap: normal; word-break: normal; }
+  .iesco-reading-lines { min-width: 0; font-size: .7rem; line-height: 1.25; white-space: nowrap; }
+  .iesco-reading-key { display: inline-block; width: 42px; }
+  .iesco-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .2rem; min-width: 0; }
+  .iesco-mobile-card { border: 1px solid #d7dce2; border-radius: .55rem; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
+  .iesco-mobile-row { display: grid; border-bottom: 1px solid #edf0f2; }
+  .iesco-mobile-row:last-child { border-bottom: 0; }
+  .iesco-mobile-row--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .iesco-mobile-row--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .iesco-mobile-row--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .iesco-mobile-cell { min-width: 0; padding: .4rem .45rem; border-right: 1px solid #edf0f2; }
+  .iesco-mobile-cell:last-child { border-right: 0; }
+  .iesco-mobile-label { display: block; color: #6c757d; font-size: .64rem; line-height: 1.1; margin-bottom: .15rem; }
+  .iesco-mobile-value { display: block; font-size: .72rem; line-height: 1.25; overflow-wrap: anywhere; }
+  .iesco-mobile-header { padding: .45rem; background: #f8f9fa; border-bottom: 1px solid #dee2e6; font-size: .72rem; }
+  .iesco-mobile-header-main { display: flex; align-items: center; gap: .25rem; white-space: nowrap; }
+  .iesco-mobile-header-main .iesco-mobile-ref { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
+  .iesco-mobile-meter { display: block; margin-top: .18rem; color: #6c757d; }
+  .iesco-mobile-actions { display: flex; width: 100%; gap: .3rem; padding: .35rem .45rem .45rem; }
+  .iesco-mobile-actions > a, .iesco-mobile-actions > form { flex: 1 1 0; }
+  .iesco-mobile-actions .btn { width: 100%; }
+  .iesco-desktop-view, .iesco-tablet-view { display: none; }
+  .iesco-mobile-view { display: block; }
+  .iesco-tablet-card { border: 1px solid #d7dce2; border-radius: .45rem; background: #fff; overflow: hidden; }
+  .iesco-tablet-header { display: flex; justify-content: space-between; gap: .5rem; padding: .35rem .5rem; background: #f8f9fa; font-size: .72rem; }
+  .iesco-tablet-meter { display: block; color: #6c757d; font-size: .64rem; }
+  .iesco-tablet-row { display: grid; border-top: 1px solid #edf0f2; }
+  .iesco-tablet-row--8 { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .iesco-tablet-row--6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .iesco-tablet-cell { min-width: 0; padding: .3rem .38rem; border-right: 1px solid #edf0f2; }
+  .iesco-tablet-cell:last-child { border-right: 0; }
+  .iesco-tablet-label { display: block; color: #6c757d; font-size: .58rem; line-height: 1.05; }
+  .iesco-tablet-value { display: block; font-size: .66rem; line-height: 1.2; overflow-wrap: anywhere; }
+  .iesco-tablet-actions { grid-column: span 2; display: flex; align-items: center; gap: .2rem; }
+  .iesco-tablet-actions > a, .iesco-tablet-actions > form { flex: 0 1 auto; }
+  .iesco-tablet-actions .btn { white-space: nowrap; font-size: .65rem; padding: .2rem .35rem; }
+  @media (max-width: 767.98px) {
+    .iesco-main-container { padding-left: .4rem; padding-right: .4rem; }
+    .iesco-mobile-row--3 .iesco-mobile-value, .iesco-mobile-row--4 .iesco-mobile-value { font-size: .66rem; }
+    .iesco-mobile-row--4 .iesco-mobile-cell { padding-left: .25rem; padding-right: .25rem; }
+  }
+  @media (min-width: 768px) and (max-width: 1879.98px) {
+    .iesco-mobile-view { display: none; }
+    .iesco-tablet-view { display: block; }
+  }
+  @media (min-width: 1880px) {
+    .iesco-mobile-view, .iesco-tablet-view { display: none; }
+    .iesco-desktop-view { display: block; }
+  }
+</style>
+<div class="container-fluid py-2">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div><h2 class="h4 mb-0">IESCO Bill Readings</h2><small class="text-muted">Fetch and save locally, exchange CSV data with production, and post approved bills to tenant invoices.</small></div>
+    <div>
+      <div class="d-flex flex-wrap justify-content-end gap-1">
+        <a href="{% url 'invoices:iesco_bill_export' %}?{{ request.GET.urlencode }}" class="btn btn-sm btn-success"><i class="fas fa-file-csv me-1"></i>Download Bills CSV</a>
+        {% if can_manage %}<form id="iescoCsvUploadForm" method="post" enctype="multipart/form-data" action="{% url 'invoices:iesco_bill_import' %}">{% csrf_token %}<input id="id_iesco_import" class="visually-hidden" type="file" name="file" accept=".csv,text/csv" required><label class="btn btn-sm btn-outline-primary" for="id_iesco_import"><i class="fas fa-upload me-1"></i>Upload Bills CSV</label></form><form id="iescoFetchAllForm" method="post" action="{% url 'invoices:iesco_bill_fetch_all' %}">{% csrf_token %}<input type="hidden" name="property" value="{{ request.GET.property }}"><button id="iescoFetchAllButton" class="btn btn-primary btn-sm" type="submit"><i class="fas fa-cloud-download-alt me-1"></i>Fetch All Active</button></form><a href="{% url 'invoices:iesco_reference_export' %}?property={{ request.GET.property }}" class="btn btn-sm btn-outline-success"><i class="fas fa-list me-1"></i>Download References</a><form id="iescoReferenceUploadForm" method="post" enctype="multipart/form-data" action="{% url 'invoices:iesco_reference_fetch' %}">{% csrf_token %}<input id="id_iesco_reference_import" class="visually-hidden" type="file" name="file" accept=".csv,text/csv" required><label class="btn btn-sm btn-outline-info" for="id_iesco_reference_import"><i class="fas fa-sync-alt me-1"></i>Fetch Reference CSV</label></form>{% endif %}
+        {% if can_add_standalone %}<button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#standaloneMeterForm"><i class="fas fa-plus me-1"></i>Add Other Meter</button>{% endif %}
+        <a href="{% url 'invoices:invoice_list' %}" class="btn btn-sm btn-secondary"><i class="fas fa-arrow-left me-1"></i>Invoices</a>
+      </div>
+      {% if can_manage %}<div id="iescoFetchProgress" class="mt-2 d-none" role="status" aria-live="polite"><div class="progress" style="height: 18px;"><div id="iescoFetchProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div></div><div id="iescoFetchProgressText" class="form-text mb-0 text-end">Preparing meter list…</div></div>{% endif %}
+    </div>
+  </div>
+
+  {% if can_add_standalone %}<div class="collapse mb-2" id="standaloneMeterForm"><div class="card card-body py-2"><form method="post" action="{% url 'invoices:iesco_standalone_meter_add' %}" class="row g-2 align-items-end">{% csrf_token %}<div class="col-12 col-md-3"><label class="form-label small mb-1">Reference number</label>{{ standalone_form.reference_no }}</div><div class="col-12 col-md-5"><label class="form-label small mb-1">Description</label>{{ standalone_form.description }}</div><div class="col-6 col-md-2"><div class="form-check mb-1">{{ standalone_form.is_active }} <label class="form-check-label" for="{{ standalone_form.is_active.id_for_label }}">Active</label></div></div><div class="col-6 col-md-2"><button class="btn btn-success btn-sm" type="submit">Add Meter</button></div></form></div></div>{% endif %}
+
+  <form method="get" id="iescoFilterForm" class="card card-body py-2 mb-3"><div class="row g-2 align-items-end">
+    <div class="col-12 col-md-3"><label class="form-label small mb-1" for="id_iesco_property">Property</label><select id="id_iesco_property" name="property" class="form-select form-select-sm"><option value="">All properties and standalone</option>{% for property in properties %}<option value="{{ property.pk }}" {% if request.GET.property == property.pk|stringformat:"s" %}selected{% endif %}>{{ property.property_name }}</option>{% endfor %}</select></div>
+    <div class="col-12 col-md-3"><label class="form-label small mb-1" for="id_iesco_reference">Reference number</label><input id="id_iesco_reference" name="reference_no" value="{{ request.GET.reference_no }}" class="form-control form-control-sm"></div>
+    <div class="col-6 col-md-2"><label class="form-label small mb-1" for="id_iesco_month">Bill month</label><select id="id_iesco_month" name="bill_month" class="form-select form-select-sm"><option value="">Latest saved month</option>{% for month in bill_month_options %}<option value="{{ month.value }}" {% if request.GET.bill_month == month.value %}selected{% endif %}>{{ month.label }}</option>{% endfor %}</select></div>
+    <div class="col-6 col-md-2"><label class="form-label small mb-1" for="id_iesco_status">Status</label><select id="id_iesco_status" name="payment_status" class="form-select form-select-sm"><option value="">All</option><option value="paid" {% if request.GET.payment_status == "paid" %}selected{% endif %}>Paid</option><option value="unpaid" {% if request.GET.payment_status == "unpaid" %}selected{% endif %}>Unpaid</option><option value="unknown" {% if request.GET.payment_status == "unknown" %}selected{% endif %}>Unknown</option></select></div>
+    <div class="col-12 col-md-2 d-flex gap-2"><button class="btn btn-sm btn-primary" type="submit"><i class="fas fa-filter me-1"></i>Filter</button><a class="btn btn-sm btn-secondary" href="{% url 'invoices:iesco_bill_reading_list' %}">Clear</a></div>
+  </div></form>
+
+  <div class="card iesco-desktop-view"><table class="table table-sm table-hover align-middle mb-0 iesco-bills-table">
+    <colgroup>
+      <col class="iesco-col-number">
+      <col class="iesco-col-property">
+      <col class="iesco-col-active">
+      <col class="iesco-col-reference">
+      <col class="iesco-col-meter">
+      <col class="iesco-col-bill-month">
+      <col class="iesco-col-consumer">
+      <col class="iesco-col-previous">
+      <col class="iesco-col-current">
+      <col class="iesco-col-units">
+      <col class="iesco-col-per-unit">
+      <col class="iesco-col-arrears">
+      <col class="iesco-col-current-bill">
+      <col class="iesco-col-grand-total">
+      <col class="iesco-col-payment-status">
+      <col class="iesco-col-due-date">
+      <col class="iesco-col-last-update">
+      <col class="iesco-col-actions">
+    </colgroup>
+    <thead><tr><th>#</th><th class="iesco-property-col">Property / Unit<br>or Description</th><th>Active</th><th>Reference</th><th>Meter #</th><th>Bill<br>Month</th><th>Consumer</th><th>Previous<br>Reading</th><th>Current<br>Reading</th><th class="text-center">Units</th><th class="text-end">Per<br>Unit</th><th class="text-end">Arrears</th><th class="text-end">Current<br>Bill</th><th class="text-end">Grand<br>Total</th><th>Payment<br>Status</th><th>Due<br>Date</th><th>Last<br>Update</th><th class="text-end">Actions</th></tr></thead>
+    <tbody>{% for row in meter_rows %}{% with reading=row.reading %}<tr>
+      <td data-label="#" class="text-muted">{{ page_obj.start_index|default:1|add:forloop.counter0 }}</td>
+      <td data-label="Property / Unit" class="iesco-property-col">{% if row.unit %}<strong>{{ row.property.property_name }}</strong><br><small>{{ row.unit.unit_number }}</small>{% else %}<strong>{{ row.description }}</strong><br><small class="text-muted">Standalone meter</small>{% endif %}</td>
+      <td data-label="Active">{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td>
+      <td data-label="Reference" class="text-nowrap"><a href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}" title="Open saved meter history"><strong>{{ row.reference_no }}</strong></a></td>
+      <td data-label="Meter #" class="text-nowrap">{% if reading %}{{ reading.meter_number_display }}{% else %}—{% endif %}</td>
+      <td data-label="Bill Month" class="text-nowrap">{{ reading.bill_month|default:"—" }}</td>
+      <td data-label="Consumer">{% if reading %}{{ reading.consumer_name|default:reading.consumer_id|default:"—" }}{% else %}—{% endif %}</td>
+      <td data-label="Previous Reading"><div class="iesco-reading-lines">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.previous|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<div><span class="text-muted iesco-reading-key">{{ register.short_label }}</span>{{ register.previous|default:"—" }}</div>{% endfor %}{% endif %}{% else %}—{% endif %}</div></td>
+      <td data-label="Current Reading"><div class="iesco-reading-lines">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.present|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<div><span class="text-muted iesco-reading-key">{{ register.short_label }}</span>{{ register.present|default:"—" }}</div>{% endfor %}{% endif %}{% else %}—{% endif %}</div></td>
+      <td data-label="Units" class="iesco-units-col">{% if reading.meter_type == "3-P" and reading.meter_readings %}<table class="table table-bordered mb-0 iesco-register-summary"><thead><tr><th></th><th>Off<br>Peak</th><th>Peak</th><th>Total</th></tr></thead><tbody><tr><th>Export</th><td>{{ reading.export_off_peak_display }}</td><td>{{ reading.export_peak_display }}</td><td>{{ reading.export_units_display }}</td></tr><tr><th>Import</th><td>{{ reading.import_off_peak_display }}</td><td>{{ reading.import_peak_display }}</td><td>{{ reading.import_units_display }}</td></tr><tr><th>Net</th><td>{{ reading.net_off_peak_display }}</td><td>{{ reading.net_peak_display }}</td><td>{{ reading.net_units_display }}</td></tr></tbody></table>{% elif reading %}<div class="text-center text-nowrap">{{ reading.units_display }}</div>{% else %}<div class="text-center">—</div>{% endif %}</td>
+      <td data-label="Per Unit" class="text-end text-nowrap">{% if reading %}{{ reading.per_unit_rate_display }}{% else %}—{% endif %}</td>
+      <td data-label="Arrears" class="text-end text-nowrap">{% if reading %}{{ reading.arrears_display }}{% else %}—{% endif %}</td>
+      <td data-label="Current Bill" class="text-end fw-semibold text-nowrap">{% if reading %}{{ reading.current_bill_display }}{% else %}—{% endif %}</td>
+      <td data-label="Grand Total" class="text-end fw-semibold text-nowrap">{% if reading %}{{ reading.grand_total_display }}{% else %}—{% endif %}</td>
+      <td data-label="Payment Status">{% if not reading %}<span class="badge bg-secondary">No reading</span>{% elif reading.current_month_paid is True %}<span class="badge bg-success">Paid</span>{% elif reading.current_month_paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
+      <td data-label="Due Date" class="text-nowrap">{{ reading.due_date|default:"—" }}</td><td data-label="Last Update" class="text-nowrap">{{ reading.updated_at|date:"Y-m-d H:i"|default:"—" }}</td>
+      <td data-label="Actions"><div class="iesco-actions">
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}" title="View saved history"><i class="fas fa-eye"></i></a>
+        {% if reading.bill_pdf %}<a class="btn btn-danger btn-sm" href="{{ reading.bill_pdf.url }}" target="_blank" rel="noopener" title="View saved PDF"><i class="fas fa-file-pdf"></i></a>{% endif %}
+        <a class="btn btn-info btn-sm" href="{% url 'invoices:iesco_bill_pitc' row.reference_no %}" target="_blank" rel="noopener" title="Open current bill on PITC"><i class="fas fa-external-link-alt"></i></a>
+        {% if can_manage %}
+          {% if row.unit %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'unit' row.unit.pk %}" title="Edit meter number"><i class="fas fa-pencil-alt"></i></a>{% elif row.standalone %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'standalone' row.standalone.pk %}" title="Edit meter"><i class="fas fa-pencil-alt"></i></a>{% endif %}
+          <form method="post" action="{% url 'invoices:iesco_bill_fetch_one' row.reference_no %}" class="d-inline">{% csrf_token %}<button class="btn btn-primary btn-sm" type="submit" title="Fetch latest bill"><i class="fas fa-sync-alt"></i> Fetch</button></form>
+        {% endif %}
+      </div></td>
+    </tr>{% endwith %}{% empty %}<tr><td colspan="18" class="text-center text-muted py-4">No valid IESCO meters found.</td></tr>{% endfor %}</tbody>
+  </table></div>
+
+  <div class="iesco-tablet-view">
+    {% for row in meter_rows %}{% with reading=row.reading %}
+    <article class="iesco-tablet-card mb-2">
+      <div class="iesco-tablet-header">
+        <span><strong>{{ page_obj.start_index|default:1|add:forloop.counter0 }}</strong> — {% if row.unit %}<strong>{{ row.property.property_name }}</strong> — {{ row.unit.unit_number }}{% else %}<strong>{{ row.description }}</strong>{% endif %}<span class="iesco-tablet-meter">Meter #: {% if reading %}{{ reading.meter_number_display }}{% else %}—{% endif %}</span></span>
+        <span class="text-end"><a href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}"><strong>{{ row.reference_no }}</strong></a><br>{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</span>
+      </div>
+      <div class="iesco-tablet-row iesco-tablet-row--8">
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Bill Month</span><span class="iesco-tablet-value">{{ reading.bill_month|default:"—" }}</span></div>
+        <div class="iesco-tablet-cell text-center"><span class="iesco-tablet-label">Units</span><span class="iesco-tablet-value">{% if reading.meter_type == "3-P" and reading.meter_readings %}I {{ reading.import_units_display }}<br>E {{ reading.export_units_display }} · N {{ reading.net_units_display }}{% elif reading %}{{ reading.units_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Unit Rate</span><span class="iesco-tablet-value">{% if reading %}{{ reading.per_unit_rate_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Current Bill</span><span class="iesco-tablet-value fw-semibold">{% if reading %}{{ reading.current_bill_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Arrears</span><span class="iesco-tablet-value">{% if reading %}{{ reading.arrears_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Grand Total</span><span class="iesco-tablet-value fw-semibold">{% if reading %}{{ reading.grand_total_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Payment</span><span class="iesco-tablet-value">{% if not reading %}<span class="badge bg-secondary">No reading</span>{% elif reading.current_month_paid is True %}<span class="badge bg-success">Paid</span>{% elif reading.current_month_paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</span></div>
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Due Date</span><span class="iesco-tablet-value">{{ reading.due_date|default:"—" }}</span></div>
+      </div>
+      <div class="iesco-tablet-row iesco-tablet-row--6">
+        <div class="iesco-tablet-cell iesco-tablet-actions">
+          <a class="btn btn-outline-secondary btn-sm" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}">View</a>
+          {% if reading.bill_pdf %}<a class="btn btn-danger btn-sm" href="{{ reading.bill_pdf.url }}" target="_blank" rel="noopener">PDF</a>{% endif %}
+          <a class="btn btn-info btn-sm" href="{% url 'invoices:iesco_bill_pitc' row.reference_no %}" target="_blank" rel="noopener">View Bill</a>
+          {% if can_manage %}{% if row.unit %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'unit' row.unit.pk %}">Edit</a>{% elif row.standalone %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'standalone' row.standalone.pk %}">Edit</a>{% endif %}<form method="post" action="{% url 'invoices:iesco_bill_fetch_one' row.reference_no %}">{% csrf_token %}<button class="btn btn-primary btn-sm" type="submit">Fetch</button></form>{% endif %}
+        </div>
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Previous</span><span class="iesco-tablet-value">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.previous|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<span class="d-block"><span class="text-muted iesco-reading-key">{{ register.short_label }}</span>{{ register.previous|default:"—" }}</span>{% endfor %}{% endif %}{% else %}—{% endif %}</span></div>
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Current</span><span class="iesco-tablet-value">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.present|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<span class="d-block"><span class="text-muted iesco-reading-key">{{ register.short_label }}</span>{{ register.present|default:"—" }}</span>{% endfor %}{% endif %}{% else %}—{% endif %}</span></div>
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Reading Date</span><span class="iesco-tablet-value">{{ reading.reading_date|default:"—" }}</span></div>
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Last Update</span><span class="iesco-tablet-value">{{ reading.updated_at|date:"Y-m-d H:i"|default:"—" }}</span></div>
+      </div>
+    </article>
+    {% endwith %}{% empty %}<div class="alert alert-secondary">No valid IESCO meters found.</div>{% endfor %}
+  </div>
+
+  <div class="iesco-mobile-view">
+    {% for row in meter_rows %}{% with reading=row.reading %}
+    <article class="iesco-mobile-card mb-2">
+      <div class="iesco-mobile-header">
+        <div class="iesco-mobile-header-main"><strong>{{ page_obj.start_index|default:1|add:forloop.counter0 }}</strong><span>—</span>{% if row.unit %}<strong>{{ row.property.property_name }}</strong><span>—</span><span>{{ row.unit.unit_number }}</span>{% else %}<strong>{{ row.description }}</strong>{% endif %}<a class="iesco-mobile-ref" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}"><strong>{{ row.reference_no }}</strong></a>{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</div>
+        <span class="iesco-mobile-meter">Meter #: {% if reading %}{{ reading.meter_number_display }}{% else %}—{% endif %}</span>
+      </div>
+      <div class="iesco-mobile-row iesco-mobile-row--4">
+        <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Bill Month</span><span class="iesco-mobile-value">{{ reading.bill_month|default:"—" }}</span></div>
+        <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Payment</span><span class="iesco-mobile-value">{% if not reading %}<span class="badge bg-secondary">No reading</span>{% elif reading.current_month_paid is True %}<span class="badge bg-success">Paid</span>{% elif reading.current_month_paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</span></div>
+        <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Due Date</span><span class="iesco-mobile-value">{{ reading.due_date|default:"—" }}</span></div>
+        <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Reading Date</span><span class="iesco-mobile-value">{{ reading.reading_date|default:"—" }}</span></div>
+      </div>
+      <div class="iesco-mobile-row iesco-mobile-row--3">
+        <div class="iesco-mobile-cell text-center"><span class="iesco-mobile-label">Units</span><span class="iesco-mobile-value">{% if reading.meter_type == "3-P" and reading.meter_readings %}I {{ reading.import_units_display }} / E {{ reading.export_units_display }} / N {{ reading.net_units_display }}{% elif reading %}{{ reading.units_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Unit Rate (Avg)</span><span class="iesco-mobile-value">{% if reading %}{{ reading.per_unit_rate_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Current Bill</span><span class="iesco-mobile-value fw-semibold">{% if reading %}{{ reading.current_bill_display }}{% else %}—{% endif %}</span></div>
+      </div>
+      <div class="iesco-mobile-row iesco-mobile-row--2">
+        <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Arrears</span><span class="iesco-mobile-value">{% if reading %}{{ reading.arrears_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Grand Total</span><span class="iesco-mobile-value fw-semibold">{% if reading %}{{ reading.grand_total_display }}{% else %}—{% endif %}</span></div>
+      </div>
+      <div class="iesco-mobile-row iesco-mobile-row--3">
+        <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Previous Reading</span><span class="iesco-mobile-value">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.previous|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<span class="d-block"><span class="text-muted">{{ register.short_label }}</span> {{ register.previous|default:"—" }}</span>{% endfor %}{% endif %}{% else %}—{% endif %}</span></div>
+        <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Current Reading</span><span class="iesco-mobile-value">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}{{ reading.register_display_rows.0.present|default:"—" }}{% else %}{% for register in reading.register_display_rows %}<span class="d-block"><span class="text-muted">{{ register.short_label }}</span> {{ register.present|default:"—" }}</span>{% endfor %}{% endif %}{% else %}—{% endif %}</span></div>
+        <div class="iesco-mobile-cell"><span class="iesco-mobile-label">Last Update</span><span class="iesco-mobile-value">{{ reading.updated_at|date:"Y-m-d H:i"|default:"—" }}</span></div>
+      </div>
+      <div class="iesco-mobile-actions">
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}">View</a>
+        {% if reading.bill_pdf %}<a class="btn btn-danger btn-sm" href="{{ reading.bill_pdf.url }}" target="_blank" rel="noopener">PDF</a>{% endif %}
+        <a class="btn btn-info btn-sm" href="{% url 'invoices:iesco_bill_pitc' row.reference_no %}" target="_blank" rel="noopener">View Bill</a>
+        {% if can_manage %}{% if row.unit %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'unit' row.unit.pk %}">Edit</a>{% elif row.standalone %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'standalone' row.standalone.pk %}">Edit</a>{% endif %}<form method="post" action="{% url 'invoices:iesco_bill_fetch_one' row.reference_no %}">{% csrf_token %}<button class="btn btn-primary btn-sm" type="submit">Fetch</button></form>{% endif %}
+      </div>
+    </article>
+    {% endwith %}{% empty %}<div class="alert alert-secondary">No valid IESCO meters found.</div>{% endfor %}
+  </div>
+
+  {% if is_paginated %}<nav class="mt-3" aria-label="IESCO bill reading pages"><ul class="pagination pagination-sm justify-content-end">{% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&property={{ request.GET.property|urlencode }}&reference_no={{ request.GET.reference_no|urlencode }}&bill_month={{ request.GET.bill_month|urlencode }}&payment_status={{ request.GET.payment_status|urlencode }}">Previous</a></li>{% endif %}<li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>{% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&property={{ request.GET.property|urlencode }}&reference_no={{ request.GET.reference_no|urlencode }}&bill_month={{ request.GET.bill_month|urlencode }}&payment_status={{ request.GET.payment_status|urlencode }}">Next</a></li>{% endif %}</ul></nav>{% endif %}
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('iescoFilterForm');
+    if (form) {
+      form.querySelectorAll('select').forEach(function (field) {
+        field.addEventListener('change', function () { form.requestSubmit(); });
+      });
+      const reference = document.getElementById('id_iesco_reference');
+      let timer;
+      reference?.addEventListener('input', function () {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(function () { form.requestSubmit(); }, 500);
+      });
+    }
+
+    const csvUpload = document.getElementById('id_iesco_import');
+    csvUpload?.addEventListener('change', function () {
+      if (csvUpload.files.length) csvUpload.form.submit();
+    });
+
+    const referenceUpload = document.getElementById('id_iesco_reference_import');
+    referenceUpload?.addEventListener('change', function () {
+      if (referenceUpload.files.length) referenceUpload.form.submit();
+    });
+
+    const fetchForm = document.getElementById('iescoFetchAllForm');
+    if (!fetchForm || !window.fetch || !window.FormData) return;
+    const fetchButton = document.getElementById('iescoFetchAllButton');
+    const progress = document.getElementById('iescoFetchProgress');
+    const progressBar = document.getElementById('iescoFetchProgressBar');
+    const progressText = document.getElementById('iescoFetchProgressText');
+    const csrfToken = fetchForm.querySelector('[name="csrfmiddlewaretoken"]').value;
+    const propertyValue = fetchForm.querySelector('[name="property"]').value;
+
+    function postFetchAction(action, referenceNo) {
+      const data = new FormData();
+      data.append('csrfmiddlewaretoken', csrfToken);
+      data.append('property', propertyValue);
+      data.append('ajax_action', action);
+      if (referenceNo) data.append('reference_no', referenceNo);
+      return fetch(fetchForm.action, {
+        method: 'POST',
+        body: data,
+        credentials: 'same-origin',
+        headers: {'X-Requested-With': 'XMLHttpRequest'}
+      }).then(function (response) {
+        return response.json().then(function (body) {
+          if (!response.ok) throw new Error(body.error || 'The fetch request failed.');
+          return body;
+        });
+      });
+    }
+
+    fetchForm.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      fetchButton.disabled = true;
+      progress.classList.remove('d-none');
+      progressBar.classList.remove('bg-danger');
+      progressBar.classList.add('progress-bar-animated');
+      progressBar.style.width = '0%';
+      progressBar.textContent = '0%';
+      progressText.textContent = 'Preparing active meter list…';
+      try {
+        const batch = await postFetchAction('start');
+        const total = batch.sources.length;
+        if (!total) {
+          progressText.textContent = 'No active meters were found.';
+          fetchButton.disabled = false;
+          return;
+        }
+        let failures = 0;
+        let skipped = 0;
+        for (let index = 0; index < total; index += 1) {
+          const referenceNo = batch.sources[index];
+          progressText.textContent = 'Fetching ' + (index + 1) + ' of ' + total + ': ' + referenceNo;
+          try {
+            const result = await postFetchAction('fetch', referenceNo);
+            if (result.skipped) skipped += 1;
+            else if (!result.ok) failures += 1;
+          } catch (error) {
+            failures += 1;
+          }
+          const percent = Math.round(((index + 1) / total) * 100);
+          progressBar.style.width = percent + '%';
+          progressBar.textContent = percent + '%';
+        }
+        progressBar.classList.remove('progress-bar-animated');
+        const fetched = total - skipped - failures;
+        progressText.textContent = 'Fetched ' + fetched + ', current/cached ' + skipped + (failures ? ', issues ' + failures : '') + '.';
+        window.setTimeout(function () {
+          window.location.assign(batch.list_url + window.location.search);
+        }, 500);
+      } catch (error) {
+        progressBar.classList.remove('progress-bar-animated');
+        progressBar.classList.add('bg-danger');
+        progressText.textContent = error.message;
+        fetchButton.disabled = false;
+      }
+    });
+  });
+</script>
+{% endblock %}

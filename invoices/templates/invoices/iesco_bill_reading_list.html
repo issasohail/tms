@@ -63,7 +63,7 @@
             <td><strong>{{ unit.property.property_name }}</strong><br><small>{{ unit.unit_number }}</small></td>
             <td class="text-nowrap"><a href="{% url 'invoices:iesco_bill_reading_detail' unit.electric_meter_num %}"><strong>{{ unit.electric_meter_num }}</strong></a></td>
             <td class="text-nowrap">{{ reading.bill_month }}</td>
-            <td>{{ reading.consumer_name|default:reading.consumer_id|default:"—" }}</td>
+            <td>{% if reading %}{{ reading.consumer_name|default:reading.consumer_id|default:"—" }}{% else %}—{% endif %}</td>
             <td class="text-end">{{ reading.units|default:"—" }}</td>
             <td class="text-end fw-semibold">{{ reading.grand_total|default:"—" }}</td>
             <td>

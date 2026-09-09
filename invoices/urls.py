@@ -29,6 +29,7 @@ from .views import run_billing_current
 from django.urls import path
 from . import views
 from . import views_late_fee
+from . import views_iesco
 
 app_name = 'invoices'
 
@@ -49,14 +50,28 @@ urlpatterns = [
     path('', InvoiceListView.as_view(), name='invoice_list'),
     path(
         'iesco-bills/',
-        views.IescoBillReadingListView.as_view(),
+        views_iesco.IescoBillReadingListView.as_view(),
         name='iesco_bill_reading_list',
     ),
-     path(
-          'iesco-bills/<str:reference_no>/',
-          views.IescoBillReadingDetailView.as_view(),
-          name='iesco_bill_reading_detail',
-     ),
+    path('iesco-bills/meters/add/', views_iesco.standalone_meter_add, name='iesco_standalone_meter_add'),
+    path('iesco-bills/meters/<str:meter_kind>/<int:pk>/edit/', views_iesco.meter_edit, name='iesco_meter_edit'),
+    path('iesco-bills/meters/<str:meter_kind>/<int:pk>/delete/', views_iesco.meter_delete, name='iesco_meter_delete'),
+    path('iesco-bills/fetch/<str:reference_no>/', views_iesco.fetch_one, name='iesco_bill_fetch_one'),
+    path('iesco-bills/fetch-all/', views_iesco.fetch_all_active, name='iesco_bill_fetch_all'),
+    path('iesco-bills/import/', views_iesco.import_csv, name='iesco_bill_import'),
+    path('iesco-bills/references/export/', views_iesco.export_active_references, name='iesco_reference_export'),
+    path('iesco-bills/references/fetch/', views_iesco.fetch_reference_csv, name='iesco_reference_fetch'),
+    path('iesco-bills/preview/', views_iesco.preview, name='iesco_bill_preview'),
+    path('iesco-bills/preview/save/', views_iesco.preview_save, name='iesco_bill_preview_save'),
+    path('iesco-bills/export/', views_iesco.export_last_csv, name='iesco_bill_export'),
+    path('iesco-bills/readings/<int:pk>/post/', views_iesco.post_to_invoice, name='iesco_bill_post_to_invoice'),
+    path('iesco-bills/readings/<int:pk>/pdf/', views_iesco.upload_bill_pdf, name='iesco_bill_pdf_upload'),
+    path('iesco-bills/<str:reference_no>/pitc/', views_iesco.pitc_bill_handoff, name='iesco_bill_pitc'),
+    path(
+        'iesco-bills/<str:reference_no>/',
+        views_iesco.IescoBillReadingDetailView.as_view(),
+        name='iesco_bill_reading_detail',
+    ),
     path('create/', InvoiceCreateView.as_view(), name='invoice_create'),
 
     # Detail/Update/Delete

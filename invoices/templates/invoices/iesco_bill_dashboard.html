@@ -5,7 +5,7 @@
 <style>
   /* Desktop sizing controls: adjust these values to tune the page and columns. */
   .iesco-main-container {
-    --iesco-page-width: calc(100vw - 24px);
+    --iesco-page-gutters: 48px;
     --iesco-col-number: 36px;
     --iesco-col-property: 125px;
     --iesco-col-active: 65px;
@@ -33,8 +33,9 @@
       var(--iesco-col-payment-status) + var(--iesco-col-due-date) +
       var(--iesco-col-last-update) + var(--iesco-col-actions)
     );
-    width: 100%;
-    max-width: var(--iesco-page-width);
+    --iesco-page-width: calc(var(--iesco-table-width) + var(--iesco-page-gutters));
+    width: var(--iesco-page-width);
+    max-width: calc(100vw - 24px);
     margin-left: auto;
     margin-right: auto;
   }
@@ -42,6 +43,7 @@
   .iesco-register-summary th, .iesco-register-summary td { padding: .1rem .12rem; white-space: normal; }
   .iesco-register-summary th:not(:first-child), .iesco-register-summary td:not(:first-child) { text-align: right; }
   .iesco-bills-table { width: var(--iesco-table-width); min-width: var(--iesco-table-width); table-layout: fixed; }
+  .iesco-bills-table > thead > tr > th { text-align: center !important; vertical-align: middle; }
   .iesco-bills-table .iesco-col-number { width: var(--iesco-col-number); }
   .iesco-bills-table .iesco-col-property { width: var(--iesco-col-property); }
   .iesco-bills-table .iesco-col-active { width: var(--iesco-col-active); }

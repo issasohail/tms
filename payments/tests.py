@@ -509,6 +509,39 @@ class PaymentLedgerLinkTests(TestCase):
         self.assertContains(ledger, "LEDGER-LINK")
         self.assertNotContains(ledger, 'id="focused-payment-row"')
 
+    def test_ledger_defaults_to_last_page_but_honors_explicit_navigation(self):
+        from datetime import timedelta
+        from decimal import Decimal
+
+        from django.urls import reverse
+        from payments.models import Payment
+
+        Payment.objects.bulk_create(
+            [
+                Payment(
+                    lease=self.lease,
+                    payment_date=self.payment.payment_date + timedelta(days=index + 1),
+                    amount=Decimal("1.00"),
+                    reference_number=f"PAGE-{index + 2}",
+                )
+                for index in range(40)
+            ]
+        )
+        self.client.force_login(self.admin)
+        ledger_url = reverse("leases:lease_ledger_by_pk", args=[self.lease.pk])
+
+        default_response = self.client.get(ledger_url)
+        first_page_response = self.client.get(ledger_url, {"page": 1})
+        focused_response = self.client.get(
+            ledger_url,
+            {"payment_id": self.payment.pk},
+        )
+
+        self.assertEqual(default_response.context["total_pages"], 2)
+        self.assertEqual(default_response.context["page"], 2)
+        self.assertEqual(first_page_response.context["page"], 1)
+        self.assertEqual(focused_response.context["page"], 1)
+
     def test_payment_focus_cannot_reference_another_lease_payment(self):
         from django.urls import reverse
         from payments.models import Payment

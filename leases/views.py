@@ -5526,16 +5526,20 @@ class LeaseLedgerView(LoginRequiredMixin, TemplateView):
                 raise Http404("Payment is not present in this lease ledger.")
 
         # ---------- Pagination + 2-column split ----------
-        if focused_index is not None:
-            page = (focused_index // 40) + 1
-        else:
-            try:
-                page = int(self.request.GET.get("page", 1))
-            except (TypeError, ValueError):
-                page = 1
         PAGE_SIZE = 40
         total_count = len(transactions)
         total_pages = max(1, ceil(total_count / PAGE_SIZE))
+
+        if focused_index is not None:
+            page = (focused_index // PAGE_SIZE) + 1
+        elif "page" not in self.request.GET:
+            # A normal ledger entry point opens the newest transactions first.
+            page = total_pages
+        else:
+            try:
+                page = int(self.request.GET.get("page"))
+            except (TypeError, ValueError):
+                page = 1
         page = max(1, min(page, total_pages))
 
         start = (page - 1) * PAGE_SIZE

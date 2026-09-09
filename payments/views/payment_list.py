@@ -1,8 +1,16 @@
-from accounts.access import restrict_queryset_to_properties
+from accounts.access import allowed_property_ids, restrict_queryset_to_properties
 from decimal import Decimal
 
 from django.core.paginator import EmptyPage, Paginator
-from django.db.models import Case, DecimalField, F, Sum, When
+from django.db.models import (
+    F,
+    IntegerField,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+)
+from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -10,7 +18,7 @@ from django_tables2.views import SingleTableView
 
 from core.utils.date_filters import apply_date_range_filter
 from invoices.models import Invoice, SecurityDepositTransaction
-from leases.models import Lease
+from leases.models import Lease, LeaseUnitOccupancy
 from payments.payment_list_row import PaymentListRow
 from payments.models import Payment
 from payments.services.payment_detail import lease_payment_amount_expression
@@ -27,6 +35,53 @@ def _lease_balance(lease):
 
 def _dec(v):
     return Decimal(v or 0)
+
+
+def _annotate_payment_date_occupancy(queryset, date_field):
+    """Attach the unit/property occupied by the row's lease on its transaction date."""
+    matching = (
+        LeaseUnitOccupancy.objects
+        .filter(
+            lease_id=OuterRef("lease_id"),
+            move_in_date__lte=OuterRef(date_field),
+        )
+        .filter(
+            Q(move_out_date__isnull=True)
+            | Q(move_out_date__gte=OuterRef(date_field))
+        )
+        .order_by("-move_in_date", "-id")
+    )
+    return queryset.annotate(
+        historical_unit_id=Coalesce(
+            Subquery(matching.values("unit_id")[:1]),
+            F("lease__unit_id"),
+            output_field=IntegerField(),
+        ),
+        historical_property_id=Coalesce(
+            Subquery(matching.values("unit__property_id")[:1]),
+            F("lease__unit__property_id"),
+            output_field=IntegerField(),
+        ),
+    )
+
+
+def _apply_payment_list_filters(queryset, request):
+    property_id = request.GET.get("property")
+    tenant_id = request.GET.get("tenant")
+    unit_id = request.GET.get("unit")
+    lease_status = (request.GET.get("lease_status") or "").strip().lower()
+
+    if property_id:
+        queryset = queryset.filter(historical_property_id=property_id)
+    if tenant_id:
+        queryset = queryset.filter(lease__tenant_id=tenant_id)
+    if unit_id:
+        queryset = queryset.filter(historical_unit_id=unit_id)
+    if lease_status == "active":
+        queryset = queryset.filter(lease__status="active")
+    elif lease_status == "inactive":
+        queryset = queryset.exclude(lease__status="active")
+    return queryset
 
 
 def _bulk_lease_balances(lease_ids):
@@ -74,53 +129,16 @@ class PaymentListView(SingleTableView):
 
         request = self.request
 
-        # ---------- Lease base filters ----------
-        leases = (
-            Lease.objects
-            .select_related("tenant", "unit", "unit__property")
-            .only(
-                "id",
-                "tenant_id",
-                "unit_id",
-                "security_deposit",
-                "status",
-                "start_date",
-                "tenant__id",
-                "tenant__first_name",
-                "tenant__last_name",
-                "unit__id",
-                "unit__property_id",
-                "unit__unit_number",
-                "unit__property__id",
-                "unit__property__property_name",
+        # Query movements first. Historical rows must not disappear merely
+        # because their lease is no longer active.
+        payments = _annotate_payment_date_occupancy(
+            Payment.objects
+            .select_related(
+                "lease__tenant",
+                "lease__unit__property",
+                "payment_method",
+                "detail",
             )
-        )
-
-        leases = restrict_queryset_to_properties(leases, request.user, "unit__property")
-
-        property_id = request.GET.get("property")
-        tenant_id = request.GET.get("tenant")
-        unit_id = request.GET.get("unit")
-        include_inactive = request.GET.get("include_inactive") == "on"
-
-        if not include_inactive:
-            leases = leases.filter(status="active")
-        if property_id:
-            leases = leases.filter(unit__property_id=property_id)
-        if tenant_id:
-            leases = leases.filter(tenant_id=tenant_id)
-        if unit_id:
-            leases = leases.filter(unit_id=unit_id)
-
-        leases_list = list(leases)
-        lease_ids = [lease.id for lease in leases_list]
-        lease_map = {lease.id: lease for lease in leases_list}
-        lease_balance_map = _bulk_lease_balances(lease_ids)
-
-        # ---------- Querysets ----------
-        payments = (
-            Payment.objects.filter(lease_id__in=lease_ids)
-            .select_related("payment_method", "detail")
             .only(
                 "id",
                 "lease_id",
@@ -136,12 +154,14 @@ class PaymentListView(SingleTableView):
                 "detail__lease_amount",
                 "detail__security_amount",
                 "detail__security_type",
-            )
+            ),
+            "payment_date",
         )
 
-        sec_qs = (
-            SecurityDepositTransaction.objects.filter(lease_id__in=lease_ids)
+        sec_qs = _annotate_payment_date_occupancy(
+            SecurityDepositTransaction.objects
             .exclude(type="REQUIRED")
+            .select_related("lease__tenant", "lease__unit__property")
             .only(
                 "id",
                 "lease_id",
@@ -150,8 +170,17 @@ class PaymentListView(SingleTableView):
                 "type",
                 "amount",
                 "notes",
-            )
+            ),
+            "date",
         )
+
+        allowed_properties = allowed_property_ids(request.user)
+        if allowed_properties is not None:
+            payments = payments.filter(historical_property_id__in=allowed_properties)
+            sec_qs = sec_qs.filter(historical_property_id__in=allowed_properties)
+
+        payments = _apply_payment_list_filters(payments, request)
+        sec_qs = _apply_payment_list_filters(sec_qs, request)
 
         # ---------- Date filters ----------
         payments = apply_date_range_filter(
@@ -172,6 +201,44 @@ class PaymentListView(SingleTableView):
 
         # ✅ prevent double rows: split security transactions must not appear separately
         sec_qs = sec_qs.filter(payment_detail__isnull=True)
+
+        payments = list(payments)
+        security_rows = list(sec_qs)
+        lease_ids = {
+            row.lease_id
+            for row in [*payments, *security_rows]
+        }
+        leases_list = list(
+            Lease.objects
+            .filter(id__in=lease_ids)
+            .select_related("tenant", "unit", "unit__property")
+            .only(
+                "id",
+                "tenant_id",
+                "unit_id",
+                "security_deposit",
+                "status",
+                "start_date",
+                "tenant__id",
+                "tenant__first_name",
+                "tenant__last_name",
+                "unit__id",
+                "unit__property_id",
+                "unit__unit_number",
+                "unit__property__id",
+                "unit__property__property_name",
+            )
+        )
+        lease_map = {lease.id: lease for lease in leases_list}
+        lease_balance_map = _bulk_lease_balances(lease_ids)
+        historical_unit_ids = {
+            row.historical_unit_id
+            for row in [*payments, *security_rows]
+            if row.historical_unit_id
+        }
+        historical_unit_map = Unit.objects.select_related("property").in_bulk(
+            historical_unit_ids
+        )
 
         # ---------- Precompute security totals per lease ----------
         sec_summary = (
@@ -256,6 +323,10 @@ class PaymentListView(SingleTableView):
                 source_type=row_source_type,
                 source_id=p.id,
                 lease=lease_map[p.lease_id],
+                occupancy_unit=(
+                    historical_unit_map.get(p.historical_unit_id)
+                    or lease_map[p.lease_id].unit
+                ),
                 date=p.payment_date,
                 description=description,
                 amount=row_amount,
@@ -275,7 +346,7 @@ class PaymentListView(SingleTableView):
             ))
 
         # ---------- Build standalone Security rows ----------
-        for tx in sec_qs:
+        for tx in security_rows:
             amt = _dec(tx.amount)
             if tx.type in ("REFUND", "DAMAGE"):
                 amt = -amt
@@ -295,6 +366,10 @@ class PaymentListView(SingleTableView):
                     source_type=tx.type,
                     source_id=tx.id,
                     lease=lease_map[tx.lease_id],
+                    occupancy_unit=(
+                        historical_unit_map.get(tx.historical_unit_id)
+                        or lease_map[tx.lease_id].unit
+                    ),
                     date=tx.date,
                     amount=amt,
                     method="Security Deposit",
@@ -315,7 +390,11 @@ class PaymentListView(SingleTableView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
 
-        ctx["all_properties"] = Property.objects.only("id", "property_name")
+        ctx["all_properties"] = restrict_queryset_to_properties(
+            Property.objects.only("id", "property_name"),
+            self.request.user,
+            "",
+        )
         ctx["tenant_list"] = Tenant.objects.only("id", "first_name", "last_name").order_by("first_name", "last_name")
 
         property_id = self.request.GET.get("property")
@@ -328,7 +407,7 @@ class PaymentListView(SingleTableView):
         ctx["current_property"] = self.request.GET.get("property", "")
         ctx["current_unit"] = self.request.GET.get("unit", "")
         ctx["current_tenant"] = self.request.GET.get("tenant", "")
-        ctx["include_inactive"] = self.request.GET.get("include_inactive", "") == "on"
+        ctx["current_lease_status"] = self.request.GET.get("lease_status", "")
 
         rows = self.get_table_data()
         ctx["total_amount"] = sum((r.amount or 0) for r in rows)

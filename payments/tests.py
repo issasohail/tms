@@ -18,7 +18,7 @@ class PaymentListPresentationTests(TestCase):
             str(table._balance_html(Decimal("-1.00"))),
         )
 
-    def test_payment_amount_stays_green_for_positive_and_negative_movements(self):
+    def test_payment_amount_is_black_and_high_weight(self):
         from decimal import Decimal
         from types import SimpleNamespace
 
@@ -30,7 +30,170 @@ class PaymentListPresentationTests(TestCase):
             rendered = table.render_amount(
                 None, SimpleNamespace(amount=amount, is_split=False)
             )
-            self.assertIn('class="text-success fw-semibold"', str(rendered))
+            self.assertIn(
+                'class="payment-amount text-dark fw-bold"',
+                str(rendered),
+            )
+
+
+class PaymentListHistoricalOccupancyTests(TestCase):
+    def setUp(self):
+        from datetime import date
+        from decimal import Decimal
+
+        from django.contrib.auth import get_user_model
+        from leases.models import Lease, LeaseUnitOccupancy
+        from payments.models import Payment
+        from properties.models import Property, Unit
+        from tenants.models import Tenant
+
+        self.user = get_user_model().objects.create_superuser(
+            username="payment-history-admin",
+            email="payment-history@example.com",
+            password="test-password",
+        )
+        self.client.force_login(self.user)
+        self.old_property = Property.objects.create(
+            property_name="Old Payment Property",
+            owner_name="Owner",
+            owner_cnic="61101-3000000-1",
+            type="Residential",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.new_property = Property.objects.create(
+            property_name="New Payment Property",
+            owner_name="Owner",
+            owner_cnic="61101-3000000-2",
+            type="Residential",
+            property_type="apartment",
+            total_units=2,
+        )
+        self.old_unit = Unit.objects.create(
+            property=self.old_property,
+            unit_number="OLD-1",
+        )
+        self.new_unit = Unit.objects.create(
+            property=self.new_property,
+            unit_number="NEW-1",
+        )
+        self.active_unit = Unit.objects.create(
+            property=self.new_property,
+            unit_number="ACTIVE-1",
+        )
+        self.tenant = Tenant.objects.create(
+            first_name="Historical",
+            last_name="Payer",
+            cnic="61101-3000000-3",
+        )
+        self.inactive_lease = Lease.objects.create(
+            tenant=self.tenant,
+            unit=self.new_unit,
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+            monthly_rent=Decimal("20000.00"),
+            status="ended",
+        )
+        LeaseUnitOccupancy.objects.create(
+            lease=self.inactive_lease,
+            unit=self.old_unit,
+            move_in_date=date(2026, 1, 1),
+            move_out_date=date(2026, 6, 30),
+        )
+        LeaseUnitOccupancy.objects.create(
+            lease=self.inactive_lease,
+            unit=self.new_unit,
+            move_in_date=date(2026, 7, 1),
+            move_out_date=date(2026, 12, 31),
+        )
+        self.old_unit_payment = Payment.objects.create(
+            lease=self.inactive_lease,
+            payment_date=date(2026, 5, 1),
+            amount=Decimal("1100.00"),
+        )
+        self.new_unit_payment = Payment.objects.create(
+            lease=self.inactive_lease,
+            payment_date=date(2026, 8, 1),
+            amount=Decimal("1200.00"),
+        )
+        self.active_lease = Lease.objects.create(
+            tenant=self.tenant,
+            unit=self.active_unit,
+            start_date=date(2026, 9, 1),
+            end_date=date(2027, 8, 31),
+            monthly_rent=Decimal("22000.00"),
+            status="active",
+        )
+        self.active_payment = Payment.objects.create(
+            lease=self.active_lease,
+            payment_date=date(2026, 9, 5),
+            amount=Decimal("1300.00"),
+        )
+
+    def _rows(self, params=None):
+        from django.test import RequestFactory
+        from payments.views.payment_list import PaymentListView
+
+        request = RequestFactory().get("/payments/", params or {})
+        request.user = self.user
+        view = PaymentListView()
+        view.request = request
+        return view.get_table_data()
+
+    def test_default_and_tenant_filters_include_active_and_inactive_leases(self):
+        expected = {
+            self.old_unit_payment.pk,
+            self.new_unit_payment.pk,
+            self.active_payment.pk,
+        }
+
+        self.assertEqual(
+            {row.source_id for row in self._rows()},
+            expected,
+        )
+        self.assertEqual(
+            {row.source_id for row in self._rows({"tenant": self.tenant.pk})},
+            expected,
+        )
+
+    def test_property_and_unit_filters_use_payment_date_occupancy(self):
+        old_property_rows = self._rows({"property": self.old_property.pk})
+        old_unit_rows = self._rows({"unit": self.old_unit.pk})
+
+        self.assertEqual(
+            {row.source_id for row in old_property_rows},
+            {self.old_unit_payment.pk},
+        )
+        self.assertEqual(
+            {row.source_id for row in old_unit_rows},
+            {self.old_unit_payment.pk},
+        )
+        self.assertEqual(old_property_rows[0].occupancy_unit, self.old_unit)
+
+    def test_lease_status_filter_separates_active_and_inactive_payments(self):
+        self.assertEqual(
+            {row.source_id for row in self._rows({"lease_status": "active"})},
+            {self.active_payment.pk},
+        )
+        self.assertEqual(
+            {row.source_id for row in self._rows({"lease_status": "inactive"})},
+            {self.old_unit_payment.pk, self.new_unit_payment.pk},
+        )
+
+    def test_list_renders_historical_location_and_status_filter(self):
+        from django.urls import reverse
+
+        response = self.client.get(
+            reverse("payments:payment_list"),
+            {"unit": self.old_unit.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Old Payment Property")
+        self.assertContains(response, "OLD-1")
+        self.assertContains(response, 'id="id_lease_status"')
+        self.assertContains(response, "payment-amount text-dark fw-bold")
+        self.assertNotContains(response, "NEW-1")
 
 
 class SecurityDepositBalanceTests(TestCase):

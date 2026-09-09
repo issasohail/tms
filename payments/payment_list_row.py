@@ -10,6 +10,7 @@ class PaymentListRow:
     source_type: str
     source_id: int
     lease: object
+    occupancy_unit: object
     date: date
     amount: Decimal
     method: str

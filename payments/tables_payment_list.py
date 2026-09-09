@@ -28,10 +28,10 @@ class PaymentListTable(tables.Table):
     tenant = tables.Column(accessor="lease.tenant",
                        attrs={"td": {"class": "col-tenant"}, "th": {"class": "col-tenant"}})
 
-    property = tables.Column(accessor="lease.unit.property.property_name",
+    property = tables.Column(accessor="occupancy_unit.property.property_name",
                             attrs={"td": {"class": "col-property"}, "th": {"class": "col-property"}})
 
-    unit = tables.Column(accessor="lease.unit.unit_number",
+    unit = tables.Column(accessor="occupancy_unit.unit_number",
                         attrs={"td": {"class": "col-unit"}, "th": {"class": "col-unit"}})
 
     date = tables.DateColumn(verbose_name="Date",
@@ -116,7 +116,7 @@ class PaymentListTable(tables.Table):
 
     def render_amount(self, value, record):
         amt = _to_decimal(record.amount)
-        css = "text-success"
+        css = "payment-amount text-dark fw-bold"
 
         settings_obj = self.get_global_settings()
         total_s = format_money(amt, settings_obj)
@@ -129,7 +129,7 @@ class PaymentListTable(tables.Table):
             sec_s   = format_money(sec_amt, settings_obj)
 
             return format_html(
-                '<div class="{} fw-semibold">{}</div>'
+                '<div class="{}">{}</div>'
                 '<div class="small text-muted">Lease: {} | Security: {}</div>',
                 css,
                 total_s,
@@ -138,7 +138,7 @@ class PaymentListTable(tables.Table):
             )
 
         return format_html(
-            '<span class="{} fw-semibold">{}</span>',
+            '<span class="{}">{}</span>',
             css,
             total_s
         )

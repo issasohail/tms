@@ -71,6 +71,15 @@
         </div>
 
         <div class="pf-field">
+          <label class="form-label mb-1">Lease Status</label>
+          <select name="lease_status" id="id_lease_status" class="form-select form-select-sm">
+            <option value="" {% if not current_lease_status %}selected{% endif %}>All</option>
+            <option value="active" {% if current_lease_status == 'active' %}selected{% endif %}>Active</option>
+            <option value="inactive" {% if current_lease_status == 'inactive' %}selected{% endif %}>Inactive</option>
+          </select>
+        </div>
+
+        <div class="pf-field">
           <label class="form-label mb-1">Date Range</label>
           <select name="date_range" id="id_date_range" class="form-select form-select-sm">
             <option value="">Custom</option>
@@ -1026,9 +1035,9 @@
     font-weight: 700 !important;
   }
   .payment-list-dense td.col-amount,
-  .payment-list-dense td.col-amount .text-success,
-  .payment-list-dense td.col-amount .text-danger {
-    color: #12b76a !important;
+  .payment-list-dense td.col-amount .payment-amount {
+    color: #101828 !important;
+    font-weight: 800 !important;
   }
   .payment-page-compact .btn { font-weight:700; border-radius:6px; }
 
@@ -1046,6 +1055,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const $tenant = $('#id_tenant');
   const $prop   = $('#id_property');
   const $unit   = $('#id_unit');
+  const $status = $('#id_lease_status');
   const $range  = $('#id_date_range');
   const $start  = $('#id_start_date');
   const $end    = $('#id_end_date');
@@ -1104,6 +1114,7 @@ document.addEventListener("DOMContentLoaded", function () {
       $prop.val() ||
       $unit.val() ||
       $tenant.val() ||
+      $status.val() ||
       ($range.val() && $range.val() !== '') ||
       $start.val() ||
       $end.val()

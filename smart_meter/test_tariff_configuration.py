@@ -1,4 +1,5 @@
 import importlib
+import uuid
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -8,7 +9,12 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from smart_meter.forms_tariff import TariffConfigurationForm
-from smart_meter.models import Meter, MeterTariffAudit, MeterTariffConfiguration
+from smart_meter.models import (
+    Meter,
+    MeterTariffAudit,
+    MeterTariffBulkRun,
+    MeterTariffConfiguration,
+)
 from smart_meter.services.tariff_configuration import (
     configure_prices,
     read_current_configuration,
@@ -139,6 +145,33 @@ class TariffWorkflowTests(TestCase):
         self.assertTrue(MeterTariffAudit.objects.filter(pk=audit.pk).exists())
         self.assertEqual(send.call_args.kwargs["max_attempts"], 1)
 
+    @patch("smart_meter.services.tariff_configuration.send_via_db")
+    def test_malformed_read_reply_is_retained_in_audit(self, send):
+        send.return_value = {
+            "ok": True, "status": "ok", "reply": "680102", "command_id": 9,
+        }
+        audit = read_current_configuration(meter=self.meter, user=self.user)
+        self.assertEqual(audit.status, "failed")
+        self.assertEqual(audit.raw_read_back_frame, "680102")
+        self.assertEqual(audit.command_ids, [9])
+
+    @patch("smart_meter.services.tariff_configuration.send_via_db")
+    @patch("smart_meter.services.tariff_configuration._send_read")
+    def test_duplicate_submission_key_does_not_repeat_work(self, read, send):
+        read.return_value = (self.before, "AA", 10)
+        submission_key = uuid.uuid4()
+        first = configure_prices(
+            meter=self.meter, user=self.user, mode="flat", prices=["40"],
+            active_rate_count=1, submission_key=submission_key,
+        )
+        second = configure_prices(
+            meter=self.meter, user=self.user, mode="flat", prices=["40"],
+            active_rate_count=1, submission_key=submission_key,
+        )
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(read.call_count, 1)
+        send.assert_not_called()
+
     def test_valid_schedule_is_saved_as_draft_without_transport(self):
         rows = [
             {"start": "23:00", "end": "07:00", "rate": 1},
@@ -234,3 +267,48 @@ class TariffUiAndMigrationTests(TestCase):
         valid_multi.refresh_from_db()
         self.assertEqual(valid_single.tariff_capability, "single_rate")
         self.assertEqual(valid_multi.tariff_capability, "multi_rate")
+
+    def test_single_rate_page_has_four_slot_write_preview(self):
+        MeterTariffAudit.objects.create(
+            meter=self.single,
+            initiating_user=self.user,
+            capability="single_rate",
+            configuration_type="read",
+            status="read",
+            values_after={"active_rate_count": 1, "prices": ["1.0000"] * 4},
+        )
+        response = self.client.get(
+            reverse("smart_meter:tariff_configure", args=[self.single.pk])
+        )
+        self.assertContains(response, "Read-only write preview")
+        self.assertContains(response, 'class="single-slot-preview"', count=4)
+
+    def test_bulk_selection_requires_review_before_run_starts(self):
+        response = self.client.get(reverse("smart_meter:tariff_bulk_setup"))
+        setup_token = response.context["submission_token"]
+        response = self.client.post(reverse("smart_meter:tariff_bulk_setup"), {
+            "price": "40.0000",
+            "meter_ids": str(self.single.pk),
+            "submission_token": setup_token,
+        })
+        run = MeterTariffBulkRun.objects.get()
+        self.assertEqual(run.status, "draft")
+        self.assertRedirects(
+            response, reverse("smart_meter:tariff_bulk_confirm", args=[run.pk])
+        )
+
+        response = self.client.get(
+            reverse("smart_meter:tariff_bulk_confirm", args=[run.pk])
+        )
+        self.assertContains(response, self.single.meter_number)
+        self.assertContains(response, "Single-rate")
+        confirm_token = response.context["submission_token"]
+        response = self.client.post(
+            reverse("smart_meter:tariff_bulk_confirm", args=[run.pk]),
+            {"submission_token": confirm_token, "confirm_write": "yes"},
+        )
+        run.refresh_from_db()
+        self.assertEqual(run.status, "running")
+        self.assertRedirects(
+            response, reverse("smart_meter:tariff_bulk_result", args=[run.pk])
+        )

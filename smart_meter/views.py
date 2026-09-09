@@ -2531,6 +2531,22 @@ def meter_detail(request, pk):
     prepaid_pilot = MeterPrepaidPilot.objects.filter(meter=meter).first()
     tariff_configuration = MeterTariffConfiguration.objects.filter(meter=meter).first()
     latest_tariff_audit = meter.tariff_audits.first()
+    tariff_schedule_summary = []
+    if tariff_configuration:
+        schedule_rows = (
+            tariff_configuration.latest_verified_schedule_summary
+            or tariff_configuration.schedule_draft
+            or []
+        )
+        for row in schedule_rows:
+            rate = row.get("rate") if isinstance(row, dict) else None
+            if rate in {1, 2, 3, 4}:
+                tariff_schedule_summary.append({
+                    "start": row.get("start", ""),
+                    "end": row.get("end", ""),
+                    "rate": rate,
+                    "label": getattr(tariff_configuration, f"rate_{rate}_label"),
+                })
     meter_feature_flags = {
         "credit_eval": bool(
             getattr(settings, "METER_ENABLE_AUTOMATIC_CREDIT_EVALUATION", False)
@@ -2581,6 +2597,7 @@ def meter_detail(request, pk):
             "prepaid_pilot": prepaid_pilot,
             "meter_feature_flags": meter_feature_flags,
             "tariff_configuration": tariff_configuration,
+            "tariff_schedule_summary": tariff_schedule_summary,
             "latest_tariff_audit": latest_tariff_audit,
         },
     )

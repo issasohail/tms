@@ -41,7 +41,11 @@
       {% if meter.tariff_capability == 'single_rate' %}
         <input type="hidden" name="mode" value="flat"><input type="hidden" name="active_rate_count" value="1">
         <div class="mb-3"><label class="form-label">Flat unit rate</label>{{ form.flat_rate }}{{ form.flat_rate.errors }}</div>
-        <div class="small text-muted mb-3">Preview: the chosen value will be copied to Tariff 1, 2, 3, and 4. All other bytes remain unchanged.</div>
+        <div class="small text-muted mb-2">Read-only write preview. All other bytes remain unchanged.</div>
+        <div class="table-responsive mb-3"><table class="table table-sm table-bordered mb-0">
+          <thead><tr><th>Underlying slot</th><th>Live value</th><th>Requested value</th></tr></thead>
+          <tbody>{% for price in live_values.prices %}<tr><td>Tariff {{ forloop.counter }}</td><td>{{ price }}</td><td class="single-slot-preview">—</td></tr>{% endfor %}</tbody>
+        </table></div>
       {% elif meter.tariff_capability == 'multi_rate' %}
         <div class="mb-3">{{ form.mode }}</div>
         <div id="flat-fields"><label class="form-label">Flat unit rate</label>{{ form.flat_rate }}{{ form.flat_rate.errors }}<div class="form-text">Copied to all four Rate Set 1 price fields; schedule data remains unchanged.</div></div>
@@ -55,6 +59,7 @@
           </div>
           <hr><div class="d-flex justify-content-between"><h6>Daily schedule draft</h6><button type="button" id="add-period" class="btn btn-sm btn-outline-primary">Add period</button></div>
           <div id="schedule-rows"></div>{{ form.schedule_json.errors }}
+          <div class="border rounded bg-light p-2 mt-2"><strong class="small">Human-readable schedule preview</strong><div id="schedule-preview" class="small text-muted mt-1">Add periods to preview the daily schedule.</div></div>
         </div>
       {% endif %}
       {% if perms.smart_meter.write_meter_tariff %}
@@ -71,10 +76,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('tariff-form'), hidden = document.getElementById('id_schedule_json');
   const rows = document.getElementById('schedule-rows'), add = document.getElementById('add-period');
   const flat = document.getElementById('flat-fields'), tou = document.getElementById('tou-fields');
+  const flatRate = document.getElementById('id_flat_rate');
+  function syncSinglePreview(){ document.querySelectorAll('.single-slot-preview').forEach(cell => { cell.textContent = flatRate?.value || '—'; }); }
+  flatRate?.addEventListener('input', syncSinglePreview); syncSinglePreview();
   function syncMode(){ const mode=form?.querySelector('input[name="mode"]:checked')?.value || 'flat'; flat?.classList.toggle('d-none',mode!=='flat'); tou?.classList.toggle('d-none',mode!=='time_of_use'); }
   form?.querySelectorAll('input[name="mode"]').forEach(el=>el.addEventListener('change',syncMode)); syncMode();
   let data=[]; try { data=JSON.parse(hidden?.value || '{{ schedule_draft_json|escapejs }}' || '[]'); } catch(e){ data=[]; }
-  function render(){ if(!rows)return; rows.innerHTML=''; data.forEach((row,i)=>{ const div=document.createElement('div'); div.className='row g-2 align-items-end mb-2'; div.innerHTML=`<div class="col-4"><label class="form-label small">Start</label><input type="time" class="form-control" data-k="start" value="${row.start||''}"></div><div class="col-4"><label class="form-label small">End</label><input type="time" class="form-control" data-k="end" value="${row.end||''}"></div><div class="col-3"><label class="form-label small">Rate</label><select class="form-select" data-k="rate">${[1,2,3,4].map(n=>`<option value="${n}" ${Number(row.rate)===n?'selected':''}>Rate ${n}</option>`).join('')}</select></div><div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger">×</button></div>`; div.querySelectorAll('[data-k]').forEach(el=>el.addEventListener('change',()=>{data[i][el.dataset.k]=el.dataset.k==='rate'?Number(el.value):el.value; hidden.value=JSON.stringify(data);})); div.querySelector('button').onclick=()=>{data.splice(i,1); hidden.value=JSON.stringify(data); render();}; rows.appendChild(div); }); hidden.value=JSON.stringify(data); }
+  function renderPreview(){ const preview=document.getElementById('schedule-preview'); if(!preview)return; preview.innerHTML=''; if(!data.length){preview.textContent='Add periods to preview the daily schedule.';return;} data.forEach(row=>{const rate=Number(row.rate)||1;const label=document.getElementById(`id_rate_${rate}_label`)?.value||`Rate ${rate}`;const line=document.createElement('div');line.textContent=`${row.start||'—'}–${row.end||'—'} → ${label} / Rate ${rate}`;preview.appendChild(line);}); }
+  function render(){ if(!rows)return; rows.innerHTML=''; data.forEach((row,i)=>{ const div=document.createElement('div'); div.className='row g-2 align-items-end mb-2'; div.innerHTML=`<div class="col-4"><label class="form-label small">Start</label><input type="time" class="form-control" data-k="start" value="${row.start||''}"></div><div class="col-4"><label class="form-label small">End</label><input type="time" class="form-control" data-k="end" value="${row.end||''}"></div><div class="col-3"><label class="form-label small">Rate</label><select class="form-select" data-k="rate">${[1,2,3,4].map(n=>`<option value="${n}" ${Number(row.rate)===n?'selected':''}>Rate ${n}</option>`).join('')}</select></div><div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger">×</button></div>`; div.querySelectorAll('[data-k]').forEach(el=>el.addEventListener('change',()=>{data[i][el.dataset.k]=el.dataset.k==='rate'?Number(el.value):el.value; hidden.value=JSON.stringify(data);renderPreview();})); div.querySelector('button').onclick=()=>{data.splice(i,1); hidden.value=JSON.stringify(data); render();}; rows.appendChild(div); }); hidden.value=JSON.stringify(data); renderPreview(); }
+  form?.querySelectorAll('[id^="id_rate_"][id$="_label"]').forEach(el=>el.addEventListener('input',renderPreview));
   add?.addEventListener('click',()=>{data.push({start:'00:00',end:'',rate:1});render();}); render();
 });
 </script>

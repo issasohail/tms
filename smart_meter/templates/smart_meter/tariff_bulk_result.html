@@ -20,6 +20,10 @@
 document.addEventListener('DOMContentLoaded', () => {
   const csrf = '{{ csrf_token }}';
   const auditBase = '{% url "smart_meter:tariff_audit_detail" 0 %}';
+  const statusLabels = {
+    verified: 'Verified', no_change: 'No change', offline_queued: 'Offline / queued / not verified',
+    failed: 'Failed', sent_pending_verification: 'Pending verification', unsafe_readback: 'Unsafe read-back'
+  };
   async function processRow(row, retry) {
     const body = new URLSearchParams();
     if (retry) {
@@ -31,8 +35,13 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const response = await fetch(row.dataset.url, {method: 'POST', headers: {'X-CSRFToken': csrf}, body});
       const data = await response.json();
+      if (response.status === 409) {
+        row.querySelector('.status').textContent = statusLabels[data.status] || 'Pending verification';
+        row.querySelector('.error').textContent = data.error;
+        return;
+      }
       if (!response.ok) throw new Error(data.error || 'Request failed');
-      row.querySelector('.status').textContent = data.status;
+      row.querySelector('.status').textContent = statusLabels[data.status] || data.status;
       row.querySelector('.error').textContent = data.error || '—';
       row.querySelector('.old').textContent = JSON.stringify(data.old_prices || []);
       if (data.audit_id) row.querySelector('.audit').innerHTML = `<a href="${auditBase.replace('/0/', '/' + data.audit_id + '/')}">#${data.audit_id}</a>`;

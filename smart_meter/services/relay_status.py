@@ -18,6 +18,7 @@ LIVE_RELAY_FAILURE_STATUSES = frozenset(
     {"failed", "error", "timeout", "expired", "cancelled"}
 )
 LIVE_RELAY_FAILURE_DISPLAY_AGE = timedelta(minutes=5)
+RELAY_COMMAND_FALLBACK_LIFETIME = timedelta(hours=24)
 
 
 def classify_relay_ack(parsed, meter_number):
@@ -114,6 +115,7 @@ def reconcile_live_relay_command_state(
 
     if (
         command is not None
+        and command.command_type == "relay"
         and command.status == "acknowledged"
         and is_fresh
         and confirmed_state == command.desired_state
@@ -127,6 +129,36 @@ def reconcile_live_relay_command_state(
             received_at=reading_at,
         )
         command.refresh_from_db()
+
+    if (
+        command is not None
+        and command.command_type == "relay"
+        and command.status == "acknowledged"
+    ):
+        expires_at = command.expires_at or (
+            command.created_at + RELAY_COMMAND_FALLBACK_LIFETIME
+        )
+        if expires_at <= now:
+            has_current_authoritative_state = bool(
+                is_fresh
+                and confirmed_state in {"on", "off"}
+                and reading_at is not None
+                and reading_at >= command.created_at
+            )
+            if has_current_authoritative_state:
+                error = (
+                    "Relay command expired without matching physical verification: "
+                    f"requested {command.desired_state}, confirmed {confirmed_state}"
+                )
+            else:
+                error = "Relay command expired without authoritative physical verification"
+            updated = MeterCommand.objects.filter(
+                pk=command.pk,
+                command_type="relay",
+                status="acknowledged",
+            ).update(status="expired", error=error)
+            if updated:
+                command.refresh_from_db()
 
     status = command.status if command is not None else ""
     error = command.error if command is not None else ""

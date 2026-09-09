@@ -249,6 +249,106 @@ class AuthoritativeRelayStatusTests(TestCase):
         self.assertEqual(state["status"], "acknowledged")
         self.assertIn("verifying physical relay state", state["operation_label"])
 
+    def test_expired_acknowledged_mismatch_is_expired_and_not_pending(self):
+        command = queue_relay_command(self.meter, "off", source="manual")
+        now = timezone.now()
+        MeterCommand.objects.filter(pk=command.pk).update(
+            status="acknowledged",
+            expires_at=now - timedelta(minutes=1),
+        )
+        command.refresh_from_db()
+
+        state = self._live_command_state(
+            command,
+            "0000",
+            reading_at=now,
+            now=now,
+        )
+
+        command.refresh_from_db()
+        self.assertEqual(command.status, "expired")
+        self.assertEqual(state["confirmed_state"], "on")
+        self.assertEqual(state["status"], "expired")
+        self.assertEqual(state["operation_label"], "")
+        self.assertEqual(state["indicator_label"], "Failed")
+        self.assertEqual(
+            command.error,
+            "Relay command expired without matching physical verification: "
+            "requested off, confirmed on",
+        )
+
+    def test_expired_acknowledged_command_does_not_disable_relay_buttons(self):
+        now = timezone.now()
+        command = queue_relay_command(self.meter, "off", source="manual")
+        MeterCommand.objects.filter(pk=command.pk).update(
+            status="acknowledged",
+            expires_at=now - timedelta(days=1),
+            updated_at=now - timedelta(days=30),
+        )
+        command.refresh_from_db()
+
+        state = self._live_command_state(command, "0000", reading_at=now, now=now)
+
+        self.assertEqual(state["confirmed_state"], "on")
+        self.assertEqual(state["operation_label"], "")
+        self.assertEqual(state["indicator_label"], "")
+        self.assertEqual(state["status"], "")
+        command.refresh_from_db()
+        self.assertEqual(command.status, "expired")
+
+    def test_missing_expiry_uses_bounded_relay_command_lifetime(self):
+        now = timezone.now()
+        command = MeterCommand.objects.create(
+            meter=self.meter,
+            meter_number=self.meter.meter_number,
+            frame_hex="68",
+            command_type="relay",
+            desired_state="off",
+            status="acknowledged",
+            expires_at=None,
+        )
+        MeterCommand.objects.filter(pk=command.pk).update(
+            created_at=now - timedelta(hours=25),
+        )
+        command.refresh_from_db()
+
+        state = self._live_command_state(command, "0000", reading_at=now, now=now)
+
+        command.refresh_from_db()
+        self.assertEqual(command.status, "expired")
+        self.assertEqual(state["operation_label"], "")
+
+    def test_malformed_status_never_verifies_acknowledged_command(self):
+        command = queue_relay_command(self.meter, "off", source="manual")
+        MeterCommand.objects.filter(pk=command.pk).update(status="acknowledged")
+        command.refresh_from_db()
+
+        for status_word in (None, "", "XYZ", "091"):
+            state = self._live_command_state(command, status_word)
+            command.refresh_from_db()
+            self.assertEqual(command.status, "acknowledged")
+            self.assertIsNone(command.verified_at)
+            self.assertIsNone(state["confirmed_state"])
+
+    def test_expired_acknowledged_non_relay_command_is_unchanged(self):
+        now = timezone.now()
+        command = MeterCommand.objects.create(
+            meter=self.meter,
+            meter_number=self.meter.meter_number,
+            frame_hex="68",
+            command_type="prepaid_recharge",
+            desired_state="off",
+            status="acknowledged",
+            expires_at=now - timedelta(days=1),
+        )
+
+        state = self._live_command_state(command, "0000", reading_at=now, now=now)
+
+        command.refresh_from_db()
+        self.assertEqual(command.status, "acknowledged")
+        self.assertIsNone(command.verified_at)
+        self.assertEqual(state["confirmed_state"], "on")
+
     def test_live_pending_and_sent_commands_remain_working(self):
         for status, desired_state, label in (
             ("pending", "on", "Restoring…"),

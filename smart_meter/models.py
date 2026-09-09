@@ -2218,6 +2218,9 @@ class MeterTariffBulkItem(models.Model):
         MeterTariffAudit, null=True, blank=True, on_delete=models.SET_NULL,
         related_name="bulk_items",
     )
+    submission_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    is_processing = models.BooleanField(default=False, db_index=True)
+    processing_started_at = models.DateTimeField(null=True, blank=True)
     processed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

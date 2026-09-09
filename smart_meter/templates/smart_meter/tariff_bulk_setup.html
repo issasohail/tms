@@ -74,6 +74,7 @@
 
 <div class="container-fluid py-3">
     <h3>Bulk Flat Tariff Setup</h3>
+    <p class="small text-muted">Select meters and review the complete list before any live operation begins.</p>
 
     <div class="card card-body mb-3">
         <form method="get" id="meter-filter-form" class="row g-2 align-items-center">
@@ -117,18 +118,19 @@
         </form>
     </div>
 
-    <form method="post" onsubmit="return confirm('Confirm one-shot flat tariff processing for every selected meter?');">
+    <form method="post">
         {% csrf_token %}
-        <input type="hidden" name="confirm_write" value="yes">
+        <input type="hidden" name="submission_token" value="{{ submission_token }}">
         <div class="row g-2 align-items-end mb-3">
             <div class="col-12 col-sm-5 col-md-3">
                 <label class="form-label">Flat unit rate</label>
                 {{ form.price }}{{ form.price.errors }}
             </div>
             <div class="col-12 col-sm-7 col-md-9">
-                <button class="btn btn-danger">Confirm Selected Meters</button>
+                <button class="btn btn-danger">Review Selected Meters</button>
             </div>
         </div>
+        {{ form.non_field_errors }}
         {{ form.meter_ids }}{{ form.meter_ids.errors }}
         <div class="card overflow-hidden">
             <table class="table table-sm mb-0 bulk-tariff-table">

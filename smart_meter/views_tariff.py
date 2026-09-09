@@ -1,5 +1,5 @@
 import json
-import secrets
+import uuid
 
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required
@@ -34,7 +34,7 @@ def _allowed_meters(request):
 
 
 def _new_token(request, key):
-    token = secrets.token_urlsafe(24)
+    token = str(uuid.uuid4())
     request.session[key] = token
     return token
 
@@ -42,7 +42,7 @@ def _new_token(request, key):
 def _consume_token(request, key):
     supplied = request.POST.get("submission_token", "")
     expected = request.session.pop(key, None)
-    return bool(supplied and expected and secrets.compare_digest(supplied, expected))
+    return supplied if supplied and expected and supplied == expected else None
 
 
 @permission_required("smart_meter.read_meter_tariff", raise_exception=True)
@@ -79,7 +79,8 @@ def tariff_configure(request, meter_id):
             if not request.user.has_perm("smart_meter.write_meter_tariff"):
                 from django.core.exceptions import PermissionDenied
                 raise PermissionDenied
-            if not _consume_token(request, f"tariff_submission_{meter.pk}"):
+            submission_key = _consume_token(request, f"tariff_submission_{meter.pk}")
+            if not submission_key:
                 messages.error(request, "This tariff submission was already used or expired. Review and confirm again.")
                 return redirect("smart_meter:tariff_configure", meter_id=meter.pk)
             if form.is_valid() and request.POST.get("confirm_write") == "yes":
@@ -88,6 +89,7 @@ def tariff_configure(request, meter_id):
                         meter=meter, user=request.user, rows=form.cleaned_data["schedule"],
                         labels=form.cleaned_data["labels"],
                         active_rate_count=form.cleaned_data["active_rate_count"],
+                        submission_key=submission_key,
                     )
                     messages.success(request, "Time-of-use schedule saved as a draft. No schedule frame was sent.")
                 else:
@@ -95,6 +97,7 @@ def tariff_configure(request, meter_id):
                         meter=meter, user=request.user, mode=form.cleaned_data["mode"],
                         prices=form.cleaned_data["prices"], labels=form.cleaned_data["labels"],
                         active_rate_count=form.cleaned_data["active_rate_count"],
+                        submission_key=submission_key,
                     )
                     if audit.status == "verified":
                         messages.success(request, "Tariff verified by immediate meter read-back.")
@@ -137,7 +140,8 @@ def tariff_audit_detail(request, audit_id):
 
 @permission_required("smart_meter.bulk_write_meter_tariff", raise_exception=True)
 def tariff_bulk_setup(request):
-    meters = _allowed_meters(request).exclude(tariff_capability="unknown")
+    allowed_meters = _allowed_meters(request)
+    meters = allowed_meters.exclude(tariff_capability="unknown")
     capability = request.GET.get("capability", "")
     property_id, unit_id = request.GET.get("property", ""), request.GET.get("unit", "")
     online = request.GET.get("online", "")
@@ -153,27 +157,74 @@ def tariff_bulk_setup(request):
         meter.is_online = statuses[meter.pk]["is_online"]
     if online in {"online", "offline"}:
         meter_list = [meter for meter in meter_list if meter.is_online == (online == "online")]
-
     form = BulkTariffForm(request.POST or None)
-    if request.method == "POST" and form.is_valid() and request.POST.get("confirm_write") == "yes":
-        selected = list(meters.filter(pk__in=form.cleaned_data["meter_ids"]))
-        if len(selected) != len(form.cleaned_data["meter_ids"]):
-            form.add_error("meter_ids", "One or more selected meters are outside your permitted filter scope.")
+    if request.method == "POST" and form.is_valid():
+        submission_key = _consume_token(request, "tariff_bulk_setup")
+        if not submission_key:
+            form.add_error(None, "This bulk selection was already submitted or expired. Review it again.")
         else:
-            with transaction.atomic():
-                run = MeterTariffBulkRun.objects.create(
-                    requested_price=form.cleaned_data["price"], status="running", created_by=request.user
-                )
-                MeterTariffBulkItem.objects.bulk_create([
-                    MeterTariffBulkItem(run=run, meter=meter, capability=meter.tariff_capability)
-                    for meter in selected
-                ])
-            return redirect("smart_meter:tariff_bulk_result", run_id=run.pk)
+            selected_ids = set(form.cleaned_data["meter_ids"])
+            selected = [meter for meter in meter_list if meter.pk in selected_ids]
+            if selected_ids != {meter.pk for meter in selected}:
+                form.add_error("meter_ids", "One or more selected meters are outside your permitted filter scope.")
+            else:
+                with transaction.atomic():
+                    run, created = MeterTariffBulkRun.objects.get_or_create(
+                        submission_key=submission_key,
+                        defaults={
+                            "requested_price": form.cleaned_data["price"],
+                            "status": "draft",
+                            "created_by": request.user,
+                        },
+                    )
+                    if created:
+                        MeterTariffBulkItem.objects.bulk_create([
+                            MeterTariffBulkItem(
+                                run=run, meter=meter,
+                                capability=meter.tariff_capability,
+                            )
+                            for meter in selected
+                        ])
+                return redirect("smart_meter:tariff_bulk_confirm", run_id=run.pk)
+    permitted_property_ids = allowed_meters.exclude(unit__property_id=None).values_list(
+        "unit__property_id", flat=True
+    ).distinct()
+    permitted_unit_ids = allowed_meters.exclude(unit_id=None).values_list(
+        "unit_id", flat=True
+    ).distinct()
+    submission_token = _new_token(request, "tariff_bulk_setup")
     return render(request, "smart_meter/tariff_bulk_setup.html", {
-        "meters": meter_list, "form": form, "properties": Property.objects.order_by("property_name"),
-        "units": Unit.objects.select_related("property").order_by("property__property_name", "unit_number"),
-        "selected_property": property_id, "selected_unit": unit_id,
-        "selected_capability": capability, "selected_online": online,
+        "meters": meter_list, "form": form,
+        "properties": Property.objects.filter(pk__in=permitted_property_ids).order_by("property_name"),
+        "units": Unit.objects.filter(pk__in=permitted_unit_ids).select_related("property").order_by(
+            "property__property_name", "unit_number"
+        ),
+        "submission_token": submission_token,
+        "selected_capability": capability,
+        "selected_property": property_id,
+        "selected_unit": unit_id,
+        "selected_online": online,
+    })
+
+
+@permission_required("smart_meter.bulk_write_meter_tariff", raise_exception=True)
+def tariff_bulk_confirm(request, run_id):
+    run = get_object_or_404(
+        MeterTariffBulkRun.objects.prefetch_related("items__meter"), pk=run_id
+    )
+    if run.created_by_id != request.user.pk and not request.user.is_superuser:
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied
+    if request.method == "POST":
+        submission_key = _consume_token(request, f"tariff_bulk_confirm_{run.pk}")
+        if request.POST.get("confirm_write") != "yes" or not submission_key:
+            messages.error(request, "Bulk confirmation was missing, already used, or expired.")
+        else:
+            MeterTariffBulkRun.objects.filter(pk=run.pk, status="draft").update(status="running")
+            return redirect("smart_meter:tariff_bulk_result", run_id=run.pk)
+    token = _new_token(request, f"tariff_bulk_confirm_{run.pk}")
+    return render(request, "smart_meter/tariff_bulk_confirm.html", {
+        "run": run, "submission_token": token,
     })
 
 
@@ -183,33 +234,86 @@ def tariff_bulk_result(request, run_id):
     if run.created_by_id != request.user.pk and not request.user.is_superuser:
         from django.core.exceptions import PermissionDenied
         raise PermissionDenied
+    if run.status == "draft":
+        return redirect("smart_meter:tariff_bulk_confirm", run_id=run.pk)
     return render(request, "smart_meter/tariff_bulk_result.html", {"run": run})
 
 
 @require_POST
 @permission_required("smart_meter.bulk_write_meter_tariff", raise_exception=True)
 def tariff_bulk_process_item(request, run_id, item_id):
-    item = get_object_or_404(
-        MeterTariffBulkItem.objects.select_related("run", "meter"), pk=item_id, run_id=run_id
-    )
-    if item.run.created_by_id != request.user.pk and not request.user.is_superuser:
-        from django.core.exceptions import PermissionDenied
-        raise PermissionDenied
-    if item.processed_at and request.POST.get("manual_retry") != "yes":
-        return JsonResponse({"status": item.status, "error": item.error, "audit_id": item.audit_id})
-    if item.processed_at and request.POST.get("confirm_write") != "yes":
-        return JsonResponse({"status": "failed", "error": "Manual retry requires confirmation."}, status=400)
-    audit = configure_prices(
-        meter=item.meter, user=request.user, mode="flat", prices=[item.run.requested_price],
-        labels=["Flat", "Rate 2", "Rate 3", "Rate 4"], active_rate_count=1,
-    )
+    manual_retry = request.POST.get("manual_retry") == "yes"
+    with transaction.atomic():
+        item = get_object_or_404(
+            MeterTariffBulkItem.objects.select_for_update().select_related("run", "meter"),
+            pk=item_id, run_id=run_id,
+        )
+        if item.run.created_by_id != request.user.pk and not request.user.is_superuser:
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied
+        if item.run.status not in {"running", "completed", "partial"}:
+            return JsonResponse({"status": "failed", "error": "This bulk run has not been confirmed."}, status=400)
+        if item.is_processing:
+            return JsonResponse({
+                "status": "sent_pending_verification",
+                "error": "This meter is already being processed; no duplicate write was started.",
+                "audit_id": item.audit_id,
+            }, status=409)
+        if item.processed_at and not manual_retry:
+            return JsonResponse({
+                "status": item.status, "error": item.error,
+                "audit_id": item.audit_id, "old_prices": item.old_prices,
+            })
+        if manual_retry and request.POST.get("confirm_write") != "yes":
+            return JsonResponse({"status": "failed", "error": "Manual retry requires confirmation."}, status=400)
+        if manual_retry and item.status in {"verified", "no_change"}:
+            return JsonResponse({"status": item.status, "error": "A verified item cannot be retried."}, status=400)
+        if manual_retry:
+            item.submission_key = uuid.uuid4()
+        item.is_processing = True
+        item.processing_started_at = timezone.now()
+        item.save(update_fields=["submission_key", "is_processing", "processing_started_at"])
+
+    try:
+        if item.meter.tariff_capability != item.capability:
+            audit = MeterTariffAudit.objects.create(
+                submission_key=item.submission_key,
+                meter=item.meter,
+                initiating_user=request.user,
+                capability=item.meter.tariff_capability,
+                configuration_type="flat",
+                requested_values={"price": str(item.run.requested_price)},
+                status="failed",
+                error="Meter tariff capability changed after confirmation; no command was sent.",
+                completed_at=timezone.now(),
+            )
+        else:
+            audit = configure_prices(
+                meter=item.meter, user=request.user, mode="flat",
+                prices=[item.run.requested_price],
+                labels=["Flat", "Rate 2", "Rate 3", "Rate 4"],
+                active_rate_count=1, submission_key=item.submission_key,
+            )
+    except Exception as exc:
+        audit = MeterTariffAudit.objects.create(
+            meter=item.meter, initiating_user=request.user,
+            capability=item.meter.tariff_capability, configuration_type="flat",
+            requested_values={"price": str(item.run.requested_price)},
+            status="failed", error=str(exc), completed_at=timezone.now(),
+        )
+
     item.status, item.error, item.audit = audit.status, audit.error, audit
     item.old_prices = audit.values_before.get("prices", [])
     item.processed_at = timezone.now()
-    item.save()
+    item.is_processing = False
+    item.save(update_fields=[
+        "status", "error", "audit", "old_prices", "processed_at",
+        "is_processing",
+    ])
     remaining = item.run.items.filter(processed_at__isnull=True).exists()
     if not remaining:
-        item.run.status = "completed"
+        has_failures = item.run.items.exclude(status__in={"verified", "no_change"}).exists()
+        item.run.status = "partial" if has_failures else "completed"
         item.run.completed_at = timezone.now()
         item.run.save(update_fields=["status", "completed_at"])
     return JsonResponse({

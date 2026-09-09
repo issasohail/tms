@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3" style="max-width:1100px">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h3 class="mb-0">Confirm Bulk Flat Tariff</h3>
+      <small class="text-muted">No meter command has been sent yet.</small>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:tariff_bulk_setup' %}">Back to selection</a>
+  </div>
+
+  <div class="alert alert-warning">
+    Confirm <strong>Rs. {{ run.requested_price }}</strong> for each meter below. Meters will be
+    processed one at a time using a fresh live read, one write, and immediate read-back.
+  </div>
+
+  <div class="card mb-3">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>#</th><th>Meter</th><th>Property / Unit</th><th>Tariff type</th><th>Requested price</th></tr></thead>
+        <tbody>
+        {% for item in run.items.all %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ item.meter.meter_number }}</td>
+            <td>{{ item.meter.unit.property.property_name|default:"—" }} / {{ item.meter.unit.unit_number|default:"—" }}</td>
+            <td>{{ item.get_capability_display }}</td>
+            <td>{{ run.requested_price }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5">No meters were selected.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if run.status == 'draft' and run.items.all %}
+  <form method="post" onsubmit="return confirm('Start this bulk tariff operation? Each listed meter may receive one tariff write after a successful live read.');">
+    {% csrf_token %}
+    <input type="hidden" name="submission_token" value="{{ submission_token }}">
+    <input type="hidden" name="confirm_write" value="yes">
+    <button class="btn btn-danger">Confirm and Start Sequential Processing</button>
+  </form>
+  {% else %}
+  <a class="btn btn-primary" href="{% url 'smart_meter:tariff_bulk_result' run.pk %}">View Results</a>
+  {% endif %}
+</div>
+{% endblock %}

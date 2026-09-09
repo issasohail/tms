@@ -64,6 +64,7 @@ urlpatterns = [
     path('meters/<int:meter_id>/schedule/', views_schedule.meter_schedule_detail, name='meter_schedule_detail'),
     path('meters/add/', views.add_meter, name='add_meter'),
     path('meters/tariffs/bulk/', views_tariff.tariff_bulk_setup, name='tariff_bulk_setup'),
+    path('meters/tariffs/bulk/<int:run_id>/confirm/', views_tariff.tariff_bulk_confirm, name='tariff_bulk_confirm'),
     path('meters/tariffs/bulk/<int:run_id>/', views_tariff.tariff_bulk_result, name='tariff_bulk_result'),
     path('meters/tariffs/bulk/<int:run_id>/items/<int:item_id>/process/', views_tariff.tariff_bulk_process_item, name='tariff_bulk_process_item'),
     path('meters/tariffs/audits/<int:audit_id>/', views_tariff.tariff_audit_detail, name='tariff_audit_detail'),

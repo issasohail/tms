@@ -1,9 +1,10 @@
 """Audited tariff reads and one-shot read/modify/write/read-back workflows."""
+
 from __future__ import annotations
 
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from smart_meter.models import (
@@ -51,10 +52,29 @@ def _is_offline_error(exc):
     return "offline" in message or "not connected" in message or "queued" in message
 
 
-def _read_failure(message, command_id):
+def _read_failure(message, command_id, raw_reply=""):
     error = TariffProtocolError(message)
     error.command_id = command_id
+    error.raw_reply = raw_reply or ""
     return error
+
+
+def _new_audit(*, submission_key=None, **fields):
+    """Create one durable audit row per browser submission."""
+
+    if submission_key:
+        try:
+            # Savepoint: duplicate-key handling must not break the outer transaction.
+            with transaction.atomic():
+                audit = MeterTariffAudit.objects.create(
+                    submission_key=submission_key,
+                    **fields,
+                )
+            return audit, True
+        except IntegrityError:
+            return MeterTariffAudit.objects.get(submission_key=submission_key), False
+
+    return MeterTariffAudit.objects.create(**fields), True
 
 
 def _send_read(meter, user):
@@ -62,7 +82,9 @@ def _send_read(meter, user):
     result = send_via_db(
         meter_number=meter.meter_number,
         frame_hex=frame.hex().upper(),
-        expect_di=("070115FF" if meter.tariff_capability == "single_rate" else "070104FF"),
+        expect_di=(
+            "070115FF" if meter.tariff_capability == "single_rate" else "070104FF"
+        ),
         timeout=12.0,
         initiated_by=getattr(user, "get_username", lambda: "")(),
         reason="Tariff configuration live read",
@@ -71,17 +93,33 @@ def _send_read(meter, user):
         max_attempts=1,
     )
     command_id = result.get("command_id")
-    if result.get("status") in {"waiting_online", "pending"} or "offline" in (result.get("error") or "").lower():
+    if (
+        result.get("status") in {"waiting_online", "pending"}
+        or "offline" in (result.get("error") or "").lower()
+    ):
         _cancel_deferred(command_id)
-        raise _read_failure("Offline / queued / not verified", command_id)
+        raise _read_failure(
+            "Offline / queued / not verified", command_id, result.get("reply")
+        )
     if not result.get("ok") or not result.get("reply"):
-        raise _read_failure(result.get("error") or "Live tariff read failed", command_id)
+        raise _read_failure(
+            result.get("error") or "Live tariff read failed",
+            command_id,
+            result.get("reply"),
+        )
     try:
         payload, raw = parse_read_reply(
-            result["reply"], meter_number=meter.meter_number, capability=meter.tariff_capability
+            result["reply"],
+            meter_number=meter.meter_number,
+            capability=meter.tariff_capability,
         )
     except TariffProtocolError as exc:
         exc.command_id = command_id
+        exc.raw_reply = (
+            result.get("reply").hex().upper()
+            if isinstance(result.get("reply"), (bytes, bytearray))
+            else (result.get("reply") or "")
+        )
         raise
     return payload, raw, command_id
 
@@ -106,11 +144,14 @@ def read_current_configuration(*, meter, user):
         audit.save()
         configuration.last_configuration_read_at = audit.completed_at
         configuration.last_status = "read"
-        configuration.save(update_fields=["last_configuration_read_at", "last_status", "updated_at"])
+        configuration.save(
+            update_fields=["last_configuration_read_at", "last_status", "updated_at"]
+        )
     except Exception as exc:
         command_id = getattr(exc, "command_id", None)
         if command_id:
             audit.command_ids = [command_id]
+        audit.raw_read_back_frame = getattr(exc, "raw_reply", "")
         audit.status = "offline_queued" if _is_offline_error(exc) else "failed"
         audit.error = str(exc)
         audit.completed_at = timezone.now()
@@ -131,7 +172,16 @@ def _save_verified(configuration, *, mode, labels, values, audit):
     configuration.save()
 
 
-def configure_prices(*, meter, user, mode, prices, labels=None, active_rate_count=1):
+def configure_prices(
+    *,
+    meter,
+    user,
+    mode,
+    prices,
+    labels=None,
+    active_rate_count=1,
+    submission_key=None,
+):
     if meter.tariff_capability == "unknown":
         raise TariffProtocolError("Tariff capability must be confirmed before writing")
     labels = list(labels or ("Valley", "Flat", "Peak", "Shoulder"))
@@ -143,7 +193,8 @@ def configure_prices(*, meter, user, mode, prices, labels=None, active_rate_coun
         "labels": labels,
         "prices": [str(value) for value in prices],
     }
-    audit = MeterTariffAudit.objects.create(
+    audit, created = _new_audit(
+        submission_key=submission_key,
         meter=meter,
         initiating_user=user if getattr(user, "is_authenticated", False) else None,
         capability=meter.tariff_capability,
@@ -151,8 +202,11 @@ def configure_prices(*, meter, user, mode, prices, labels=None, active_rate_coun
         requested_values=requested,
         status="failed",
     )
+    if not created:
+        return audit
     configuration = _configuration(meter)
     command_ids = []
+    read_phase = "before"
     try:
         before_payload, before_raw, read_id = _send_read(meter, user)
         if read_id:
@@ -174,12 +228,21 @@ def configure_prices(*, meter, user, mode, prices, labels=None, active_rate_coun
             audit.completed_at = timezone.now()
             audit.save()
             _save_verified(
-                configuration, mode=mode, labels=labels,
-                values=before, audit=audit,
+                configuration,
+                mode=mode,
+                labels=labels,
+                values=before,
+                audit=audit,
             )
             configuration.last_configuration_read_at = audit.completed_at
             configuration.last_status = "no_change"
-            configuration.save(update_fields=["last_configuration_read_at", "last_status", "updated_at"])
+            configuration.save(
+                update_fields=[
+                    "last_configuration_read_at",
+                    "last_status",
+                    "updated_at",
+                ]
+            )
             return audit
 
         write_frame = build_tariff_write_frame(
@@ -187,7 +250,14 @@ def configure_prices(*, meter, user, mode, prices, labels=None, active_rate_coun
         )
         audit.raw_write_frame = write_frame.hex().upper()
         audit.status = "sent_pending_verification"
-        audit.save(update_fields=["values_before", "raw_read_before_frame", "raw_write_frame", "status"])
+        audit.save(
+            update_fields=[
+                "values_before",
+                "raw_read_before_frame",
+                "raw_write_frame",
+                "status",
+            ]
+        )
         write_result = send_via_db(
             meter_number=meter.meter_number,
             frame_hex=audit.raw_write_frame,
@@ -207,10 +277,13 @@ def configure_prices(*, meter, user, mode, prices, labels=None, active_rate_coun
         audit.raw_write_reply_frame = write_result.get("reply") or ""
         ack_state = classify_write_reply(audit.raw_write_reply_frame)
         if ack_state == "invalid":
-            raise TariffProtocolError("Meter returned an invalid tariff write acknowledgement")
+            raise TariffProtocolError(
+                "Meter returned an invalid tariff write acknowledgement"
+            )
 
         # Always read back, including after a negative acknowledgement: some firmware
         # has been observed partially applying a rejected parameter write.
+        read_phase = "after"
         after_payload, after_raw, verify_id = _send_read(meter, user)
         if verify_id:
             command_ids.append(verify_id)
@@ -220,10 +293,13 @@ def configure_prices(*, meter, user, mode, prices, labels=None, active_rate_coun
         target_indexes = target_byte_indexes(
             meter.tariff_capability, int(active_rate_count), flat=flat
         )
-        target_ok = all(after_payload[index] == modified[index] for index in target_indexes)
+        target_ok = all(
+            after_payload[index] == modified[index] for index in target_indexes
+        )
         unrelated_ok = all(
             after_payload[index] == before_payload[index]
-            for index in range(len(before_payload)) if index not in target_indexes
+            for index in range(len(before_payload))
+            if index not in target_indexes
         )
         audit.completed_at = timezone.now()
         audit.command_ids = command_ids
@@ -231,25 +307,43 @@ def configure_prices(*, meter, user, mode, prices, labels=None, active_rate_coun
             audit.status = "unsafe_readback" if not unrelated_ok else "failed"
             audit.error = (
                 "Read-back changed bytes outside the requested tariff fields"
-                if not unrelated_ok else "Read-back did not match the requested tariff values"
+                if not unrelated_ok
+                else "Read-back did not match the requested tariff values"
             )
             configuration.last_status = audit.status
             configuration.last_configuration_read_at = audit.completed_at
-            configuration.save(update_fields=["last_status", "last_configuration_read_at", "updated_at"])
+            configuration.save(
+                update_fields=[
+                    "last_status",
+                    "last_configuration_read_at",
+                    "updated_at",
+                ]
+            )
         else:
             audit.status = "verified"
             verified = decode_payload(modified, meter.tariff_capability)
             _save_verified(
-                configuration, mode=mode, labels=labels,
-                values=verified, audit=audit,
+                configuration,
+                mode=mode,
+                labels=labels,
+                values=verified,
+                audit=audit,
             )
         audit.save()
     except Exception as exc:
         failed_command_id = getattr(exc, "command_id", None)
         if failed_command_id and failed_command_id not in command_ids:
             command_ids.append(failed_command_id)
-        audit.status = "offline_queued" if _is_offline_error(exc) else (
-            "sent_pending_verification" if audit.raw_write_frame else "failed"
+        raw_reply = getattr(exc, "raw_reply", "")
+        if raw_reply:
+            if read_phase == "after":
+                audit.raw_read_back_frame = raw_reply
+            else:
+                audit.raw_read_before_frame = raw_reply
+        audit.status = (
+            "offline_queued"
+            if _is_offline_error(exc)
+            else ("sent_pending_verification" if audit.raw_write_frame else "failed")
         )
         audit.error = str(exc)
         audit.command_ids = command_ids
@@ -260,22 +354,38 @@ def configure_prices(*, meter, user, mode, prices, labels=None, active_rate_coun
     return audit
 
 
-@transaction.atomic
-def save_schedule_draft(*, meter, user, rows, labels, active_rate_count):
-    configuration = _configuration(meter)
-    configuration.mode = "time_of_use"
-    configuration.active_rate_count = active_rate_count
-    configuration.schedule_draft = rows
-    for index, label in enumerate(labels, 1):
-        setattr(configuration, f"rate_{index}_label", label)
-    configuration.last_status = "draft"
-    configuration.save()
-    return MeterTariffAudit.objects.create(
+def save_schedule_draft(
+    *,
+    meter,
+    user,
+    rows,
+    labels,
+    active_rate_count,
+    submission_key=None,
+):
+    audit, created = _new_audit(
+        submission_key=submission_key,
         meter=meter,
         initiating_user=user if getattr(user, "is_authenticated", False) else None,
         capability=meter.tariff_capability,
         configuration_type="schedule_draft",
-        requested_values={"rows": rows, "labels": labels, "active_rate_count": active_rate_count},
+        requested_values={
+            "rows": rows,
+            "labels": labels,
+            "active_rate_count": active_rate_count,
+        },
         status="draft",
         completed_at=timezone.now(),
     )
+    if not created:
+        return audit
+    with transaction.atomic():
+        configuration = _configuration(meter)
+        configuration.mode = "time_of_use"
+        configuration.active_rate_count = active_rate_count
+        configuration.schedule_draft = rows
+        for index, label in enumerate(labels, 1):
+            setattr(configuration, f"rate_{index}_label", label)
+        configuration.last_status = "draft"
+        configuration.save()
+    return audit

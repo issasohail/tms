@@ -331,18 +331,20 @@ class PaymentLedgerLinkTests(TestCase):
             username="ledger-link-admin", email="ledger@example.com", password="test"
         )
 
-    def test_payment_detail_ledger_button_focuses_and_validates_payment(self):
+    def test_payment_detail_ledger_button_opens_full_ledger(self):
         from django.urls import reverse
         self.client.force_login(self.admin)
         detail = self.client.get(reverse("payments:payment_detail", args=[self.payment.pk]))
         self.assertContains(detail, "Ledger")
-        self.assertContains(detail, f"payment_id={self.payment.pk}")
+        ledger_url = reverse("leases:lease_ledger_by_pk", args=[self.lease.pk])
+        self.assertContains(detail, f'href="{ledger_url}"')
+        self.assertNotContains(detail, f"payment_id={self.payment.pk}")
         ledger = self.client.get(
-            reverse("leases:lease_ledger_by_pk", args=[self.lease.pk]),
-            {"payment_id": self.payment.pk},
+            ledger_url,
         )
         self.assertEqual(ledger.status_code, 200)
-        self.assertContains(ledger, 'id="focused-payment-row"')
+        self.assertContains(ledger, "LEDGER-LINK")
+        self.assertNotContains(ledger, 'id="focused-payment-row"')
 
     def test_payment_focus_cannot_reference_another_lease_payment(self):
         from django.urls import reverse
@@ -367,3 +369,20 @@ class PaymentLedgerLinkTests(TestCase):
             {"payment_id": other.pk},
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_payment_update_keeps_existing_lease_during_ajax_initialization(self):
+        from django.urls import reverse
+
+        self.client.force_login(self.admin)
+        response = self.client.get(
+            reverse("payments:payment_update", args=[self.payment.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["form"]["lease"].value(), self.lease.pk)
+        self.assertContains(response, f'const EDIT_LEASE_ID = "{self.lease.pk}";')
+        self.assertContains(
+            response,
+            "return IS_EDIT && EDIT_LEASE_ID ? EDIT_LEASE_ID : null;",
+        )
+        self.assertContains(response, "if (IS_EDIT) {")

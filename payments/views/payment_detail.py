@@ -78,7 +78,7 @@ class PaymentDetailView(LoginRequiredMixin, DetailView):
         )
         ctx["can_view_ledger"] = can_view_ledger
         ctx["ledger_url"] = (
-            f"{reverse('leases:lease_ledger_by_pk', args=[lease.pk])}?payment_id={payment.pk}"
+            reverse("leases:lease_ledger_by_pk", args=[lease.pk])
             if can_view_ledger else ""
         )
 

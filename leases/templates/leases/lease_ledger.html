@@ -363,23 +363,25 @@
 {% if lease %}
 
 {# Pagination controls (top) #}
-<div class="d-flex justify-content-between align-items-center my-2">
+<nav class="d-flex justify-content-end align-items-center gap-2 my-2" aria-label="Ledger pages">
   <div class="xsmall text-muted">Page {{ page }} of {{ total_pages }}</div>
   <div class="d-flex gap-2">
     {% if has_prev %}
-    <a class="btn btn-secondary btn-slim"
-      href="?property={{ current_property }}&unit={{ current_unit }}&lease_id={{ current_lease }}&show_inactive={% if show_inactive %}on{% endif %}&page={{ page|add:'-1' }}">Prev</a>
+    <a class="btn btn-primary btn-slim"
+      href="?property={{ current_property }}&unit={{ current_unit }}&lease_id={{ current_lease }}&show_inactive={% if show_inactive %}on{% endif %}&page={{ page|add:'-1' }}"
+      aria-label="Go to page {{ page|add:'-1' }}">&larr; Page {{ page|add:'-1' }}</a>
     {% else %}
-    <button class="btn btn-secondary btn-slim" disabled>Prev</button>
+    <button class="btn btn-secondary btn-slim" disabled>&larr; Previous</button>
     {% endif %}
     {% if has_next %}
-    <a class="btn btn-secondary btn-slim"
-      href="?property={{ current_property }}&unit={{ current_unit }}&lease_id={{ current_lease }}&show_inactive={% if show_inactive %}on{% endif %}&page={{ page|add:'1' }}">Next</a>
+    <a class="btn btn-primary btn-slim"
+      href="?property={{ current_property }}&unit={{ current_unit }}&lease_id={{ current_lease }}&show_inactive={% if show_inactive %}on{% endif %}&page={{ page|add:'1' }}"
+      aria-label="Go to page {{ page|add:'1' }}">Page {{ page|add:'1' }} &rarr;</a>
     {% else %}
-    <button class="btn btn-secondary btn-slim" disabled>Next</button>
+    <button class="btn btn-secondary btn-slim" disabled>Next &rarr;</button>
     {% endif %}
   </div>
-</div>
+</nav>
 
 {# Mobile: compact ledger cards, independent of browser table-row sizing #}
 <div class="d-lg-none">

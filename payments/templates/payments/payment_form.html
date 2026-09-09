@@ -464,6 +464,7 @@
 {% block extra_js %}
 <script>
   const IS_EDIT = {{ form.instance.pk|yesno:"true,false" }};
+  const EDIT_LEASE_ID = "{{ form.instance.lease_id|default:''|escapejs }}";
 </script>
 
 <script>
@@ -471,7 +472,15 @@
   $(function(){
     initSelect2();
     wireSelect2AutoFocus();
-    updateAllLists();
+    // On edit, first reload only the payment's saved lease. Running all three
+    // asynchronous filter refreshes here can let a later response erase it.
+    if (IS_EDIT) {
+      updateLeaseList();
+      populateTenantFilter(false);
+      populateUnitFilter(false);
+    } else {
+      updateAllLists();
+    }
     setupDelegatedWhatsApp();
     enhanceMobileRows();
 
@@ -614,7 +623,7 @@
     return (cand ? String(cand).trim() : (getTenantId(obj) || 'Tenant'));
   }
 
-  function populateTenantFilter(){
+  function populateTenantFilter(refreshLease = true){
     const $sel = $('#id_tenant_search');
     const requestSeq = ++tenantFilterRequestSeq;
     $.get("{% url 'payments:get_filtered_leases' %}", {
@@ -639,12 +648,12 @@
       $sel.empty()[0].appendChild(frag);
       if (current && unique.has(String(current))) $sel.val(String(current));
       $sel.trigger('change.select2');
-      updateLeaseList();
+      if (refreshLease) updateLeaseList();
     })
     .fail(function(){ $sel.trigger('change.select2'); });
   }
 
-  function populateUnitFilter(){
+  function populateUnitFilter(refreshLease = true){
     const requestSeq = ++unitFilterRequestSeq;
     $.get("{% url 'payments:get_filtered_leases' %}", {
       property_id: $('#id_property').val() || '',
@@ -663,15 +672,16 @@
       });
       if (current && $sel.find('option[value="' + current + '"]').length) $sel.val(String(current));
       $sel.trigger('change.select2');
-      updateLeaseList();
+      if (refreshLease) updateLeaseList();
     });
   }
 
-  function getLeaseIdFromURL(){
-    const m = new URLSearchParams(window.location.search).get('lease');
-    return m && String(m).trim() ? m : null;
+  function getInitialLeaseId(){
+    const urlLease = new URLSearchParams(window.location.search).get('lease');
+    if (urlLease && String(urlLease).trim()) return String(urlLease).trim();
+    return IS_EDIT && EDIT_LEASE_ID ? EDIT_LEASE_ID : null;
   }
-  let didURLPreselect = false;
+  let didInitialLeasePreselect = false;
   let tenantFilterRequestSeq = 0;
   let unitFilterRequestSeq = 0;
   let leaseListRequestSeq = 0;
@@ -708,8 +718,8 @@
 
   function updateLeaseList(){
     const $lease = $('#id_lease');
-    const urlLease = getLeaseIdFromURL();
-    const current = $lease.val() || (!didURLPreselect && urlLease);
+    const initialLease = didInitialLeasePreselect ? null : getInitialLeaseId();
+    const current = $lease.val() || initialLease;
     const requestSeq = ++leaseListRequestSeq;
 
     $.get("{% url 'payments:get_filtered_leases' %}", {
@@ -717,7 +727,7 @@
       property_id: $('#id_property').val() || '',
       unit_id: $('#id_unit').val() || '',
       include_inactive: $('#id_include_inactive').is(':checked'),
-      lease: urlLease || ''
+      lease: initialLease || ''
     }, function(data){
       if (requestSeq !== leaseListRequestSeq) return;
       const leases = data.leases || [];
@@ -745,14 +755,16 @@
       let target = null;
       if (current && leases.some(l => String(l.id) === String(current))) {
         target = current;
-      } else if (!didURLPreselect && urlLease && leases.some(l => String(l.id) === String(urlLease))) {
-        target = urlLease;
-        didURLPreselect = true;
+      } else if (initialLease && leases.some(l => String(l.id) === String(initialLease))) {
+        target = initialLease;
       } else if (leases.length === 1) {
         target = leases[0].id;
       }
 
       if (target){
+        if (initialLease && String(target) === String(initialLease)) {
+          didInitialLeasePreselect = true;
+        }
         $lease.val(String(target)).trigger('change.select2').trigger('change');
       } else {
         setBalancesUI(null);

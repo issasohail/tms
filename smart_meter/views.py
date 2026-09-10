@@ -769,6 +769,7 @@ def prepaid_meter_ledger(request, meter_id):
         observed_days.add(received_day)
     live = getattr(meter, "live", None)
     from smart_meter.rates import resolve_electricity_rate
+    from smart_meter.models import MeterTariffConfiguration
 
     return render(request, "smart_meter/prepaid_ledger.html", {
         "meter": meter,
@@ -778,6 +779,9 @@ def prepaid_meter_ledger(request, meter_id):
         "readings": readings,
         "raw_balance_frames": raw_balance_frames,
         "electricity_rate": resolve_electricity_rate(meter=meter),
+        "tariff_configuration": MeterTariffConfiguration.objects.filter(
+            meter=meter
+        ).first(),
     })
 
 

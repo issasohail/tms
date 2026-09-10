@@ -748,6 +748,8 @@ def prepaid_meter_ledger(request, meter_id):
         ).order_by("-received_at", "-pk")[:200]
     )
     observed_days = set()
+    observation_day_number = 0
+    observation_sub_number = 0
     for frame in raw_balance_frames:
         frame.reported_balance = (frame.decoded_data or {}).get("balance")
         frame.reported_energy = (
@@ -756,6 +758,14 @@ def prepaid_meter_ledger(request, meter_id):
         )
         received_day = timezone.localtime(frame.received_at).date()
         frame.is_daily_latest = received_day not in observed_days
+        if frame.is_daily_latest:
+            observation_day_number += 1
+            observation_sub_number = 1
+        else:
+            observation_sub_number += 1
+        frame.observation_day_number = observation_day_number
+        frame.observation_sub_number = observation_sub_number
+        frame.observation_day_key = received_day.isoformat()
         observed_days.add(received_day)
     live = getattr(meter, "live", None)
     from smart_meter.rates import resolve_electricity_rate

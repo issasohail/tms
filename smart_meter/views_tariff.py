@@ -7,6 +7,7 @@ from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from accounts.access import restrict_queryset_to_properties
@@ -43,6 +44,17 @@ def _consume_token(request, key):
     supplied = request.POST.get("submission_token", "")
     expected = request.session.pop(key, None)
     return supplied if supplied and expected and supplied == expected else None
+
+
+def _tariff_return(request, meter):
+    target = request.POST.get("next") or request.GET.get("next")
+    if target and url_has_allowed_host_and_scheme(
+        target,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return redirect(target)
+    return redirect("smart_meter:tariff_configure", meter_id=meter.pk)
 
 
 def meter_tariff_tab_context(request, meter):
@@ -102,7 +114,7 @@ def tariff_configure(request, meter_id):
                 messages.success(request, "Live meter tariff configuration read successfully.")
             else:
                 messages.error(request, audit.error or audit.get_status_display())
-            return redirect("smart_meter:tariff_configure", meter_id=meter.pk)
+            return _tariff_return(request, meter)
         if action in {"write_tariff", "save_draft"}:
             if not request.user.has_perm("smart_meter.write_meter_tariff"):
                 from django.core.exceptions import PermissionDenied
@@ -110,7 +122,7 @@ def tariff_configure(request, meter_id):
             submission_key = _consume_token(request, f"tariff_submission_{meter.pk}")
             if not submission_key:
                 messages.error(request, "This tariff submission was already used or expired. Review and confirm again.")
-                return redirect("smart_meter:tariff_configure", meter_id=meter.pk)
+                return _tariff_return(request, meter)
             if form.is_valid() and request.POST.get("confirm_write") == "yes":
                 if action == "save_draft":
                     audit = save_schedule_draft(
@@ -120,6 +132,7 @@ def tariff_configure(request, meter_id):
                         submission_key=submission_key,
                     )
                     messages.success(request, "Time-of-use schedule saved as a draft. No schedule frame was sent.")
+                    return _tariff_return(request, meter)
                 else:
                     audit = configure_prices(
                         meter=meter, user=request.user, mode=form.cleaned_data["mode"],
@@ -133,6 +146,8 @@ def tariff_configure(request, meter_id):
                         messages.info(request, "Live values already matched; no write was sent.")
                     else:
                         messages.error(request, audit.error or audit.get_status_display())
+                    if request.POST.get("next"):
+                        return _tariff_return(request, meter)
                     return redirect("smart_meter:tariff_audit_detail", audit_id=audit.pk)
             elif request.POST.get("confirm_write") != "yes":
                 form.add_error(None, "Confirm the operation before continuing.")

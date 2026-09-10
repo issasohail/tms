@@ -19,14 +19,14 @@
     --w-tenant: 140px;
     --w-meter: 110px;
     --w-meter-type: 100px;
-    --w-role: 80px;
-    --w-status: 90px;
-    --w-unit-rate: 100px;
+    --w-role: 64px;
+    --w-status: 68px;
+    --w-unit-rate: 92px;
     --w-power: 60px;
 
     --w-updated: 180px;
     --w-balance: 100px;
-    --w-total-energy: 170px;
+    --w-total-energy: 125px;
     --w-source-ip: 120px;
     --w-port: 60px;
     --w-voltage: 60px;
@@ -220,6 +220,12 @@
     vertical-align: middle;
     line-height: 1.2;
   }
+
+  .two-line-heading { display: inline-block; white-space: normal; line-height: 1.05; }
+  .unit-rate-display { border: 0; background: transparent; padding: 0; color: inherit; text-decoration: underline dotted; }
+  .unit-rate-editor { display: inline-flex; align-items: center; gap: .15rem; }
+  .unit-rate-editor input { width: 66px; padding: .1rem .2rem; font-size: inherit; }
+  .unit-rate-editor .btn { padding: .1rem .25rem; font-size: .65rem; }
 
   .card .table-responsive {
     margin: 0;
@@ -1002,11 +1008,56 @@
       badge.value = isPrepaid ? 'disable_meter' : 'enable_meter';
       badge.title = isPrepaid ? 'Switch this meter to postpaid' : 'Switch this meter to prepaid';
     });
-    tr.querySelectorAll('.unit-rate-badge').forEach(badge => {
-      badge.textContent = `${unitRate || '0.0000'}/kWh`;
-      badge.title = `${rateSource || 'Resolved'} rate`;
+    tr.querySelectorAll('.unit-rate-display').forEach(display => {
+      if (display.closest('.unit-rate-editor')?.classList.contains('d-none') === false) return;
+      display.textContent = `${unitRate || '0.0000'}/kWh`;
+      display.title = `${rateSource || 'Resolved'} rate; click to edit`;
     });
   }
+
+  document.addEventListener('click', async event => {
+    const display = event.target.closest('.unit-rate-display');
+    if (display) {
+      const cell = display.closest('[data-unit-rate-cell]');
+      cell.querySelector('.unit-rate-editor').classList.remove('d-none');
+      display.classList.add('d-none');
+      cell.querySelector('input').focus();
+      return;
+    }
+    const cancel = event.target.closest('[data-unit-rate-cancel]');
+    if (cancel) {
+      const cell = cancel.closest('[data-unit-rate-cell]');
+      cell.querySelector('.unit-rate-editor').classList.add('d-none');
+      cell.querySelector('.unit-rate-display').classList.remove('d-none');
+      return;
+    }
+    const save = event.target.closest('[data-unit-rate-save]');
+    if (!save) return;
+    const cell = save.closest('[data-unit-rate-cell]');
+    const input = cell.querySelector('input');
+    save.disabled = true;
+    try {
+      const body = new URLSearchParams({unit_rate: input.value});
+      const response = await fetch(cell.dataset.updateUrl, {
+        method: 'POST',
+        headers: {'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'Content-Type': 'application/x-www-form-urlencoded'},
+        body: body.toString(),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Unit rate could not be saved.');
+      document.querySelectorAll(`[data-unit-rate-cell][data-meter-id="${cell.dataset.meterId}"]`).forEach(target => {
+        target.querySelector('.unit-rate-display').textContent = `${result.unit_rate}/kWh`;
+        target.querySelector('.unit-rate-display').title = `${result.source} rate; click to edit`;
+        target.querySelector('input').value = result.meter_unit_rate;
+        target.querySelector('.unit-rate-editor').classList.add('d-none');
+        target.querySelector('.unit-rate-display').classList.remove('d-none');
+      });
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      save.disabled = false;
+    }
+  });
 
   function setRowMeterRole(tr, roleDisplay) {
     tr.querySelectorAll('.meter-role-badge').forEach(badge => {
@@ -1898,8 +1949,8 @@
             <th class="sticky-left col-tenant">Tenant</th>
             <th class="sticky-left col-meter">Meter #</th>
             <th class="col-meter-type">Meter Type</th>
-            <th class="col-role">Billing Role</th>
-            <th class="sticky-left col-status">Meter Status</th>
+            <th class="col-role"><span class="two-line-heading">Billing<br>Role</span></th>
+            <th class="sticky-left col-status"><span class="two-line-heading">Meter<br>Status</span></th>
             <th class="col-unit-rate">Unit Rate</th>
             <th class="sticky-left col-power">Power</th>
 
@@ -1934,7 +1985,7 @@
                   <span class="badge rounded-pill online-badge {% if r.connection_state == 'online' %}bg-success{% elif r.connection_state == 'stale' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{% if r.connection_state == 'online' %}Online{% elif r.connection_state == 'stale' %}Data stale{% else %}Offline{% endif %}</span>
                   <span class="badge rounded-pill power-badge {% if m.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">{% if m.power_status|lower == 'on' %}ON{% else %}OFF{% endif %}</span>
                   <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="mode-toggle-form">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="badge rounded-pill billing-mode-badge mode-toggle-button {% if m.is_prepaid %}bg-info text-dark{% else %}bg-light text-dark border{% endif %}" name="action" value="{% if m.is_prepaid %}disable_meter{% else %}enable_meter{% endif %}" title="Switch this meter to {% if m.is_prepaid %}postpaid{% else %}prepaid{% endif %}">{% if m.is_prepaid %}Prepaid{% else %}Postpaid{% endif %}</button></form>
-                  <span class="badge rounded-pill bg-light text-dark border unit-rate-badge">{{ r.display_electricity_rate.rate|floatformat:4 }}/kWh</span>
+                  <span data-unit-rate-cell data-meter-id="{{ m.id }}" data-update-url="{% url 'smart_meter:meter_unit_rate_update' m.id %}"><button type="button" class="unit-rate-display" title="{{ r.display_electricity_rate.source }} rate; click to edit">{{ r.display_electricity_rate.rate|floatformat:4 }}/kWh</button><span class="unit-rate-editor d-none"><input type="number" min="0" step="0.0001" value="{{ m.unit_rate|default_if_none:'' }}"><button type="button" class="btn btn-success" data-unit-rate-save>✓</button><button type="button" class="btn btn-light" data-unit-rate-cancel>×</button></span></span>
                 </div>
               </div>
               <div class="mobile-line mobile-line-three">
@@ -1946,8 +1997,8 @@
                 <div class="mobile-va"><span>V {{ r.voltage_a|default:"—" }}</span><span>A {{ r.current_a|default:"—" }}</span></div>
               </div>
               <div class="mobile-explicit-actions">
-                <a class="btn btn-sm btn-success" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge" title="Top up" aria-label="Top up"><i class="fas fa-plus" aria-hidden="true"></i></a>
-                <a class="btn btn-sm btn-warning" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund" title="Refund" aria-label="Refund"><i class="fas fa-minus" aria-hidden="true"></i></a>
+                <button type="button" class="btn btn-sm btn-success" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up" aria-label="Top up"><i class="fas fa-plus" aria-hidden="true"></i></button>
+                <button type="button" class="btn btn-sm btn-warning" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund" aria-label="Refund"><i class="fas fa-minus" aria-hidden="true"></i></button>
                 <button type="button" class="btn btn-sm btn-outline-success relay-action" data-action="on"
                   data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
                   data-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
@@ -1965,8 +2016,8 @@
 
             <td class="sticky-left col-recharge text-center">
               <div class="money-actions">
-                <a class="btn btn-success money-icon-action" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge" title="Top up this meter" aria-label="Top up this meter"><i class="fas fa-plus" aria-hidden="true"></i></a>
-                <a class="btn btn-warning money-icon-action" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund" title="Refund this meter" aria-label="Refund this meter"><i class="fas fa-minus" aria-hidden="true"></i></a>
+                <button type="button" class="btn btn-success money-icon-action" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up this meter" aria-label="Top up this meter"><i class="fas fa-plus" aria-hidden="true"></i></button>
+                <button type="button" class="btn btn-warning money-icon-action" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund this meter" aria-label="Refund this meter"><i class="fas fa-minus" aria-hidden="true"></i></button>
               </div>
             </td>
 
@@ -2028,7 +2079,7 @@
             </td>
 
             <td class="col-unit-rate text-center">
-              <span class="badge bg-light text-dark border unit-rate-badge" title="{{ r.display_electricity_rate.source }} rate">{{ r.display_electricity_rate.rate|floatformat:4 }}/kWh</span>
+              <span data-unit-rate-cell data-meter-id="{{ m.id }}" data-update-url="{% url 'smart_meter:meter_unit_rate_update' m.id %}"><button type="button" class="unit-rate-display" title="{{ r.display_electricity_rate.source }} rate; click to edit">{{ r.display_electricity_rate.rate|floatformat:4 }}/kWh</button><span class="unit-rate-editor d-none"><input type="number" min="0" step="0.0001" value="{{ m.unit_rate|default_if_none:'' }}"><button type="button" class="btn btn-success" data-unit-rate-save>✓</button><button type="button" class="btn btn-light" data-unit-rate-cancel>×</button></span></span>
             </td>
 
             <!-- Desktop Power column (hidden on small) -->
@@ -2623,5 +2674,7 @@
     }
   }
 </style>
+
+{% include "smart_meter/partials/prepaid_money_modal.html" %}
 
 {% endblock %}

@@ -21,6 +21,10 @@
     <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Last reading</div><div class="fw-semibold">{{ live.ts|date:"Y-m-d H:i:s"|default:"—" }}</div></div></div></div>
   </div>
 
+  {% if meter.billing_mode == 'prepaid_pilot' and not tariff_configuration.last_verified_at %}
+  <div class="alert alert-warning py-2"><strong>Prepaid deduction is not verified.</strong> This meter is enabled for prepaid commands, but no tariff has been successfully read and verified on the meter. Its authoritative balance register is currently unchanged even while energy increases. <a href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff" class="alert-link">Open Tariff Configuration</a>.</div>
+  {% endif %}
+
   <div class="card mb-3"><div class="card-header">Top-up / refund command</div><div class="card-body">
     {% if meter.billing_mode == 'prepaid_pilot' %}
     <form method="post" class="row g-2 align-items-end">{% csrf_token %}

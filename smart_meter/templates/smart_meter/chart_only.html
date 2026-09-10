@@ -133,26 +133,52 @@
     await ensureHtml2Canvas();
     const chartCanvas = document.getElementById('energyChartFull');
     const tableCard   = document.getElementById('table-card');
+    const tableScroller = tableCard?.querySelector('.table-responsive');
+    const exportWidth = Math.ceil(Math.max(
+      1200,
+      tableCard?.scrollWidth || 0,
+      tableScroller?.scrollWidth || 0
+    ));
     const wrap = document.createElement('div');
     wrap.style.background = '#fff';
     wrap.style.padding = '12px';
+    wrap.style.position = 'fixed';
+    wrap.style.left = '-10000px';
+    wrap.style.top = '0';
+    wrap.style.width = `${exportWidth}px`;
 
     const img = new Image();
     if (chartCanvas) { img.src = chartCanvas.toDataURL('image/jpeg', 0.92); }
     img.style.display = 'block';
+    img.style.width = '100%';
     img.style.maxWidth = '100%';
+    img.style.height = 'auto';
     img.style.marginBottom = '12px';
     wrap.appendChild(img);
 
-    if (tableCard) wrap.appendChild(tableCard.cloneNode(true));
+    if (tableCard) {
+      const tableClone = tableCard.cloneNode(true);
+      tableClone.querySelectorAll('.table-responsive').forEach(element => {
+        element.style.overflow = 'visible';
+      });
+      wrap.appendChild(tableClone);
+    }
 
     document.body.appendChild(wrap);
-    const canvas = await html2canvas(wrap, { scale: 2 });
-    const link = document.createElement('a');
-    link.download = 'energy-chart-and-table.jpeg';
-    link.href = canvas.toDataURL('image/jpeg', 0.92);
-    link.click();
-    wrap.remove();
+    try {
+      const canvas = await html2canvas(wrap, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        windowWidth: exportWidth,
+        width: exportWidth
+      });
+      const link = document.createElement('a');
+      link.download = 'energy-chart-and-table.jpeg';
+      link.href = canvas.toDataURL('image/jpeg', 0.92);
+      link.click();
+    } finally {
+      wrap.remove();
+    }
   }
 
   document.getElementById('btn-save-chart')?.addEventListener('click', saveChartPNG);

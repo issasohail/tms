@@ -913,11 +913,13 @@ body.meter-exporting #meterListExportArea {
     document.body.classList.add('meter-exporting');
     try {
       await new Promise(resolve => requestAnimationFrame(resolve));
+      const exportWidth = Math.ceil(Math.max(1850, target.scrollWidth));
       return await window.html2canvas(target, {
         scale: 2,
         backgroundColor: '#ffffff',
         useCORS: true,
-        windowWidth: Math.max(target.scrollWidth, 1600)
+        windowWidth: exportWidth,
+        width: exportWidth
       });
     } finally {
       document.body.classList.remove('meter-exporting');

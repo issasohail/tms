@@ -785,7 +785,8 @@ ${(data.trace||'').slice(0,2000)}
           clone.style.position = 'absolute';
           clone.style.left = '-99999px';
           clone.style.top = '0';
-          clone.style.width = capture.scrollWidth + 'px';
+          const exportWidth = Math.ceil(Math.max(1200, capture.scrollWidth));
+          clone.style.width = exportWidth + 'px';
           clone.style.maxHeight = 'none';
           document.body.appendChild(clone);
 
@@ -796,8 +797,9 @@ ${(data.trace||'').slice(0,2000)}
             scale: 2,
             useCORS: true,
             backgroundColor: '#ffffff',
-            windowWidth: Math.max(document.body.scrollWidth, clone.scrollWidth),
+            windowWidth: exportWidth,
             windowHeight: Math.max(document.body.scrollHeight, clone.scrollHeight),
+            width: exportWidth,
           });
 
           document.body.removeChild(clone);
@@ -881,7 +883,8 @@ ${(data.trace||'').slice(0,2000)}
     clone.style.position = 'absolute';
     clone.style.left = '-99999px';
     clone.style.top = '0';
-    clone.style.width = area.scrollWidth + 'px';
+    const exportWidth = Math.ceil(Math.max(1200, area.scrollWidth));
+    clone.style.width = exportWidth + 'px';
     document.body.appendChild(clone);
 
     // Remove WhatsApp (header + cells) from the clone ONLY
@@ -891,8 +894,9 @@ ${(data.trace||'').slice(0,2000)}
       scale: 2,
       useCORS: true,
       backgroundColor: '#ffffff',
-      windowWidth: Math.max(document.body.scrollWidth, clone.scrollWidth),
+      windowWidth: exportWidth,
       windowHeight: Math.max(document.body.scrollHeight, clone.scrollHeight),
+      width: exportWidth,
     });
 
     document.body.removeChild(clone);

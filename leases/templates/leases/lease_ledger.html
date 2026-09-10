@@ -1319,7 +1319,8 @@ async function captureLeaseLedgerCanvas() {
     const html2canvas = await loadLedgerHtml2Canvas();
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const doc = document.documentElement;
-    const width = Math.ceil(Math.max(target.scrollWidth, doc.scrollWidth, target.offsetWidth)) + 80;
+    const desktopWidth = 1280;
+    const width = Math.ceil(Math.max(desktopWidth, target.scrollWidth, doc.scrollWidth, target.offsetWidth)) + 80;
     const height = Math.ceil(Math.max(target.scrollHeight, doc.scrollHeight, target.offsetHeight)) + 120;
     return await html2canvas(target, {
       backgroundColor: "#ffffff",
@@ -1327,7 +1328,7 @@ async function captureLeaseLedgerCanvas() {
       useCORS: true,
       scrollX: 0,
       scrollY: 0,
-      windowWidth: Math.max(1280, width),
+      windowWidth: width,
       windowHeight: Math.max(900, height),
       width: width,
       height: height

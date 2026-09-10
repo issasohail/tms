@@ -327,15 +327,25 @@ async function exportCheckGroupJpg() {
   button?.setAttribute('disabled', 'disabled');
   try {
     const html2canvas = await loadCheckGroupHtml2Canvas();
+    const exportWidth = Math.ceil(Math.max(
+      1200,
+      source.scrollWidth,
+      source.querySelector('table')?.scrollWidth || 0
+    ));
     let captureTarget = source;
     if (source === tableView) {
       temporary = source.cloneNode(true);
       temporary.classList.remove('d-none', 'ld-reconciliation-table');
-      temporary.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + Math.max(source.scrollWidth, source.clientWidth) + 'px;max-height:none;overflow:visible;background:#fff;';
+      temporary.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + exportWidth + 'px;max-height:none;overflow:visible;background:#fff;';
       document.body.appendChild(temporary);
       captureTarget = temporary;
     }
-    const canvas = await html2canvas(captureTarget, {scale: 2, backgroundColor: '#ffffff'});
+    const canvas = await html2canvas(captureTarget, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      windowWidth: exportWidth,
+      width: exportWidth
+    });
     const dates = checkGroupSelectedDates();
     const link = document.createElement('a');
     link.download = 'check-group-{{ group.pk }}-' + dates.start + '-to-' + dates.end + '.jpg';

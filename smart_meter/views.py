@@ -690,6 +690,13 @@ def prepaid_meter_ledger(request, meter_id):
                     f"{operation.title()} command #{command.pk} queued once. "
                     "Wait for acknowledgement and balance reconciliation before another money command.",
                 )
+                target = request.POST.get("next")
+                if target and url_has_allowed_host_and_scheme(
+                    target,
+                    allowed_hosts={request.get_host()},
+                    require_https=request.is_secure(),
+                ):
+                    return redirect(target)
                 return redirect("smart_meter:prepaid_meter_ledger", meter_id=meter.pk)
 
     readings = list(
@@ -1715,6 +1722,40 @@ def meter_role_update(request, pk):
             "label": meter.get_meter_role_display(),
         }
     )
+
+
+@require_POST
+@login_required
+@permission_required("smart_meter.change_meter", raise_exception=True)
+def meter_unit_rate_update(request, pk):
+    meter = get_object_or_404(Meter, pk=pk)
+    raw_rate = (request.POST.get("unit_rate") or "").strip()
+    try:
+        unit_rate = None if raw_rate == "" else Decimal(raw_rate)
+    except (TypeError, ValueError, ArithmeticError):
+        return JsonResponse(
+            {"success": False, "error": "Enter a valid unit rate."}, status=400
+        )
+    if unit_rate is not None and (unit_rate < 0 or unit_rate >= Decimal("1000000")):
+        return JsonResponse(
+            {"success": False, "error": "Unit rate must be between 0 and 999999.9999."},
+            status=400,
+        )
+    if unit_rate is not None:
+        unit_rate = unit_rate.quantize(Decimal("0.0001"))
+    meter.unit_rate = unit_rate
+    meter.full_clean(exclude=None)
+    meter.save(update_fields=["unit_rate"])
+
+    from smart_meter.rates import resolve_electricity_rate
+
+    resolved = resolve_electricity_rate(meter=meter)
+    return JsonResponse({
+        "success": True,
+        "unit_rate": f"{resolved.rate:.4f}",
+        "meter_unit_rate": f"{unit_rate:.4f}" if unit_rate is not None else "",
+        "source": resolved.source,
+    })
 
 
 @login_required
@@ -4402,7 +4443,24 @@ def reading_list(request):
     if end_dt_excl:
         readings = readings.filter(ts__lt=end_dt_excl)
 
-    readings = readings.order_by("-ts")
+    known_energy = MeterReading.objects.filter(
+        meter_id=OuterRef("meter_id"),
+        ts__lte=OuterRef("ts"),
+    )
+    known_forward = known_energy.filter(
+        forward_active_energy_kwh__isnull=False
+    ).order_by("-ts", "-pk").values("forward_active_energy_kwh")[:1]
+    known_total = known_energy.filter(
+        total_energy__isnull=False
+    ).order_by("-ts", "-pk").values("total_energy")[:1]
+    known_balance = known_energy.filter(
+        balance__isnull=False
+    ).order_by("-ts", "-pk").values("balance")[:1]
+    readings = readings.annotate(
+        last_known_forward_energy=Subquery(known_forward),
+        last_known_total_energy=Subquery(known_total),
+        last_known_balance=Subquery(known_balance),
+    ).order_by("-ts")
 
     try:
         page_number = max(1, int(request.GET.get("page") or 1))
@@ -4424,6 +4482,15 @@ def reading_list(request):
             reading.forward_active_energy_kwh
             if reading.forward_active_energy_kwh is not None
             else reading.total_energy
+            if reading.total_energy is not None
+            else reading.last_known_forward_energy
+            if reading.last_known_forward_energy is not None
+            else reading.last_known_total_energy
+        )
+        reading.display_balance = (
+            reading.balance
+            if reading.balance is not None
+            else reading.last_known_balance
         )
         reading.display_net_energy = (
             reading.display_forward_energy - reading.reverse_active_energy_kwh

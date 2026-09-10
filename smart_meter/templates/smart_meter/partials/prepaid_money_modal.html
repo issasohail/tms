@@ -1,0 +1,61 @@
+<div class="modal fade" id="prepaidMoneyModal" tabindex="-1" aria-labelledby="prepaidMoneyModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" id="prepaidMoneyForm">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <input type="hidden" name="operation" id="prepaidMoneyOperation">
+        <div class="modal-header">
+          <h3 class="modal-title" id="prepaidMoneyModalLabel">Top up meter</h3>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body prepaid-money-modal-body">
+          <div class="alert alert-light border fs-5 mb-3">
+            Meter <strong id="prepaidMoneyMeterNumber"></strong>
+            <span class="text-muted" id="prepaidMoneyLocation"></span>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-5">
+              <label for="prepaidMoneyAmount" class="form-label fs-5">Amount</label>
+              <input type="number" min="0.01" step="0.01" class="form-control form-control-lg" id="prepaidMoneyAmount" name="amount" required autofocus>
+            </div>
+            <div class="col-md-7">
+              <label for="prepaidMoneyReason" class="form-label fs-5">Reason</label>
+              <input type="text" class="form-control form-control-lg" id="prepaidMoneyReason" name="reason" maxlength="255" required>
+            </div>
+            <div class="col-12">
+              <label for="prepaidMoneyConfirmation" class="form-label fs-5">Confirm meter number</label>
+              <input type="text" class="form-control form-control-lg" id="prepaidMoneyConfirmation" name="confirm_meter_number" autocomplete="off" required>
+            </div>
+          </div>
+          <p class="text-muted mt-3 mb-0">The command is sent once. Wait for acknowledgement and balance reconciliation before sending another money command.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-lg btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-lg btn-warning px-5" id="prepaidMoneySubmit">Submit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('click', function (event) {
+    const trigger = event.target.closest('[data-prepaid-money]');
+    if (!trigger) return;
+    event.preventDefault();
+    const operation = trigger.dataset.operation === 'refund' ? 'refund' : 'recharge';
+    const meterNumber = trigger.dataset.meterNumber || '';
+    const form = document.getElementById('prepaidMoneyForm');
+    form.action = trigger.dataset.actionUrl;
+    document.getElementById('prepaidMoneyOperation').value = operation;
+    document.getElementById('prepaidMoneyMeterNumber').textContent = meterNumber;
+    document.getElementById('prepaidMoneyLocation').textContent = trigger.dataset.location ? ` · ${trigger.dataset.location}` : '';
+    document.getElementById('prepaidMoneyModalLabel').textContent = operation === 'refund' ? 'Refund meter balance' : 'Top up meter balance';
+    document.getElementById('prepaidMoneySubmit').textContent = operation === 'refund' ? 'Submit refund' : 'Submit top up';
+    document.getElementById('prepaidMoneyAmount').value = '';
+    document.getElementById('prepaidMoneyReason').value = '';
+    document.getElementById('prepaidMoneyConfirmation').value = '';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('prepaidMoneyModal')).show();
+  });
+</script>

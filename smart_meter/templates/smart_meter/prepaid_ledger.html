@@ -60,13 +60,29 @@
 
   <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span>Raw authoritative balance observations</span>{% if raw_balance_frames %}<button type="button" class="btn btn-sm btn-outline-secondary" id="toggleBalanceObservations" aria-expanded="false">Expand all readings</button>{% endif %}</div><div class="table-responsive"><table class="table table-sm mb-0">
     <thead><tr><th>S/N</th><th>Received</th><th>Balance</th><th>Energy</th><th>Source</th><th>Trust</th></tr></thead>
-    <tbody>{% for frame in raw_balance_frames %}<tr class="{% if not frame.is_daily_latest %}balance-observation-extra d-none{% endif %}"><td>{{ forloop.counter }}</td><td>{{ frame.received_at|date:"Y-m-d H:i:s" }}</td><td>{% if frame.reported_balance is not None %}{{ frame.reported_balance|floatformat:2|intcomma }}{% else %}—{% endif %}</td><td>{{ frame.reported_energy|default:"—" }}</td><td>{{ frame.source_ip|default:"—" }}:{{ frame.source_port|default:"—" }}</td><td>{{ frame.get_trust_classification_display }}</td></tr>{% empty %}<tr><td colspan="6" class="text-muted">No raw balance observations recorded.</td></tr>{% endfor %}</tbody>
+    <tbody>{% for frame in raw_balance_frames %}<tr data-observation-day="{{ frame.observation_day_key }}" class="{% if not frame.is_daily_latest %}balance-observation-extra d-none{% endif %}"><td class="text-nowrap">{% if frame.is_daily_latest %}<button type="button" class="btn btn-sm btn-link p-0 me-1 day-observation-toggle" data-day="{{ frame.observation_day_key }}" aria-expanded="false" title="Expand this day"><i class="fas fa-chevron-right"></i></button>{% else %}<span class="d-inline-block me-1" style="width:.75rem"></span>{% endif %}<span class="observation-serial" data-day-number="{{ frame.observation_day_number }}" data-sub-number="{{ frame.observation_sub_number }}">{{ frame.observation_day_number }}</span></td><td>{{ frame.received_at|date:"Y-m-d H:i:s" }}</td><td>{% if frame.reported_balance is not None %}{{ frame.reported_balance|floatformat:2|intcomma }}{% else %}—{% endif %}</td><td>{{ frame.reported_energy|default:"—" }}</td><td>{{ frame.source_ip|default:"—" }}:{{ frame.source_port|default:"—" }}</td><td>{{ frame.get_trust_classification_display }}</td></tr>{% empty %}<tr><td colspan="6" class="text-muted">No raw balance observations recorded.</td></tr>{% endfor %}</tbody>
   </table></div></div>
 </div>
 <script>
+  function setObservationDayExpanded(day, expanded) {
+    document.querySelectorAll(`[data-observation-day="${day}"]`).forEach((row, index) => {
+      if (index > 0) row.classList.toggle('d-none', !expanded);
+      const serial = row.querySelector('.observation-serial');
+      serial.textContent = expanded ? `${serial.dataset.dayNumber}.${serial.dataset.subNumber}` : serial.dataset.dayNumber;
+    });
+    const button = document.querySelector(`.day-observation-toggle[data-day="${day}"]`);
+    if (button) {
+      button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      button.title = expanded ? 'Collapse this day' : 'Expand this day';
+      button.querySelector('i').className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+    }
+  }
+  document.querySelectorAll('.day-observation-toggle').forEach(button => button.addEventListener('click', function () {
+    setObservationDayExpanded(this.dataset.day, this.getAttribute('aria-expanded') !== 'true');
+  }));
   document.getElementById('toggleBalanceObservations')?.addEventListener('click', function () {
     const expanding = this.getAttribute('aria-expanded') !== 'true';
-    document.querySelectorAll('.balance-observation-extra').forEach(row => row.classList.toggle('d-none', !expanding));
+    document.querySelectorAll('.day-observation-toggle').forEach(button => setObservationDayExpanded(button.dataset.day, expanding));
     this.setAttribute('aria-expanded', expanding ? 'true' : 'false');
     this.textContent = expanding ? 'Collapse to daily latest' : 'Expand all readings';
   });

@@ -1,0 +1,6 @@
+<div class="meter-detail-card bg-white p-3">
+  <h4>Tariff Audit History</h4>
+  <div class="table-responsive"><table class="table table-sm meter-table mb-0"><thead><tr><th>S/N</th><th>Date</th><th>User</th><th>Capability</th><th>Type</th><th>Status</th><th>Error</th><th></th></tr></thead><tbody>
+    {% for audit in tariff_audits %}<tr><td>{{ forloop.counter }}</td><td>{{ audit.created_at|date:"Y-m-d H:i:s" }}</td><td>{{ audit.initiating_user|default:"System" }}</td><td>{{ audit.get_capability_display }}</td><td>{{ audit.get_configuration_type_display }}</td><td>{{ audit.get_status_display }}</td><td>{{ audit.error|truncatechars:80|default:"—" }}</td><td><a href="{% url 'smart_meter:tariff_audit_detail' audit.pk %}">View</a></td></tr>{% empty %}<tr><td colspan="8" class="text-muted">No tariff audit records.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>

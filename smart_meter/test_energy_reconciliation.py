@@ -11,7 +11,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from invoices.models import Invoice, InvoiceItem, ItemCategory
+from invoices.models import IescoBillReading, Invoice, InvoiceItem, ItemCategory
 from leases.models import Lease
 from payments.models import Payment, PaymentDetail
 from properties.models import Property, Unit
@@ -178,6 +178,27 @@ class EnergyReconciliationTests(TestCase):
         self.assertEqual(report["grid_export_kwh"], Decimal("5"))
         self.assertEqual(report["net_grid_energy_kwh"], Decimal("25"))
         self.assertEqual(report["billing_total_kwh"], Decimal("80"))
+
+    def test_iesco_invoice_reading_replaces_duplicate_grid_input(self):
+        IescoBillReading.objects.create(
+            reference_no="17140000000000",
+            consumer_id=self.connection.consumer_id,
+            bill_month="AUG 26",
+            reading_date="08 AUG 26",
+            current_bill="400.00",
+            meter_readings=[
+                {"meter_no": "I 01322400009141", "direction": "import", "period": "off_peak", "units": "60"},
+                {"meter_no": "I 01322400009141", "direction": "import", "period": "peak", "units": "20"},
+                {"meter_no": "E 01322400009141", "direction": "export", "period": "off_peak", "units": "10"},
+            ],
+        )
+
+        report = build_energy_reconciliation(self.system, self.start, self.end)
+
+        self.assertEqual(report["grid_source"], "IESCO invoice")
+        self.assertEqual(report["grid_import_kwh"], Decimal("80"))
+        self.assertEqual(report["grid_export_kwh"], Decimal("10"))
+        self.assertEqual(report["iesco_bill"].meter_number_display, "01322400009141")
 
     def test_register_decrease_is_a_discontinuity_not_zero_clamped(self):
         grid_readings = list(self.grid_meter.readings.order_by("ts", "id"))

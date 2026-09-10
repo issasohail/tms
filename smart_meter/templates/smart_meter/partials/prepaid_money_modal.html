@@ -40,6 +40,14 @@
 </div>
 
 <script>
+  (function () {
+  if (window.prepaidMoneyModalBound) return;
+  window.prepaidMoneyModalBound = true;
+  const modalElement = document.getElementById('prepaidMoneyModal');
+  if (modalElement && modalElement.parentElement !== document.body) document.body.appendChild(modalElement);
+  modalElement?.addEventListener('hidden.bs.modal', function () {
+    document.getElementById('prepaidMoneyForm')?.reset();
+  });
   document.addEventListener('click', function (event) {
     const trigger = event.target.closest('[data-prepaid-money]');
     if (!trigger) return;
@@ -56,6 +64,13 @@
     document.getElementById('prepaidMoneyAmount').value = '';
     document.getElementById('prepaidMoneyReason').value = '';
     document.getElementById('prepaidMoneyConfirmation').value = '';
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('prepaidMoneyModal')).show();
+    if (!window.bootstrap?.Modal) {
+      window.location.href = `${trigger.dataset.actionUrl}?action=${operation}`;
+      return;
+    }
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    modal.show();
+    modalElement.addEventListener('shown.bs.modal', () => document.getElementById('prepaidMoneyAmount')?.focus(), {once: true});
   });
+  })();
 </script>

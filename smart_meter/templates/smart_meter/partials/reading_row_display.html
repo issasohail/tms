@@ -1,4 +1,5 @@
 {# templates/smart_meter/partials/reading_row_display.html #}
+{% load humanize %}
 <tr
   hx-get="{% url 'smart_meter:meter_reading_row_edit' r.pk %}"
   hx-trigger="dblclick"
@@ -57,7 +58,7 @@
 
   <td class="col-balance">
     <a href="{% url 'smart_meter:prepaid_meter_ledger' r.meter_id %}" title="Open balance ledger">
-      {% if r.display_balance is not None %}{{ CURRENCY_SYMBOL }} {{ r.display_balance|floatformat:2 }}{% else %}—{% endif %}
+      {% if r.display_balance is not None %}{{ CURRENCY_SYMBOL }} {{ r.display_balance|floatformat:2|intcomma }}{% else %}—{% endif %}
     </a>
     {% if r.unit_rate is not None %}<small class="d-block text-muted">@ {{ r.unit_rate|floatformat:4 }}</small>{% endif %}
   </td>

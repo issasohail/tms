@@ -112,6 +112,8 @@
     display: none;
   }
 
+  .meter-detail-embedded-tab { width: 100%; min-height: 1050px; border: 0; background: transparent; }
+
   @media (max-width: 992px) {
     .meter-summary-grid {
       grid-template-columns: 1fr 1fr;
@@ -242,21 +244,27 @@
     </li>
     {% if perms.smart_meter.view_meter_credit_details %}
       <li class="nav-item">
-        <a class="nav-link" href="{% url 'smart_meter:credit_control' meter.pk %}">
+        <a class="nav-link {% if active_tab == 'credit-control' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=credit-control">
           <i class="fas fa-bolt me-1"></i> Credit Control
         </a>
       </li>
     {% endif %}
-    <li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:meter_schedule_detail' meter.pk %}"><i class="fas fa-calendar-alt me-1"></i> Meter Schedule</a></li>
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'schedule' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=schedule"><i class="fas fa-calendar-alt me-1"></i> Meter Schedule</a></li>
     {% if perms.smart_meter.view_raw_dlt645_frames %}
-      <li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:meter_raw_frame_history' meter.pk %}"><i class="fas fa-list-alt me-1"></i> Raw Readings</a></li>
+      <li class="nav-item"><a class="nav-link {% if active_tab == 'raw-readings' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=raw-readings"><i class="fas fa-list-alt me-1"></i> Raw Readings</a></li>
     {% endif %}
     <li class="nav-item"><a class="nav-link {% if active_tab == 'ledger' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=ledger"><i class="fas fa-book me-1"></i> Meter Ledger</a></li>
     {% if perms.smart_meter.read_meter_tariff %}<li class="nav-item"><a class="nav-link {% if active_tab == 'tariff' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff"><i class="fas fa-coins me-1"></i> Tariff Configuration</a></li>{% endif %}
     {% if perms.smart_meter.view_meter_tariff_audit %}<li class="nav-item"><a class="nav-link {% if active_tab == 'tariff-audits' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff-audits"><i class="fas fa-history me-1"></i> Tariff Audits</a></li>{% endif %}
   </ul>
 
-  {% if active_tab == 'ledger' %}
+  {% if active_tab == 'credit-control' %}
+    <iframe class="meter-detail-embedded-tab" title="Credit Control" src="{% url 'smart_meter:credit_control' meter.pk %}?embed=1" onload="this.style.height=this.contentWindow.document.documentElement.scrollHeight+'px'"></iframe>
+  {% elif active_tab == 'schedule' %}
+    <iframe class="meter-detail-embedded-tab" title="Meter Schedule" src="{% url 'smart_meter:meter_schedule_detail' meter.pk %}?embed=1" onload="this.style.height=this.contentWindow.document.documentElement.scrollHeight+'px'"></iframe>
+  {% elif active_tab == 'raw-readings' %}
+    <iframe class="meter-detail-embedded-tab" title="Raw Readings" src="{% url 'smart_meter:meter_raw_frame_history' meter.pk %}?embed=1" onload="this.style.height=this.contentWindow.document.documentElement.scrollHeight+'px'"></iframe>
+  {% elif active_tab == 'ledger' %}
     {% include "smart_meter/partials/meter_detail_ledger.html" %}
   {% elif active_tab == 'tariff' %}
     {% include "smart_meter/partials/meter_detail_tariff.html" %}

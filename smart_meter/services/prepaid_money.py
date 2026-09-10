@@ -18,6 +18,7 @@ from smart_meter.models import (
     Meter,
     MeterCommand,
     MeterPrepaidPilot,
+    MeterPrepaidPaymentTopup,
     MeterPrepaidRecharge,
 )
 
@@ -129,6 +130,11 @@ def reserve_prepaid_money_command(
     source: str = "prepaid",
 ) -> MeterCommand:
     """Persist one monetary order and exactly one command queue entry."""
+    from smart_meter.services.prepaid_pilot import prepaid_allowlisted, prepaid_writes_enabled
+    if not prepaid_writes_enabled():
+        raise ValueError("prepaid writes are disabled in Meter Settings")
+    if not prepaid_allowlisted(meter):
+        raise ValueError("meter is not enabled for prepaid operations")
     if command_type not in MONEY_COMMAND_TYPES:
         raise ValueError("command_type must be prepaid_recharge or prepaid_refund")
     decoded = decode_manufacturer_charge_frame(frame_hex)
@@ -238,6 +244,9 @@ def mark_prepaid_uncertain(command: MeterCommand, detail: str) -> None:
             prepaid.status = "uncertain"
             prepaid.reconciliation_note = message
             prepaid.save(update_fields=["status", "reconciliation_note", "updated_at"])
+            MeterPrepaidPaymentTopup.objects.filter(recharge=prepaid).update(
+                status="uncertain", error=message, updated_at=timezone.now()
+            )
 
 
 def mark_prepaid_acknowledged(command: MeterCommand, reply_hex: str) -> None:
@@ -282,6 +291,9 @@ def mark_prepaid_reconciliation_uncertain(
             prepaid.status = "uncertain"
             prepaid.reconciliation_note = message
             prepaid.save(update_fields=["status", "reconciliation_note", "updated_at"])
+            MeterPrepaidPaymentTopup.objects.filter(recharge=prepaid).update(
+                status="uncertain", error=message, updated_at=timezone.now()
+            )
 
 
 def mark_prepaid_definitive_failure(
@@ -297,6 +309,9 @@ def mark_prepaid_definitive_failure(
         prepaid.raw_ack = reply_hex
     prepaid.save(
         update_fields=["status", "reconciliation_note", "raw_ack", "updated_at"]
+    )
+    MeterPrepaidPaymentTopup.objects.filter(recharge=prepaid).update(
+        status="failed", error=prepaid.reconciliation_note, updated_at=timezone.now()
     )
 
 
@@ -398,4 +413,9 @@ def reconcile_prepaid_balance(meter: Meter, balance) -> list[MeterPrepaidRecharg
                 ]
             )
             reconciled.append(prepaid)
+            MeterPrepaidPaymentTopup.objects.filter(recharge=prepaid).update(
+                status=("verified" if prepaid.status == "verified" else "uncertain"),
+                error=("" if prepaid.status == "verified" else prepaid.reconciliation_note),
+                updated_at=timezone.now(),
+            )
     return reconciled

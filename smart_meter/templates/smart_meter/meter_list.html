@@ -240,7 +240,7 @@
               <td class="col-setting-narrow">{{ m.min_balance_alert|floatformat:0 }}</td>
               <td class="col-setting-narrow">{{ m.min_balance_cutoff|floatformat:0 }}</td>
               <td class="col-narrow">
-                {% if m.billing_mode == "prepaid" %}
+                {% if m.is_prepaid %}
                   <span class="badge bg-info text-dark">Prepaid</span>
                 {% else %}
                   <span class="badge bg-light text-dark border">Postpaid</span>
@@ -255,7 +255,7 @@
               </td>
 
               <td class="col-date-sm">{% if m.installed_at %}{{ m.installed_at|date:"Y-m-d" }}{% else %}-{% endif %}</td>
-              <td class="col-balance fw-semibold">{% if m.balance is not None %}{{ m.balance|floatformat:2 }}{% else %}-{% endif %}</td>
+              <td class="col-balance fw-semibold"><a href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" title="Open meter balance ledger">{% if m.balance is not None %}{{ m.balance|floatformat:2 }}{% else %}-{% endif %}</a></td>
               <td class="col-ts">{% if m.last_ts %}{{ m.last_ts|date:"Y-m-d H:i:s" }}{% else %}-{% endif %}</td>
               <td class="col-metric">{% if m.last_voltage_a is not None %}{{ m.last_voltage_a|floatformat:1 }}{% else %}-{% endif %}</td>
               <td class="col-metric">{% if m.last_current_a is not None %}{{ m.last_current_a|floatformat:3 }}{% else %}-{% endif %}</td>
@@ -283,7 +283,10 @@
                     <i class="fas fa-gear"></i>
                   </a>
                   {% endif %}
+                  <a class="btn btn-success" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge" title="Top up"><i class="fas fa-plus"></i></a>
+                  <a class="btn btn-warning" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund" title="Refund"><i class="fas fa-minus"></i></a>
                 </div>
+                <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="mt-1">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">{% if m.is_prepaid %}<button class="btn btn-sm btn-outline-danger" name="action" value="disable_meter">Set postpaid</button>{% else %}<button class="btn btn-sm btn-outline-success" name="action" value="enable_meter">Set prepaid</button>{% endif %}</form>
               </td>
             </tr>
           {% empty %}
@@ -323,7 +326,7 @@
             <div><span>Voltage</span><strong>{% if m.last_voltage_a is not None %}{{ m.last_voltage_a|floatformat:1 }} V{% else %}-{% endif %}</strong></div>
             <div><span>Current</span><strong>{% if m.last_current_a is not None %}{{ m.last_current_a|floatformat:3 }} A{% else %}-{% endif %}</strong></div>
             <div><span>Forward / reverse</span><strong>F {% if m.last_forward_energy is not None %}{{ m.last_forward_energy|floatformat:3 }}{% elif m.last_total_energy is not None %}{{ m.last_total_energy|floatformat:3 }}{% else %}-{% endif %}{% if m.last_reverse_energy is not None %}<br>R {{ m.last_reverse_energy|floatformat:3 }}{% endif %}</strong></div>
-            <div><span>Balance</span><strong>{% if m.balance is not None %}{{ m.balance|floatformat:2 }}{% else %}-{% endif %}</strong></div>
+            <div><span>Balance</span><strong><a href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}">{% if m.balance is not None %}{{ m.balance|floatformat:2 }}{% else %}-{% endif %}</a></strong></div>
           </div>
           <div class="meter-mobile-footer no-export">
             <div class="power-control meter-mobile-power">
@@ -332,11 +335,14 @@
               <button type="button" class="btn btn-sm btn-outline-danger relay-action" data-action="off" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}" {% if m.confirmed_relay_state == 'off' %}disabled{% endif %}>OFF</button>
             </div>
             <div class="meter-mobile-mode">{{ m.get_billing_mode_display }} / {{ m.display_electricity_rate.rate|floatformat:2 }} ({{ m.display_electricity_rate.source }})</div>
+            <form method="post" action="{% url 'smart_meter:prepaid_controls' %}">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">{% if m.is_prepaid %}<button class="btn btn-sm btn-outline-danger" name="action" value="disable_meter">Set postpaid</button>{% else %}<button class="btn btn-sm btn-outline-success" name="action" value="enable_meter">Set prepaid</button>{% endif %}</form>
             <div class="btn-group btn-group-sm meter-mobile-actions">
               <a class="btn btn-outline-primary" href="{% url 'smart_meter:meter_detail' m.id %}" title="View"><i class="fas fa-eye"></i></a>
               <a class="btn btn-outline-secondary" href="{% url 'smart_meter:meter_edit' m.id %}" title="Edit"><i class="fas fa-pen"></i></a>
               <a class="btn btn-outline-success" href="{% url 'smart_meter:reading_list' %}?meter={{ m.id }}" title="Readings"><i class="fas fa-list"></i></a>
               {% if perms.smart_meter.read_meter_tariff %}<a class="btn btn-outline-warning" href="{% url 'smart_meter:tariff_configure' m.id %}" title="Tariff Settings" aria-label="Tariff settings for meter {{ m.meter_number }}"><i class="fas fa-gear"></i></a>{% endif %}
+              <a class="btn btn-outline-success" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge" title="Top up"><i class="fas fa-plus"></i></a>
+              <a class="btn btn-outline-warning" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund" title="Refund"><i class="fas fa-minus"></i></a>
             </div>
           </div>
         </article>
@@ -433,12 +439,12 @@
 .col-date-lg { width: 122px; font-size: 12px; }
 .col-metric { width: 72px; }
 .col-energy-metric { width: 122px; }
-.col-actions { width: 140px; }
+.col-actions { width: 210px; }
 
 @media (min-width: 992px) {
   .col-prop { width: 92px; }
   .col-tenant { width: 110px; }
-  .col-actions { width: 150px; }
+  .col-actions { width: 220px; }
 }
 
 .power-control {

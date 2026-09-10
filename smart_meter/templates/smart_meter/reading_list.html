@@ -135,6 +135,7 @@
           <th class="col-tenant">Tenant</th>
           <th class="col-meter">Meter #</th>
           <th class="col-energy">Energy (kWh)</th>
+          <th class="col-balance">Balance</th>
           <th class="ld-col-role">Role</th>
           <th class="col-active">Active</th>
           {# Use unified toggle class on headers so they hide too #}
@@ -154,7 +155,7 @@
               {% include "smart_meter/partials/reading_row_display.html" with r=r sno=forloop.counter %}
             {% endif %}
           {% empty %}
-            <tr><td colspan="14" class="text-center py-3">No readings found.</td></tr>
+            <tr><td colspan="15" class="text-center py-3">No readings found.</td></tr>
           {% endfor %}
         </tbody>
     </table>
@@ -670,7 +671,6 @@
 })();
 </script>
 {% endblock %}
-
 
 
 

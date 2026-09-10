@@ -486,11 +486,7 @@
   /* ===========================
      GLOBAL HIDES
      =========================== */
-  /* Recharge remains unavailable from this live-reading screen. */
-  th.col-recharge,
-  td.col-recharge {
-    display: none !important;
-  }
+  td.col-recharge .btn { display: block; width: 100%; margin-bottom: .15rem; }
 
   /* ===========================
      SCREENSHOT MODE
@@ -915,6 +911,17 @@
     });
   }
 
+  function setRowBillingMode(tr, isPrepaid, unitRate, rateSource) {
+    tr.querySelectorAll('.billing-mode-badge').forEach(badge => {
+      badge.className = `badge billing-mode-badge ${isPrepaid ? 'bg-info text-dark' : 'bg-light text-dark border'}`;
+      badge.textContent = isPrepaid ? 'Prepaid' : 'Postpaid';
+    });
+    tr.querySelectorAll('.unit-rate-badge').forEach(badge => {
+      badge.textContent = `${unitRate || '0.0000'}/kWh`;
+      badge.title = `${rateSource || 'Resolved'} rate`;
+    });
+  }
+
   function setRelayWorkflowState(tr, reading) {
     const confirmed = !!reading.relay_confirmed;
     const state = (reading.power_status || '').toLowerCase();
@@ -1008,11 +1015,13 @@
     const mobileBalance = tr.querySelector('.mobile-balance');
 
     if (desktopCell && (desktopCell.textContent || "").trim() !== next) {
-      desktopCell.textContent = next;
+      const target = desktopCell.querySelector('a') || desktopCell;
+      target.textContent = next;
       if (flash) flashCell(desktopCell);
     }
     if (mobileBalance && (mobileBalance.textContent || "").trim() !== next) {
-      mobileBalance.textContent = next;
+      const target = mobileBalance.querySelector('a') || mobileBalance;
+      target.textContent = next;
       if (flash) flashCell(mobileBalance);
     }
   }
@@ -1067,6 +1076,7 @@
 
         setRowOnlineState(tr, r.connection_state);
         setRowPowerState(tr, r.power_status);
+        setRowBillingMode(tr, r.is_prepaid, r.unit_rate, r.unit_rate_source);
         setRelayWorkflowState(tr, r);
 
         setCell(tr, "source_ip", r.source_ip);
@@ -1776,7 +1786,7 @@
         <thead class="table-light">
           <tr>
             <th class="sticky-left sno">S/N</th>
-            <th class="sticky-left col-recharge">Recharge</th>
+            <th class="sticky-left col-recharge">Money</th>
             <th class="sticky-left col-prop">Property</th>
             <th class="sticky-left col-unit">Unit / Meter</th>
             <th class="sticky-left col-tenant">Tenant</th>
@@ -1805,7 +1815,7 @@
             <td class="mobile-meter-card-v2" colspan="17">
               <div class="mobile-line mobile-line-one">
                 <div class="mobile-location"><span class="mobile-serial">{{ forloop.counter }}</span><span>{{ p.property_name|slice:":8" }}</span></div>
-                <div class="mobile-balance">{{ CURRENCY_SYMBOL }} {{ r.balance|default:"0.00" }}</div>
+                <div class="mobile-balance"><a href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}">{{ CURRENCY_SYMBOL }} {{ r.balance|default:"0.00" }}</a></div>
                 <a href="{% url 'smart_meter:meter_detail' m.id %}" class="mobile-meter-number live-detail-link">{{ m.meter_number }}</a>
               </div>
               <div class="mobile-line mobile-line-two">
@@ -1814,6 +1824,8 @@
                 <div class="mobile-state-badges">
                   <span class="badge rounded-pill online-badge {% if r.connection_state == 'online' %}bg-success{% elif r.connection_state == 'stale' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{% if r.connection_state == 'online' %}Online{% elif r.connection_state == 'stale' %}Data stale{% else %}Offline{% endif %}</span>
                   <span class="badge rounded-pill power-badge {% if m.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">{% if m.power_status|lower == 'on' %}ON{% else %}OFF{% endif %}</span>
+                  <span class="badge rounded-pill billing-mode-badge {% if m.is_prepaid %}bg-info text-dark{% else %}bg-light text-dark border{% endif %}">{% if m.is_prepaid %}Prepaid{% else %}Postpaid{% endif %}</span>
+                  <span class="badge rounded-pill bg-light text-dark border unit-rate-badge">{{ r.display_electricity_rate.rate|floatformat:4 }}/kWh</span>
                 </div>
               </div>
               <div class="mobile-line mobile-line-three">
@@ -1825,6 +1837,9 @@
                 <div class="mobile-va"><span>V {{ r.voltage_a|default:"—" }}</span><span>A {{ r.current_a|default:"—" }}</span></div>
               </div>
               <div class="mobile-explicit-actions">
+                <a class="btn btn-sm btn-success" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge">Top up</a>
+                <a class="btn btn-sm btn-warning" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund">Refund</a>
+                <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="d-inline-flex">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">{% if m.is_prepaid %}<button class="btn btn-sm btn-outline-danger" name="action" value="disable_meter">Postpaid</button>{% else %}<button class="btn btn-sm btn-outline-success" name="action" value="enable_meter">Prepaid</button>{% endif %}</form>
                 <button type="button" class="btn btn-sm btn-outline-success relay-action" data-action="on"
                   data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
                   data-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
@@ -1841,10 +1856,9 @@
             <td class="sticky-left sno text-center">{{ forloop.counter }}</td>
 
             <td class="sticky-left col-recharge text-center">
-              <button type="button" class="btn btn-success btn-recharge" onclick="openRechargeModal('{{ m.id }}')"
-                title="Recharge this meter">
-                Recharge
-              </button>
+              <a class="btn btn-success btn-recharge" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge" title="Top up this meter">Top up</a>
+              <a class="btn btn-warning" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund" title="Refund this meter">Refund</a>
+              <form method="post" action="{% url 'smart_meter:prepaid_controls' %}">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">{% if m.is_prepaid %}<button class="btn btn-outline-danger" name="action" value="disable_meter">Postpaid</button>{% else %}<button class="btn btn-outline-success" name="action" value="enable_meter">Prepaid</button>{% endif %}</form>
               <button type="button" class="btn btn-outline-primary btn-instant-reading mt-1"
                 data-url="{% url 'smart_meter:smart_meter_instant_live_reading' m.id %}"
                 title="Request a fresh reading from this meter">Instant</button>
@@ -1885,6 +1899,8 @@
                 <span class="badge online-badge {% if r.connection_state == 'online' %}bg-success{% elif r.connection_state == 'stale' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
                   {% if r.connection_state == 'online' %}Online{% elif r.connection_state == 'stale' %}Data stale{% else %}Offline{% endif %}
                 </span>
+                <span class="badge billing-mode-badge {% if m.is_prepaid %}bg-info text-dark{% else %}bg-light text-dark border{% endif %}">{% if m.is_prepaid %}Prepaid{% else %}Postpaid{% endif %}</span>
+                <span class="badge bg-light text-dark border unit-rate-badge" title="{{ r.display_electricity_rate.source }} rate">{{ r.display_electricity_rate.rate|floatformat:4 }}/kWh</span>
               </div>
               <span class="power-operation-status {{ r.relay_indicator_class }}" role="status" aria-live="polite"
                 title="{{ r.relay_indicator_label }}" {% if not r.relay_indicator_label %}hidden{% endif %}>{{ r.relay_indicator_label }}</span>
@@ -1935,7 +1951,7 @@
               <span class="d-none d-sm-inline"> ±{{ online_minutes }}m</span>
             </td>
 
-            <td class="text-center" data-col="balance">{{ CURRENCY_SYMBOL }} {{ r.balance|default:"0.00" }}</td>
+            <td class="text-center" data-col="balance"><a href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}">{{ CURRENCY_SYMBOL }} {{ r.balance|default:"0.00" }}</a></td>
 
             <!-- Total Energy stays visible; add Voltage/Current beneath on small -->
             <td class="text-right" data-col="total_energy" data-energy-url="{% url 'smart_meter:energy_dashboard' %}?meter={{ m.id }}&start={{ energy_start_date|date:'Y-m-d' }}&end={{ energy_end_date|date:'Y-m-d' }}">

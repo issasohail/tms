@@ -228,6 +228,9 @@
       <a href="{% url 'smart_meter:meter_edit' meter.pk %}" class="btn btn-secondary btn-sm">
         <i class="fas fa-edit"></i> Edit
       </a>
+      <a href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}" class="btn btn-info btn-sm">
+        <i class="fas fa-book"></i> Meter ledger
+      </a>
       <a href="{% url 'smart_meter:meter_list' %}" class="btn btn-primary btn-sm">
         <i class="fas fa-list"></i> Back
       </a>
@@ -341,14 +344,14 @@
 
   {% if meter.billing_mode == "prepaid_pilot" or prepaid_pilot %}
   <div class="meter-detail-card bg-white p-3 mt-3">
-    <h5 class="meter-panel-title">DL/T645 Prepaid Pilot</h5>
+    <div class="d-flex justify-content-between align-items-center gap-2"><h5 class="meter-panel-title">DL/T645 Prepaid Pilot</h5><a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}">Meter ledger</a></div>
     <div class="meter-kv-grid">
       <div class="meter-kv"><span class="meter-kv-label">Pilot Status</span><div class="meter-kv-value">{% if prepaid_pilot %}{{ prepaid_pilot.get_status_display }}{% else %}Not configured{% endif %}</div></div>
       <div class="meter-kv"><span class="meter-kv-label">Allowlisted</span><div class="meter-kv-value">{{ meter_feature_flags.prepaid_allowlisted|yesno:"Yes,No" }}</div></div>
       <div class="meter-kv"><span class="meter-kv-label">Global Reads</span><div class="meter-kv-value">{{ meter_feature_flags.prepaid_reads|yesno:"Enabled,Disabled" }}</div></div>
       <div class="meter-kv"><span class="meter-kv-label">Global Writes</span><div class="meter-kv-value">{{ meter_feature_flags.prepaid_writes|yesno:"Enabled,Disabled" }}</div></div>
       <div class="meter-kv"><span class="meter-kv-label">Display Balance</span><div class="meter-kv-value">{{ prepaid_pilot.display_balance|default:"-" }}</div></div>
-      <div class="meter-kv"><span class="meter-kv-label">Protocol Safety</span><div class="meter-kv-value">Recharge/write verification remains blocked until manufacturer DI/acknowledgement documentation is supplied.</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Protocol Safety</span><div class="meter-kv-value">Top-up and refund use one-send commands with acknowledgement and balance reconciliation; uncertain outcomes are never blindly retried.</div></div>
     </div>
   </div>
   {% endif %}

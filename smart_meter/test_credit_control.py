@@ -435,7 +435,6 @@ class PaymentAndNotificationIntegrationTests(MeterCreditFixture):
         self.assertIn("hold", off.cancelled_reason)
 
 
-@override_settings(METER_ENABLE_PREPAID_READS=True, METER_PREPAID_ALLOWED_METER_IDS=(1,))
 class PrepaidPilotSafetyTests(MeterCreditFixture):
     def test_legacy_prepaid_value_is_not_reinterpreted(self):
         self.meter.billing_mode = "prepaid"
@@ -443,8 +442,11 @@ class PrepaidPilotSafetyTests(MeterCreditFixture):
         self.assertTrue(self.meter.is_prepaid)
         self.assertNotEqual(self.meter.billing_mode, "prepaid_pilot")
 
-    @override_settings(METER_ENABLE_PREPAID_READS=False, METER_PREPAID_ALLOWED_METER_IDS=())
     def test_prepaid_read_requires_switch_and_allowlist(self):
+        from smart_meter.models import MeterSettings
+        MeterSettings.objects.update_or_create(
+            pk=1, defaults={"prepaid_reads_enabled": False}
+        )
         self.meter.billing_mode = "prepaid_pilot"
         self.meter.save(update_fields=["billing_mode"])
         with self.assertRaises(PrepaidProtocolSafetyError):

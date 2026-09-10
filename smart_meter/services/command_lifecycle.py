@@ -232,6 +232,23 @@ def still_should_reconnect(command: MeterCommand) -> RevalidationResult:
 def revalidate_command(command: MeterCommand) -> RevalidationResult:
     if command.expires_at and command.expires_at <= timezone.now():
         return RevalidationResult(False, "command expired", desired_state=command.desired_state)
+    from smart_meter.services.prepaid_money import is_prepaid_money_command
+    is_prepaid_command = (
+        command.source == "prepaid"
+        or command.command_type.startswith("prepaid_")
+    )
+    if is_prepaid_command:
+        from smart_meter.services.prepaid_pilot import prepaid_allowlisted, prepaid_writes_enabled
+        if not prepaid_writes_enabled():
+            return RevalidationResult(False, "prepaid writes disabled in Meter Settings")
+        if not command.meter or not prepaid_allowlisted(command.meter):
+            return RevalidationResult(False, "meter is not enabled for prepaid operations")
+        reason = (
+            "prepaid money command remains allowed"
+            if is_prepaid_money_command(command)
+            else "prepaid command remains allowed"
+        )
+        return RevalidationResult(True, reason)
     if command.source == "manual":
         return RevalidationResult(True, "manual command", desired_state=command.desired_state)
     if command.source == "schedule":

@@ -221,6 +221,34 @@ class MonthlyBillingRegressionTests(TestCase):
         self.assertEqual(latest, reading)
         self.assertEqual(installations, [installation])
 
+    def test_meter_readiness_includes_prepaid_pilot_for_monthly_invoicing(self):
+        self.unit.is_smart_meter = True
+        self.unit.save(update_fields=["is_smart_meter"])
+        meter = Meter.objects.create(
+            meter_number="PILOT-MONTHLY-1",
+            unit=self.unit,
+            billing_mode="prepaid_pilot",
+        )
+        installation = MeterInstallation.objects.create(
+            meter=meter,
+            unit=self.unit,
+            lease=self.lease,
+            start_date=date(2026, 1, 1),
+        )
+        reading = MeterReading.objects.create(
+            meter=meter,
+            ts=timezone.make_aware(datetime(2026, 6, 30, 23, 59)),
+            total_energy=Decimal("175.000"),
+        )
+
+        latest, installations = _latest_meter_reading_for_lease(
+            self.lease,
+            date(2026, 6, 30),
+        )
+
+        self.assertEqual(latest, reading)
+        self.assertEqual(installations, [installation])
+
     def test_meter_readiness_includes_replaced_and_new_meter_for_month(self):
         old_meter = Meter.objects.create(
             meter_number="MONTHLY-OLD-1",
@@ -287,6 +315,29 @@ class MonthlyBillingRegressionTests(TestCase):
 
         self.assertEqual(invoice.issue_date, date(2026, 7, 1))
         self.assertEqual(invoice.due_date, date(2026, 7, 10))
+
+    def test_monthly_invoice_tolerates_existing_duplicate_rows(self):
+        first = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 7, 1),
+            due_date=date(2026, 7, 7),
+        )
+        Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2026, 7, 1),
+            due_date=date(2026, 7, 7),
+        )
+
+        invoice = ensure_month_invoice(self.lease, date(2026, 7, 1))
+
+        self.assertEqual(invoice.pk, first.pk)
+        self.assertEqual(
+            Invoice.objects.filter(
+                lease=self.lease,
+                issue_date=date(2026, 7, 1),
+            ).count(),
+            2,
+        )
 
     def test_invoice_item_amount_rounds_up_to_nearest_10_on_save(self):
         invoice = Invoice.objects.create(

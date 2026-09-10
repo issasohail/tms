@@ -4,6 +4,7 @@ from __future__ import annotations
 from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal
+import logging
 import re
 
 # IMPORTANT: import Lease from *this* app to avoid "name 'Lease' is not defined"
@@ -14,6 +15,9 @@ from django.utils import timezone
 
 from .historical_units import historical_unit_prefetch
 from .models import Invoice, InvoiceItem, ItemCategory, RecurringCharge, WaterBill
+
+
+logger = logging.getLogger(__name__)
 
 
 def first_of_month(d: date) -> date:
@@ -183,10 +187,26 @@ def ensure_month_invoice(lease, period_date):
     if "amount" in invoice_fields:
         defaults["amount"] = Decimal("0.00")
 
-    inv, _ = Invoice.objects.get_or_create(
-        lease=lease, issue_date=period_date, defaults=defaults
+    existing = Invoice.objects.filter(
+        lease=lease,
+        issue_date=period_date,
+    ).order_by("pk")
+    inv = existing.first()
+    if inv is not None:
+        if existing[1:2].exists():
+            logger.warning(
+                "Duplicate monthly invoices found for lease=%s issue_date=%s; "
+                "using oldest invoice=%s without deleting data",
+                lease.pk,
+                period_date,
+                inv.pk,
+            )
+        return inv
+    return Invoice.objects.create(
+        lease=lease,
+        issue_date=period_date,
+        **defaults,
     )
-    return inv
 
 
 def active_leases_qs():
@@ -864,7 +884,7 @@ def _latest_meter_reading_for_lease(
         MeterInstallation.objects.filter(
             unit_id=lease.unit_id,
             meter__meter_type="electric",
-            meter__billing_mode__in=("postpaid", "credit_controlled"),
+            meter__billing_mode__in=("postpaid", "credit_controlled", "prepaid_pilot"),
             start_date__lte=period_end,
         )
         .filter(Q(end_date__isnull=True) | Q(end_date__gte=period_start))
@@ -1395,7 +1415,7 @@ def generate_monthly_billing_electric(run, *, dry_run=False, progress_callback=N
             MeterInstallation.objects.filter(
                 lease=item.lease,
                 meter__meter_type="electric",
-                meter__billing_mode__in=("postpaid", "credit_controlled"),
+                meter__billing_mode__in=("postpaid", "credit_controlled", "prepaid_pilot"),
                 start_date__lte=period_end,
             )
             .filter(Q(end_date__isnull=True) | Q(end_date__gte=period_start))

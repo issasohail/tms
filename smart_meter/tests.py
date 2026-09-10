@@ -19,6 +19,7 @@ from properties.models import Property, Unit
 from smart_meter.models import LiveReading, Meter, MeterInstallation, MeterReading, MeterRoleHistory
 from smart_meter.services.invoicing import (
     ElectricBillContext,
+    billing_contexts_for_period,
     compute_electric_bill,
     upsert_invoice_with_electric_item,
 )
@@ -647,6 +648,22 @@ class SmartMeterInvoiceGenerationRegressionTests(TestCase):
             self.period_start,
             self.period_end,
         )
+
+    def test_prepaid_pilot_remains_eligible_for_monthly_invoice_generation(self):
+        self.meter.billing_mode = "prepaid_pilot"
+        self.meter.save(update_fields=["billing_mode"])
+        self.add_reading(datetime(2026, 7, 31, 23, 45), total="100.000")
+        self.add_reading(datetime(2026, 8, 31, 23, 45), total="110.000")
+
+        contexts = billing_contexts_for_period(
+            self.period_start,
+            self.period_end,
+            meter_id=self.meter.pk,
+        )
+
+        self.assertEqual(len(contexts), 1)
+        self.assertEqual(contexts[0].meter, self.meter)
+        self.assertEqual(contexts[0].units, Decimal("10.000"))
 
     def test_final_timestamp_not_mid_month_max_drives_dashboard_and_invoice(self):
         self.add_reading(datetime(2026, 7, 31, 23, 45), total="359.080")

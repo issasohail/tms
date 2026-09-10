@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<div class="container-fluid py-3" style="max-width:1500px">
+  {% include "smart_meter/_settings_tabs.html" %}
+  <h1 class="h3 mb-3">Prepaid Controls</h1>
+  <div class="card mb-3"><div class="card-body py-2">
+    <form method="post" class="d-flex flex-wrap align-items-center gap-3">{% csrf_token %}<input type="hidden" name="action" value="update_flags">
+      {% for field in form %}<div class="form-check mb-0">{{ field }} {{ field.label_tag }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
+      <button class="btn btn-primary btn-sm ms-md-auto">Save controls</button>
+    </form>
+  </div></div>
+  <div class="card"><div class="table-responsive"><table class="table table-sm align-middle mb-0 text-nowrap">
+    <thead><tr><th>S/N</th><th>Meter</th><th>Property / Unit</th><th>Online</th><th>Tariff</th><th>Mode</th><th>Balance</th><th>Unit rate</th><th>Last reading</th><th>Power</th><th>Voltage</th><th>Current</th><th>Commands</th></tr></thead>
+    <tbody>{% for meter in meters %}<tr>
+      <td>{{ forloop.counter }}</td>
+      <td><a href="{% url 'smart_meter:meter_detail' meter.pk %}">{{ meter.meter_number }}</a></td>
+      <td>{{ meter.unit.property.property_name|default:"—" }} / {{ meter.display_location_name|default:"—" }}</td>
+      <td>{% if meter.live_status.connection_state == 'online' %}<span class="badge bg-success">Online</span>{% elif meter.live_status.connection_state == 'stale' %}<span class="badge bg-warning text-dark">Stale</span>{% else %}<span class="badge bg-secondary">Offline</span>{% endif %}</td>
+      <td>{{ meter.get_tariff_capability_display }}</td><td>{{ meter.get_billing_mode_display }}</td>
+      <td><a class="fw-semibold" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}">{% if meter.current_balance is not None %}{{ CURRENCY_SYMBOL }} {{ meter.current_balance|floatformat:2 }}{% else %}—{% endif %}</a></td>
+      <td>{{ meter.display_electricity_rate.rate|floatformat:4 }} <small class="text-muted">{{ meter.display_electricity_rate.source }}</small></td>
+      <td>{% if meter.last_read_at %}{{ meter.last_read_at|date:"Y-m-d H:i:s" }}{% else %}—{% endif %}</td>
+      <td><span class="badge {% if meter.power_status == 'on' %}bg-success{% else %}bg-danger{% endif %}">{{ meter.power_status|upper }}</span></td>
+      <td>{% if meter.current_voltage is not None %}{{ meter.current_voltage|floatformat:1 }} V{% else %}—{% endif %}</td>
+      <td>{% if meter.current_current is not None %}{{ meter.current_current|floatformat:3 }} A{% else %}—{% endif %}</td>
+      <td><div class="d-flex gap-1">
+        <a class="btn btn-success btn-sm" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}?action=recharge">Top up</a>
+        <a class="btn btn-outline-warning btn-sm" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}?action=refund">Refund</a>
+        <form method="post">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ meter.pk }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">{% if meter.billing_mode == 'prepaid_pilot' %}<button name="action" value="disable_meter" class="btn btn-outline-danger btn-sm">Set postpaid</button>{% else %}<button name="action" value="enable_meter" class="btn btn-outline-success btn-sm">Set prepaid</button>{% endif %}</form>
+      </div></td>
+    </tr>{% empty %}<tr><td colspan="13">No meters found.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+  <p class="small text-muted mt-2">Changing Mode changes TMS billing/command eligibility and is audited. A physical prepaid/postpaid mode frame is not sent because the manufacturer mode opcode has not been verified.</p>
+</div>
+{% endblock %}

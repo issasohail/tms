@@ -1,17 +1,13 @@
-"""Guarded DL/T645 prepaid pilot facade.
-
-Only protocol operations already evidenced by this repository are exposed.  Recharge
-and verified parameter writes stay disabled because the manufacturer protocol archive
-referenced by the implementation prompt was not included in the supplied snapshot.
-"""
+"""Database-controlled guards for DL/T645 prepaid operations."""
 from __future__ import annotations
 
-from django.conf import settings
+from django.db import OperationalError, ProgrammingError
 from django.utils import timezone
 
 from smart_meter.models import (
     LiveReading,
     Meter,
+    MeterSettings,
     MeterPrepaidPilot,
     MeterPrepaidParameterRead,
     MeterPrepaidWriteAttempt,
@@ -22,24 +18,42 @@ class PrepaidProtocolSafetyError(RuntimeError):
     pass
 
 
-def _enabled(name):
-    value = getattr(settings, name, False)
-    if isinstance(value, str):
-        return value.lower() in {"1", "true", "yes", "on"}
+def _database_flag(field_name):
+    try:
+        value = (
+            MeterSettings.objects.filter(pk=1)
+            .values_list(field_name, flat=True)
+            .first()
+        )
+    except (OperationalError, ProgrammingError):
+        # Fail closed during startup or a partially applied deployment.
+        return False
     return bool(value)
 
 
+def prepaid_reads_enabled():
+    return _database_flag("prepaid_reads_enabled")
+
+
+def prepaid_writes_enabled():
+    return _database_flag("prepaid_writes_enabled")
+
+
+def prepaid_payment_topups_enabled():
+    return _database_flag("prepaid_payment_topups_enabled")
+
+
 def prepaid_allowlisted(meter: Meter) -> bool:
-    return meter.pk in set(getattr(settings, "METER_PREPAID_ALLOWED_METER_IDS", ()) or ())
+    return bool(meter.is_active and meter.billing_mode == "prepaid_pilot")
 
 
 def validate_prepaid_read(meter: Meter):
     if meter.billing_mode != "prepaid_pilot":
         raise PrepaidProtocolSafetyError("Meter billing mode is not prepaid_pilot")
-    if not _enabled("METER_ENABLE_PREPAID_READS"):
-        raise PrepaidProtocolSafetyError("METER_ENABLE_PREPAID_READS is disabled")
+    if not prepaid_reads_enabled():
+        raise PrepaidProtocolSafetyError("Prepaid reads are disabled in Meter Settings")
     if not prepaid_allowlisted(meter):
-        raise PrepaidProtocolSafetyError("Meter is not in METER_PREPAID_ALLOWED_METER_IDS")
+        raise PrepaidProtocolSafetyError("Meter is not enabled for prepaid operations")
 
 
 def read_supported_prepaid_snapshot(meter_id: int):
@@ -87,8 +101,8 @@ def guarded_parameter_write(*, meter_id, parameter, value, user, reason, confirm
         raise PrepaidProtocolSafetyError("Meter-number confirmation does not match")
     if meter.billing_mode != "prepaid_pilot" or not prepaid_allowlisted(meter):
         raise PrepaidProtocolSafetyError("Meter is not an enabled/allowlisted prepaid pilot")
-    if not _enabled("METER_ENABLE_PREPAID_WRITES"):
-        raise PrepaidProtocolSafetyError("METER_ENABLE_PREPAID_WRITES is disabled")
+    if not prepaid_writes_enabled():
+        raise PrepaidProtocolSafetyError("Prepaid writes are disabled in Meter Settings")
     if not user or not user.has_perm("smart_meter.write_prepaid_parameters"):
         raise PrepaidProtocolSafetyError("User lacks prepaid parameter write permission")
     if not reason:

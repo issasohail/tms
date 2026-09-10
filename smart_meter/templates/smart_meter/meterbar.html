@@ -2,6 +2,7 @@
 
 {% url 'smart_meter:meter_switch' as url_meter_switch %}
 {% url 'smart_meter:prepaid_params' as url_prepaid_params %}
+{% url 'smart_meter:prepaid_controls' as url_prepaid_controls %}
 
 <nav class="meterbar bg-dark text-light no-print mb-0 border-top border-secondary">
   <div class="container-fluid px-2 py-1">
@@ -36,7 +37,7 @@
 
 
       <li>
-        <a class="nav-link{% if url_prepaid_params in request.path %} active{% endif %}"
+        <a class="nav-link{% if url_prepaid_params in request.path or url_prepaid_controls in request.path %} active{% endif %}"
            href="{{ url_prepaid_params }}" aria-label="Prepaid Params">
           <span class="d-sm-none">Setting</span><span class="d-none d-sm-inline">Meter<BR>Setting</span>
         </a>

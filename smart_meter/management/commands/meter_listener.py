@@ -1132,6 +1132,10 @@ class ClientHandler(threading.Thread):
             for key, value in data.items()
             if key in history_field_names and value is not None
         }
+        if "unit_rate" in history_field_names:
+            from smart_meter.rates import resolve_electricity_rate
+
+            history_values["unit_rate"] = resolve_electricity_rate(meter=meter).rate
         history_values.update(source_ip=self.addr[0], source_port=self.addr[1])
         if take_snapshot:
             with transaction.atomic():
@@ -1145,9 +1149,10 @@ class ClientHandler(threading.Thread):
                 timezone.localtime().isoformat(timespec="seconds"),
                 meter_number,
             )
-        elif di in DIRECT_REGISTER_SPECS and last is not None:
-            # Direct polling returns one DI per frame. Merge the cycle into the
-            # current cadence row so the two energy totals and phases correlate.
+        elif last is not None and history_values:
+            # Merge every accepted frame into the current cadence row. This keeps
+            # direct-register cycles correlated and preserves each latest balance,
+            # overdraft, and resolved-rate observation inside the 15-minute window.
             for key, value in history_values.items():
                 setattr(last, key, value)
             last.save(update_fields=list(history_values))

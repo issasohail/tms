@@ -54,6 +54,7 @@ urlpatterns = [
 
     path("recharge/<int:unit_id>/", recharge_balance, name="recharge_balance"),
     path("settings/", meter_settings, name="meter_settings"),
+    path("settings/prepaid/", views.prepaid_controls, name="prepaid_controls"),
     path("unit/<int:unit_id>/refund/", refund_balance, name="refund_balance"),
     path('energy-dashboard/', energy_dashboard, name='energy_dashboard'),
 
@@ -72,6 +73,7 @@ urlpatterns = [
     path('meters/<int:meter_id>/tariff/audits/', views_tariff.tariff_audit_list, name='tariff_audit_list'),
     path('meters/<int:pk>/raw-readings/export/xlsx/', views.meter_raw_frame_history_xlsx, name='meter_raw_frame_history_xlsx'),
     path('meters/<int:pk>/raw-readings/', views.meter_raw_frame_history, name='meter_raw_frame_history'),
+    path('meters/<int:meter_id>/prepaid-ledger/', views.prepaid_meter_ledger, name='prepaid_meter_ledger'),
     path('meters/<int:pk>/', views.meter_detail, name='meter_detail'),
     path('meters/<int:pk>/credit-control/', views_credit_control.credit_control, name='credit_control'),
     path('meters/<int:pk>/edit/', views.meter_edit, name='meter_edit'),

@@ -1,0 +1,4 @@
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><a class="nav-link{% if request.resolver_match.url_name == 'prepaid_params' or request.resolver_match.url_name == 'meter_settings' %} active{% endif %}" href="{% url 'smart_meter:prepaid_params' %}">Meter Settings &amp; Prepaid Parameters</a></li>
+  <li class="nav-item"><a class="nav-link{% if request.resolver_match.url_name == 'prepaid_controls' %} active{% endif %}" href="{% url 'smart_meter:prepaid_controls' %}">Prepaid Controls</a></li>
+</ul>

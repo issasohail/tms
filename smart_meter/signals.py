@@ -19,6 +19,11 @@ def _enqueue_for_lease(lease_id):
         MeterEvaluationRequest.objects.create(meter=account.meter, status="pending")
 
 
+def _queue_prepaid_payment_topup(payment_detail_id):
+    from smart_meter.services.prepaid_payments import queue_payment_electricity_topup
+    queue_payment_electricity_topup(payment_detail_id)
+
+
 @receiver(post_save, sender=Payment, dispatch_uid="smart_meter_credit_payment_saved")
 def payment_saved(sender, instance, **kwargs):
     lease_id = instance.lease_id
@@ -38,6 +43,8 @@ def payment_detail_saved(sender, instance, **kwargs):
         lease_id = payment.lease_id if payment else Payment.objects.filter(pk=payment_id).values_list("lease_id", flat=True).first()
         if lease_id:
             transaction.on_commit(lambda: _enqueue_for_lease(lease_id))
+    detail_id = instance.pk
+    transaction.on_commit(lambda: _queue_prepaid_payment_topup(detail_id))
 
 
 @receiver(post_delete, sender=PaymentDetail, dispatch_uid="smart_meter_credit_payment_detail_deleted")

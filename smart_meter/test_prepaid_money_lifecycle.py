@@ -17,6 +17,7 @@ from smart_meter.models import (
     MeterCommand,
     MeterPrepaidPilot,
     MeterPrepaidRecharge,
+    MeterSettings,
 )
 from smart_meter.services.prepaid_money import (
     CONSUMED_MANUFACTURER_ORDERS,
@@ -26,6 +27,7 @@ from smart_meter.services.prepaid_money import (
     queue_prepaid_money_transaction,
     reconcile_prepaid_balance,
 )
+from smart_meter.services.command_lifecycle import revalidate_command
 from smart_meter.utils.db_send import send_via_db
 
 
@@ -77,7 +79,18 @@ class ImmediateMoneyHandler:
 
 class PrepaidMoneyLifecycleTests(TestCase):
     def setUp(self):
-        self.meter = Meter.objects.create(meter_number=METER_NUMBER)
+        MeterSettings.objects.update_or_create(
+            pk=1,
+            defaults={
+                "prepaid_reads_enabled": True,
+                "prepaid_writes_enabled": True,
+                "prepaid_payment_topups_enabled": True,
+            },
+        )
+        self.meter = Meter.objects.create(
+            meter_number=METER_NUMBER,
+            billing_mode="prepaid_pilot",
+        )
         self.pilot = MeterPrepaidPilot.objects.create(
             meter=self.meter, status="active_test"
         )
@@ -102,6 +115,21 @@ class PrepaidMoneyLifecycleTests(TestCase):
         self.assertEqual(command.max_attempts, 1)
         self.assertTrue(command.requires_verification)
         self.assertEqual(prepaid.transaction_id, "1240826202124150")
+
+    def test_database_write_switch_blocks_queued_parameter_write(self):
+        command = MeterCommand.objects.create(
+            meter=self.meter,
+            meter_number=self.meter.meter_number,
+            frame_hex="6800",
+            command_type="prepaid_write",
+            source="prepaid",
+        )
+        MeterSettings.objects.filter(pk=1).update(prepaid_writes_enabled=False)
+
+        result = revalidate_command(command)
+
+        self.assertFalse(result.allowed)
+        self.assertEqual(result.reason, "prepaid writes disabled in Meter Settings")
 
     def test_c83_recharge_reply_is_meter_acknowledgement_not_reconciliation(self):
         prepaid, command = self.queue()

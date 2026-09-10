@@ -17,7 +17,7 @@ from django.conf import settings as dj_settings  # at top of file
 # You will write these
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 
 # smart_meter/views.py
@@ -44,6 +44,7 @@ from django.http import (
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timezone import now
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook
@@ -68,6 +69,8 @@ from smart_meter.models import (
     MeterEvent,
     MeterCommand,
     MeterPrepaidSettings,
+    MeterPrepaidRecharge,
+    MeterRawFrame,
     MeterReading,
     MeterSettings,
 )
@@ -127,6 +130,8 @@ from .forms import (
     MeterReadingProfileForm,
     MeterReadingForm,
     MeterSettingsForm,
+    PrepaidMoneyForm,
+    PrepaidControlSettingsForm,
     MoveLeaseUnitForm,
     ReadingManualForm,
     SwitchLabForm,
@@ -548,17 +553,209 @@ def meter_status(request, meter_id: int):
 
 
 def meter_settings(request):
-    settings, _ = MeterSettings.objects.get_or_create(id=1)
+    return redirect("smart_meter:prepaid_params")
 
+
+def _prepaid_return(request):
+    target = request.POST.get("next") or request.GET.get("next")
+    if target and url_has_allowed_host_and_scheme(
+        target,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return redirect(target)
+    return redirect("smart_meter:prepaid_controls")
+
+
+@login_required
+@permission_required(
+    ("smart_meter.change_meter", "smart_meter.change_metersettings"),
+    raise_exception=True,
+)
+def prepaid_controls(request):
+    settings_row, _ = MeterSettings.objects.get_or_create(id=1)
+    form = PrepaidControlSettingsForm(instance=settings_row)
     if request.method == "POST":
-        form = MeterSettingsForm(request.POST, instance=settings)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "Settings updated.")
-    else:
-        form = MeterSettingsForm(instance=settings)
+        action = request.POST.get("action")
+        if action == "update_flags":
+            form = PrepaidControlSettingsForm(request.POST, instance=settings_row)
+            if form.is_valid():
+                form.save()
+                messages.success(request, "Prepaid controls updated.")
+                return redirect("smart_meter:prepaid_controls")
+        elif action in {"enable_meter", "disable_meter"}:
+            meter = get_object_or_404(Meter, pk=request.POST.get("meter_id"))
+            from smart_meter.models import MeterPrepaidPilot
+            with transaction.atomic():
+                meter = Meter.objects.select_for_update().get(pk=meter.pk)
+                pilot, _ = MeterPrepaidPilot.objects.select_for_update().get_or_create(meter=meter)
+                if action == "enable_meter":
+                    meter.billing_mode = "prepaid_pilot"
+                    pilot.status = "active_test"
+                    message = (
+                        f"Meter {meter.meter_number} enabled for prepaid operations and monthly invoicing. "
+                        "Database mode updated; no unverified physical mode-change frame was sent."
+                    )
+                else:
+                    if pilot.recharges.filter(status__in=("pending", "uncertain")).exists():
+                        messages.error(request, "Resolve the meter's pending prepaid transaction before disabling it.")
+                        return _prepaid_return(request)
+                    meter.billing_mode = "postpaid"
+                    pilot.status = "disabled"
+                    message = (
+                        f"Meter {meter.meter_number} returned to postpaid-only operation. "
+                        "Database mode updated; no unverified physical mode-change frame was sent."
+                    )
+                meter.save(update_fields=["billing_mode"])
+                pilot.save(update_fields=["status", "updated_at"])
+                if meter.unit_id:
+                    MeterEvent.objects.create(
+                        unit=meter.unit,
+                        event_type="alert",
+                        note=(
+                            f"Billing mode changed to {meter.billing_mode} by "
+                            f"{request.user.get_username()}; physical mode command unavailable."
+                        ),
+                    )
+            messages.success(request, message)
+            return _prepaid_return(request)
+    meters = list(Meter.objects.select_related("unit", "unit__property", "live").order_by(
+        "unit__property__property_name", "unit__unit_number", "meter_number"
+    ))
+    from smart_meter.rates import resolve_electricity_rate
 
-    return render(request, "smart_meter/settings.html", {"form": form})
+    statuses = resolve_meter_online_statuses(
+        (meter, getattr(meter, "live", None)) for meter in meters
+    )
+    for meter in meters:
+        reading = getattr(meter, "live", None)
+        meter.live_status = statuses[meter.pk]
+        meter.display_electricity_rate = resolve_electricity_rate(meter=meter)
+        meter.current_balance = getattr(reading, "balance", None)
+        meter.last_read_at = getattr(reading, "ts", None)
+        meter.current_voltage = getattr(reading, "voltage_a", None)
+        meter.current_current = getattr(reading, "current_a", None)
+    return render(request, "smart_meter/prepaid_controls.html", {
+        "form": form,
+        "meters": meters,
+        "settings_row": settings_row,
+    })
+
+
+@login_required
+@permission_required("smart_meter.view_meter", raise_exception=True)
+def prepaid_meter_ledger(request, meter_id):
+    meters = restrict_queryset_to_properties(
+        Meter.objects.select_related("unit", "unit__property", "prepaid_pilot", "live"),
+        request.user,
+        "unit__property",
+    )
+    meter = get_object_or_404(meters, pk=meter_id)
+    requested_operation = request.GET.get("action")
+    if requested_operation not in {"recharge", "refund"}:
+        requested_operation = "recharge"
+    form = PrepaidMoneyForm(
+        request.POST or None,
+        initial={"operation": requested_operation},
+    )
+    if request.method == "POST" and form.is_valid():
+        operation = form.cleaned_data["operation"]
+        permission = (
+            "smart_meter.recharge_prepaid_meter"
+            if operation == "recharge"
+            else "smart_meter.rollback_prepaid_meter"
+        )
+        if not request.user.has_perm(permission):
+            raise PermissionDenied(f"You do not have permission: {permission}")
+        if form.cleaned_data["confirm_meter_number"] != meter.meter_number:
+            form.add_error("confirm_meter_number", "Meter number does not match.")
+        else:
+            from smart_meter.services.prepaid_money import queue_prepaid_money_transaction
+
+            try:
+                recharge, command = queue_prepaid_money_transaction(
+                    meter=meter,
+                    operation=operation,
+                    amount=form.cleaned_data["amount"],
+                    initiated_by=request.user.get_username(),
+                    reason=form.cleaned_data["reason"],
+                )
+            except ValueError as exc:
+                form.add_error(None, str(exc))
+            else:
+                recharge.created_by = request.user
+                recharge.save(update_fields=["created_by", "updated_at"])
+                messages.warning(
+                    request,
+                    f"{operation.title()} command #{command.pk} queued once. "
+                    "Wait for acknowledgement and balance reconciliation before another money command.",
+                )
+                return redirect("smart_meter:prepaid_meter_ledger", meter_id=meter.pk)
+
+    readings = list(
+        MeterReading.objects.filter(meter=meter, balance__isnull=False)
+        .order_by("-ts", "-pk")[:500]
+    )
+    readings.reverse()
+    previous = None
+    for reading in readings:
+        reading.balance_change = None
+        reading.energy_change = None
+        reading.estimated_charge = None
+        if previous is not None:
+            reading.balance_change = reading.balance - previous.balance
+            current_energy = (
+                reading.forward_active_energy_kwh
+                if reading.forward_active_energy_kwh is not None
+                else reading.total_energy
+            )
+            previous_energy = (
+                previous.forward_active_energy_kwh
+                if previous.forward_active_energy_kwh is not None
+                else previous.total_energy
+            )
+            if current_energy is not None and previous_energy is not None:
+                reading.energy_change = current_energy - previous_energy
+                if reading.unit_rate is not None and reading.energy_change >= 0:
+                    reading.estimated_charge = (
+                        reading.energy_change * reading.unit_rate
+                    ).quantize(Decimal("0.01"))
+        previous = reading
+    readings.reverse()
+    transactions = list(MeterPrepaidRecharge.objects.filter(
+        pilot__meter=meter
+    ).select_related("created_by").order_by("-created_at", "-pk")[:200])
+    from smart_meter.services.prepaid_money import decode_manufacturer_charge_frame
+
+    for item in transactions:
+        try:
+            item.operation_label = decode_manufacturer_charge_frame(
+                item.raw_command
+            )["operation"].replace("recharge", "top up").title()
+        except (TypeError, ValueError):
+            item.operation_label = "Transaction"
+    raw_balance_frames = MeterRawFrame.objects.filter(
+        meter=meter,
+        data_identifier="028011FF",
+    ).order_by("-received_at", "-pk")[:200]
+    for frame in raw_balance_frames:
+        frame.reported_balance = (frame.decoded_data or {}).get("balance")
+        frame.reported_energy = (
+            (frame.decoded_data or {}).get("forward_active_energy_kwh")
+            or (frame.decoded_data or {}).get("total_energy")
+        )
+    live = getattr(meter, "live", None)
+    from smart_meter.rates import resolve_electricity_rate
+
+    return render(request, "smart_meter/prepaid_ledger.html", {
+        "meter": meter,
+        "form": form,
+        "live": live,
+        "transactions": transactions,
+        "readings": readings,
+        "raw_balance_frames": raw_balance_frames,
+        "electricity_rate": resolve_electricity_rate(meter=meter),
+    })
 
 
 # views.py
@@ -2547,6 +2744,11 @@ def meter_detail(request, pk):
                     "rate": rate,
                     "label": getattr(tariff_configuration, f"rate_{rate}_label"),
                 })
+    from smart_meter.services.prepaid_pilot import (
+        prepaid_allowlisted,
+        prepaid_reads_enabled,
+        prepaid_writes_enabled,
+    )
     meter_feature_flags = {
         "credit_eval": bool(
             getattr(settings, "METER_ENABLE_AUTOMATIC_CREDIT_EVALUATION", False)
@@ -2558,10 +2760,9 @@ def meter_detail(request, pk):
         "auto_restore": bool(
             getattr(settings, "METER_ENABLE_AUTOMATIC_RESTORE", False)
         ),
-        "prepaid_reads": bool(getattr(settings, "METER_ENABLE_PREPAID_READS", False)),
-        "prepaid_writes": bool(getattr(settings, "METER_ENABLE_PREPAID_WRITES", False)),
-        "prepaid_allowlisted": meter.pk
-        in set(getattr(settings, "METER_PREPAID_ALLOWED_METER_IDS", ()) or ()),
+        "prepaid_reads": prepaid_reads_enabled(),
+        "prepaid_writes": prepaid_writes_enabled(),
+        "prepaid_allowlisted": prepaid_allowlisted(meter),
         "credit_allowlisted": meter.pk
         in set(getattr(settings, "METER_CREDIT_ALLOWED_METER_IDS", ()) or ()),
         "emergency_stop": bool(getattr(settings, "METER_EMERGENCY_STOP", False)),
@@ -2938,14 +3139,18 @@ def live_custom(request):
             "meter__unit",
             "meter__meter_number",
             "meter__power_status",
+            "meter__billing_mode",
+            "meter__unit_rate",
             "meter__name",
             "meter__is_active",
             "meter__meter_role",
             "meter__unit__id",
             "meter__unit__property",
             "meter__unit__unit_number",
+            "meter__unit__electricity_unit_rate",
             "meter__unit__property__id",
             "meter__unit__property__property_name",
+            "meter__unit__property__electricity_unit_rate",
         )
         .order_by(
             "meter__unit__property__property_name",
@@ -3004,6 +3209,11 @@ def live_custom(request):
     ).order_by("meter_id", "-created_at"):
         latest_relay_commands.setdefault(command.meter_id, command)
     for reading in rows:
+        from smart_meter.rates import resolve_electricity_rate
+
+        reading.display_electricity_rate = resolve_electricity_rate(
+            meter=reading.meter
+        )
         reading.latest_relay_command = latest_relay_commands.get(reading.meter_id)
         relay_state = reconcile_live_relay_command_state(
             reading.meter,
@@ -4137,6 +4347,8 @@ def reading_list(request):
         "ts",
         "source_ip",
         "source_port",
+        "balance",
+        "unit_rate",
         "total_energy",
         "forward_active_energy_kwh",
         "reverse_active_energy_kwh",
@@ -5600,14 +5812,18 @@ def live_custom_data(request):
             "meter__unit",
             "meter__meter_number",
             "meter__power_status",
+            "meter__billing_mode",
+            "meter__unit_rate",
             "meter__name",
             "meter__is_active",
             "meter__meter_role",
             "meter__unit__id",
             "meter__unit__property",
             "meter__unit__unit_number",
+            "meter__unit__electricity_unit_rate",
             "meter__unit__property__id",
             "meter__unit__property__property_name",
+            "meter__unit__property__electricity_unit_rate",
         )
         .order_by(
             "meter__unit__property__property_name",
@@ -5667,6 +5883,9 @@ def live_custom_data(request):
             is_fresh=status["measurement_is_fresh"],
         )
         confirmed_state = relay_state["confirmed_state"]
+        from smart_meter.rates import resolve_electricity_rate
+
+        rate = resolve_electricity_rate(meter=m)
 
         payload.append(
             {
@@ -5697,6 +5916,11 @@ def live_custom_data(request):
                 "meter_number": m.meter_number or "",
                 "meter_role": m.meter_role,
                 "meter_role_display": m.get_meter_role_display(),
+                "is_prepaid": m.is_prepaid,
+                "billing_mode": m.billing_mode,
+                "billing_mode_display": m.get_billing_mode_display(),
+                "unit_rate": _fmt(rate.rate, 4),
+                "unit_rate_source": rate.source,
                 "updated_ts": _ts_iso(r.ts),
                 # optional: pre-formatted display strings
                 "source_ip": status["source_ip"] or r.source_ip or "",

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<div class="container-fluid py-3" style="max-width:1400px">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-1">Meter Balance Ledger</h1>
+      <div class="text-muted">{{ meter.meter_number }} · {{ meter.unit.property.property_name|default:"Unassigned" }} / {{ meter.display_location_name }}</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'smart_meter:meter_detail' meter.pk %}">Meter detail</a>
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'smart_meter:meter_list' %}">Meter list</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Current balance</div><div class="h4 mb-0">{{ CURRENCY_SYMBOL }} {{ live.balance|default:"—" }}</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Billing mode</div><div class="fw-semibold">{{ meter.get_billing_mode_display }}</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Unit rate</div><div class="fw-semibold">{{ CURRENCY_SYMBOL }} {{ electricity_rate.rate|floatformat:4 }} / kWh</div><small class="text-muted">{{ electricity_rate.source }}</small></div></div></div>
+    <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Last reading</div><div class="fw-semibold">{{ live.ts|date:"Y-m-d H:i:s"|default:"—" }}</div></div></div></div>
+  </div>
+
+  <div class="card mb-3"><div class="card-header">Top-up / refund command</div><div class="card-body">
+    {% if meter.billing_mode == 'prepaid_pilot' %}
+    <form method="post" class="row g-2 align-items-end">{% csrf_token %}
+      <div class="col-6 col-md-2">{{ form.operation.label_tag }}{{ form.operation }}</div>
+      <div class="col-6 col-md-2">{{ form.amount.label_tag }}{{ form.amount }}</div>
+      <div class="col-12 col-md-3">{{ form.reason.label_tag }}{{ form.reason }}</div>
+      <div class="col-12 col-md-3">{{ form.confirm_meter_number.label_tag }}{{ form.confirm_meter_number }}</div>
+      <div class="col-12 col-md-2"><button class="btn btn-warning w-100">Queue once</button></div>
+      {% if form.non_field_errors %}<div class="col-12 text-danger">{{ form.non_field_errors }}</div>{% endif %}
+      {% for field in form %}{% for error in field.errors %}<div class="col-12 text-danger small">{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}
+    </form>
+    <p class="small text-muted mb-0 mt-2">Money commands are never blindly retried. A new command is blocked while an earlier transaction is pending or uncertain.</p>
+    {% else %}<div class="alert alert-secondary mb-0">Enable this meter for prepaid operations before sending a top-up or refund.</div>{% endif %}
+  </div></div>
+
+  <div class="card mb-3"><div class="card-header">Money transactions</div><div class="table-responsive"><table class="table table-sm mb-0 align-middle">
+    <thead><tr><th>Date</th><th>Operation</th><th>Amount</th><th>Before</th><th>After</th><th>Status</th><th>Order</th><th>User</th><th>Trace</th></tr></thead>
+    <tbody>{% for item in transactions %}<tr>
+      <td class="text-nowrap">{{ item.created_at|date:"Y-m-d H:i:s" }}</td><td>{{ item.operation_label }}</td>
+      <td>{{ item.amount|floatformat:2 }}</td><td>{{ item.before_balance|default:"—" }}</td><td>{{ item.after_balance|default:"—" }}</td>
+      <td><span class="badge {% if item.status == 'verified' %}bg-success{% elif item.status == 'failed' %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ item.get_status_display }}</span></td>
+      <td class="text-nowrap">{{ item.transaction_id }}</td><td>{{ item.created_by|default:"system/payment" }}</td><td>{{ item.reconciliation_note|default:"—" }}</td>
+    </tr>{% empty %}<tr><td colspan="9" class="text-muted">No top-ups or refunds recorded.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+
+  <div class="card mb-3"><div class="card-header">Historical reading balance movements</div><div class="table-responsive"><table class="table table-sm mb-0 align-middle">
+    <thead><tr><th>Reading</th><th>Balance</th><th>Balance change</th><th>Energy</th><th>Usage change</th><th>Rate snapshot</th><th>Estimated usage charge</th></tr></thead>
+    <tbody>{% for reading in readings %}<tr>
+      <td class="text-nowrap">{{ reading.ts|date:"Y-m-d H:i:s" }}</td><td>{{ reading.balance|floatformat:2 }}</td>
+      <td>{% if reading.balance_change is not None %}{{ reading.balance_change|floatformat:2 }}{% else %}—{% endif %}</td>
+      <td>{% if reading.forward_active_energy_kwh is not None %}{{ reading.forward_active_energy_kwh|floatformat:3 }}{% else %}{{ reading.total_energy|default:"—" }}{% endif %}</td>
+      <td>{% if reading.energy_change is not None %}{{ reading.energy_change|floatformat:3 }}{% else %}—{% endif %}</td>
+      <td>{% if reading.unit_rate is not None %}{{ reading.unit_rate|floatformat:4 }}{% else %}—{% endif %}</td>
+      <td>{% if reading.estimated_charge is not None %}{{ reading.estimated_charge|floatformat:2 }}{% else %}—{% endif %}</td>
+    </tr>{% empty %}<tr><td colspan="7" class="text-muted">Balance will appear here as new historical meter readings arrive.</td></tr>{% endfor %}</tbody>
+  </table></div><div class="card-footer small text-muted">Estimated charge is usage change × the stored rate snapshot. The meter-reported balance movement remains authoritative, especially for multi-rate meters.</div></div>
+
+  <div class="card"><div class="card-header">Raw authoritative balance observations</div><div class="table-responsive"><table class="table table-sm mb-0">
+    <thead><tr><th>Received</th><th>Balance</th><th>Energy</th><th>Source</th><th>Trust</th></tr></thead>
+    <tbody>{% for frame in raw_balance_frames %}<tr><td>{{ frame.received_at|date:"Y-m-d H:i:s" }}</td><td>{{ frame.reported_balance|default:"—" }}</td><td>{{ frame.reported_energy|default:"—" }}</td><td>{{ frame.source_ip|default:"—" }}:{{ frame.source_port|default:"—" }}</td><td>{{ frame.get_trust_classification_display }}</td></tr>{% empty %}<tr><td colspan="5" class="text-muted">No raw balance observations recorded.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+{% endblock %}

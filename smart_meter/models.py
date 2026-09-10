@@ -1162,6 +1162,26 @@ class MeterReading(models.Model):
     ts = models.DateTimeField(db_index=True, default=timezone.now)
     source_ip = models.GenericIPAddressField(null=True, blank=True)
     source_port = models.PositiveIntegerField(null=True, blank=True)
+    balance = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Authoritative meter-reported prepaid balance at this reading.",
+    )
+    overdraft = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    unit_rate = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Resolved electricity rate snapshot used to explain balance movement.",
+    )
     total_energy = models.DecimalField(
         max_digits=14, decimal_places=3, null=True, blank=True)
     forward_active_energy_kwh = models.DecimalField(
@@ -1613,6 +1633,9 @@ class MeterSettings(models.Model):
         max_digits=6, decimal_places=2, default=100.00)
     peak_start_hour = models.IntegerField(default=17)
     peak_end_hour = models.IntegerField(default=22)
+    prepaid_reads_enabled = models.BooleanField(default=False)
+    prepaid_writes_enabled = models.BooleanField(default=False)
+    prepaid_payment_topups_enabled = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Global Meter Settings: â‚¹{self.unit_rate}/kWh"
@@ -2105,6 +2128,40 @@ class MeterPrepaidRecharge(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class MeterPrepaidPaymentTopup(models.Model):
+    STATUSES = [
+        ("queued", "Queued"),
+        ("verified", "Verified"),
+        ("uncertain", "Uncertain"),
+        ("failed", "Failed"),
+    ]
+    payment_detail = models.ForeignKey(
+        "payments.PaymentDetail",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="prepaid_meter_topups",
+    )
+    source_payment_detail_id = models.PositiveBigIntegerField(unique=True)
+    meter = models.ForeignKey(
+        Meter,
+        on_delete=models.PROTECT,
+        related_name="payment_topups",
+    )
+    allocated_amount = models.DecimalField(max_digits=14, decimal_places=2)
+    recharge = models.OneToOneField(
+        MeterPrepaidRecharge,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="payment_topup",
+    )
+    status = models.CharField(max_length=16, choices=STATUSES, default="queued", db_index=True)
+    error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class MeterTariffConfiguration(models.Model):
     MODES = [("flat", "Flat"), ("time_of_use", "Time-of-use")]
     STATUSES = [
@@ -2227,4 +2284,3 @@ class MeterTariffBulkItem(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["run", "meter"], name="uniq_tariff_bulk_run_meter")
         ]
-

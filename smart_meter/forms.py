@@ -76,7 +76,46 @@ class RechargeForm(forms.Form):
 class MeterSettingsForm(forms.ModelForm):
     class Meta:
         model = MeterSettings
-        fields = "__all__"
+        fields = ["unit_rate", "low_balance_threshold", "peak_start_hour", "peak_end_hour"]
+
+
+class PrepaidControlSettingsForm(forms.ModelForm):
+    class Meta:
+        model = MeterSettings
+        fields = [
+            "prepaid_reads_enabled",
+            "prepaid_writes_enabled",
+            "prepaid_payment_topups_enabled",
+        ]
+        labels = {
+            "prepaid_reads_enabled": "Enable prepaid reads",
+            "prepaid_writes_enabled": "Enable prepaid writes",
+            "prepaid_payment_topups_enabled": "Top up from electricity payment allocations",
+        }
+
+
+class PrepaidMoneyForm(forms.Form):
+    OPERATION_CHOICES = (("recharge", "Top up"), ("refund", "Refund"))
+
+    operation = forms.ChoiceField(
+        choices=OPERATION_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    amount = forms.DecimalField(
+        min_value=Decimal("0.01"),
+        max_digits=14,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
+    )
+    reason = forms.CharField(
+        max_length=256,
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+    confirm_meter_number = forms.CharField(
+        max_length=20,
+        label="Confirm meter number",
+        widget=forms.TextInput(attrs={"class": "form-control", "autocomplete": "off"}),
+    )
 
 
 class MeterForm(forms.ModelForm):
@@ -335,7 +374,9 @@ class SwitchLabForm(forms.Form):
 
 class MeterPrepaidSettingsForm(forms.ModelForm):
     meter = forms.ModelChoiceField(
-        queryset=Meter.objects.order_by("meter_number"),
+        queryset=Meter.objects.filter(
+            is_active=True, billing_mode="prepaid_pilot"
+        ).order_by("meter_number"),
         label="Meter",
         widget=forms.Select(attrs={"class": "form-select"})
     )

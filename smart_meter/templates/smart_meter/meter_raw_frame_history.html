@@ -3,23 +3,23 @@
 {% block title %}Raw Readings — {{ meter.meter_number }}{% endblock %}
 
 {% block content %}
-{% include "smart_meter/meterbar.html" %}
+{% if not tms_embedded %}{% include "smart_meter/meterbar.html" %}{% endif %}
 
 <div class="container-fluid raw-readings-page py-3">
-  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  {% if not tms_embedded %}<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
     <div>
       <h2 class="mb-0">Raw Readings: {{ meter.meter_number }}</h2>
       <div class="text-muted small">{{ meter.display_location_name|default:"No current unit" }} · read-only DL/T645 audit frames.</div>
     </div>
     <a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:meter_detail' meter.pk %}"><i class="fas fa-arrow-left me-1"></i> Meter Overview</a>
-  </div>
+  </div>{% endif %}
 
-  <ul class="nav nav-tabs mb-3" aria-label="Meter detail sections">
+  {% if not tms_embedded %}<ul class="nav nav-tabs mb-3" aria-label="Meter detail sections">
     <li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:meter_detail' meter.pk %}"><i class="fas fa-tachometer-alt me-1"></i> Meter Overview</a></li>
-    {% if perms.smart_meter.view_meter_credit_details %}<li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:credit_control' meter.pk %}"><i class="fas fa-bolt me-1"></i> Credit Control</a></li>{% endif %}
-    <li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:meter_schedule_detail' meter.pk %}"><i class="fas fa-calendar-alt me-1"></i> Meter Schedule</a></li>
+    {% if perms.smart_meter.view_meter_credit_details %}<li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=credit-control"><i class="fas fa-bolt me-1"></i> Credit Control</a></li>{% endif %}
+    <li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=schedule"><i class="fas fa-calendar-alt me-1"></i> Meter Schedule</a></li>
     <li class="nav-item"><a class="nav-link active" aria-current="page"><i class="fas fa-list-alt me-1"></i> Raw Readings</a></li>
-  </ul>
+  </ul>{% endif %}
 
   <div class="card shadow-sm mb-3"><div class="card-body py-2">
     <form method="get" class="row g-2 align-items-end">
@@ -30,13 +30,13 @@
 
   <div class="card shadow-sm"><div class="card-body p-0"><div class="table-responsive">
     <table class="table table-sm table-hover align-middle mb-0 raw-readings-table">
-      <thead class="table-light"><tr><th>Received</th><th>Meter #</th><th>Current Unit</th><th>Balance</th><th>Forward<br>kWh</th><th>Reverse<br>kWh</th><th>Voltage<br>V</th><th>Current<br>A</th><th>Power<br>kW</th><th>PF<br>Total</th><th>Relay</th>{% if is_three_phase %}<th>Phase A / B / C</th>{% endif %}<th>Source / DI</th><th>Technical details</th></tr></thead>
+      <thead class="table-light"><tr><th>S/N</th><th>Received</th><th>Meter #</th><th>Current Unit</th><th>Balance</th><th>Forward<br>kWh</th><th>Reverse<br>kWh</th><th>Voltage<br>V</th><th>Current<br>A</th><th>Power<br>kW</th><th>PF<br>Total</th><th>Relay</th>{% if is_three_phase %}<th>Phase A / B / C</th>{% endif %}<th>Source / DI</th><th>Technical details</th></tr></thead>
       <tbody>
         {% for frame in page_obj %}<tr>
-          <td class="text-nowrap">{{ frame.received_at|date:"Y-m-d H:i:s" }}</td><td class="text-nowrap">{{ meter.meter_number }}</td><td>{{ meter.display_location_name|default:"—" }}</td><td>{{ frame.reading_values.balance|default:"—" }}</td><td>{{ frame.reading_values.forward_energy|default:"—" }}</td><td>{% if frame.reading_values.reverse_energy is not None %}<span class="text-warning-emphasis fw-semibold">{{ frame.reading_values.reverse_energy }}</span>{% else %}—{% endif %}</td><td>{{ frame.reading_values.voltage|default:"—" }}</td><td>{{ frame.reading_values.current|default:"—" }}</td><td>{{ frame.reading_values.total_power|default:"—" }}</td><td>{{ frame.reading_values.pf_total|default:"—" }}</td><td>{{ frame.reading_values.status_word|default:"—" }}</td>
+          <td>{{ page_obj.start_index|add:forloop.counter0 }}</td><td class="text-nowrap">{{ frame.received_at|date:"Y-m-d H:i:s" }}</td><td class="text-nowrap">{{ meter.meter_number }}</td><td>{{ meter.display_location_name|default:"—" }}</td><td>{{ frame.reading_values.balance|default:"—" }}</td><td>{{ frame.reading_values.forward_energy|default:"—" }}</td><td>{% if frame.reading_values.reverse_energy is not None %}<span class="text-warning-emphasis fw-semibold">{{ frame.reading_values.reverse_energy }}</span>{% else %}—{% endif %}</td><td>{{ frame.reading_values.voltage|default:"—" }}</td><td>{{ frame.reading_values.current|default:"—" }}</td><td>{{ frame.reading_values.total_power|default:"—" }}</td><td>{{ frame.reading_values.pf_total|default:"—" }}</td><td>{{ frame.reading_values.status_word|default:"—" }}</td>
           {% if is_three_phase %}<td class="small text-nowrap">V {{ frame.reading_values.voltage_a|default:"—" }} / {{ frame.reading_values.voltage_b|default:"—" }} / {{ frame.reading_values.voltage_c|default:"—" }}<br>I {{ frame.reading_values.current_a|default:"—" }} / {{ frame.reading_values.current_b|default:"—" }} / {{ frame.reading_values.current_c|default:"—" }}<br>P {{ frame.reading_values.power_a|default:"—" }} / {{ frame.reading_values.power_b|default:"—" }} / {{ frame.reading_values.power_c|default:"—" }}</td>{% endif %}
           <td class="small text-nowrap"><strong>{{ frame.data_identifier|default:"—" }}</strong><br>{{ frame.source_ip|default:"—" }}{% if frame.source_port %}:{{ frame.source_port }}{% endif %}</td><td class="raw-details"><details><summary class="small text-primary">Frame / parser</summary><div class="small mt-2"><strong>Trust:</strong> {{ frame.get_trust_classification_display }}<br><strong>Control:</strong> 0x{{ frame.control_code|stringformat:"02X" }} · {{ frame.data_length }} B · {{ frame.checksum_style|default:"—" }}<br><strong>Parser:</strong> {{ frame.parser_version }}</div><code class="d-block small text-break mt-2">{{ frame.raw_frame_hex }}</code></details></td>
-        </tr>{% empty %}<tr><td colspan="14" class="text-center text-muted py-4">No raw readings match this search.</td></tr>{% endfor %}
+        </tr>{% empty %}<tr><td colspan="15" class="text-center text-muted py-4">No raw readings match this search.</td></tr>{% endfor %}
       </tbody>
     </table>
   </div></div></div>

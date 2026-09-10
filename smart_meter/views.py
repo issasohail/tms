@@ -2470,7 +2470,10 @@ def meter_detail(request, pk):
         pk=pk,
     )
     active_tab = (request.GET.get("tab") or "overview").strip().lower()
-    if active_tab not in {"overview", "ledger", "tariff", "tariff-audits"}:
+    if active_tab not in {
+        "overview", "credit-control", "schedule", "raw-readings",
+        "ledger", "tariff", "tariff-audits",
+    }:
         active_tab = "overview"
     installation_history = list(
         MeterInstallation.objects.filter(meter=meter)

@@ -45,6 +45,34 @@ def _consume_token(request, key):
     return supplied if supplied and expected and supplied == expected else None
 
 
+def meter_tariff_tab_context(request, meter):
+    """Build the existing protected tariff form for the meter-detail tab."""
+    configuration, _ = MeterTariffConfiguration.objects.get_or_create(meter=meter)
+    latest_read = meter.tariff_audits.filter(status="read").first()
+    initial = {}
+    if latest_read:
+        live_prices = latest_read.values_after.get("prices", [])
+        live_count = latest_read.values_after.get("active_rate_count") or 1
+        initial.update(
+            mode="flat" if meter.tariff_capability == "single_rate" or live_count <= 1 else "time_of_use",
+            active_rate_count=max(1, live_count),
+            flat_rate=live_prices[0] if live_prices and len(set(live_prices)) == 1 else None,
+            schedule_json=json.dumps(configuration.schedule_draft or []),
+        )
+        for index, price in enumerate(live_prices, 1):
+            initial[f"rate_{index}_price"] = price
+        for index in range(1, 5):
+            initial[f"rate_{index}_label"] = getattr(configuration, f"rate_{index}_label")
+    return {
+        "tariff_tab_configuration": configuration,
+        "tariff_tab_form": TariffConfigurationForm(initial=initial, meter=meter),
+        "tariff_tab_live_values": latest_read.values_after if latest_read else None,
+        "tariff_tab_latest_read": latest_read,
+        "tariff_tab_submission_token": _new_token(request, f"tariff_submission_{meter.pk}"),
+        "tariff_tab_schedule_json": json.dumps(configuration.schedule_draft or []),
+    }
+
+
 @permission_required("smart_meter.read_meter_tariff", raise_exception=True)
 def tariff_configure(request, meter_id):
     meter = get_object_or_404(_allowed_meters(request), pk=meter_id)

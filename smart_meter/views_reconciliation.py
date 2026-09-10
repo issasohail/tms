@@ -60,9 +60,11 @@ def _parse_period(request):
 @login_required
 @permission_required("smart_meter.view_energysystem", raise_exception=True)
 def energy_system_list(request):
-    systems = EnergySystem.objects.select_related(
+    systems = list(EnergySystem.objects.select_related(
         "output_group", "output_group__check_meter", "grid_interface_meter"
-    ).prefetch_related("meter_links__meter").order_by("name")
+    ).prefetch_related("meter_links__meter").order_by("name"))
+    for system in systems:
+        system.iesco_bill_latest = _iesco_invoice_bill(system)
     return render(request, "smart_meter/energy_system_list.html", {"systems": systems})
 
 

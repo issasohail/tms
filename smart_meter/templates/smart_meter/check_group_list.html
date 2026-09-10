@@ -7,8 +7,8 @@
 <div class="container-fluid">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
-      <h2 class="mb-0"><i class="fas fa-scale-balanced text-info me-2"></i>Meter Check Groups</h2>
-      <small class="text-muted">Compare each audit meter with its downstream billing meters.</small>
+      <h2 class="mb-0"><i class="fas fa-scale-balanced text-info me-2"></i>Energy Groups &amp; Reconciliation</h2>
+      <small class="text-muted">Assign audit groups and open their linked energy reconciliation from one place.</small>
     </div>
     <div class="d-flex gap-2">
       {% if show_linked %}
@@ -17,6 +17,7 @@
         <a class="btn btn-sm btn-outline-secondary" href="?show_linked=1">Show linked/archived groups</a>
       {% endif %}
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_list' %}">Meters</a>
+      <a class="btn btn-sm btn-outline-success" href="{% url 'smart_meter:energy_system_list' %}">All Reconciliations</a>
       <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:meter_check_group_add' %}">
         <i class="fas fa-plus me-1"></i>New Check Group
       </a>

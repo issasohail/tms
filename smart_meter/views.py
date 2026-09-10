@@ -4542,24 +4542,7 @@ def reading_list(request):
     if end_dt_excl:
         readings = readings.filter(ts__lt=end_dt_excl)
 
-    known_energy = MeterReading.objects.filter(
-        meter_id=OuterRef("meter_id"),
-        ts__lte=OuterRef("ts"),
-    )
-    known_forward = known_energy.filter(
-        forward_active_energy_kwh__isnull=False
-    ).order_by("-ts", "-pk").values("forward_active_energy_kwh")[:1]
-    known_total = known_energy.filter(
-        total_energy__isnull=False
-    ).order_by("-ts", "-pk").values("total_energy")[:1]
-    known_balance = known_energy.filter(
-        balance__isnull=False
-    ).order_by("-ts", "-pk").values("balance")[:1]
-    readings = readings.annotate(
-        last_known_forward_energy=Subquery(known_forward),
-        last_known_total_energy=Subquery(known_total),
-        last_known_balance=Subquery(known_balance),
-    ).order_by("-ts")
+    readings = readings.order_by("-ts")
 
     try:
         page_number = max(1, int(request.GET.get("page") or 1))
@@ -4576,6 +4559,42 @@ def reading_list(request):
         max(1, page_number - 2),
         min(total_pages, page_number + 2) + 1,
     )
+    rows_by_meter = defaultdict(list)
+    for reading in rows:
+        rows_by_meter[reading.meter_id].append(reading)
+
+    # Some frequent instantaneous rows intentionally omit cumulative registers.
+    # Resolve the last known values in small per-meter batches. Correlated
+    # subqueries made the MySQL list request unacceptably slow on large history.
+    for row_meter_id, meter_rows in rows_by_meter.items():
+        newest_ts = meter_rows[0].ts
+        energy_history = list(
+            MeterReading.objects.filter(meter_id=row_meter_id, ts__lte=newest_ts)
+            .filter(Q(forward_active_energy_kwh__isnull=False) | Q(total_energy__isnull=False))
+            .only("ts", "forward_active_energy_kwh", "total_energy")
+            .order_by("-ts", "-pk")[:2000]
+        )
+        balance_history = list(
+            MeterReading.objects.filter(
+                meter_id=row_meter_id, ts__lte=newest_ts, balance__isnull=False
+            )
+            .only("ts", "balance")
+            .order_by("-ts", "-pk")[:2000]
+        )
+        energy_index = balance_index = 0
+        for reading in meter_rows:
+            while energy_index < len(energy_history) and energy_history[energy_index].ts > reading.ts:
+                energy_index += 1
+            while balance_index < len(balance_history) and balance_history[balance_index].ts > reading.ts:
+                balance_index += 1
+            known_energy = energy_history[energy_index] if energy_index < len(energy_history) else None
+            known_balance = balance_history[balance_index] if balance_index < len(balance_history) else None
+            reading.last_known_forward_energy = (
+                known_energy.forward_active_energy_kwh if known_energy else None
+            )
+            reading.last_known_total_energy = known_energy.total_energy if known_energy else None
+            reading.last_known_balance = known_balance.balance if known_balance else None
+
     for reading in rows:
         reading.display_forward_energy = (
             reading.forward_active_energy_kwh

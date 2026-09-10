@@ -734,16 +734,22 @@ def prepaid_meter_ledger(request, meter_id):
             )["operation"].replace("recharge", "top up").title()
         except (TypeError, ValueError):
             item.operation_label = "Transaction"
-    raw_balance_frames = MeterRawFrame.objects.filter(
-        meter=meter,
-        data_identifier="028011FF",
-    ).order_by("-received_at", "-pk")[:200]
+    raw_balance_frames = list(
+        MeterRawFrame.objects.filter(
+            meter=meter,
+            data_identifier="028011FF",
+        ).order_by("-received_at", "-pk")[:200]
+    )
+    observed_days = set()
     for frame in raw_balance_frames:
         frame.reported_balance = (frame.decoded_data or {}).get("balance")
         frame.reported_energy = (
             (frame.decoded_data or {}).get("forward_active_energy_kwh")
             or (frame.decoded_data or {}).get("total_energy")
         )
+        received_day = timezone.localtime(frame.received_at).date()
+        frame.is_daily_latest = received_day not in observed_days
+        observed_days.add(received_day)
     live = getattr(meter, "live", None)
     from smart_meter.rates import resolve_electricity_rate
 

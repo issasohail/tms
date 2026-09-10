@@ -228,9 +228,6 @@
       <a href="{% url 'smart_meter:meter_edit' meter.pk %}" class="btn btn-secondary btn-sm">
         <i class="fas fa-edit"></i> Edit
       </a>
-      <a href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}" class="btn btn-info btn-sm">
-        <i class="fas fa-book"></i> Meter ledger
-      </a>
       <a href="{% url 'smart_meter:meter_list' %}" class="btn btn-primary btn-sm">
         <i class="fas fa-list"></i> Back
       </a>
@@ -239,7 +236,7 @@
 
   <ul class="nav nav-tabs mb-3" aria-label="Meter detail sections">
     <li class="nav-item">
-      <a class="nav-link active" aria-current="page" href="{% url 'smart_meter:meter_detail' meter.pk %}">
+      <a class="nav-link {% if active_tab == 'overview' %}active{% endif %}" {% if active_tab == 'overview' %}aria-current="page"{% endif %} href="{% url 'smart_meter:meter_detail' meter.pk %}">
         <i class="fas fa-tachometer-alt me-1"></i> Meter Overview
       </a>
     </li>
@@ -254,8 +251,18 @@
     {% if perms.smart_meter.view_raw_dlt645_frames %}
       <li class="nav-item"><a class="nav-link" href="{% url 'smart_meter:meter_raw_frame_history' meter.pk %}"><i class="fas fa-list-alt me-1"></i> Raw Readings</a></li>
     {% endif %}
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'ledger' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=ledger"><i class="fas fa-book me-1"></i> Meter Ledger</a></li>
+    {% if perms.smart_meter.read_meter_tariff %}<li class="nav-item"><a class="nav-link {% if active_tab == 'tariff' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff"><i class="fas fa-coins me-1"></i> Tariff Configuration</a></li>{% endif %}
+    {% if perms.smart_meter.view_meter_tariff_audit %}<li class="nav-item"><a class="nav-link {% if active_tab == 'tariff-audits' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff-audits"><i class="fas fa-history me-1"></i> Tariff Audits</a></li>{% endif %}
   </ul>
 
+  {% if active_tab == 'ledger' %}
+    {% include "smart_meter/partials/meter_detail_ledger.html" %}
+  {% elif active_tab == 'tariff' %}
+    {% include "smart_meter/partials/meter_detail_tariff.html" %}
+  {% elif active_tab == 'tariff-audits' %}
+    {% include "smart_meter/partials/meter_detail_tariff_audits.html" %}
+  {% else %}
   <div class="meter-summary-grid">
     <div class="meter-panel">
       <h5 class="meter-panel-title">Basic Information</h5>
@@ -299,7 +306,7 @@
   </div>
 
   <div class="meter-detail-card bg-white p-3 mt-3">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><h5 class="meter-panel-title mb-0">Tariff Configuration</h5><div class="d-flex gap-2">{% if perms.smart_meter.read_meter_tariff %}<a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:tariff_configure' meter.pk %}">Configure Tariff</a>{% endif %}{% if perms.smart_meter.view_meter_tariff_audit %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:tariff_audit_list' meter.pk %}">View Tariff Audit History</a>{% endif %}</div></div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><h5 class="meter-panel-title mb-0">Tariff Configuration</h5><div class="d-flex gap-2">{% if perms.smart_meter.read_meter_tariff %}<a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff">Configure Tariff</a>{% endif %}{% if perms.smart_meter.view_meter_tariff_audit %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff-audits">View Tariff Audit History</a>{% endif %}</div></div>
     <div class="meter-kv-grid">
       <div class="meter-kv"><span class="meter-kv-label">Capability</span><div class="meter-kv-value">{{ meter.get_tariff_capability_display }}</div></div>
       <div class="meter-kv"><span class="meter-kv-label">Mode</span><div class="meter-kv-value">{% if tariff_configuration.mode %}{{ tariff_configuration.get_mode_display }}{% else %}Not configured{% endif %}</div></div>
@@ -344,7 +351,7 @@
 
   {% if meter.billing_mode == "prepaid_pilot" or prepaid_pilot %}
   <div class="meter-detail-card bg-white p-3 mt-3">
-    <div class="d-flex justify-content-between align-items-center gap-2"><h5 class="meter-panel-title">DL/T645 Prepaid Pilot</h5><a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}">Meter ledger</a></div>
+    <div class="d-flex justify-content-between align-items-center gap-2"><h5 class="meter-panel-title">DL/T645 Prepaid Pilot</h5><a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=ledger">Meter ledger</a></div>
     <div class="meter-kv-grid">
       <div class="meter-kv"><span class="meter-kv-label">Pilot Status</span><div class="meter-kv-value">{% if prepaid_pilot %}{{ prepaid_pilot.get_status_display }}{% else %}Not configured{% endif %}</div></div>
       <div class="meter-kv"><span class="meter-kv-label">Allowlisted</span><div class="meter-kv-value">{{ meter_feature_flags.prepaid_allowlisted|yesno:"Yes,No" }}</div></div>
@@ -520,5 +527,6 @@
       {% endif %}
     </div>
   </div>
+  {% endif %}
 </div>
 {% endblock %}

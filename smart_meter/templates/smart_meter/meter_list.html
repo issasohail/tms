@@ -240,11 +240,7 @@
               <td class="col-setting-narrow">{{ m.min_balance_alert|floatformat:0 }}</td>
               <td class="col-setting-narrow">{{ m.min_balance_cutoff|floatformat:0 }}</td>
               <td class="col-narrow">
-                {% if m.is_prepaid %}
-                  <span class="badge bg-info text-dark">Prepaid</span>
-                {% else %}
-                  <span class="badge bg-light text-dark border">Postpaid</span>
-                {% endif %}
+                <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="d-inline">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="badge border-0 {% if m.is_prepaid %}bg-info text-dark{% else %}bg-light text-dark border{% endif %}" name="action" value="{% if m.is_prepaid %}disable_meter{% else %}enable_meter{% endif %}" title="Click to set {% if m.is_prepaid %}postpaid{% else %}prepaid{% endif %}">{% if m.is_prepaid %}Prepaid{% else %}Postpaid{% endif %}</button></form>
               </td>
               <td class="col-narrow">
                 {% if m.is_active %}
@@ -283,10 +279,9 @@
                     <i class="fas fa-gear"></i>
                   </a>
                   {% endif %}
-                  <a class="btn btn-success" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge" title="Top up"><i class="fas fa-plus"></i></a>
-                  <a class="btn btn-warning" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund" title="Refund"><i class="fas fa-minus"></i></a>
+                  <button type="button" class="btn btn-success" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up"><i class="fas fa-plus"></i></button>
+                  <button type="button" class="btn btn-warning" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund"><i class="fas fa-minus"></i></button>
                 </div>
-                <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="mt-1">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">{% if m.is_prepaid %}<button class="btn btn-sm btn-outline-danger" name="action" value="disable_meter">Set postpaid</button>{% else %}<button class="btn btn-sm btn-outline-success" name="action" value="enable_meter">Set prepaid</button>{% endif %}</form>
               </td>
             </tr>
           {% empty %}
@@ -334,15 +329,14 @@
               <button type="button" class="btn btn-sm btn-outline-success relay-action" data-action="on" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-url="{% url 'smart_meter:smart_meter_restore' m.id %}" {% if m.confirmed_relay_state == 'on' %}disabled{% endif %}>ON</button>
               <button type="button" class="btn btn-sm btn-outline-danger relay-action" data-action="off" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}" {% if m.confirmed_relay_state == 'off' %}disabled{% endif %}>OFF</button>
             </div>
-            <div class="meter-mobile-mode">{{ m.get_billing_mode_display }} / {{ m.display_electricity_rate.rate|floatformat:2 }} ({{ m.display_electricity_rate.source }})</div>
-            <form method="post" action="{% url 'smart_meter:prepaid_controls' %}">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">{% if m.is_prepaid %}<button class="btn btn-sm btn-outline-danger" name="action" value="disable_meter">Set postpaid</button>{% else %}<button class="btn btn-sm btn-outline-success" name="action" value="enable_meter">Set prepaid</button>{% endif %}</form>
+            <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="meter-mobile-mode">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn btn-sm {% if m.is_prepaid %}btn-info{% else %}btn-outline-secondary{% endif %}" name="action" value="{% if m.is_prepaid %}disable_meter{% else %}enable_meter{% endif %}" title="Click to set {% if m.is_prepaid %}postpaid{% else %}prepaid{% endif %}">{{ m.get_billing_mode_display }}</button> / {{ m.display_electricity_rate.rate|floatformat:2 }} ({{ m.display_electricity_rate.source }})</form>
             <div class="btn-group btn-group-sm meter-mobile-actions">
               <a class="btn btn-outline-primary" href="{% url 'smart_meter:meter_detail' m.id %}" title="View"><i class="fas fa-eye"></i></a>
               <a class="btn btn-outline-secondary" href="{% url 'smart_meter:meter_edit' m.id %}" title="Edit"><i class="fas fa-pen"></i></a>
               <a class="btn btn-outline-success" href="{% url 'smart_meter:reading_list' %}?meter={{ m.id }}" title="Readings"><i class="fas fa-list"></i></a>
               {% if perms.smart_meter.read_meter_tariff %}<a class="btn btn-outline-warning" href="{% url 'smart_meter:tariff_configure' m.id %}" title="Tariff Settings" aria-label="Tariff settings for meter {{ m.meter_number }}"><i class="fas fa-gear"></i></a>{% endif %}
-              <a class="btn btn-outline-success" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge" title="Top up"><i class="fas fa-plus"></i></a>
-              <a class="btn btn-outline-warning" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund" title="Refund"><i class="fas fa-minus"></i></a>
+              <button type="button" class="btn btn-outline-success" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up"><i class="fas fa-plus"></i></button>
+              <button type="button" class="btn btn-outline-warning" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund"><i class="fas fa-minus"></i></button>
             </div>
           </div>
         </article>
@@ -969,5 +963,7 @@ body.meter-exporting #meterListExportArea {
   }
   document.querySelectorAll('[data-export-pdf]').forEach(button => button.addEventListener('click', exportMeterPdf));
 </script>
+
+{% include "smart_meter/partials/prepaid_money_modal.html" %}
 
 {% endblock %}

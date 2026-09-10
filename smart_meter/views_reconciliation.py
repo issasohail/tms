@@ -30,6 +30,7 @@ from smart_meter.models import (
     UtilityConnection,
 )
 from smart_meter.services.reconciliation import (
+    _iesco_invoice_bill,
     build_energy_reconciliation,
     build_latest_linked_meter_snapshot,
     confirm_bill,
@@ -143,6 +144,7 @@ def energy_system_detail(request, pk):
         today = timezone.localdate()
         start, end = today.replace(day=1), today
     report = build_energy_reconciliation(system, start, end)
+    iesco_bill_latest = _iesco_invoice_bill(system)
     latest_snapshot = build_latest_linked_meter_snapshot(system)
     grid_reading = None
     if system.grid_interface_meter_id:
@@ -180,6 +182,7 @@ def energy_system_detail(request, pk):
         {
             "system": system,
             "report": report,
+            "iesco_bill_latest": iesco_bill_latest,
             "latest_snapshot": latest_snapshot,
             "reassign_form": reassign_form,
             "grid_reading": grid_reading,

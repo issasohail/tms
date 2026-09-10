@@ -32,7 +32,7 @@
   </td>
 
   <td class="col-meter">
-    <div><span >{{ r.meter.meter_number }}</span></div>
+    <div><a href="{% url 'smart_meter:meter_detail' r.meter_id %}" title="Open meter details">{{ r.meter.meter_number }}</a></div>
     <div class="text-muted d-sm-none sm-meter-sub">
       <div class="sm-meter-line1">
         <span class="sm-meter-v">{{ r.voltage_a|default_if_none:""|floatformat:0 }}V</span>,

@@ -49,13 +49,8 @@
         </a>
       </li>
       <li>
-        <a class="nav-link" href="{% url 'smart_meter:meter_check_group_list' %}" aria-label="Check Groups">
-          <span class="d-sm-none">Groups</span><span class="d-none d-sm-inline">Check<BR>Groups</span>
-        </a>
-      </li>
-      <li>
-        <a class="nav-link" href="{% url 'smart_meter:energy_system_list' %}" aria-label="Energy Reconciliation">
-          <span class="d-sm-none">Solar</span><span class="d-none d-sm-inline">Energy<BR>Recon</span>
+        <a class="nav-link" href="{% url 'smart_meter:meter_check_group_list' %}" aria-label="Energy Groups and Reconciliation">
+          <span class="d-sm-none">Energy</span><span class="d-none d-sm-inline">Energy<BR>Groups</span>
         </a>
       </li>
       <li>
@@ -92,7 +87,7 @@
     .menu-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } /* 6 across on ≥sm */
   }
   @media (min-width: 768px) {
-    .menu-grid { grid-template-columns: repeat(10, minmax(0, 1fr)); } /* denser on ≥md */
+    .menu-grid { grid-template-columns: repeat(9, minmax(0, 1fr)); } /* denser on ≥md */
   }
 
   .menu-grid .nav-link {

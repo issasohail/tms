@@ -27,28 +27,28 @@
 {% endblock %}
 {% block content %}
 <div class="container-fluid px-2 px-md-3">
-  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  {% if not tms_embedded %}<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div><h2 class="h4 mb-1">Smart Meter Credit Control</h2><div class="text-muted small">Meter {{ meter.meter_number }}</div></div>
     <a href="{% url 'smart_meter:meter_detail' meter.pk %}" class="btn btn-sm btn-outline-secondary">Back to Meter</a>
-  </div>
+  </div>{% endif %}
 
-  <ul class="nav nav-tabs mb-3" aria-label="Meter detail sections">
+  {% if not tms_embedded %}<ul class="nav nav-tabs mb-3" aria-label="Meter detail sections">
     <li class="nav-item">
       <a class="nav-link" href="{% url 'smart_meter:meter_detail' meter.pk %}">
         <i class="fas fa-tachometer-alt me-1"></i> Meter Overview
       </a>
     </li>
     <li class="nav-item">
-      <a class="nav-link active" aria-current="page" href="{% url 'smart_meter:credit_control' meter.pk %}">
+      <a class="nav-link active" aria-current="page" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=credit-control">
         <i class="fas fa-bolt me-1"></i> Credit Control
       </a>
     </li>
     <li class="nav-item">
-      <a class="nav-link" href="{% url 'smart_meter:meter_schedule_detail' meter.pk %}">
+      <a class="nav-link" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=schedule">
         <i class="fas fa-calendar-alt me-1"></i> Meter Schedule
       </a>
     </li>
-  </ul>
+  </ul>{% endif %}
 
   <div class="row g-3">
     <div class="col-12 col-xl-7">

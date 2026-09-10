@@ -1,0 +1,48 @@
+{% load humanize %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div><h4 class="mb-0">Meter Balance Ledger</h4><small class="text-muted">Current balance: {{ CURRENCY_SYMBOL }} {{ latest_live.balance|default_if_none:0|floatformat:2|intcomma }}</small></div>
+  <div class="d-flex gap-2">
+    <button type="button" class="btn btn-success" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}" data-meter-number="{{ meter.meter_number }}" data-location="{{ meter.display_location_name }}"><i class="fas fa-plus me-1"></i>Top up</button>
+    <button type="button" class="btn btn-warning" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}" data-meter-number="{{ meter.meter_number }}" data-location="{{ meter.display_location_name }}"><i class="fas fa-minus me-1"></i>Refund</button>
+  </div>
+</div>
+
+<div class="meter-detail-card bg-white p-3 mb-3">
+  <h5>Money transactions</h5>
+  <div class="table-responsive"><table class="table table-sm meter-table mb-0"><thead><tr><th>S/N</th><th>Date</th><th>Operation</th><th>Amount</th><th>Before</th><th>After</th><th>Status</th><th>Order</th></tr></thead><tbody>
+    {% for item in ledger_transactions %}<tr><td>{{ forloop.counter }}</td><td>{{ item.created_at|date:"Y-m-d H:i:s" }}</td><td>{{ item.operation_label }}</td><td>{{ item.amount|floatformat:2|intcomma }}</td><td>{{ item.before_balance|default_if_none:"—"|floatformat:2|intcomma }}</td><td>{{ item.after_balance|default_if_none:"—"|floatformat:2|intcomma }}</td><td>{{ item.get_status_display }}</td><td>{{ item.transaction_id }}</td></tr>{% empty %}<tr><td colspan="8" class="text-muted">No top-ups or refunds recorded.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+
+<div class="meter-detail-card bg-white p-3 mb-3">
+  <h5>Historical reading balance movements</h5>
+  <div class="table-responsive"><table class="table table-sm meter-table mb-0"><thead><tr><th>S/N</th><th>Reading</th><th>Balance</th><th>Change</th><th>Energy</th><th>Usage</th><th>Rate</th><th>Estimated charge</th></tr></thead><tbody>
+    {% for reading in ledger_readings %}<tr><td>{{ forloop.counter }}</td><td>{{ reading.ts|date:"Y-m-d H:i:s" }}</td><td>{{ reading.balance|floatformat:2|intcomma }}</td><td>{{ reading.balance_change|default_if_none:"—"|floatformat:2|intcomma }}</td><td>{% if reading.forward_active_energy_kwh is not None %}{{ reading.forward_active_energy_kwh|floatformat:3 }}{% else %}{{ reading.total_energy|default:"—" }}{% endif %}</td><td>{{ reading.energy_change|default_if_none:"—"|floatformat:3 }}</td><td>{{ reading.unit_rate|default_if_none:"—" }}</td><td>{{ reading.estimated_charge|default_if_none:"—"|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td colspan="8" class="text-muted">No historical balance movements.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+
+<div class="meter-detail-card bg-white p-3">
+  <div class="d-flex justify-content-between"><h5>Raw authoritative balance observations</h5>{% if ledger_raw_frames %}<button type="button" class="btn btn-sm btn-outline-secondary" id="detailExpandAllBalance">Expand all</button>{% endif %}</div>
+  <div class="table-responsive"><table class="table table-sm meter-table mb-0"><thead><tr><th>S/N</th><th>Received</th><th>Balance</th><th>Energy</th><th>Source</th><th>Trust</th></tr></thead><tbody>
+    {% for frame in ledger_raw_frames %}<tr data-detail-day="{{ frame.observation_day_key }}" {% if not frame.is_daily_latest %}class="detail-balance-extra d-none"{% endif %}><td>{% if frame.is_daily_latest %}<button type="button" class="btn btn-link btn-sm p-0 me-1 detail-day-toggle" data-day="{{ frame.observation_day_key }}" aria-expanded="false"><i class="fas fa-chevron-right"></i></button>{% endif %}<span data-detail-serial data-day="{{ frame.observation_day_number }}" data-sub="{{ frame.observation_sub_number }}">{{ frame.observation_day_number }}</span></td><td>{{ frame.received_at|date:"Y-m-d H:i:s" }}</td><td>{{ frame.reported_balance|default_if_none:"—"|floatformat:2|intcomma }}</td><td>{{ frame.reported_energy|default:"—" }}</td><td>{{ frame.source_ip|default:"—" }}:{{ frame.source_port|default:"—" }}</td><td>{{ frame.get_trust_classification_display }}</td></tr>{% empty %}<tr><td colspan="6" class="text-muted">No raw balance observations.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+
+<script>
+  function detailSetDay(day, expanded) {
+    document.querySelectorAll(`[data-detail-day="${day}"]`).forEach((row, index) => {
+      if (index) row.classList.toggle('d-none', !expanded);
+      const serial = row.querySelector('[data-detail-serial]');
+      serial.textContent = expanded ? `${serial.dataset.day}.${serial.dataset.sub}` : serial.dataset.day;
+    });
+    const toggle = document.querySelector(`.detail-day-toggle[data-day="${day}"]`);
+    if (toggle) { toggle.setAttribute('aria-expanded', expanded); toggle.querySelector('i').className = expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right'; }
+  }
+  document.querySelectorAll('.detail-day-toggle').forEach(toggle => toggle.addEventListener('click', () => detailSetDay(toggle.dataset.day, toggle.getAttribute('aria-expanded') !== 'true')));
+  document.getElementById('detailExpandAllBalance')?.addEventListener('click', function () {
+    const expand = this.dataset.expanded !== 'true';
+    document.querySelectorAll('.detail-day-toggle').forEach(toggle => detailSetDay(toggle.dataset.day, expand));
+    this.dataset.expanded = expand; this.textContent = expand ? 'Collapse all' : 'Expand all';
+  });
+</script>
+{% include "smart_meter/partials/prepaid_money_modal.html" %}

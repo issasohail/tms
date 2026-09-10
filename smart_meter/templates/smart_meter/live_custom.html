@@ -25,7 +25,7 @@
     --w-power: 60px;
 
     --w-updated: 180px;
-    --w-balance: 100px;
+    --w-balance: 125px;
     --w-total-energy: 125px;
     --w-source-ip: 120px;
     --w-port: 60px;
@@ -226,6 +226,9 @@
   .unit-rate-editor { display: inline-flex; align-items: center; gap: .15rem; }
   .unit-rate-editor input { width: 66px; padding: .1rem .2rem; font-size: inherit; }
   .unit-rate-editor .btn { padding: .1rem .25rem; font-size: .65rem; }
+  .billing-mode-badge { font-size: .78rem !important; padding: .32rem .5rem !important; }
+  td[data-col="balance"] a,
+  .mobile-balance a { color: #111 !important; font-size: .86rem; font-weight: 800; text-decoration: none !important; }
 
   .card .table-responsive {
     margin: 0;
@@ -1009,11 +1012,31 @@
       badge.title = isPrepaid ? 'Switch this meter to postpaid' : 'Switch this meter to prepaid';
     });
     tr.querySelectorAll('.unit-rate-display').forEach(display => {
-      if (display.closest('.unit-rate-editor')?.classList.contains('d-none') === false) return;
       display.textContent = `${unitRate || '0.0000'}/kWh`;
       display.title = `${rateSource || 'Resolved'} rate; click to edit`;
     });
   }
+
+  function closeUnitRateEditor(cell) {
+    if (!cell) return;
+    cell.querySelector('.unit-rate-editor')?.classList.add('d-none');
+    cell.querySelector('.unit-rate-display')?.classList.remove('d-none');
+  }
+
+  document.addEventListener('focusout', event => {
+    const editor = event.target.closest('.unit-rate-editor');
+    if (!editor) return;
+    setTimeout(() => {
+      if (!editor.contains(document.activeElement)) closeUnitRateEditor(editor.closest('[data-unit-rate-cell]'));
+    }, 0);
+  });
+
+  document.addEventListener('keydown', event => {
+    const editor = event.target.closest('.unit-rate-editor');
+    if (!editor) return;
+    if (event.key === 'Escape') { event.preventDefault(); closeUnitRateEditor(editor.closest('[data-unit-rate-cell]')); }
+    if (event.key === 'Enter') { event.preventDefault(); editor.querySelector('[data-unit-rate-save]')?.click(); }
+  });
 
   document.addEventListener('click', async event => {
     const display = event.target.closest('.unit-rate-display');
@@ -1027,8 +1050,7 @@
     const cancel = event.target.closest('[data-unit-rate-cancel]');
     if (cancel) {
       const cell = cancel.closest('[data-unit-rate-cell]');
-      cell.querySelector('.unit-rate-editor').classList.add('d-none');
-      cell.querySelector('.unit-rate-display').classList.remove('d-none');
+      closeUnitRateEditor(cell);
       return;
     }
     const save = event.target.closest('[data-unit-rate-save]');

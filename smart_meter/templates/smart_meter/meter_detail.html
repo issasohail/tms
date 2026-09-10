@@ -360,8 +360,8 @@
     <h5 class="meter-panel-title">Commands</h5>
     {% if recent_commands %}
     <div class="table-responsive"><table class="table table-sm meter-table mb-0">
-      <thead><tr><th>ID</th><th>Type</th><th>Desired</th><th>Source</th><th>Status</th><th>Attempts</th><th>Created</th><th>Error / cancel reason</th></tr></thead>
-      <tbody>{% for command in recent_commands %}<tr><td>{{ command.id }}</td><td>{{ command.command_type }}</td><td>{{ command.desired_state|default:"-" }}</td><td>{{ command.source }}</td><td>{{ command.status }}</td><td>{{ command.attempt_count }}/{{ command.max_attempts }}</td><td>{{ command.created_at|date:"M d H:i" }}</td><td>{{ command.cancelled_reason|default:command.error|default:"-" }}</td></tr>{% endfor %}</tbody>
+      <thead><tr><th>S/N</th><th>ID</th><th>Type</th><th>Desired</th><th>Source</th><th>Status</th><th>Attempts</th><th>Created</th><th>Error / cancel reason</th></tr></thead>
+      <tbody>{% for command in recent_commands %}<tr><td>{{ forloop.counter }}</td><td>{{ command.id }}</td><td>{{ command.command_type }}</td><td>{{ command.desired_state|default:"-" }}</td><td>{{ command.source }}</td><td>{{ command.status }}</td><td>{{ command.attempt_count }}/{{ command.max_attempts }}</td><td>{{ command.created_at|date:"M d H:i" }}</td><td>{{ command.cancelled_reason|default:command.error|default:"-" }}</td></tr>{% endfor %}</tbody>
     </table></div>
     {% else %}<p class="text-muted mb-0">No queued meter commands.</p>{% endif %}
   </div>

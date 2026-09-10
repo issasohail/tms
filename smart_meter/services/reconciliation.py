@@ -325,6 +325,39 @@ def _exact_bill(system, start_date, end_date):
     )
 
 
+def _iesco_invoice_bill(system, start_date=None, end_date=None):
+    """Read the IESCO source record directly; never duplicate it in smart_meter."""
+    from invoices.models import IescoBillReading
+
+    try:
+        connection = system.utility_connection
+    except UtilityConnection.DoesNotExist:
+        return None
+    lookup = Q()
+    if connection.reference_no:
+        lookup |= Q(reference_no=connection.reference_no)
+    if connection.consumer_id:
+        lookup |= Q(consumer_id=connection.consumer_id)
+    if not lookup:
+        return None
+    bills = IescoBillReading.objects.filter(lookup).order_by("-received_at", "-pk")
+    if start_date is None or end_date is None:
+        return bills.first()
+    for bill in bills[:24]:
+        reading_date = None
+        for date_format in ("%d %b %y", "%d %B %y", "%Y-%m-%d"):
+            try:
+                reading_date = datetime.strptime(
+                    (bill.reading_date or "").strip(), date_format
+                ).date()
+                break
+            except ValueError:
+                continue
+        if reading_date is not None and start_date <= reading_date < end_date:
+            return bill
+    return None
+
+
 def _tenant_financials(system, start_date, end_date):
     from invoices.models import InvoiceItem
     from payments.models import PaymentDetail
@@ -419,10 +452,23 @@ def build_energy_reconciliation(system, start_date, end_date):
         else {"kwh": None, "valid": False, "reason": "No grid-interface meter is assigned"}
     )
     bill = _exact_bill(system, start_date, end_date)
-    export_kwh = Decimal(bill.export_kwh) if bill else None
+    iesco_bill = _iesco_invoice_bill(system, start_date, end_date)
+    export_kwh = (
+        Decimal(iesco_bill.export_units)
+        if iesco_bill and iesco_bill.export_units is not None
+        else Decimal(bill.export_kwh) if bill else None
+    )
     output_kwh = output["kwh"]
-    import_kwh = grid_import["kwh"]
-    grid_export_kwh = grid_export["kwh"]
+    import_kwh = (
+        Decimal(iesco_bill.import_units)
+        if iesco_bill and iesco_bill.import_units is not None
+        else grid_import["kwh"]
+    )
+    grid_export_kwh = (
+        Decimal(iesco_bill.export_units)
+        if iesco_bill and iesco_bill.export_units is not None
+        else grid_export["kwh"]
+    )
     net_grid_kwh = (
         import_kwh - grid_export_kwh
         if import_kwh is not None and grid_export_kwh is not None
@@ -439,9 +485,9 @@ def build_energy_reconciliation(system, start_date, end_date):
         withheld.append(output["reason"])
     if not billing_valid:
         withheld.append("Invalid boundary readings for billing meters: " + ", ".join(billing_reasons))
-    if system.grid_interface_meter_id and not grid_import["valid"]:
+    if not iesco_bill and system.grid_interface_meter_id and not grid_import["valid"]:
         withheld.append("Grid forward energy: " + grid_import["reason"])
-    if system.grid_interface_meter_id and not grid_export["valid"]:
+    if not iesco_bill and system.grid_interface_meter_id and not grid_export["valid"]:
         withheld.append("Grid reverse energy: " + grid_export["reason"])
 
     if output_kwh is not None and billing_valid:
@@ -481,7 +527,11 @@ def build_energy_reconciliation(system, start_date, end_date):
     )
 
     tenant_revenue, tenant_collections = _tenant_financials(system, start_date, end_date)
-    utility_cost = Decimal(bill.current_cycle_utility_cost) if bill else None
+    utility_cost = (
+        iesco_bill.current_bill_amount
+        if iesco_bill
+        else Decimal(bill.current_cycle_utility_cost) if bill else None
+    )
     operating_margin = tenant_revenue - utility_cost if utility_cost is not None else None
     utility_paid = None
     cash_position = None
@@ -512,6 +562,8 @@ def build_energy_reconciliation(system, start_date, end_date):
         "net_grid_energy_kwh": net_grid_kwh,
         "export_kwh": export_kwh,
         "exact_bill": bill,
+        "iesco_bill": iesco_bill,
+        "grid_source": "IESCO invoice" if iesco_bill else "Smart meter",
         "building_consumption_kwh": building_consumption,
         "distribution_variance_kwh": distribution_variance,
         "raw_output_to_billing_difference_kwh": raw_difference,

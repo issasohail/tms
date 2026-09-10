@@ -2469,6 +2469,9 @@ def meter_detail(request, pk):
         Meter.objects.select_related("unit", "unit__property"),
         pk=pk,
     )
+    active_tab = (request.GET.get("tab") or "overview").strip().lower()
+    if active_tab not in {"overview", "ledger", "tariff", "tariff-audits"}:
+        active_tab = "overview"
     installation_history = list(
         MeterInstallation.objects.filter(meter=meter)
         .select_related("unit", "unit__property", "lease", "lease__tenant")
@@ -2831,6 +2834,90 @@ def meter_detail(request, pk):
         lease=current_lease,
     )
 
+    detail_tab_context = {}
+    if active_tab == "ledger":
+        ledger_readings = list(
+            MeterReading.objects.filter(meter=meter, balance__isnull=False)
+            .order_by("-ts", "-pk")[:500]
+        )
+        ledger_readings.reverse()
+        previous = None
+        for ledger_reading in ledger_readings:
+            ledger_reading.balance_change = None
+            ledger_reading.energy_change = None
+            ledger_reading.estimated_charge = None
+            if previous is not None:
+                ledger_reading.balance_change = ledger_reading.balance - previous.balance
+                current_reading_energy = (
+                    ledger_reading.forward_active_energy_kwh
+                    if ledger_reading.forward_active_energy_kwh is not None
+                    else ledger_reading.total_energy
+                )
+                previous_reading_energy = (
+                    previous.forward_active_energy_kwh
+                    if previous.forward_active_energy_kwh is not None
+                    else previous.total_energy
+                )
+                if current_reading_energy is not None and previous_reading_energy is not None:
+                    ledger_reading.energy_change = current_reading_energy - previous_reading_energy
+                    if ledger_reading.unit_rate is not None and ledger_reading.energy_change >= 0:
+                        ledger_reading.estimated_charge = (
+                            ledger_reading.energy_change * ledger_reading.unit_rate
+                        ).quantize(Decimal("0.01"))
+            previous = ledger_reading
+        ledger_readings.reverse()
+
+        ledger_transactions = list(
+            MeterPrepaidRecharge.objects.filter(pilot__meter=meter)
+            .select_related("created_by")
+            .order_by("-created_at", "-pk")[:200]
+        )
+        from smart_meter.services.prepaid_money import decode_manufacturer_charge_frame
+        for item in ledger_transactions:
+            try:
+                item.operation_label = decode_manufacturer_charge_frame(
+                    item.raw_command
+                )["operation"].replace("recharge", "top up").title()
+            except (TypeError, ValueError):
+                item.operation_label = "Transaction"
+
+        ledger_raw_frames = list(
+            MeterRawFrame.objects.filter(meter=meter, data_identifier="028011FF")
+            .order_by("-received_at", "-pk")[:200]
+        )
+        observed_days = set()
+        day_number = 0
+        sub_number = 0
+        for frame in ledger_raw_frames:
+            frame.reported_balance = (frame.decoded_data or {}).get("balance")
+            frame.reported_energy = (
+                (frame.decoded_data or {}).get("forward_active_energy_kwh")
+                or (frame.decoded_data or {}).get("total_energy")
+            )
+            received_day = timezone.localtime(frame.received_at).date()
+            frame.is_daily_latest = received_day not in observed_days
+            if frame.is_daily_latest:
+                day_number += 1
+                sub_number = 1
+            else:
+                sub_number += 1
+            frame.observation_day_number = day_number
+            frame.observation_sub_number = sub_number
+            frame.observation_day_key = received_day.isoformat()
+            observed_days.add(received_day)
+        detail_tab_context.update({
+            "ledger_readings": ledger_readings,
+            "ledger_transactions": ledger_transactions,
+            "ledger_raw_frames": ledger_raw_frames,
+        })
+    elif active_tab == "tariff" and request.user.has_perm("smart_meter.read_meter_tariff"):
+        from smart_meter.views_tariff import meter_tariff_tab_context
+        detail_tab_context.update(meter_tariff_tab_context(request, meter))
+    elif active_tab == "tariff-audits" and request.user.has_perm("smart_meter.view_meter_tariff_audit"):
+        detail_tab_context["tariff_audits"] = meter.tariff_audits.select_related(
+            "initiating_user"
+        )[:200]
+
     return render(
         request,
         "smart_meter/meter_detail.html",
@@ -2857,6 +2944,8 @@ def meter_detail(request, pk):
             "tariff_configuration": tariff_configuration,
             "tariff_schedule_summary": tariff_schedule_summary,
             "latest_tariff_audit": latest_tariff_audit,
+            "active_tab": active_tab,
+            **detail_tab_context,
         },
     )
 

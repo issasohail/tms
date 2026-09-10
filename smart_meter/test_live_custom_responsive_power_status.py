@@ -54,8 +54,10 @@ class LiveCustomResponsivePowerStatusTests(SimpleTestCase):
         )
 
     def test_desktop_operational_badges_have_explicit_columns(self):
-        for heading in ("Meter Type", "Billing Role", "Meter Status", "Unit Rate"):
+        for heading in ("Meter Type", "Unit Rate"):
             self.assertIn(f">{heading}</th>", self.source)
+        self.assertIn('>Billing<br>Role</span></th>', self.source)
+        self.assertIn('>Meter<br>Status</span></th>', self.source)
         self.assertIn('class="col-meter-type text-center"', self.source)
         self.assertIn('class="col-role text-center"', self.source)
         self.assertIn('class="sticky-left col-status text-center"', self.source)
@@ -68,6 +70,8 @@ class LiveCustomResponsivePowerStatusTests(SimpleTestCase):
         self.assertIn('class="btn btn-warning money-icon-action"', self.source)
         self.assertIn('class="timestamp-reading-button btn-instant-reading"', self.source)
         self.assertIn('class="badge rounded-pill billing-mode-badge mode-toggle-button', self.source)
+        self.assertIn('data-prepaid-money data-operation="recharge"', self.source)
+        self.assertIn('class="unit-rate-display"', self.source)
 
     def test_initial_and_polled_operation_states_use_server_reconciliation(self):
         self.assertIn(

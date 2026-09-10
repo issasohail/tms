@@ -428,6 +428,141 @@ class EnergyDashboardBoundaryQueryTests(TestCase):
         self.assertEqual(query_count, 2)
 
 
+class EnergyExportFormattingTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="energy-export-user",
+            password="test-pass",
+            email="energy-export@example.com",
+        )
+        self.user.whatsapp_number = "+923001234567"
+        self.user.save(update_fields=["whatsapp_number"])
+        self.client.force_login(self.user)
+
+        self.property = Property.objects.create(
+            property_name="Export Property",
+            owner_name="Owner",
+            owner_cnic="1234512345600",
+            type="apartment",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(property=self.property, unit_number="Room 4")
+        self.meter = Meter.objects.create(
+            meter_number="EXPORT-001",
+            unit=self.unit,
+            meter_role=Meter.METER_ROLE_BILLING,
+        )
+        first_tenant = Tenant.objects.create(
+            first_name="First", last_name="Occupant", cnic="1234512345601"
+        )
+        second_tenant = Tenant.objects.create(
+            first_name="Second", last_name="Occupant", cnic="1234512345602"
+        )
+        first_lease = Lease.objects.create(
+            tenant=first_tenant,
+            unit=self.unit,
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 20),
+            monthly_rent=Decimal("10000.00"),
+        )
+        second_lease = Lease.objects.create(
+            tenant=second_tenant,
+            unit=self.unit,
+            start_date=date(2026, 7, 21),
+            end_date=date(2026, 12, 31),
+            monthly_rent=Decimal("10000.00"),
+        )
+        LeaseUnitOccupancy.objects.create(
+            lease=first_lease,
+            unit=self.unit,
+            move_in_date=date(2026, 7, 1),
+            move_out_date=date(2026, 7, 20),
+        )
+        LeaseUnitOccupancy.objects.create(
+            lease=second_lease,
+            unit=self.unit,
+            move_in_date=date(2026, 7, 21),
+        )
+
+    def _rows(self, count=2):
+        rows = []
+        for index in range(count):
+            rows.append({
+                "meter_number": self.meter.meter_number,
+                "unit_number": self.unit.unit_number,
+                "unit_id": self.unit.id,
+                "property_name": self.property.property_name,
+                "tenant_name": "",
+                "period_label": date(2026, 7, 1).replace(day=(index % 28) + 1).strftime("%b %d, %Y"),
+                "start_kwh": Decimal(index),
+                "end_kwh": Decimal(index + 1),
+                "usage": Decimal("1"),
+                "unit_rate": Decimal("50"),
+                "usage_amount": Decimal("50"),
+                "service_charges": Decimal("0"),
+                "total_amount": Decimal("50"),
+            })
+        return rows
+
+    def _export_data(self, count=2):
+        rows = self._rows(count)
+        totals = {
+            "total_kwh": Decimal(count),
+            "usage_charges": Decimal(count * 50),
+            "service_charges": Decimal("0"),
+            "grand_total": Decimal(count * 50),
+        }
+        return "daily", rows, totals, date(2026, 7, 1), date(2026, 8, 30), "", str(self.meter.id)
+
+    def test_export_header_lists_each_occupant_and_lease_period(self):
+        from smart_meter.views_dashboard import _energy_export_header
+
+        header = _energy_export_header(
+            self._rows(), date(2026, 7, 1), date(2026, 8, 30), "+923001234567"
+        )
+
+        self.assertEqual(header["period"], "July 01, 2026 to August 30, 2026")
+        self.assertEqual(header["units"], "Room 4")
+        self.assertEqual(len(header["occupants"]), 2)
+        self.assertIn("First Occupant (July 01, 2026 to July 20, 2026)", header["occupants"])
+        self.assertIn("Second Occupant (July 21, 2026 to August 30, 2026)", header["occupants"])
+
+    def test_excel_has_merged_report_header_and_numeric_totals_last(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        with patch("smart_meter.views_dashboard._export_rows", return_value=self._export_data()):
+            response = self.client.get(reverse("smart_meter:energy_export_xlsx"))
+
+        self.assertEqual(response.status_code, 200)
+        sheet = load_workbook(BytesIO(response.content), data_only=True).active
+        self.assertIn("A1:H1", {str(cell_range) for cell_range in sheet.merged_cells.ranges})
+        self.assertEqual(sheet["A2"].value, "Period: July 01, 2026 to August 30, 2026")
+        self.assertEqual(sheet.cell(sheet.max_row, 1).value, "Grand Total")
+        self.assertEqual(sheet.cell(sheet.max_row, 6).value, 2)
+        self.assertEqual(sheet.cell(sheet.max_row, 8).value, 100)
+
+    def test_pdf_repeats_header_uses_page_subtotals_and_last_page_grand_total(self):
+        from io import BytesIO
+        from pypdf import PdfReader
+
+        with patch("smart_meter.views_dashboard._export_rows", return_value=self._export_data(40)):
+            response = self.client.get(reverse("smart_meter:energy_export_pdf"))
+
+        self.assertEqual(response.status_code, 200)
+        reader = PdfReader(BytesIO(response.content))
+        self.assertEqual(len(reader.pages), 2)
+        first_page = reader.pages[0].extract_text()
+        last_page = reader.pages[-1].extract_text()
+        self.assertIn("Period: July 01, 2026 to August 30, 2026", first_page)
+        self.assertIn("Occupant(s):", first_page)
+        self.assertIn("Occupant(s):", last_page)
+        self.assertIn("Page subtotal", first_page)
+        self.assertNotIn("Grand total", first_page)
+        self.assertIn("Grand total", last_page)
+
+
 class ElectricBillDescriptionTests(TestCase):
     def test_long_description_keeps_final_total_within_invoice_item_limit(self):
         ctx = ElectricBillContext(

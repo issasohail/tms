@@ -723,11 +723,46 @@ function shortLabel(raw, maxLen) {
       const card = document.querySelector('#energyChart')?.closest('.card');
       const table = document.querySelector('#energyTable')?.closest('.card');
       if (!card || !table) return;
-      const wrap = document.createElement('div'); wrap.style.background = '#fff'; wrap.style.padding = '12px';
-      card.parentNode.insertBefore(wrap, card); wrap.appendChild(card); wrap.appendChild(table);
-      const canvas = await html2canvas(wrap, {scale:2});
-      const link = document.createElement('a'); link.download = 'energy-report.jpeg'; link.href = canvas.toDataURL('image/jpeg', 0.92); link.click();
-      wrap.parentNode.insertBefore(card, wrap); wrap.parentNode.insertBefore(table, wrap); wrap.remove();
+      const tableScroller = table.querySelector('.table-responsive');
+      const previousScrollerStyle = tableScroller?.getAttribute('style');
+      const wrap = document.createElement('div');
+      wrap.style.background = '#fff';
+      wrap.style.padding = '12px';
+      document.body.classList.add('meter-exporting');
+      if (tableScroller) {
+        tableScroller.style.maxHeight = 'none';
+        tableScroller.style.overflow = 'visible';
+      }
+      const exportWidth = Math.max(card.scrollWidth, table.scrollWidth, tableScroller?.scrollWidth || 0, 1200);
+      wrap.style.width = `${exportWidth + 24}px`;
+      card.parentNode.insertBefore(wrap, card);
+      wrap.appendChild(card);
+      wrap.appendChild(table);
+      try {
+        const canvas = await html2canvas(wrap, {
+          scale: 2,
+          backgroundColor: '#fff',
+          width: wrap.scrollWidth,
+          height: wrap.scrollHeight,
+          windowWidth: wrap.scrollWidth,
+          windowHeight: wrap.scrollHeight,
+          scrollX: 0,
+          scrollY: 0
+        });
+        const link = document.createElement('a');
+        link.download = 'energy-report.jpeg';
+        link.href = canvas.toDataURL('image/jpeg', 0.92);
+        link.click();
+      } finally {
+        wrap.parentNode.insertBefore(card, wrap);
+        wrap.parentNode.insertBefore(table, wrap);
+        wrap.remove();
+        if (tableScroller) {
+          if (previousScrollerStyle === null) tableScroller.removeAttribute('style');
+          else tableScroller.setAttribute('style', previousScrollerStyle);
+        }
+        document.body.classList.remove('meter-exporting');
+      }
     });
   });
   document.getElementById('btn-save-chart')?.addEventListener('click', () => {

@@ -14,10 +14,9 @@
    ============================= */
 :root{
   /* Recurring list (desktop/tablet) */
-  --propunit-col-w: 170px;
-  --dates-col-w:    120px;
+  --propunit-col-w: 214px;
   --active-col-w:    70px;
-  --amt-col-w:       80px;
+  --amt-col-w:       88px;
 
   /* Preview (desktop/tablet) — mirror list where it makes sense */
   --preview-sno-w:    28px;
@@ -36,7 +35,7 @@
 }
 
 /* Density + table base */
-table.rc-table{ table-layout:fixed; width:100%; font-size:.85rem; }
+table.rc-table{ table-layout:fixed; width:100%; font-size:.92rem; }
 table.rc-table th, table.rc-table td{ overflow:hidden; vertical-align:middle; padding:.22rem .35rem; line-height:1.2; }
 table.rc-table thead th{ position:sticky; top:0; background:#fff; z-index:1; }
 .th-compact{ font-size:.75rem; padding-top:.25rem; padding-bottom:.25rem; }
@@ -44,7 +43,6 @@ table.rc-table thead th{ position:sticky; top:0; background:#fff; z-index:1; }
 .col-center{ text-align:center; }
 
 th.col-propunit, td.cell-propunit{ width:var(--propunit-col-w); max-width:var(--propunit-col-w); }
-th.col-dates,   td.col-dates    { width:var(--dates-col-w);    max-width:var(--dates-col-w); }
 th.col-active,  td.col-active   { width:var(--active-col-w);   max-width:var(--active-col-w); text-align:center; }
 th.col-amt,     td.col-amt      { width:var(--amt-col-w);      max-width:var(--amt-col-w); }
 th.col-items,   td.col-items    { width:auto; }
@@ -54,11 +52,11 @@ th.col-items,   td.col-items    { width:auto; }
 
 .col-items .item-line{
   display:grid;
-  grid-template-columns: minmax(0, var(--list-cat-max-w)) var(--list-amt-cell-w) var(--list-actions-cell-w);
+  grid-template-columns: minmax(0, var(--list-cat-max-w)) 5.3rem 6rem 6rem var(--list-actions-cell-w);
   align-items:center;
-  column-gap:.25rem;
+  column-gap:.4rem;
   line-height:1.2;
-  font-size:.75rem;
+  font-size:.84rem;
   white-space:nowrap;            /* keep entire row to one line */
 }
 
@@ -74,6 +72,38 @@ th.col-items,   td.col-items    { width:auto; }
   text-align:right;
   font-weight:600;
 }
+
+.col-items .item-date{ text-align:center; }
+.col-items .rc-inline-value{
+  display:block;
+  padding:.08rem .14rem;
+  border:1px dashed transparent;
+  border-radius:.2rem;
+  cursor:pointer;
+}
+.col-items .rc-inline-value:hover,
+.col-items .rc-inline-value:focus{
+  background:#eef5ff;
+  border-color:#6ea8fe;
+  outline:0;
+}
+.col-items .rc-inline-input{
+  width:100%;
+  min-width:0;
+  height:1.55rem;
+  padding:.05rem .2rem;
+  font-size:.78rem;
+}
+.items-heading{
+  display:grid;
+  grid-template-columns:minmax(0, var(--list-cat-max-w)) 5.3rem 6rem 6rem auto;
+  column-gap:.4rem;
+  align-items:center;
+}
+.items-heading span:nth-child(2),
+.items-heading span:nth-child(3),
+.items-heading span:nth-child(4){ text-align:center; }
+.rc-list-card{ width:min(100%, 900px); }
 
 .col-items .item-actions{
   display:flex;
@@ -181,10 +211,9 @@ th.col-items, td.col-items{ display:table-cell !important; }
 /* ===== Ultra-compact overrides (scoped to #rcRoot.rc-compact) ===== */
 #rcRoot.rc-compact{
   /* narrower column variables (scoped so other pages stay unchanged) */
-  --propunit-col-w: 94px;
-  --dates-col-w:    96px;
+  --propunit-col-w: 214px;
   --active-col-w:   52px;
-  --amt-col-w:      64px;
+  --amt-col-w:      78px;
 
   --list-cat-max-w:      15ch;   /* ensure visual cap is ~15 chars */
   --list-amt-cell-w:     max-content;
@@ -194,14 +223,29 @@ th.col-items, td.col-items{ display:table-cell !important; }
 /* tighter table density */
 #rcRoot.rc-compact .table.rc-table th,
 #rcRoot.rc-compact .table.rc-table td{
-  padding: .16rem .24rem;
-  font-size: .72rem;
-  line-height: 1.05;
+  padding: .2rem .3rem;
+  font-size: .82rem;
+  line-height: 1.12;
 }
 
 /* make header single-line: hide line breaks and sublabels */
 #rcRoot.rc-compact .table.rc-table thead th br{ display:none; }
 #rcRoot.rc-compact .table.rc-table thead th .text-muted{ display:none; }
+#rcRoot.rc-compact .table.rc-table thead th .propunit-heading br{ display:block; }
+#rcRoot.rc-compact .table.rc-table thead th .propunit-heading{
+  display:inline-block;
+  line-height:1.15;
+  white-space:normal;
+}
+#rcRoot.rc-compact #rcTable td.col-amt{
+  font-size:.96rem;
+  font-weight:800;
+  color:#111;
+}
+#rcRoot.rc-compact #rcTable th.col-amt{
+  font-size:.86rem;
+  font-weight:800;
+}
 
 /* show the shorter Items label */
 #rcRoot.rc-compact .th-items-lg{ display:none; }
@@ -211,7 +255,7 @@ th.col-items, td.col-items{ display:table-cell !important; }
 #rcRoot.rc-compact .btn-2xs{
   --bs-btn-padding-y: .075rem;
   --bs-btn-padding-x: .25rem;
-  --bs-btn-font-size: .62rem;
+  --bs-btn-font-size: .68rem;
   line-height: 1;
 }
 
@@ -225,6 +269,7 @@ th.col-items, td.col-items{ display:table-cell !important; }
 /* tighten form + items grid spacing */
 #rcRoot.rc-compact #editorPanel .card-body{ padding: .5rem; }
 #rcRoot.rc-compact #rcTable .m-items{ gap: .08rem; }
+#rcRoot.rc-compact #listSummary{ font-size:.82rem; }
 
 /* ensure “cell-propunit” lines don’t wrap to multi-lines on narrow widths */
 #rcRoot.rc-compact .cell-propunit > .prop-line,
@@ -434,28 +479,31 @@ th.col-items, td.col-items{ display:table-cell !important; }
     <div class="col-lg-9">
       <div id="listSummary" class="small text-muted my-1"></div>
 
-      <div class="card">
+      <div class="card rc-list-card">
         <div class="card-body p-0">
           <div style="max-height:60vh; overflow:auto;">
             <table class="table table-sm rc-table table-hover mb-0" id="rcTable">
               <colgroup>
                 <col style="width:56px"><!-- S.No -->
                 <col style="width:var(--propunit-col-w)"><!-- Prop/Unit/Tenant (3 lines) -->
-                <col style="width:var(--dates-col-w)"><!-- Start/End/Next -->
                 <col style="width:var(--active-col-w)"><!-- Active -->
-                <col><!-- Items (flex) -->
+                <col><!-- Per-charge amount and dates -->
                 <col style="width:var(--amt-col-w)"><!-- Total -->
               </colgroup>
 
               <thead>
                 <tr>
                   <th class="col-center">S.No</th>
-                  <th class="col-propunit">Property / Unit<br><span class="text-muted">Tenant</span></th>
-                  <th class="col-dates">Start / End<br><span class="text-muted">Next</span></th>
+                  <th class="col-propunit"><span class="propunit-heading">Property /<br>Unit</span></th>
                   <th class="col-active">Active</th>
                   <th class="col-items">
-                    <span class="th-items-lg">Items</span>
-                    <span class="th-items-sm">Category–Amount</span>
+                    <span class="items-heading">
+                      <span>Category</span>
+                      <span>Amount</span>
+                      <span>Start</span>
+                      <span>End</span>
+                      <span></span>
+                    </span>
                   </th>
 
                   <th class="text-end col-amt">Total</th>
@@ -463,7 +511,7 @@ th.col-items, td.col-items{ display:table-cell !important; }
               </thead>
 
               <tbody id="rcTbody">
-                <tr><td colspan="6" class="text-muted">Loading…</td></tr>
+                <tr><td colspan="5" class="text-muted">Loading…</td></tr>
               </tbody>
             </table>
           </div>
@@ -975,13 +1023,92 @@ function labelFromLease(obj){
     loadList();
   });
 
+  async function saveInlineValue(item, field, value){
+    const url = urlUpdateTpl.replace('/0/', '/' + item.id + '/');
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type':'application/json',
+        'X-CSRFToken': csrftoken(),
+        'X-Requested-With':'XMLHttpRequest'
+      },
+      body: JSON.stringify({ [field]: value })
+    });
+    if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+  }
+
+  function beginInlineEdit(display, item){
+    if (display.querySelector('input')) return;
+
+    const field = display.dataset.field;
+    const original = field === 'amount' ? String(item.amountNum ?? 0) : String(item[field] || '');
+    const input = document.createElement('input');
+    input.type = field === 'amount' ? 'number' : 'date';
+    input.className = 'form-control form-control-sm rc-inline-input';
+    input.value = original;
+    if (field === 'amount') input.step = '0.01';
+    display.textContent = '';
+    display.appendChild(input);
+    input.focus();
+    if (field === 'amount') input.select();
+    if (field !== 'amount' && typeof input.showPicker === 'function') {
+      try { input.showPicker(); } catch (error) { /* Browser will open it on the next click. */ }
+    }
+
+    let finished = false;
+    const restore = () => {
+      display.textContent = field === 'amount' ? fmtRsNoDec(item.amountNum) : (item[field] || '—');
+    };
+    const commit = async () => {
+      if (finished) return;
+      finished = true;
+      const value = input.value;
+
+      if (field === 'amount' && (value === '' || !Number.isFinite(Number(value)))) {
+        alert('Enter a valid amount.');
+        restore();
+        return;
+      }
+      if (field === 'start_date' && !value) {
+        alert('Start date is required.');
+        restore();
+        return;
+      }
+      const candidateStart = field === 'start_date' ? value : item.start_date;
+      const candidateEnd = field === 'end_date' ? value : item.end_date;
+      if (candidateStart && candidateEnd && candidateStart > candidateEnd) {
+        alert('End date cannot be before start date.');
+        restore();
+        return;
+      }
+
+      display.classList.add('text-muted');
+      try {
+        await saveInlineValue(item, field, value);
+        await loadList();
+      } catch (error) {
+        console.error(error);
+        alert('Inline update failed.');
+        display.classList.remove('text-muted');
+        restore();
+      }
+    };
+
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); commit(); }
+      if (event.key === 'Escape') { event.preventDefault(); finished = true; restore(); }
+    });
+    input.addEventListener('change', commit);
+    input.addEventListener('blur', commit);
+  }
+
   /* ===== Table render (grouped by lease) ===== */
   function renderTable(data){
     const rows = (data?.results || data || []);
     tbody.innerHTML = '';
     listSummary.textContent = '';
     if (!rows.length){
-      tbody.innerHTML = '<tr><td colspan="6" class="text-muted">No recurring items.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="text-muted">No recurring items.</td></tr>';
       return;
     }
 
@@ -1042,15 +1169,6 @@ function labelFromLease(obj){
       + (summaryBits.length ? ` • ${summaryBits.join(' • ')}` : '');
 
     function escape(s){ return (s||'').toString().replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
-    function groupNextRun(g){
-      let min = null;
-      g.items.forEach(it => {
-        const d = computeNextRun(it.start_date, it.end_date, it.day_of_month);
-        if (d && (!min || d < min)) min = d;
-      });
-      return min;
-    }
-
     const list = Array.from(groups.values()).sort((a,b) => {
       const ap = (a.property_name||'').toLowerCase(), bp = (b.property_name||'').toLowerCase();
       if (ap !== bp) return ap.localeCompare(bp);
@@ -1063,7 +1181,6 @@ function labelFromLease(obj){
     let rowIndex = 0;
     let lastProp = null;
     list.forEach((g) => {
-      const nextRun = groupNextRun(g);
       const total = g.items.reduce((s, it) => s + Math.round(Number(it.amountNum || 0)), 0);
 
       /* ===== Items HTML (ONE LINE per item) =====
@@ -1074,12 +1191,19 @@ function labelFromLease(obj){
       const itemsHtml = `
         <div class="m-items">
           ${g.items.map(it => `
-            <div class="item-line">
+            <div class="item-line" data-id="${it.id}">
               <span class="item-cat" title="${(it.category||'').replace(/</g,'&lt;')}">
                 ${short15(it.category || '—')}
               </span>
 
-              <span class="item-amt">${fmtRsNoDec(it.amountNum)}</span>
+              <span class="item-amt rc-inline-value" role="button" tabindex="0"
+                    data-field="amount" title="Click to update amount">${fmtRsNoDec(it.amountNum)}</span>
+
+              <span class="item-date rc-inline-value" role="button" tabindex="0"
+                    data-field="start_date" title="Click to update this amount's start date">${it.start_date || '—'}</span>
+
+              <span class="item-date rc-inline-value" role="button" tabindex="0"
+                    data-field="end_date" title="Click to update this amount's end date">${it.end_date || '—'}</span>
 
               <span class="item-actions">
                 <button class="btn btn-primary btn-2xs rc-edit-one" data-id="${it.id}" data-lease-label="${(leaseLabel || '').replace(/"/g,'&quot;')}"  title="Edit">Edit</button>
@@ -1103,17 +1227,20 @@ function labelFromLease(obj){
           </div>
 
         </td>
-        <td class="col-dates col-center">
-          <div>${g.start_date || '—'}</div>
-          <div>${g.end_date || '—'}</div>
-          <div>${nextRun ? fmtISO(nextRun) : '—'}</div>
-        </td>
         <td class="col-active">${g.active ? 'Yes' : 'No'}</td>
         <td class="col-items">${itemsHtml}</td>
         <td class="text-end col-amt">${fmtRsNoDec(total)}</td>
       `;
 
       tr.addEventListener('click', (e) => {
+        const inlineValue = e.target.closest('.rc-inline-value');
+        if (inlineValue){
+          const itemLine = inlineValue.closest('.item-line');
+          const id = itemLine?.dataset.id;
+          const it = g.items.find(x => String(x.id) === String(id));
+          if (it) beginInlineEdit(inlineValue, it);
+          return;
+        }
         const editBtn = e.target.closest('.rc-edit-one');
         if (editBtn){
           const id = editBtn.dataset.id;
@@ -1140,6 +1267,14 @@ function labelFromLease(obj){
         }
         const delBtn = e.target.closest('.rc-del-one');
         if (delBtn){ onDelete({ id: delBtn.dataset.id }); }
+      });
+      tr.addEventListener('keydown', (e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.rc-inline-value')) {
+          e.preventDefault();
+          const id = e.target.closest('.item-line')?.dataset.id;
+          const it = g.items.find(x => String(x.id) === String(id));
+          if (it) beginInlineEdit(e.target, it);
+        }
       });
 
       tbody.appendChild(tr);
@@ -1301,7 +1436,7 @@ function labelFromLease(obj){
 
   /* ===== List loader ===== */
   async function loadList(){
-    tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Loading…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Loading…</td></tr>';
 
     const params = new URLSearchParams();
     if (propFilter.value && propFilter.value !== 'all') params.set('property_id', propFilter.value);
@@ -1319,7 +1454,7 @@ function labelFromLease(obj){
       renderTable(data);
     }catch(e){
       console.error(e);
-      tbody.innerHTML = '<tr><td colspan="6" class="text-danger">Failed to load. Check console.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="text-danger">Failed to load. Check console.</td></tr>';
     }
   }
 

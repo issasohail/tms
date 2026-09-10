@@ -1,5 +1,5 @@
 from __future__ import annotations
-from openpyxl.styles import Alignment, Font
+from openpyxl.styles import Alignment, Font, PatternFill
 from .models import Lease
 from .models import Lease
 from django.conf import settings
@@ -351,6 +351,103 @@ def _tenant_names_for_unit_dates(unit_dates):
     return tenant_names
 
 
+def _energy_export_header(rows, start_d: date, end_d: date, whatsapp: str):
+    """Build report-wide identity details for PDF and Excel exports."""
+    unit_ids = sorted({row.get("unit_id") for row in rows if row.get("unit_id")})
+    units = {
+        unit.id: unit
+        for unit in Unit.objects.filter(id__in=unit_ids).select_related("property")
+    }
+    properties = sorted({row.get("property_name") for row in rows if row.get("property_name")})
+    unit_names = sorted({
+        units[unit_id].unit_number
+        for unit_id in unit_ids if unit_id in units
+    })
+    meters = sorted({str(row.get("meter_number")) for row in rows if row.get("meter_number")})
+
+    occupant_rows = []
+    represented_pairs = set()
+    if LeaseUnitOccupancy and unit_ids:
+        occupancies = (
+            LeaseUnitOccupancy.objects
+            .filter(unit_id__in=unit_ids, move_in_date__lte=end_d)
+            .filter(Q(move_out_date__isnull=True) | Q(move_out_date__gte=start_d))
+            .select_related("lease", "lease__tenant", "unit", "unit__property")
+            .order_by("unit__property__property_name", "unit__unit_number", "move_in_date", "id")
+        )
+        for occupancy in occupancies:
+            period_start = max(start_d, occupancy.move_in_date, occupancy.lease.start_date)
+            period_end = min(end_d, occupancy.move_out_date or end_d, occupancy.lease.end_date)
+            if period_start > period_end:
+                continue
+            represented_pairs.add((occupancy.lease_id, occupancy.unit_id))
+            occupant_rows.append({
+                "unit_id": occupancy.unit_id,
+                "unit_name": occupancy.unit.unit_number,
+                "tenant_name": _tenant_display_name(occupancy.lease.tenant) or "Vacant",
+                "start": period_start,
+                "end": period_end,
+            })
+
+    if unit_ids:
+        leases = (
+            Lease.objects
+            .filter(unit_id__in=unit_ids, start_date__lte=end_d, end_date__gte=start_d)
+            .select_related("tenant", "unit", "unit__property")
+            .order_by("unit__property__property_name", "unit__unit_number", "start_date", "id")
+        )
+        for lease in leases:
+            if (lease.id, lease.unit_id) in represented_pairs:
+                continue
+            occupant_rows.append({
+                "unit_id": lease.unit_id,
+                "unit_name": lease.unit.unit_number,
+                "tenant_name": _tenant_display_name(lease.tenant) or "Vacant",
+                "start": max(start_d, lease.start_date),
+                "end": min(end_d, lease.end_date),
+            })
+
+    occupied_unit_ids = {item["unit_id"] for item in occupant_rows}
+    for unit_id in unit_ids:
+        if unit_id not in occupied_unit_ids and unit_id in units:
+            occupant_rows.append({
+                "unit_id": unit_id,
+                "unit_name": units[unit_id].unit_number,
+                "tenant_name": "Vacant",
+                "start": start_d,
+                "end": end_d,
+            })
+
+    occupant_rows.sort(key=lambda item: (item["unit_name"], item["start"], item["tenant_name"]))
+    multiple_units = len(unit_names) > 1
+    occupants = []
+    for item in occupant_rows:
+        prefix = f'{item["unit_name"]}: ' if multiple_units else ""
+        occupants.append(
+            f'{prefix}{item["tenant_name"]} '
+            f'({item["start"].strftime("%B %d, %Y")} to '
+            f'{item["end"].strftime("%B %d, %Y")})'
+        )
+
+    return {
+        "period": f'{start_d.strftime("%B %d, %Y")} to {end_d.strftime("%B %d, %Y")}',
+        "properties": ", ".join(properties) or "-",
+        "units": ", ".join(unit_names) or "-",
+        "meters": ", ".join(meters) or "-",
+        "whatsapp": whatsapp or "-",
+        "occupants": occupants or ["Vacant"],
+    }
+
+
+def _energy_rows_totals(rows):
+    return {
+        "total_kwh": sum((row["usage"] for row in rows), Decimal("0")),
+        "usage_charges": sum((row["usage_amount"] for row in rows), Decimal("0")),
+        "service_charges": sum((row["service_charges"] for row in rows), Decimal("0")),
+        "grand_total": sum((row["total_amount"] for row in rows), Decimal("0")),
+    }
+
+
 def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     """
     Returns:
@@ -510,7 +607,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
         if isinstance(k, datetime):
             return k.strftime("%b %d %H:00")
         elif isinstance(k, date):
-            if k.day == 1:
+            if granularity == "monthly":
                 return k.strftime("%b %Y")
             return k.strftime("%b %d, %Y")
         return str(k)
@@ -1027,34 +1124,72 @@ def energy_export_xlsx(request):
     ws.title = "Energy"
 
     header = [
-        "S/N", "Meter #", "Unit", "Property", "Tenant", "WhatsApp", "Period",
-        "Begin (kWh)", "End (kWh)", "Usage (kWh)", "Rate (Rs/kWh)", "Usage Charges (Rs)"
+        "S/N", "Meter #", "Period", "Begin (kWh)", "End (kWh)",
+        "Usage (kWh)", "Rate (Rs/kWh)", "Usage Charges (Rs)"
     ]
     if report_type == "monthly":
         header += ["Service Charges (Rs)", "Total (Rs)"]
-    ws.append(header)
 
     wa = _user_whatsapp(request)
+    report_header = _energy_export_header(rows, start_date, end_date, wa)
+    header_lines = [
+        "Energy Report",
+        f'Period: {report_header["period"]}',
+        f'Property: {report_header["properties"]} | Unit: {report_header["units"]} | Meter: {report_header["meters"]}',
+        f'WhatsApp: {report_header["whatsapp"]}',
+        f'Occupant(s): {"; ".join(report_header["occupants"])}',
+    ]
+    for row_number, line in enumerate(header_lines, start=1):
+        ws.cell(row=row_number, column=1, value=line)
+        ws.merge_cells(
+            start_row=row_number, start_column=1,
+            end_row=row_number, end_column=len(header),
+        )
+        cell = ws.cell(row=row_number, column=1)
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+        cell.font = Font(bold=True, size=14 if row_number == 1 else 10)
+    ws.row_dimensions[5].height = max(30, 15 * len(report_header["occupants"]))
+
+    table_header_row = len(header_lines) + 2
+    for column, value in enumerate(header, start=1):
+        cell = ws.cell(row=table_header_row, column=column, value=value)
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="E9ECEF")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
     for i, r in enumerate(rows, start=1):
         base = [
             i,
             r["meter_number"],
-            r["unit_number"],
-            r["property_name"],
-            r.get("tenant_name", ""),
-            wa,
             r["period_label"],
-            _fmt0(r["start_kwh"]),
-            _fmt0(r["end_kwh"]),
-            _fmt0(r["usage"]),
-            _fmt0(r["unit_rate"]),
-            _fmt0(r["usage_amount"]),
+            float(r["start_kwh"]),
+            float(r["end_kwh"]),
+            float(r["usage"]),
+            float(r["unit_rate"]),
+            float(r["usage_amount"]),
         ]
         if report_type == "monthly":
-            base += [_fmt0(r["service_charges"]), _fmt0(r["total_amount"])]
+            base += [float(r["service_charges"]), float(r["total_amount"])]
         ws.append(base)
 
-    for col in ws.columns:
+    total_row = ws.max_row + 1
+    ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=5)
+    ws.cell(total_row, 1, "Grand Total")
+    ws.cell(total_row, 6, float(totals["total_kwh"]))
+    ws.cell(total_row, 8, float(totals["usage_charges"]))
+    if report_type == "monthly":
+        ws.cell(total_row, 9, float(totals["service_charges"]))
+        ws.cell(total_row, 10, float(totals["grand_total"]))
+    for cell in ws[total_row]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="FFF3CD")
+        cell.alignment = Alignment(horizontal="right")
+
+    ws.freeze_panes = f"A{table_header_row + 1}"
+    ws.print_title_rows = f"1:{table_header_row}"
+    ws.auto_filter.ref = f"A{table_header_row}:{get_column_letter(len(header))}{total_row - 1}"
+
+    for col in ws.iter_cols(min_row=table_header_row, max_row=ws.max_row):
         try:
             max_len = max(len(str(c.value))
                           if c.value is not None else 0 for c in col)
@@ -1115,6 +1250,35 @@ def energy_export_pdf(request):
         for r in rows
     ]
 
+    report_header = _energy_export_header(rows, start_date, end_date, wa)
+    rows_per_page = 32
+    row_chunks = [
+        rows[index:index + rows_per_page]
+        for index in range(0, len(rows), rows_per_page)
+    ] or [[]]
+    pages = []
+    for page_number, page_rows in enumerate(row_chunks, start=1):
+        page_rows_disp = []
+        for row_number, row in enumerate(page_rows, start=1):
+            page_rows_disp.append({
+                **row,
+                "sn": ((page_number - 1) * rows_per_page) + row_number,
+                "start_kwh": _fmt0(row["start_kwh"]),
+                "end_kwh": _fmt0(row["end_kwh"]),
+                "usage": _fmt0(row["usage"]),
+                "unit_rate": _fmt0(row["unit_rate"]),
+                "usage_amount": _fmt0(row["usage_amount"]),
+                "service_charges": _fmt0(row["service_charges"]),
+                "total_amount": _fmt0(row["total_amount"]),
+            })
+        page_totals = _energy_rows_totals(page_rows)
+        pages.append({
+            "number": page_number,
+            "is_last": page_number == len(row_chunks),
+            "rows": page_rows_disp,
+            "subtotal": {key: _fmt0(value) for key, value in page_totals.items()},
+        })
+
     totals_disp = {
         "total_kwh": _fmt0(totals["total_kwh"]),
         "usage_charges": _fmt0(totals["usage_charges"]),
@@ -1124,6 +1288,9 @@ def energy_export_pdf(request):
 
     context = {
         "rows_disp": rows_disp,
+        "pages": pages,
+        "page_count": len(pages),
+        "report_header": report_header,
         "totals_disp": totals_disp,
         "currency": _billing_currency(),
         "report_type": report_type,

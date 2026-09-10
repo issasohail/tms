@@ -43,17 +43,22 @@
   (function () {
   if (window.prepaidMoneyModalBound) return;
   window.prepaidMoneyModalBound = true;
-  const modalElement = document.getElementById('prepaidMoneyModal');
-  if (modalElement && modalElement.parentElement !== document.body) document.body.appendChild(modalElement);
-  modalElement?.addEventListener('hidden.bs.modal', function () {
-    document.getElementById('prepaidMoneyForm')?.reset();
-  });
   document.addEventListener('click', function (event) {
     const trigger = event.target.closest('[data-prepaid-money]');
     if (!trigger) return;
     event.preventDefault();
     const operation = trigger.dataset.operation === 'refund' ? 'refund' : 'recharge';
     const meterNumber = trigger.dataset.meterNumber || '';
+    const modalElement = document.getElementById('prepaidMoneyModal');
+    if (!modalElement) {
+      window.location.href = `${trigger.dataset.actionUrl}?action=${operation}`;
+      return;
+    }
+    if (modalElement.parentElement !== document.body) document.body.appendChild(modalElement);
+    if (!modalElement.dataset.resetBound) {
+      modalElement.dataset.resetBound = 'true';
+      modalElement.addEventListener('hidden.bs.modal', () => document.getElementById('prepaidMoneyForm')?.reset());
+    }
     const form = document.getElementById('prepaidMoneyForm');
     form.action = trigger.dataset.actionUrl;
     document.getElementById('prepaidMoneyOperation').value = operation;

@@ -6,7 +6,7 @@
 {% include "smart_meter/meterbar.html" %}
 <div class="container-fluid">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-    <div><h2 class="mb-0">{{ system.name }} â€” Energy Reconciliation</h2><small class="text-muted">Only confirmed, exact-period source records feed calculations.</small></div>
+    <div><h2 class="mb-0">{{ system.name }} &mdash; Energy Reconciliation</h2><small class="text-muted">Only confirmed, exact-period source records feed calculations.</small></div>
     <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:energy_system_list' %}">All systems</a>
   </div>
 
@@ -18,13 +18,13 @@
     </div>
   </form>
 
-  {% if iesco_bill_latest %}
+  {% if report.iesco_bill %}
   <div class="card mb-3 border-primary">
     <div class="card-header d-flex justify-content-between"><strong>IESCO invoice meter input</strong><span class="badge bg-primary">Read directly from Invoices</span></div>
-    <div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>S/N</th><th>Meter serial</th><th>Reference #</th><th>Consumer ID</th><th>Bill month</th><th>Reading date</th><th>Import</th><th>Export</th></tr></thead><tbody><tr><td>1</td><td class="fw-semibold">{{ iesco_bill_latest.meter_number_display }}</td><td>{{ iesco_bill_latest.reference_no }}</td><td>{{ iesco_bill_latest.consumer_id }}</td><td>{{ iesco_bill_latest.bill_month }}</td><td>{{ iesco_bill_latest.reading_date }}</td><td>{{ iesco_bill_latest.import_units_display }} kWh</td><td>{{ iesco_bill_latest.export_units_display }} kWh</td></tr></tbody></table></div>
+    <div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>S/N</th><th>Meter serial</th><th>Reference #</th><th>Consumer ID</th><th>Bill month</th><th>Reading date</th><th>Import</th><th>Export</th></tr></thead><tbody><tr><td>1</td><td class="fw-semibold">{{ report.iesco_bill.meter_number_display }}</td><td>{{ report.iesco_bill.reference_no }}</td><td>{{ report.iesco_bill.consumer_id }}</td><td>{{ report.iesco_bill.bill_month }}</td><td>{{ report.iesco_bill.reading_date }}</td><td>{{ report.iesco_bill.import_units_display }} kWh</td><td>{{ report.iesco_bill.export_units_display }} kWh</td></tr></tbody></table></div>
     <div class="card-footer small text-muted">This is the existing IESCO record from the Invoices app. Reconciliation does not copy or store it again.</div>
   </div>
-  {% endif %}
+  {% elif iesco_bill_latest %}<div class="alert alert-secondary mb-3"><strong>No IESCO invoice reading matches {{ report.period_start|date:'M d, Y' }} to {{ report.period_end|date:'M d, Y' }}.</strong> The latest invoice is {{ iesco_bill_latest.bill_month }} with reading date {{ iesco_bill_latest.reading_date }}, so its energy values are excluded.</div>{% endif %}
 
   <div class="card mb-3">
     <div class="card-header">

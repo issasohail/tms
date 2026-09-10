@@ -18,6 +18,14 @@
     </div>
   </form>
 
+  {% if iesco_bill_latest %}
+  <div class="card mb-3 border-primary">
+    <div class="card-header d-flex justify-content-between"><strong>IESCO invoice meter input</strong><span class="badge bg-primary">Read directly from Invoices</span></div>
+    <div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>S/N</th><th>Meter serial</th><th>Reference #</th><th>Consumer ID</th><th>Bill month</th><th>Reading date</th><th>Import</th><th>Export</th></tr></thead><tbody><tr><td>1</td><td class="fw-semibold">{{ iesco_bill_latest.meter_number_display }}</td><td>{{ iesco_bill_latest.reference_no }}</td><td>{{ iesco_bill_latest.consumer_id }}</td><td>{{ iesco_bill_latest.bill_month }}</td><td>{{ iesco_bill_latest.reading_date }}</td><td>{{ iesco_bill_latest.import_units_display }} kWh</td><td>{{ iesco_bill_latest.export_units_display }} kWh</td></tr></tbody></table></div>
+    <div class="card-footer small text-muted">This is the existing IESCO record from the Invoices app. Reconciliation does not copy or store it again.</div>
+  </div>
+  {% endif %}
+
   <div class="card mb-3">
     <div class="card-header">
       <div class="row align-items-center g-2 small">
@@ -50,8 +58,8 @@
     <div class="col-lg-6"><div class="card h-100"><div class="card-header fw-semibold">Energy balance</div><div class="table-responsive"><table class="table table-sm mb-0">
       <tr><th>Output</th><td class="text-end">{{ report.output_kwh|default_if_none:"Unavailable" }}</td></tr>
       <tr><th>Billing total</th><td class="text-end">{{ report.billing_total_kwh|default_if_none:"Unavailable" }}</td></tr>
-      <tr><th>Grid Import Delta (Forward register)</th><td class="text-end">{{ report.grid_import_kwh|default_if_none:"Unavailable" }}</td></tr>
-      <tr><th>Grid Export Delta (Reverse register)</th><td class="text-end">{{ report.grid_export_kwh|default_if_none:"Unavailable" }}</td></tr>
+      <tr><th>Grid Import ({{ report.grid_source }})</th><td class="text-end">{{ report.grid_import_kwh|default_if_none:"Unavailable" }}</td></tr>
+      <tr><th>Grid Export ({{ report.grid_source }})</th><td class="text-end">{{ report.grid_export_kwh|default_if_none:"Unavailable" }}</td></tr>
       <tr><th>Net Grid Energy (Import - Export)</th><td class="text-end">{{ report.net_grid_energy_kwh|default_if_none:"Unavailable" }}</td></tr>
       <tr><th>Utility-bill Export</th><td class="text-end">{{ report.export_kwh|default_if_none:"Unavailable for this period" }}</td></tr>
       <tr><th>Building consumption</th><td class="text-end fw-semibold">{{ report.building_consumption_kwh|default_if_none:"Withheld" }}</td></tr>

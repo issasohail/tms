@@ -53,15 +53,21 @@ class LiveCustomResponsivePowerStatusTests(SimpleTestCase):
             self.source,
         )
 
-    def test_desktop_status_moves_beside_billing_and_saves_column_space(self):
-        badges_start = self.source.index('<div class="desktop-meter-badges">')
-        badges_source = self.source[badges_start : badges_start + 600]
-
-        self.assertIn('class="badge bg-success">Billing</span>', badges_source)
-        self.assertIn('class="badge online-badge', badges_source)
-        self.assertIn('@media (min-width: 992px)', self.source)
-        self.assertIn('th.col-status,', self.source)
+    def test_desktop_operational_badges_have_explicit_columns(self):
+        for heading in ("Meter Type", "Billing Role", "Meter Status", "Unit Rate"):
+            self.assertIn(f">{heading}</th>", self.source)
+        self.assertIn('class="col-meter-type text-center"', self.source)
+        self.assertIn('class="col-role text-center"', self.source)
+        self.assertIn('class="sticky-left col-status text-center"', self.source)
+        self.assertIn('class="col-unit-rate text-center"', self.source)
+        self.assertNotIn('<div class="desktop-meter-badges">', self.source)
         self.assertIn('td.col-power > .power-badge', self.source)
+
+    def test_money_actions_are_icons_and_timestamp_requests_reading(self):
+        self.assertIn('class="btn btn-success money-icon-action"', self.source)
+        self.assertIn('class="btn btn-warning money-icon-action"', self.source)
+        self.assertIn('class="timestamp-reading-button btn-instant-reading"', self.source)
+        self.assertIn('class="badge rounded-pill billing-mode-badge mode-toggle-button', self.source)
 
     def test_initial_and_polled_operation_states_use_server_reconciliation(self):
         self.assertIn(
@@ -69,7 +75,7 @@ class LiveCustomResponsivePowerStatusTests(SimpleTestCase):
             self.source,
         )
         self.assertIn(
-            "reading.relay_operation_label || (desired === 'on' ? 'Restoring…' : 'Connecting…')",
+            "reading.relay_operation_label || (desired === 'on' ? 'Restoring…' : 'Turning OFF…')",
             self.source,
         )
         self.assertIn("'sent', 'retry'].includes(status)", self.source)

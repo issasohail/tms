@@ -27,10 +27,11 @@
       <td><div class="d-flex gap-1">
         <a class="btn btn-success btn-sm" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}?action=recharge">Top up</a>
         <a class="btn btn-outline-warning btn-sm" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}?action=refund">Refund</a>
-        <form method="post">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ meter.pk }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">{% if meter.billing_mode == 'prepaid_pilot' %}<button name="action" value="disable_meter" class="btn btn-outline-danger btn-sm">Set postpaid</button>{% else %}<button name="action" value="enable_meter" class="btn btn-outline-success btn-sm">Set prepaid</button>{% endif %}</form>
+        <form method="post" class="mode-toggle-form" data-tariff-verified="{% if meter.tariff_is_verified %}1{% else %}0{% endif %}" data-current-rate="{{ meter.display_electricity_rate.rate|floatformat:4 }}" data-meter-number="{{ meter.meter_number }}">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ meter.pk }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">{% if meter.billing_mode == 'prepaid_pilot' %}<button type="submit" name="action" value="disable_meter" class="btn btn-outline-danger btn-sm">Set postpaid</button>{% else %}<button type="submit" name="action" value="enable_meter" class="btn btn-outline-success btn-sm">Set prepaid</button>{% endif %}</form>
       </div></td>
     </tr>{% empty %}<tr><td colspan="13">No meters found.</td></tr>{% endfor %}</tbody>
   </table></div></div>
   <p class="small text-muted mt-2">Changing Mode changes TMS billing/command eligibility and is audited. A physical prepaid/postpaid mode frame is not sent because the manufacturer mode opcode has not been verified.</p>
 </div>
+{% include "smart_meter/partials/prepaid_activation_modal.html" %}
 {% endblock %}

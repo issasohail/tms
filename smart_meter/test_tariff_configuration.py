@@ -1,12 +1,14 @@
 import importlib
 import uuid
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from smart_meter.forms_tariff import TariffConfigurationForm
 from smart_meter.models import (
@@ -211,6 +213,72 @@ class TariffWorkflowTests(TestCase):
         read.side_effect = [(self.before, "AA", 4), (bytes(unsafe), "CC", 6)]
         audit = configure_prices(meter=self.meter, user=self.user, mode="flat", prices=["50"], active_rate_count=1)
         self.assertEqual(audit.status, "unsafe_readback")
+
+
+class PrepaidActivationTariffTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            "prepaid-admin", "pw", email="prepaid@example.com"
+        )
+        self.client.force_login(self.user)
+        self.meter = Meter.objects.create(
+            meter_number="123456789012",
+            tariff_capability="multi_rate",
+            billing_mode="postpaid",
+        )
+        self.url = reverse("smart_meter:prepaid_controls")
+
+    @patch("smart_meter.services.tariff_configuration.configure_prices")
+    def test_unverified_tariff_failure_does_not_enable_prepaid(self, configure):
+        configure.return_value = SimpleNamespace(status="failed", error="read-back mismatch")
+
+        response = self.client.post(self.url, {
+            "action": "enable_meter",
+            "meter_id": self.meter.pk,
+            "tariff_rate": "50.0000",
+            "next": reverse("smart_meter:meter_list"),
+        })
+
+        self.meter.refresh_from_db()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.meter.billing_mode, "postpaid")
+        configure.assert_called_once()
+
+    @patch("smart_meter.services.tariff_configuration.configure_prices")
+    def test_verified_tariff_is_sent_before_prepaid_is_saved(self, configure):
+        configure.return_value = SimpleNamespace(status="verified", error="")
+
+        self.client.post(self.url, {
+            "action": "enable_meter",
+            "meter_id": self.meter.pk,
+            "tariff_rate": "50.0000",
+            "next": reverse("smart_meter:meter_list"),
+        })
+
+        self.meter.refresh_from_db()
+        self.assertEqual(self.meter.billing_mode, "prepaid_pilot")
+        self.assertEqual(configure.call_args.kwargs["prices"], [Decimal("50.0000")])
+
+    @patch("smart_meter.services.tariff_configuration.configure_prices")
+    def test_existing_verified_tariff_enables_without_another_write(self, configure):
+        MeterTariffConfiguration.objects.create(
+            meter=self.meter,
+            mode="flat",
+            active_rate_count=1,
+            rate_1_price=Decimal("50.0000"),
+            last_verified_at=timezone.now(),
+            last_status="verified",
+        )
+
+        self.client.post(self.url, {
+            "action": "enable_meter",
+            "meter_id": self.meter.pk,
+            "next": reverse("smart_meter:meter_list"),
+        })
+
+        self.meter.refresh_from_db()
+        self.assertEqual(self.meter.billing_mode, "prepaid_pilot")
+        configure.assert_not_called()
 
 
 class TariffUiAndMigrationTests(TestCase):

@@ -2006,7 +2006,7 @@
                 <div class="mobile-state-badges">
                   <span class="badge rounded-pill online-badge {% if r.connection_state == 'online' %}bg-success{% elif r.connection_state == 'stale' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{% if r.connection_state == 'online' %}Online{% elif r.connection_state == 'stale' %}Data stale{% else %}Offline{% endif %}</span>
                   <span class="badge rounded-pill power-badge {% if m.power_status|lower == 'on' %}bg-success{% else %}bg-danger{% endif %}">{% if m.power_status|lower == 'on' %}ON{% else %}OFF{% endif %}</span>
-                  <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="mode-toggle-form">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="badge rounded-pill billing-mode-badge mode-toggle-button {% if m.is_prepaid %}bg-info text-dark{% else %}bg-light text-dark border{% endif %}" name="action" value="{% if m.is_prepaid %}disable_meter{% else %}enable_meter{% endif %}" title="Switch this meter to {% if m.is_prepaid %}postpaid{% else %}prepaid{% endif %}">{% if m.is_prepaid %}Prepaid{% else %}Postpaid{% endif %}</button></form>
+                  <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="mode-toggle-form" data-tariff-verified="{% if m.tariff_is_verified %}1{% else %}0{% endif %}" data-current-rate="{{ r.display_electricity_rate.rate|floatformat:4 }}" data-meter-number="{{ m.meter_number }}">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="badge rounded-pill billing-mode-badge mode-toggle-button {% if m.is_prepaid %}bg-info text-dark{% else %}bg-light text-dark border{% endif %}" name="action" value="{% if m.is_prepaid %}disable_meter{% else %}enable_meter{% endif %}" title="Switch this meter to {% if m.is_prepaid %}postpaid{% else %}prepaid{% endif %}">{% if m.is_prepaid %}Prepaid{% else %}Postpaid{% endif %}</button></form>
                   <span data-unit-rate-cell data-meter-id="{{ m.id }}" data-update-url="{% url 'smart_meter:meter_unit_rate_update' m.id %}"><button type="button" class="unit-rate-display" title="{{ r.display_electricity_rate.source }} rate; click to edit">{{ r.display_electricity_rate.rate|floatformat:4 }}/kWh</button><span class="unit-rate-editor d-none"><input type="number" min="0" step="0.0001" value="{{ m.unit_rate|default_if_none:'' }}"><button type="button" class="btn btn-success" data-unit-rate-save>✓</button><button type="button" class="btn btn-light" data-unit-rate-cancel>×</button></span></span>
                 </div>
               </div>
@@ -2085,7 +2085,7 @@
             </td>
 
             <td class="col-meter-type text-center">
-              <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="mode-toggle-form">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="badge rounded-pill billing-mode-badge mode-toggle-button {% if m.is_prepaid %}bg-info text-dark{% else %}bg-light text-dark border{% endif %}" name="action" value="{% if m.is_prepaid %}disable_meter{% else %}enable_meter{% endif %}" title="Switch this meter to {% if m.is_prepaid %}postpaid{% else %}prepaid{% endif %}">{% if m.is_prepaid %}Prepaid{% else %}Postpaid{% endif %}</button></form>
+              <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="mode-toggle-form" data-tariff-verified="{% if m.tariff_is_verified %}1{% else %}0{% endif %}" data-current-rate="{{ r.display_electricity_rate.rate|floatformat:4 }}" data-meter-number="{{ m.meter_number }}">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="badge rounded-pill billing-mode-badge mode-toggle-button {% if m.is_prepaid %}bg-info text-dark{% else %}bg-light text-dark border{% endif %}" name="action" value="{% if m.is_prepaid %}disable_meter{% else %}enable_meter{% endif %}" title="Switch this meter to {% if m.is_prepaid %}postpaid{% else %}prepaid{% endif %}">{% if m.is_prepaid %}Prepaid{% else %}Postpaid{% endif %}</button></form>
             </td>
 
             <td class="col-role text-center">
@@ -2698,5 +2698,6 @@
 </style>
 
 {% include "smart_meter/partials/prepaid_money_modal.html" %}
+{% include "smart_meter/partials/prepaid_activation_modal.html" %}
 
 {% endblock %}

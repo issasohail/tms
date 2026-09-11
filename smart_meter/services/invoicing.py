@@ -139,34 +139,26 @@ def _month_window_local(period_start: date):
 
 
 def _reading_bounds(meter: Meter, start: date, end: date):
-    tz = timezone.get_current_timezone()
-    sdt = timezone.make_aware(datetime.combine(start, time.min), tz)
-    edt = timezone.make_aware(datetime.combine(end + timedelta(days=1), time.min), tz)
+    """Use the same strict boundary/continuity rules as energy reconciliation.
 
-    period_readings = MeterReading.objects.filter(
-        meter=meter,
-        ts__gte=sdt,
-        ts__lt=edt,
+    Billing periods are inclusive by date, so the closing boundary is midnight
+    immediately after ``end``. A missing/stale boundary or register decrease
+    blocks billing instead of silently converting usage to zero.
+    """
+    from smart_meter.services.reconciliation import meter_period_delta
+
+    result = meter_period_delta(
+        meter,
+        start,
+        end + timedelta(days=1),
+        field_name="forward_active_energy_kwh",
+        fallback_field="total_energy",
     )
-    previous = (
-        MeterReading.objects
-        .filter(meter=meter, ts__lt=sdt)
-        .order_by("-ts", "-id")
-        .first()
-    )
-    first = period_readings.order_by("ts", "id").first()
-    last = period_readings.order_by("-ts", "-id").first()
-
-    def energy_value(reading):
-        if reading is None:
-            return None
-        value = reading.forward_active_energy_kwh
-        return value if value is not None else reading.total_energy
-
-    beginning = energy_value(previous)
-    if beginning is None:
-        beginning = energy_value(first)
-    return beginning, energy_value(last)
+    if not result["valid"]:
+        raise ValueError(
+            f"Billing blocked for meter {meter.meter_number}: {result['reason']}"
+        )
+    return result["start"].value, result["end"].value
 
 
 def compute_electric_bill(lease, meter, period_start: date, period_end: date) -> ElectricBillContext:
@@ -219,11 +211,18 @@ def compute_electric_bill(lease, meter, period_start: date, period_end: date) ->
             if end_raw is None and installation.end_date and seg_end == installation.end_date:
                 end_raw = installation.end_reading
 
-            beg = Decimal(str(beg_raw if beg_raw is not None else "0"))
-            end = Decimal(str(end_raw if end_raw is not None else "0"))
-            units = (end - beg) if (beg_raw is not None and end_raw is not None) else Decimal("0")
+            if beg_raw is None or end_raw is None:
+                raise ValueError(
+                    f"Billing blocked for meter {meter.meter_number}: missing period boundary reading."
+                )
+            beg = Decimal(str(beg_raw))
+            end = Decimal(str(end_raw))
+            units = end - beg
             if units < 0:
-                units = Decimal("0")
+                raise ValueError(
+                    f"Billing blocked for meter {meter.meter_number}: cumulative energy decreased "
+                    f"from {beg} to {end}. Resolve meter reset/replacement continuity first."
+                )
 
             if first_beg is None:
                 first_beg = beg

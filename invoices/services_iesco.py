@@ -204,6 +204,16 @@ def save_bill_payload(payload: dict) -> tuple[IescoBillReading, bool]:
     fetched_at = payload.get("fetched_at")
     if fetched_at:
         payload["fetched_at"] = parse_datetime(fetched_at)
+    # Every fresh fetch/import invalidates any prior reconciliation confirmation.
+    # The normalized payload is trusted as parsed data only until a staff user
+    # explicitly verifies and confirms it for energy reconciliation.
+    payload.update({
+        "trust_status": IescoBillReading.TRUST_PARSED,
+        "verified_at": None,
+        "verified_by": None,
+        "confirmed_at": None,
+        "confirmed_by": None,
+    })
     return IescoBillReading.objects.update_or_create(
         reference_no=reference_no,
         bill_month=bill_month,

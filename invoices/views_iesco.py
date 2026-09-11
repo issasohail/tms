@@ -103,6 +103,49 @@ def _require_change_permission(user):
         raise PermissionDenied("You do not have permission to fetch or import IESCO bills.")
 
 
+@require_POST
+@login_required
+def set_reading_trust(request, pk):
+    """Explicitly move a saved IESCO reading through Verified -> Confirmed.
+
+    Re-fetching/importing the same bill resets it to Parsed, so reconciliation
+    never silently consumes changed external data.
+    """
+    _require_change_permission(request.user)
+    reading = get_object_or_404(IescoBillReading, pk=pk)
+    _ensure_reference_access(request.user, reading.reference_no)
+    action = (request.POST.get("action") or "").strip().lower()
+    now = timezone.now()
+    if action == "verify":
+        reading.trust_status = IescoBillReading.TRUST_VERIFIED
+        reading.verified_at = now
+        reading.verified_by = request.user
+        reading.confirmed_at = None
+        reading.confirmed_by = None
+        reading.save(update_fields=["trust_status", "verified_at", "verified_by", "confirmed_at", "confirmed_by", "updated_at"])
+        messages.success(request, "IESCO reading verified. Confirm it separately before reconciliation can use it.")
+    elif action == "confirm":
+        if reading.trust_status != IescoBillReading.TRUST_VERIFIED or not reading.verified_at:
+            messages.error(request, "Verify this IESCO reading before confirming it for reconciliation.")
+        else:
+            reading.trust_status = IescoBillReading.TRUST_CONFIRMED
+            reading.confirmed_at = now
+            reading.confirmed_by = request.user
+            reading.save(update_fields=["trust_status", "confirmed_at", "confirmed_by", "updated_at"])
+            messages.success(request, "IESCO reading confirmed for energy reconciliation.")
+    elif action == "reopen":
+        reading.trust_status = IescoBillReading.TRUST_PARSED
+        reading.verified_at = None
+        reading.verified_by = None
+        reading.confirmed_at = None
+        reading.confirmed_by = None
+        reading.save(update_fields=["trust_status", "verified_at", "verified_by", "confirmed_at", "confirmed_by", "updated_at"])
+        messages.warning(request, "IESCO reading reopened; reconciliation will not use it until re-verified and confirmed.")
+    else:
+        messages.error(request, "Unknown IESCO trust action.")
+    return redirect("invoices:iesco_bill_reading_detail", reference_no=reading.reference_no)
+
+
 def _validation_message(exc):
     if isinstance(exc, (requests.exceptions.SSLError, requests.exceptions.ConnectionError)):
         return (

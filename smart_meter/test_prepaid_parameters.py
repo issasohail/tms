@@ -105,3 +105,17 @@ class Parameter1RegressionTests(TestCase):
         self.assertNotIn("DLT645_2007_Prepaid", source)
         self.assertIn("build_parameter_frame", source)
         self.assertIn("max_attempts=1", source)
+
+    def test_prepaid_bulk_ui_and_direct_editing_are_present(self):
+        view_source = Path(__file__).with_name("views_prepaid.py").read_text()
+        template_source = (
+            Path(__file__).parent / "templates" / "smart_meter" / "prepaid_params.html"
+        ).read_text()
+        self.assertIn('save_all_prepaid_parameters', view_source)
+        self.assertIn('confirm_save_all_prepaid_parameters', view_source)
+        self.assertIn('verify_prepaid_parameters', view_source)
+        self.assertIn("PREPAID_PARAMETER_HELP", view_source)
+        self.assertIn('data-apply-all-field=', template_source)
+        self.assertIn('id="saveAllPrepaidButton"', template_source)
+        self.assertIn('rotate(-90deg)', template_source)
+        self.assertNotIn('data-edit-prepaid-row', template_source)

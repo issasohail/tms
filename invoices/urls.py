@@ -69,6 +69,7 @@ urlpatterns = [
     path('iesco-bills/invoices/bulk/', views_iesco.make_invoices_bulk, name='iesco_bill_make_invoices_bulk'),
     path('iesco-bills/readings/<int:pk>/post/', views_iesco.post_to_invoice, name='iesco_bill_post_to_invoice'),
     path('iesco-bills/readings/<int:pk>/pdf/', views_iesco.upload_bill_pdf, name='iesco_bill_pdf_upload'),
+    path('iesco-bills/readings/<int:pk>/trust/', views_iesco.set_reading_trust, name='iesco_bill_trust'),
     path('iesco-bills/<str:reference_no>/pitc/', views_iesco.pitc_bill_handoff, name='iesco_bill_pitc'),
     path(
         'iesco-bills/<str:reference_no>/',

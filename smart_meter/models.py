@@ -7,7 +7,6 @@ from decimal import Decimal
 from django.dispatch import receiver
 from django.db import models, transaction
 from properties.models import Unit  # Adjust if your app name is different
-from smart_meter.meter_client import send_meter_request
 from datetime import timedelta
 from django.utils.timezone import now
 from django.utils import timezone
@@ -17,7 +16,6 @@ from django.core.validators import MinValueValidator
 import logging
 from django.db import models
 from django.utils.functional import cached_property
-from smart_meter.meter_client import send_cutoff_command
 from smart_meter.switch_OnOff import frame_command as build_switch_frame  # add at top
 # add at top (same helpers used in views)
 from smart_meter.utils.commands import send_via_listener, refresh_live
@@ -1724,6 +1722,22 @@ class MeterPrepaidSettings(models.Model):
     step2_price_3 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
     step2_price_4 = models.DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.0000"))
 
+    baseline_status = models.CharField(
+        max_length=16,
+        choices=(
+            ("local_only", "Local values only"),
+            ("verified", "Verified against meter"),
+            ("stale", "Physical baseline needs re-verification"),
+            ("mismatch", "Physical meter differs from verified baseline"),
+        ),
+        default="local_only",
+        db_index=True,
+    )
+    baseline_verified_at = models.DateTimeField(null=True, blank=True)
+    baseline_hash = models.CharField(max_length=64, blank=True, default="")
+    baseline_raw_read_hex = models.TextField(blank=True, default="")
+    baseline_command_id = models.PositiveBigIntegerField(null=True, blank=True)
+    last_write_verified_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -1748,6 +1762,37 @@ class MeterPrepaidSettings(models.Model):
             **{f"set1StepPrice{i}": getattr(self, f"step1_price_{i}") for i in range(1, 5)},
             **{f"set2StepPrice{i}": getattr(self, f"step2_price_{i}") for i in range(1, 5)},
         }
+
+class MeterPrepaidParameterBatch(models.Model):
+    ACTION_CHOICES = (("save_all", "Save All"),)
+    STATUS_CHOICES = (
+        ("previewed", "Previewed"),
+        ("processing", "Processing"),
+        ("completed", "Completed"),
+        ("partial", "Partial / uncertain"),
+        ("failed", "Failed"),
+    )
+
+    batch_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES, default="save_all")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="previewed", db_index=True)
+    target_count = models.PositiveIntegerField(default=0)
+    accepted_count = models.PositiveIntegerField(default=0)
+    warning_count = models.PositiveIntegerField(default=0)
+    rejected_count = models.PositiveIntegerField(default=0)
+    preview_changes = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="prepaid_parameter_batches"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"Prepaid batch {self.batch_key} ({self.status})"
+
 
 # models.py
 
@@ -2094,8 +2139,11 @@ class MeterPrepaidParameterRead(models.Model):
 
 
 class MeterPrepaidWriteAttempt(models.Model):
-    STATUSES = [("pending", "Pending"), ("sent", "Sent"), ("verified", "Verified"), ("failed", "Failed"), ("rolled_back", "Rolled back")]
+    STATUSES = [("pending", "Pending"), ("sent", "Sent"), ("verified", "Verified"), ("failed", "Failed"), ("uncertain", "Uncertain"), ("rolled_back", "Rolled back")]
     pilot = models.ForeignKey(MeterPrepaidPilot, on_delete=models.CASCADE, related_name="write_attempts")
+    batch = models.ForeignKey(
+        "smart_meter.MeterPrepaidParameterBatch", null=True, blank=True, on_delete=models.SET_NULL, related_name="attempts"
+    )
     parameter = models.CharField(max_length=64)
     requested_value = models.CharField(max_length=128)
     original_value = models.CharField(max_length=128, blank=True)
@@ -2104,6 +2152,10 @@ class MeterPrepaidWriteAttempt(models.Model):
     ack_hex = models.TextField(blank=True)
     read_back_hex = models.TextField(blank=True)
     actual_value = models.CharField(max_length=128, blank=True)
+    before_hash = models.CharField(max_length=64, blank=True, default="")
+    desired_hash = models.CharField(max_length=64, blank=True, default="")
+    command_id = models.PositiveBigIntegerField(null=True, blank=True)
+    result_state = models.CharField(max_length=32, blank=True, default="")
     status = models.CharField(max_length=16, choices=STATUSES, default="pending")
     reason = models.CharField(max_length=255)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="prepaid_write_attempts")

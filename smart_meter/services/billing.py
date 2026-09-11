@@ -28,7 +28,12 @@ def generate_bill_for_unit(unit, period_start, period_end, tariff: Tariff = None
     if opening is None or closing is None:
         raise ValueError("Insufficient readings for the selected period")
 
-    units = max(Decimal('0.000'), closing - opening)  # guard negative due to rollovers/resets
+    units = closing - opening
+    if units < 0:
+        raise ValueError(
+            f"Billing blocked: meter {meter.meter_number} cumulative energy decreased "
+            f"from {opening} to {closing}. Resolve meter reset/replacement continuity first."
+        )
     amount = (units * t.rate_per_kwh).quantize(Decimal('0.01'))
 
     bill = Bill.objects.create(

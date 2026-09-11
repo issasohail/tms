@@ -957,8 +957,41 @@ def iesco_bill_pdf_upload_to(instance, _filename):
 
 
 class IescoBillReading(models.Model):
+    TRUST_FETCHED = "fetched"
+    TRUST_PARSED = "parsed"
+    TRUST_VERIFIED = "verified"
+    TRUST_CONFIRMED = "confirmed"
+    TRUST_STATUS_CHOICES = [
+        (TRUST_FETCHED, "Fetched"),
+        (TRUST_PARSED, "Parsed"),
+        (TRUST_VERIFIED, "Verified"),
+        (TRUST_CONFIRMED, "Confirmed for reconciliation"),
+    ]
+
     reference_no = models.CharField(max_length=20)
     fetched_at = models.DateTimeField(null=True, blank=True)
+    trust_status = models.CharField(
+        max_length=16,
+        choices=TRUST_STATUS_CHOICES,
+        default=TRUST_FETCHED,
+        db_index=True,
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="iesco_bill_readings_verified",
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="iesco_bill_readings_confirmed",
+    )
     consumer_id = models.CharField(max_length=20, blank=True, null=True)
     consumer_name = models.CharField(max_length=255, blank=True, null=True)
     address = models.CharField(max_length=500, blank=True, null=True)

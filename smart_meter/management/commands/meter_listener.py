@@ -198,7 +198,6 @@ CONTROL_HOST = "127.0.0.1"
 CONTROL_PORT = 7000
 
 SNAPSHOT_MINUTES = 15  # unchanged
-BIDIRECTIONAL_ENERGY_METERS = {"260305510019", "260305510020", "260305510021"}
 
 # =========================
 # Connection registry & waiter management
@@ -1079,8 +1078,7 @@ class ClientHandler(threading.Thread):
             data["total_energy"] = data["forward_active_energy_kwh"]
         elif di == "028011FF" and data.get("total_energy") is not None:
             if (
-                meter_number in BIDIRECTIONAL_ENERGY_METERS
-                or meter.reading_profile == Meter.READING_PROFILE_TOTAL_AND_PER_PHASE
+                meter.reading_profile == Meter.READING_PROFILE_TOTAL_AND_PER_PHASE
                 or meter.reverse_energy_capability == Meter.REVERSE_CAPABILITY_SUPPORTED
             ):
                 # On a confirmed bidirectional meter the bulk register combines
@@ -1170,7 +1168,10 @@ class ClientHandler(threading.Thread):
 
         # Bulk frames do not reliably contain the separate reverse register.
         # Queue confirmed direct forward/reverse reads once per snapshot period.
-        if di == "028011FF" and meter_number in BIDIRECTIONAL_ENERGY_METERS:
+        if (
+            di == "028011FF"
+            and meter.reverse_energy_capability == Meter.REVERSE_CAPABILITY_SUPPORTED
+        ):
             poll_after = now - datetime.timedelta(minutes=SNAPSHOT_MINUTES)
             if not MeterCommand.objects.filter(
                 meter=meter, source="energy_auto_poll", created_at__gte=poll_after

@@ -18,6 +18,7 @@ from smart_meter.models import (
     LiveReading,
     Meter,
     MeterReading,
+    MeterRawFrame,
     UtilityBillCycle,
     UtilityBillPayment,
     UtilityConnection,
@@ -180,6 +181,7 @@ class BoundaryReading:
     timestamp: datetime | None
     distance: timedelta | None
     status: str
+    source: str = "historical_snapshot"
 
 
 def tolerance_status(distance):
@@ -203,7 +205,42 @@ def _register_value(reading, field_name, fallback_field=None):
     return Decimal(str(value)) if value is not None else None
 
 
+def _raw_register_spec(field_name):
+    return {
+        "forward_active_energy_kwh": ("00010000", "forward_active_energy_kwh"),
+        "reverse_active_energy_kwh": ("00020000", "reverse_active_energy_kwh"),
+    }.get(field_name)
+
+
+def _raw_boundary_reading(meter, target_at, field_name):
+    spec = _raw_register_spec(field_name)
+    if not spec:
+        return None
+    di, decoded_key = spec
+    qs = MeterRawFrame.objects.filter(
+        meter=meter, data_identifier=di, trust_classification=MeterRawFrame.TRUST_AUTHORITATIVE
+    )
+    before = qs.filter(received_at__lte=target_at).order_by("-received_at", "-id").first()
+    after = qs.filter(received_at__gt=target_at).order_by("received_at", "id").first()
+    candidates = [row for row in (before, after) if row is not None]
+    if not candidates:
+        return None
+    frame = min(candidates, key=lambda row: abs(row.received_at - target_at))
+    raw_value = (frame.decoded_data or {}).get(decoded_key)
+    if raw_value in (None, ""):
+        return None
+    try:
+        value = Decimal(str(raw_value))
+    except Exception:
+        return None
+    distance = abs(frame.received_at - target_at)
+    return BoundaryReading(value, frame.received_at, distance, tolerance_status(distance), "authoritative_raw_frame")
+
+
 def closest_boundary_reading(meter, target_at, field_name="total_energy", fallback_field=None):
+    raw = _raw_boundary_reading(meter, target_at, field_name)
+    if raw is not None:
+        return raw
     available = Q(**{f"{field_name}__isnull": False})
     if fallback_field:
         available |= Q(**{f"{fallback_field}__isnull": False})
@@ -227,6 +264,7 @@ def closest_boundary_reading(meter, target_at, field_name="total_energy", fallba
         reading.ts,
         distance,
         tolerance_status(distance),
+        "historical_snapshot",
     )
 
 
@@ -255,18 +293,33 @@ def meter_period_delta(
         available = Q(**{f"{field_name}__isnull": False})
         if fallback_field:
             available |= Q(**{f"{fallback_field}__isnull": False})
-        readings = (
-            MeterReading.objects.filter(
-                meter=meter,
-                ts__gte=start.timestamp,
-                ts__lte=end.timestamp,
+        raw_spec = _raw_register_spec(field_name)
+        if raw_spec and start.source == "authoritative_raw_frame" and end.source == "authoritative_raw_frame":
+            di, decoded_key = raw_spec
+            readings = MeterRawFrame.objects.filter(
+                meter=meter, data_identifier=di,
+                trust_classification=MeterRawFrame.TRUST_AUTHORITATIVE,
+                received_at__gte=start.timestamp, received_at__lte=end.timestamp,
+            ).order_by("received_at", "id")
+            values = []
+            for reading in readings:
+                raw_value = (reading.decoded_data or {}).get(decoded_key)
+                if raw_value not in (None, ""):
+                    try:
+                        values.append(Decimal(str(raw_value)))
+                    except Exception:
+                        pass
+        else:
+            readings = (
+                MeterReading.objects.filter(
+                    meter=meter, ts__gte=start.timestamp, ts__lte=end.timestamp,
+                ).filter(available).order_by("ts", "id")
             )
-            .filter(available)
-            .order_by("ts", "id")
-        )
+            values = [_register_value(reading, field_name, fallback_field) for reading in readings]
         previous = None
-        for reading in readings:
-            current = _register_value(reading, field_name, fallback_field)
+        for current in values:
+            if current is None:
+                continue
             if previous is not None and current < previous:
                 valid = False
                 reason = (
@@ -340,7 +393,9 @@ def _iesco_invoice_bill(system, start_date=None, end_date=None):
         lookup |= Q(consumer_id=connection.consumer_id)
     if not lookup:
         return None
-    bills = IescoBillReading.objects.filter(lookup).order_by("-received_at", "-pk")
+    bills = IescoBillReading.objects.filter(
+        lookup, trust_status=IescoBillReading.TRUST_CONFIRMED, confirmed_at__isnull=False
+    ).order_by("-confirmed_at", "-received_at", "-pk")
     if start_date is None or end_date is None:
         return bills.first()
     for bill in bills[:24]:
@@ -563,7 +618,7 @@ def build_energy_reconciliation(system, start_date, end_date):
         "export_kwh": export_kwh,
         "exact_bill": bill,
         "iesco_bill": iesco_bill,
-        "grid_source": "IESCO invoice" if iesco_bill else "Smart meter",
+        "grid_source": "IESCO confirmed bill" if iesco_bill else "Smart meter",
         "building_consumption_kwh": building_consumption,
         "distribution_variance_kwh": distribution_variance,
         "raw_output_to_billing_difference_kwh": raw_difference,

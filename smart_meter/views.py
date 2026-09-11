@@ -58,7 +58,6 @@ from leases.models import (
 )
 from properties.models import Property, Unit  # adjust if different
 from smart_meter.forms import MeterPrepaidSettingsForm
-from smart_meter.meter_client import send_restore_command  # ✅ we'll add this below
 
 # make sure this is imported
 from smart_meter.models import (
@@ -85,8 +84,6 @@ from smart_meter.status import (
     resolve_meter_online_statuses,
 )
 
-# You will write these
-from smart_meter.utils import send_cutoff_command, send_restore_command
 from smart_meter.utils.commands import (
     refresh_live,
     request_instant_live_reading,
@@ -157,7 +154,6 @@ from .models import (
     UnknownMeter,
 )
 from .services.billing import generate_bill_for_unit
-from .tasks import poll_all_meters
 
 DISABLE_CUTOFFS = getattr(settings, "DISABLE_CUTOFFS", False)
 
@@ -263,14 +259,6 @@ def _send_switch(meter_number, frame, **kwargs):
     # some backends may not accept extra flags; drop ones they likely don't know about
     kwargs = {k: v for k, v in kwargs.items() if k in _SEND_SIG.parameters}
     return send_via_db(meter_number=meter_number, frame_hex=hex_str, **kwargs)
-
-
-# If you have these helpers; otherwise we’ll just log the event
-try:
-    from smart_meter.meter_client import send_cutoff_command, send_restore_command
-except Exception:
-    send_cutoff_command = None
-    send_restore_command = None
 
 
 def assign_meter(request):
@@ -3260,12 +3248,6 @@ def meter_readings(request, meter_id):
     )
 
 
-def fetch_meter_data(request):
-    # Fetch data for all meters
-    poll_all_meters()  # Call your polling function here to fetch the data
-    return JsonResponse({"status": "success"})
-
-
 def toggle_power(request, meter_id):
     meter = get_object_or_404(Meter, pk=meter_id)
     # Logic to toggle power, e.g., sending a TCP command to turn off the meter
@@ -4405,20 +4387,18 @@ def _parse_meter_param(meter_param: str):
 @login_required
 @require_POST
 def fetch_meter_data(request):
-    try:
-        # Simulate data fetching - in real app, this would call your API
-        # Update last_updated timestamp for all meters
-        from .models import Meter
+    """Return listener status without fabricating meter freshness.
 
-        Meter.objects.update(last_updated=timezone.now())
-
-        return JsonResponse(
-            {"status": "success", "message": "Meter data refreshed successfully"}
-        )
-    except Exception as e:
-        return JsonResponse(
-            {"status": "error", "message": f"Failed to fetch data: {e!s}"}, status=500
-        )
+    Meter telemetry is collected continuously by ``manage.py meter_listener``.
+    A browser refresh must never advance ``Meter.last_updated`` unless actual
+    telemetry was received.
+    """
+    return JsonResponse(
+        {
+            "status": "success",
+            "message": "Meter readings are collected continuously by the meter listener.",
+        }
+    )
 
 
 # views.py

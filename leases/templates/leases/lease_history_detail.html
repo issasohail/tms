@@ -121,7 +121,7 @@
 .lh-kv-table tr { border-bottom: 1px solid #f0f2f6; }
 .lh-kv-table tr:last-child { border-bottom: none; }
 .lh-kv-table th {
-  font-size: .7rem; font-weight: 700; color: #8a96b4;
+  font-size: .72rem; font-weight: 800; color: #111827;
   text-transform: uppercase; letter-spacing: .04em;
   padding: 5px 8px; text-align: left; width: 38%; white-space: nowrap;
   background: #fafbff;
@@ -150,7 +150,7 @@
   padding: 8px 10px; font-size: .78rem; color: #4a5568; line-height: 1.5;
   margin-top: 6px;
 }
-.lh-notes-label { font-size: .65rem; font-weight: 700; color: #8a96b4; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+.lh-notes-label { font-size: .72rem; font-weight: 800; color: #111827; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
 
 /* Bottom nav (mobile) */
 .lh-bottom-nav {
@@ -261,8 +261,8 @@
   min-width: 0;
 }
 .lh-stat-label {
-  color: #8a96b4;
-  font-size: .64rem;
+  color: #111827;
+  font-size: .72rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: .06em;
@@ -297,9 +297,9 @@
 .lh-overview-full { grid-column: span 2; }
 .lh-overview-half { grid-column: span 2; }
 .lh-overview-label {
-  font-size: .65rem;
+  font-size: .72rem;
   font-weight: 800;
-  color: #8a96b4;
+  color: #111827;
   text-transform: uppercase;
   letter-spacing: .05em;
 }
@@ -503,27 +503,27 @@
         <div class="lh-card-body">
           <div class="lh-overview-grid">
             <div class="lh-overview-third">
-              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Lease</div>
+              <div class="lh-overview-label">Lease</div>
               <div style="font-size:.85rem;color:#1a1f35;font-weight:600;">#{{ lease.id }}</div>
             </div>
             <div class="lh-overview-third">
-              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Status</div>
+              <div class="lh-overview-label">Status</div>
               <div>{% if history.is_original %}<span class="lh-badge lh-badge-orig">Original Lease</span>{% else %}<span class="lh-badge lh-badge-renew">Renewal</span>{% endif %}</div>
             </div>
             <div class="lh-overview-third">
-              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">History #</div>
+              <div class="lh-overview-label">History #</div>
               <div style="font-size:.85rem;color:#2856c8;font-weight:700;">#{{ history.renewal_number }}</div>
             </div>
             <div class="lh-overview-third lh-overview-tenant">
-              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Tenant</div>
+              <div class="lh-overview-label">Tenant</div>
               <div style="font-size:.85rem;color:#1a1f35;font-weight:500;">{{ lease.tenant.get_full_name }}</div>
             </div>
             <div class="lh-overview-third lh-overview-location">
-              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Building</div>
+              <div class="lh-overview-label">Building</div>
               <div style="font-size:.85rem;color:#1a1f35;">{{ lease.unit.property.property_name }}</div>
             </div>
             <div class="lh-overview-third lh-overview-location">
-              <div style="font-size:.65rem;font-weight:700;color:#9aa4c0;text-transform:uppercase;letter-spacing:.05em;">Unit</div>
+              <div class="lh-overview-label">Unit</div>
               <div style="font-size:.85rem;color:#1a1f35;">{{ lease.unit.unit_number }}</div>
             </div>
           </div>

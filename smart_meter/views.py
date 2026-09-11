@@ -686,6 +686,7 @@ def prepaid_controls(request):
     meters = list(Meter.objects.select_related("unit", "unit__property", "live").order_by(
         "unit__property__property_name", "unit__unit_number", "meter_number"
     ))
+    meters = _attach_tariff_verification(meters)
     from smart_meter.rates import resolve_electricity_rate
 
     statuses = resolve_meter_online_statuses(

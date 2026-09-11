@@ -62,7 +62,18 @@ ALLOWED_HOSTS = [
     "www.kirayas.com",
 ]
 
+SMART_METER_REDIS_URL = os.getenv(
+    "SMART_METER_REDIS_URL",
+    "redis://127.0.0.1:6379/2",
+)
 
+SMART_METER_REDIS_CONNECT_TIMEOUT = float(
+    os.getenv("SMART_METER_REDIS_CONNECT_TIMEOUT", "0.5")
+)
+
+SMART_METER_REDIS_SOCKET_TIMEOUT = float(
+    os.getenv("SMART_METER_REDIS_SOCKET_TIMEOUT", "0.5")
+)
 CSRF_TRUSTED_ORIGINS = [
     "http://119.156.230.185",
     "http://192.168.100.39",

@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone as datetime_timezone
+from datetime import datetime
+from datetime import timezone as datetime_timezone
 from functools import lru_cache
-from typing import Iterable
 
 from django.conf import settings
 from django.utils import timezone
@@ -14,7 +15,6 @@ from redis import Redis
 from redis.backoff import NoBackoff
 from redis.exceptions import RedisError
 from redis.retry import Retry
-
 
 logger = logging.getLogger(__name__)
 KEY_PREFIX = "smart_meter:presence:"
@@ -63,8 +63,10 @@ def _get_redis_client() -> Redis | None:
     return Redis.from_url(
         redis_url,
         decode_responses=True,
-        socket_connect_timeout=0.1,
-        socket_timeout=0.1,
+        socket_connect_timeout=getattr(
+            settings, "SMART_METER_REDIS_CONNECT_TIMEOUT", 0.5
+        ),
+        socket_timeout=getattr(settings, "SMART_METER_REDIS_SOCKET_TIMEOUT", 0.5),
         health_check_interval=30,
         retry=Retry(NoBackoff(), 0),
     )
@@ -81,7 +83,9 @@ def _note_redis_failure(exc: Exception) -> None:
         should_log = time.monotonic() >= _retry_after_monotonic
         _retry_after_monotonic = time.monotonic() + _FAILURE_RETRY_SECONDS
     if should_log:
-        logger.warning("Smart-meter presence Redis unavailable; using reading fallback: %s", exc)
+        logger.warning(
+            "Smart-meter presence Redis unavailable; using reading fallback: %s", exc
+        )
 
 
 def _key(meter_number: str) -> str:
@@ -101,7 +105,11 @@ def _as_presence(values) -> MeterPresence:
     except (TypeError, ValueError):
         source_port = None
     try:
-        generation = int(values["connection_generation"]) if values.get("connection_generation") else None
+        generation = (
+            int(values["connection_generation"])
+            if values.get("connection_generation")
+            else None
+        )
     except (TypeError, ValueError):
         generation = None
     return MeterPresence(
@@ -187,7 +195,9 @@ redis.call('HSET', KEYS[1], 'connected', '0')
 return 1
 """
     try:
-        return bool(client.eval(script, 1, _key(meter_number), connection_identity or ""))
+        return bool(
+            client.eval(script, 1, _key(meter_number), connection_identity or "")
+        )
     except (RedisError, OSError, ValueError) as exc:
         _note_redis_failure(exc)
         return False

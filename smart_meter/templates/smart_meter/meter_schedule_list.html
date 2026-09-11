@@ -15,6 +15,15 @@
   .meter-schedule-container .day-toggle[data-day="4"] { background:#dcfce7; border-color:#86efac; color:#166534; }
   .meter-schedule-container .day-toggle[data-day="5"] { background:#fce7f3; border-color:#f9a8d4; color:#9d174d; }
   .meter-schedule-container .day-toggle[data-day="6"] { background:#fee2e2; border-color:#fca5a5; color:#991b1b; }
+  .meter-schedule-container tbody td:last-child { min-width:205px; }
+  .meter-schedule-container tbody td:last-child > form { display:contents; }
+  .meter-schedule-container .copy-meter-select { display:block; width:100%; height:20px; min-height:20px; margin-bottom:.2rem !important; padding-top:0; padding-bottom:0; font-size:.72rem; line-height:1; }
+  .meter-schedule-container tbody td:last-child > form > .btn,
+  .meter-schedule-container tbody td:last-child > .save-schedule { display:inline-block; width:calc(50% - .14rem) !important; height:20px; min-height:20px; padding:0 .3rem; font-size:.68rem; line-height:18px; white-space:nowrap; vertical-align:top; }
+  .meter-schedule-container tbody td:last-child > .save-schedule { margin-left:.2rem; }
+  .meter-schedule-container tbody td:last-child .select2-container { display:block; margin-bottom:.2rem; }
+  .meter-schedule-container .select2-container--bootstrap-5 .select2-selection--single { min-height:20px; height:20px; padding-top:0; padding-bottom:0; font-size:.72rem; line-height:18px; }
+  .meter-schedule-container .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered { line-height:18px; }
   @media (max-width:1590px) { .meter-schedule-container { max-width:calc(100% - 24px) !important; } }
 </style>
 {% endblock %}

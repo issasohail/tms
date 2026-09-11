@@ -274,13 +274,8 @@
                   <a class="btn btn-success" href="{% url 'smart_meter:reading_list' %}?meter={{ m.id }}" title="Readings">
                     <i class="fas fa-list"></i>
                   </a>
-                  {% if perms.smart_meter.read_meter_tariff %}
-                  <a class="btn btn-warning" href="{% url 'smart_meter:tariff_configure' m.id %}" title="Tariff Settings" aria-label="Tariff settings for meter {{ m.meter_number }}">
-                    <i class="fas fa-gear"></i>
-                  </a>
-                  {% endif %}
-                  <button type="button" class="btn btn-success" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up"><i class="fas fa-plus"></i></button>
-                  <button type="button" class="btn btn-warning" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund"><i class="fas fa-minus"></i></button>
+                  <a class="btn btn-success" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up"><i class="fas fa-plus"></i></a>
+                  <a class="btn btn-warning" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund"><i class="fas fa-minus"></i></a>
                 </div>
               </td>
             </tr>
@@ -334,9 +329,8 @@
               <a class="btn btn-outline-primary" href="{% url 'smart_meter:meter_detail' m.id %}" title="View"><i class="fas fa-eye"></i></a>
               <a class="btn btn-outline-secondary" href="{% url 'smart_meter:meter_edit' m.id %}" title="Edit"><i class="fas fa-pen"></i></a>
               <a class="btn btn-outline-success" href="{% url 'smart_meter:reading_list' %}?meter={{ m.id }}" title="Readings"><i class="fas fa-list"></i></a>
-              {% if perms.smart_meter.read_meter_tariff %}<a class="btn btn-outline-warning" href="{% url 'smart_meter:tariff_configure' m.id %}" title="Tariff Settings" aria-label="Tariff settings for meter {{ m.meter_number }}"><i class="fas fa-gear"></i></a>{% endif %}
-              <button type="button" class="btn btn-outline-success" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up"><i class="fas fa-plus"></i></button>
-              <button type="button" class="btn btn-outline-warning" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund"><i class="fas fa-minus"></i></button>
+              <a class="btn btn-outline-success" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up"><i class="fas fa-plus"></i></a>
+              <a class="btn btn-outline-warning" href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund"><i class="fas fa-minus"></i></a>
             </div>
           </div>
         </article>
@@ -393,7 +387,7 @@
 
 <style>
 .meter-list-page {
-  max-width: 1850px;
+  max-width: none;
 }
 
 .compact-table {
@@ -433,12 +427,12 @@
 .col-date-lg { width: 122px; font-size: 12px; }
 .col-metric { width: 72px; }
 .col-energy-metric { width: 122px; }
-.col-actions { width: 210px; }
+.col-actions { width: 175px; }
 
 @media (min-width: 992px) {
   .col-prop { width: 92px; }
   .col-tenant { width: 110px; }
-  .col-actions { width: 220px; }
+  .col-actions { width: 180px; }
 }
 
 .power-control {

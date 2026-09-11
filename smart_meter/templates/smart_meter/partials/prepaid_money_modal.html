@@ -41,10 +41,13 @@
 
 <script>
   (function () {
-  if (window.prepaidMoneyModalBound) return;
-  window.prepaidMoneyModalBound = true;
-  document.addEventListener('click', function (event) {
-    const trigger = event.target.closest('[data-prepaid-money]');
+  function bindPrepaidMoneyModal() {
+    if (window.prepaidMoneyModalBound) return;
+    window.prepaidMoneyModalBound = true;
+    document.addEventListener('click', function (event) {
+    const trigger = event.target instanceof Element
+      ? event.target.closest('[data-prepaid-money]')
+      : null;
     if (!trigger) return;
     event.preventDefault();
     const operation = trigger.dataset.operation === 'refund' ? 'refund' : 'recharge';
@@ -76,6 +79,13 @@
     const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
     modal.show();
     modalElement.addEventListener('shown.bs.modal', () => document.getElementById('prepaidMoneyAmount')?.focus(), {once: true});
-  });
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindPrepaidMoneyModal, {once: true});
+  } else {
+    bindPrepaidMoneyModal();
+  }
   })();
 </script>

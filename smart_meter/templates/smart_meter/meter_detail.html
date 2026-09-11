@@ -1,11 +1,17 @@
 {% extends 'base.html' %}
 
+{% block main_container_class %}container-fluid{% endblock %}
+
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
 
 <style>
   .meter-detail-wrap {
     max-width: 1280px;
+  }
+
+  .meter-detail-wrap.raw-readings-active {
+    max-width: 1900px;
   }
 
   .meter-detail-title {
@@ -212,7 +218,7 @@
   }
 </style>
 
-<div class="container meter-detail-wrap mt-3 mb-4">
+<div class="container-fluid meter-detail-wrap {% if active_tab == 'raw-readings' %}raw-readings-active{% endif %} mt-3 mb-4">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
       <h2 class="meter-detail-title mb-0">Meter Details: {{ meter.meter_number }}</h2>

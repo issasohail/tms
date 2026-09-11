@@ -57,7 +57,7 @@
   </td>
 
   <td class="col-balance">
-    <a href="{% url 'smart_meter:prepaid_meter_ledger' r.meter_id %}" title="Open balance ledger">
+    <a class="fw-semibold" href="{% url 'smart_meter:prepaid_meter_ledger' r.meter_id %}" title="Open balance ledger">
       {% if r.display_balance is not None %}{{ CURRENCY_SYMBOL }} {{ r.display_balance|floatformat:2|intcomma }}{% else %}—{% endif %}
     </a>
     {% if r.unit_rate is not None %}<small class="d-block text-muted">@ {{ r.unit_rate|floatformat:4 }}</small>{% endif %}

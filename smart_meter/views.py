@@ -567,6 +567,22 @@ def _prepaid_return(request):
     return redirect("smart_meter:prepaid_controls")
 
 
+def _attach_tariff_verification(meters):
+    """Expose tariff readiness to mode-toggle templates without per-row queries."""
+    from smart_meter.models import MeterTariffConfiguration
+
+    meters = list(meters)
+    verified_ids = set(
+        MeterTariffConfiguration.objects.filter(
+            meter_id__in=[meter.pk for meter in meters],
+            last_verified_at__isnull=False,
+        ).values_list("meter_id", flat=True)
+    )
+    for meter in meters:
+        meter.tariff_is_verified = meter.pk in verified_ids
+    return meters
+
+
 @login_required
 @permission_required(
     ("smart_meter.change_meter", "smart_meter.change_metersettings"),
@@ -585,7 +601,51 @@ def prepaid_controls(request):
                 return redirect("smart_meter:prepaid_controls")
         elif action in {"enable_meter", "disable_meter"}:
             meter = get_object_or_404(Meter, pk=request.POST.get("meter_id"))
-            from smart_meter.models import MeterPrepaidPilot
+            from smart_meter.models import MeterPrepaidPilot, MeterTariffConfiguration
+
+            tariff_was_configured = MeterTariffConfiguration.objects.filter(
+                meter=meter,
+                last_verified_at__isnull=False,
+            ).exists()
+            if action == "enable_meter" and not tariff_was_configured:
+                if not request.user.has_perm("smart_meter.write_meter_tariff"):
+                    messages.error(
+                        request,
+                        "A verified tariff is required before prepaid can be enabled, "
+                        "and you do not have permission to write meter tariffs.",
+                    )
+                    return _prepaid_return(request)
+
+                tariff_text = (request.POST.get("tariff_rate") or "").strip()
+                try:
+                    tariff_rate = Decimal(tariff_text)
+                    if not tariff_rate.is_finite() or tariff_rate <= 0:
+                        raise ValueError
+                except Exception:
+                    messages.error(
+                        request,
+                        "Enter a valid tariff greater than zero before enabling prepaid.",
+                    )
+                    return _prepaid_return(request)
+
+                from smart_meter.services.tariff_configuration import configure_prices
+
+                audit = configure_prices(
+                    meter=meter,
+                    user=request.user,
+                    mode="flat",
+                    prices=[tariff_rate],
+                    active_rate_count=1,
+                    submission_key=request.POST.get("submission_key") or None,
+                )
+                if audit.status not in {"verified", "no_change"}:
+                    detail = audit.error or audit.get_status_display()
+                    messages.error(
+                        request,
+                        f"Prepaid was not enabled. Tariff write/read-back verification failed: {detail}",
+                    )
+                    return _prepaid_return(request)
+
             with transaction.atomic():
                 meter = Meter.objects.select_for_update().get(pk=meter.pk)
                 pilot, _ = MeterPrepaidPilot.objects.select_for_update().get_or_create(meter=meter)
@@ -594,7 +654,11 @@ def prepaid_controls(request):
                     pilot.status = "active_test"
                     message = (
                         f"Meter {meter.meter_number} enabled for prepaid operations and monthly invoicing. "
-                        "Database mode updated; no unverified physical mode-change frame was sent."
+                        + (
+                            "Tariff was sent to the meter and verified before prepaid was saved."
+                            if not tariff_was_configured
+                            else "The existing verified meter tariff was retained."
+                        )
                     )
                 else:
                     if pilot.recharges.filter(status__in=("pending", "uncertain")).exists():
@@ -1164,6 +1228,7 @@ def meter_list(request):
     paginator = Paginator(meters_qs, 50)
     page_obj = paginator.get_page(request.GET.get("page"))
     page_obj.object_list = attach_active_meter_counts(page_obj.object_list)
+    page_obj.object_list = _attach_tariff_verification(page_obj.object_list)
     from smart_meter.rates import resolve_electricity_rate
 
     page_statuses = resolve_meter_online_statuses(
@@ -3386,6 +3451,7 @@ def live_custom(request):
         reading.relay_operation_label = relay_state["operation_label"]
         reading.relay_indicator_label = relay_state["indicator_label"]
         reading.relay_indicator_class = relay_state["indicator_class"]
+    _attach_tariff_verification(reading.meter for reading in rows)
     readings_missing_counts = []
     for reading in rows:
         if reading.meter_id in active_meter_count_by_id:

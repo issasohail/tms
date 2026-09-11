@@ -630,14 +630,21 @@ def prepaid_controls(request):
 
                 from smart_meter.services.tariff_configuration import configure_prices
 
-                audit = configure_prices(
-                    meter=meter,
-                    user=request.user,
-                    mode="flat",
-                    prices=[tariff_rate],
-                    active_rate_count=1,
-                    submission_key=request.POST.get("submission_key") or None,
-                )
+                try:
+                    audit = configure_prices(
+                        meter=meter,
+                        user=request.user,
+                        mode="flat",
+                        prices=[tariff_rate],
+                        active_rate_count=1,
+                        submission_key=request.POST.get("submission_key") or None,
+                    )
+                except Exception as exc:
+                    messages.error(
+                        request,
+                        f"Prepaid was not enabled. Tariff configuration could not start: {exc}",
+                    )
+                    return _prepaid_return(request)
                 if audit.status not in {"verified", "no_change"}:
                     detail = audit.error or audit.get_status_display()
                     messages.error(

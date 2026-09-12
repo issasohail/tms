@@ -37,9 +37,10 @@ def resolve_meter_online_status(meter, live_reading, presence=None) -> dict:
         is_connected = measurement_is_fresh
         last_contact_at = last_measurement_at
     else:
+        socket_seen_at = presence.socket_seen_at or presence.last_contact_at
         contact_is_recent = bool(
-            presence.last_contact_at
-            and (now - presence.last_contact_at).total_seconds()
+            socket_seen_at
+            and (now - socket_seen_at).total_seconds()
             <= presence_ttl_seconds()
         )
         is_connected = bool(presence.connected and contact_is_recent)

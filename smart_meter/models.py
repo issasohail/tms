@@ -1598,6 +1598,45 @@ def deduct_balance_on_reading(sender, instance, created, **kwargs):
     balance.save()
 
 
+class MeterConnectionEvent(models.Model):
+    EVENT_CONNECTED = "connected"
+    EVENT_RECONNECTED = "reconnected"
+    EVENT_DISCONNECTED = "disconnected"
+    EVENT_REJECTED_DUPLICATE = "rejected_duplicate"
+    EVENT_TYPE_CHOICES = [
+        (EVENT_CONNECTED, "Connected"),
+        (EVENT_RECONNECTED, "Reconnected"),
+        (EVENT_DISCONNECTED, "Disconnected"),
+        (EVENT_REJECTED_DUPLICATE, "Rejected older duplicate"),
+    ]
+
+    meter_number = models.CharField(max_length=32, db_index=True)
+    event_type = models.CharField(max_length=24, choices=EVENT_TYPE_CHOICES, db_index=True)
+    occurred_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    source_ip = models.GenericIPAddressField(null=True, blank=True)
+    source_port = models.PositiveIntegerField(null=True, blank=True)
+    previous_source_ip = models.GenericIPAddressField(null=True, blank=True)
+    previous_source_port = models.PositiveIntegerField(null=True, blank=True)
+    connection_identity = models.CharField(max_length=64, blank=True)
+    connection_generation = models.BigIntegerField(null=True, blank=True)
+    connection_age_seconds = models.DecimalField(
+        max_digits=12, decimal_places=3, null=True, blank=True
+    )
+    disconnect_reason = models.CharField(max_length=32, blank=True)
+
+    class Meta:
+        ordering = ["-occurred_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["meter_number", "-occurred_at"],
+                name="sm_conn_meter_time_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.meter_number} {self.event_type} at {self.occurred_at}"
+
+
 class MeterEvent(models.Model):
     EVENT_TYPES = [
         ("cutoff", "Power Cut-Off"),

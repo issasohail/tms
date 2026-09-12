@@ -4,13 +4,13 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import AnonymousUser
 from django.core.management import call_command
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 from redis.exceptions import RedisError
 
 from properties.models import Property, Unit
 from smart_meter import views
-from smart_meter.models import LiveReading, Meter, MeterRawFrame
+from smart_meter.models import LiveReading, Meter, MeterConnectionEvent, MeterRawFrame
 from smart_meter.services import meter_presence
 from smart_meter.services.meter_presence import MeterPresence
 
@@ -183,3 +183,46 @@ class ConnectivityReportReadOnlyTests(TestCase):
         self.assertIn("REPORT-1", output.getvalue())
         self.assertIn("REPORT-2", output.getvalue())
         self.assertIn("online", output.getvalue())
+
+class RedisPresenceConfigurationTests(TestCase):
+    @override_settings(
+        SMART_METER_REDIS_URL="redis://127.0.0.1:6379/2",
+        SMART_METER_REDIS_CONNECT_TIMEOUT=0.5,
+        SMART_METER_REDIS_SOCKET_TIMEOUT=0.5,
+    )
+    def test_presence_client_uses_dedicated_url_and_configured_timeouts(self):
+        meter_presence._get_redis_client.cache_clear()
+        try:
+            client = meter_presence._get_redis_client()
+            kwargs = client.connection_pool.connection_kwargs
+            self.assertEqual(kwargs["host"], "127.0.0.1")
+            self.assertEqual(kwargs["port"], 6379)
+            self.assertEqual(kwargs["db"], 2)
+            self.assertEqual(kwargs["socket_connect_timeout"], 0.5)
+            self.assertEqual(kwargs["socket_timeout"], 0.5)
+        finally:
+            meter_presence._get_redis_client.cache_clear()
+
+    def test_socket_seen_at_is_parsed_separately_from_meter_contact(self):
+        presence = meter_presence._as_presence({
+            "connected": "1",
+            "last_contact_at": "1700000000.0",
+            "socket_seen_at": "1700000030.0",
+        })
+        self.assertTrue(presence.connected)
+        self.assertNotEqual(presence.last_contact_at, presence.socket_seen_at)
+
+
+class MeterConnectionEventTests(TestCase):
+    def test_connection_event_can_capture_reconnect_diagnostics(self):
+        event = MeterConnectionEvent.objects.create(
+            meter_number="260305510019",
+            event_type=MeterConnectionEvent.EVENT_RECONNECTED,
+            source_ip="203.99.190.49",
+            source_port=16906,
+            previous_source_ip="203.99.190.49",
+            previous_source_port=60238,
+            connection_age_seconds="222.500",
+        )
+        self.assertEqual(event.event_type, "reconnected")
+        self.assertEqual(event.previous_source_port, 60238)

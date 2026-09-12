@@ -38,6 +38,7 @@ from smart_meter.models import (
     LiveReading,
     Meter,
     MeterCommand,  # already importing Meter
+    MeterConnectionEvent,
     MeterReading,
     MeterRawFrame,
     UnknownMeter,
@@ -63,6 +64,7 @@ from smart_meter.services.meter_presence import (
     clear_all_meter_connections,
     clear_meter_connection,
     record_meter_contact,
+    refresh_meter_connection,
 )
 from smart_meter.utils.frames import build_read_028011FF
 
@@ -180,9 +182,12 @@ LOG_FILE_FRAMES = Path(LOG_DIR) / "meter_raw_frames.log"
 IDLE_TIMEOUT = 0  # seconds; 0/False => never close just because idle
 
 # TCP keepalive tuning (helps survive NATs)
-KA_IDLE = 600  # start keepalive probes after 600s idle
-KA_INT = 10  # send a probe every 10s
-KA_CNT = 3  # drop after 3 failed probes
+KA_IDLE = int(getattr(settings, "METER_TCP_KEEPALIVE_IDLE_SECONDS", 60))
+KA_INT = int(getattr(settings, "METER_TCP_KEEPALIVE_INTERVAL_SECONDS", 20))
+KA_CNT = int(getattr(settings, "METER_TCP_KEEPALIVE_COUNT", 3))
+PRESENCE_REFRESH_SECONDS = max(
+    5, int(getattr(settings, "SMART_METER_PRESENCE_REFRESH_SECONDS", 30))
+)
 
 # Application heartbeats are disabled unless a vendor-supplied complete frame is
 # explicitly configured.  A bare DI such as 028011FF is not a DL/T645 frame.
@@ -222,10 +227,75 @@ def _meter_request_lock(meter_number: str) -> threading.Lock:
         return METER_REQUEST_LOCKS.setdefault(meter_number, threading.Lock())
 
 
+def _split_peer(peer):
+    host, sep, port = str(peer or "").rpartition(":")
+    if not sep:
+        return str(peer or "") or None, None
+    try:
+        return host or None, int(port)
+    except (TypeError, ValueError):
+        return host or None, None
+
+
+def _record_connection_event(
+    meter_number,
+    event_type,
+    handler,
+    *,
+    previous_peer=None,
+    disconnect_reason="",
+    connection_age_seconds=None,
+):
+    """Persist diagnostics without ever interrupting meter transport."""
+    if not meter_number:
+        return
+    # Connection-history diagnostics are best-effort. Django TestCase and a
+    # few internal callers can invoke registration while the current thread is
+    # already inside an atomic block. A diagnostic database error caught there
+    # would still mark the caller's transaction as broken, so skip the optional
+    # history write in that situation. Production listener threads are not
+    # wrapped in an outer atomic block and continue to persist these events.
+    if connection.in_atomic_block:
+        return
+    previous_ip, previous_port = _split_peer(previous_peer)
+    age = (
+        max(
+            0.0,
+            time.monotonic()
+            - getattr(handler, "accepted_at_monotonic_seconds", time.monotonic()),
+        )
+        if connection_age_seconds is None
+        else max(0.0, float(connection_age_seconds))
+    )
+    try:
+        close_old_connections()
+        MeterConnectionEvent.objects.create(
+            meter_number=str(meter_number),
+            event_type=event_type,
+            source_ip=handler.addr[0] if handler.addr else None,
+            source_port=handler.addr[1] if handler.addr else None,
+            previous_source_ip=previous_ip,
+            previous_source_port=previous_port,
+            connection_identity=getattr(handler, "connection_identity", "") or "",
+            connection_generation=getattr(handler, "connection_generation", None),
+            connection_age_seconds=f"{age:.3f}",
+            disconnect_reason=disconnect_reason or "",
+        )
+    except Exception as exc:
+        logger.debug("Unable to persist connection event meter=%s: %s", meter_number, exc)
+    finally:
+        if not connection.in_atomic_block:
+            close_old_connections()
+
+
 def _register_handler(meter_number: str, handler: ClientHandler):
     if not meter_number:
         return False
     genuine_registration = False
+    event_type = None
+    previous_peer = None
+    event_age = None
+    rejected_duplicate = False
     with ACTIVE_LOCK:
         old = ACTIVE_HANDLERS.get(meter_number)
         if old is handler:
@@ -248,21 +318,52 @@ def _register_handler(meter_number: str, handler: ClientHandler):
                 getattr(old, "peer", "?"),
                 getattr(old, "accepted_at_monotonic", 0),
             )
-            handler.close(reason="older_duplicate")
-            return False
-        if old:
-            try:
-                logger.info(
-                    "ðŸ” Meter %s reconnected from %s; closing old peer %s",
-                    meter_number,
-                    handler.peer,
-                    getattr(old, "peer", "?"),
+            previous_peer = getattr(old, "peer", None)
+            rejected_duplicate = True
+        else:
+            if old:
+                old_age = max(
+                    0.0,
+                    time.monotonic()
+                    - getattr(old, "accepted_at_monotonic_seconds", time.monotonic()),
                 )
-                old.close(reason="replaced")  # politely stop the old thread/socket
-            except Exception:
-                pass
-        ACTIVE_HANDLERS[meter_number] = handler
-        genuine_registration = True
+                logger.info(
+                    "METER_RECONNECTED meter=%s old_peer=%s new_peer=%s "
+                    "previous_connection_age=%.1fs",
+                    meter_number,
+                    getattr(old, "peer", "?"),
+                    handler.peer,
+                    old_age,
+                )
+                event_type = MeterConnectionEvent.EVENT_RECONNECTED
+                previous_peer = getattr(old, "peer", None)
+                event_age = old_age
+                old.close(reason="replaced")
+            else:
+                event_type = MeterConnectionEvent.EVENT_CONNECTED
+            ACTIVE_HANDLERS[meter_number] = handler
+            genuine_registration = True
+
+    # Never hold ACTIVE_LOCK across database I/O. Diagnostics are fail-open.
+    if rejected_duplicate:
+        _record_connection_event(
+            meter_number,
+            MeterConnectionEvent.EVENT_REJECTED_DUPLICATE,
+            handler,
+            previous_peer=previous_peer,
+            disconnect_reason="older_duplicate",
+        )
+        handler.close(reason="older_duplicate")
+        return False
+    if event_type:
+        _record_connection_event(
+            meter_number,
+            event_type,
+            handler,
+            previous_peer=previous_peer,
+            connection_age_seconds=event_age,
+        )
+
     if not genuine_registration:
         return True
     # Wake deferred DB commands after the socket identity is known. This is
@@ -585,6 +686,7 @@ class ClientHandler(threading.Thread):
         self.peer = f"{addr[0]}:{addr[1]}"
         self.disconnect_reason = "shutdown"
         self.accepted_at_monotonic = time.monotonic_ns()
+        self.accepted_at_monotonic_seconds = time.monotonic()
         self.registration_generation = next(CONNECTION_REGISTRATION_SEQUENCE)
         self.connection_generation = time.time_ns()
         self.connection_identity = uuid.uuid4().hex
@@ -711,6 +813,20 @@ class ClientHandler(threading.Thread):
                     # if we cannot enqueue, loop will likely exit soon anyway
                     pass
 
+    def _presence_loop(self):
+        """Keep socket presence alive separately from measurement freshness."""
+        while self.alive and not self._hb_stop.wait(PRESENCE_REFRESH_SECONDS):
+            meter_number = self.recognized_meter_number
+            if not meter_number:
+                continue
+            refresh_meter_connection(
+                meter_number,
+                self.addr[0],
+                self.addr[1],
+                connection_identity=self.connection_identity,
+                connection_generation=self.connection_generation,
+            )
+
     def run(self):
         # Django request middleware does not run for management-command threads.
         # Explicitly bracket this long-lived worker so it never inherits or leaves
@@ -725,6 +841,11 @@ class ClientHandler(threading.Thread):
         threading.Thread(
             target=self._sender_loop,
             name=f"tx@{self.addr[0]}:{self.addr[1]}",
+            daemon=True,
+        ).start()
+        threading.Thread(
+            target=self._presence_loop,
+            name=f"presence@{self.addr[0]}:{self.addr[1]}",
             daemon=True,
         ).start()
         try:
@@ -825,6 +946,12 @@ class ClientHandler(threading.Thread):
             self.alive = False
             if self.meter_number:
                 _unregister_handler(self.meter_number, self)
+                _record_connection_event(
+                    self.meter_number,
+                    MeterConnectionEvent.EVENT_DISCONNECTED,
+                    self,
+                    disconnect_reason=self.disconnect_reason,
+                )
             close_old_connections()
             connection.close()
             logger.info(

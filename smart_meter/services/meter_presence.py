@@ -28,6 +28,7 @@ class MeterPresence:
     available: bool
     connected: bool = False
     last_contact_at: datetime | None = None
+    socket_seen_at: datetime | None = None
     source_ip: str | None = None
     source_port: int | None = None
     connection_identity: str | None = None
@@ -101,6 +102,11 @@ def _as_presence(values) -> MeterPresence:
     except (TypeError, ValueError, OSError):
         last_contact_at = None
     try:
+        socket_epoch = float(values.get("socket_seen_at", ""))
+        socket_seen_at = datetime.fromtimestamp(socket_epoch, tz=datetime_timezone.utc)
+    except (TypeError, ValueError, OSError):
+        socket_seen_at = None
+    try:
         source_port = int(values["source_port"]) if values.get("source_port") else None
     except (TypeError, ValueError):
         source_port = None
@@ -116,6 +122,7 @@ def _as_presence(values) -> MeterPresence:
         available=True,
         connected=values.get("connected") == "1",
         last_contact_at=last_contact_at,
+        socket_seen_at=socket_seen_at,
         source_ip=values.get("source_ip") or None,
         source_port=source_port,
         connection_identity=values.get("connection_identity") or None,
@@ -152,6 +159,7 @@ redis.call('HSET', KEYS[1],
     'connection_identity', ARGV[2],
     'connected', '1',
     'last_contact_at', ARGV[3],
+    'socket_seen_at', ARGV[3],
     'source_ip', ARGV[4],
     'source_port', ARGV[5])
 redis.call('EXPIRE', KEYS[1], ARGV[6])
@@ -174,6 +182,63 @@ return 1
     except (RedisError, OSError, ValueError) as exc:
         _note_redis_failure(exc)
         return False
+
+
+def refresh_meter_connection(
+    meter_number,
+    source_ip=None,
+    source_port=None,
+    *,
+    connection_identity=None,
+    connection_generation=None,
+) -> bool:
+    """Refresh socket liveness without pretending a new meter frame arrived."""
+    if not meter_number or _redis_is_in_backoff():
+        return False
+    client = _get_redis_client()
+    if client is None:
+        return False
+    identity = str(connection_identity or "")
+    generation = int(connection_generation or time.time_ns())
+    now_epoch = f"{timezone.now().timestamp():.6f}"
+    script = """
+local current_generation = tonumber(redis.call('HGET', KEYS[1], 'connection_generation') or '0')
+local current_identity = redis.call('HGET', KEYS[1], 'connection_identity') or ''
+local incoming_generation = tonumber(ARGV[1])
+if current_generation > incoming_generation and current_identity ~= ARGV[2] then
+    return 0
+end
+if current_identity ~= '' and ARGV[2] ~= '' and current_identity ~= ARGV[2] then
+    return 0
+end
+redis.call('HSET', KEYS[1],
+    'connection_generation', ARGV[1],
+    'connection_identity', ARGV[2],
+    'connected', '1',
+    'socket_seen_at', ARGV[3],
+    'source_ip', ARGV[4],
+    'source_port', ARGV[5])
+redis.call('EXPIRE', KEYS[1], ARGV[6])
+return 1
+"""
+    try:
+        return bool(
+            client.eval(
+                script,
+                1,
+                _key(meter_number),
+                generation,
+                identity,
+                now_epoch,
+                source_ip or "",
+                source_port if source_port is not None else "",
+                presence_ttl_seconds(),
+            )
+        )
+    except (RedisError, OSError, ValueError) as exc:
+        _note_redis_failure(exc)
+        return False
+
 
 
 def clear_meter_connection(meter_number, connection_identity=None) -> bool:

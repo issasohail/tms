@@ -260,6 +260,7 @@
       <li class="nav-item"><a class="nav-link {% if active_tab == 'raw-readings' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=raw-readings"><i class="fas fa-list-alt me-1"></i> Raw Readings</a></li>
     {% endif %}
     <li class="nav-item"><a class="nav-link {% if active_tab == 'ledger' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=ledger"><i class="fas fa-book me-1"></i> Meter Ledger</a></li>
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'connections' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=connections"><i class="fas fa-network-wired me-1"></i> Connections</a></li>
     {% if perms.smart_meter.read_meter_tariff %}<li class="nav-item"><a class="nav-link {% if active_tab == 'tariff' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff"><i class="fas fa-coins me-1"></i> Tariff Configuration</a></li>{% endif %}
     {% if perms.smart_meter.view_meter_tariff_audit %}<li class="nav-item"><a class="nav-link {% if active_tab == 'tariff-audits' %}active{% endif %}" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff-audits"><i class="fas fa-history me-1"></i> Tariff Audits</a></li>{% endif %}
   </ul>
@@ -270,6 +271,35 @@
     <iframe class="meter-detail-embedded-tab" title="Meter Schedule" src="{% url 'smart_meter:meter_schedule_detail' meter.pk %}?embed=1" onload="this.style.height=this.contentWindow.document.documentElement.scrollHeight+'px'"></iframe>
   {% elif active_tab == 'raw-readings' %}
     <iframe class="meter-detail-embedded-tab" title="Raw Readings" src="{% url 'smart_meter:meter_raw_frame_history' meter.pk %}?embed=1" onload="this.style.height=this.contentWindow.document.documentElement.scrollHeight+'px'"></iframe>
+  {% elif active_tab == 'connections' %}
+    <div class="meter-detail-card bg-white p-3">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h5 class="meter-panel-title mb-0">Connection History</h5>
+        <span class="badge {% if reconnects_last_hour > 5 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">Reconnects last hour: {{ reconnects_last_hour }}</span>
+      </div>
+      <p class="small text-muted">Transport events are recorded independently of energy-reading freshness. Frequent <strong>Reconnected</strong> events indicate TCP churn even when Wi-Fi signal is strong.</p>
+      {% if connection_events %}
+        <div class="table-responsive">
+          <table class="table table-sm table-striped meter-table mb-0">
+            <thead><tr><th>Time</th><th>Event</th><th>Peer</th><th>Previous peer</th><th>Age</th><th>Reason</th></tr></thead>
+            <tbody>
+              {% for event in connection_events %}
+                <tr>
+                  <td>{{ event.occurred_at|date:"M d, Y H:i:s" }}</td>
+                  <td>{{ event.get_event_type_display }}</td>
+                  <td>{{ event.source_ip|default:"-" }}{% if event.source_port %}:{{ event.source_port }}{% endif %}</td>
+                  <td>{{ event.previous_source_ip|default:"-" }}{% if event.previous_source_port %}:{{ event.previous_source_port }}{% endif %}</td>
+                  <td>{% if event.connection_age_seconds != None %}{{ event.connection_age_seconds }}s{% else %}-{% endif %}</td>
+                  <td>{{ event.disconnect_reason|default:"-" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-muted mb-0">No connection events recorded yet. Events will appear as meters connect, reconnect, or disconnect.</p>
+      {% endif %}
+    </div>
   {% elif active_tab == 'ledger' %}
     {% include "smart_meter/partials/meter_detail_ledger.html" %}
   {% elif active_tab == 'tariff' %}

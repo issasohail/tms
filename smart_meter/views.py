@@ -67,6 +67,7 @@ from smart_meter.models import (
     MeterBalance,
     MeterEvent,
     MeterCommand,
+    MeterConnectionEvent,
     MeterPrepaidSettings,
     MeterPrepaidRecharge,
     MeterRawFrame,
@@ -2537,7 +2538,7 @@ def meter_detail(request, pk):
     active_tab = (request.GET.get("tab") or "overview").strip().lower()
     if active_tab not in {
         "overview", "credit-control", "schedule", "raw-readings",
-        "ledger", "tariff", "tariff-audits",
+        "ledger", "tariff", "tariff-audits", "connections",
     }:
         active_tab = "overview"
     installation_history = list(
@@ -2985,6 +2986,19 @@ def meter_detail(request, pk):
         detail_tab_context["tariff_audits"] = meter.tariff_audits.select_related(
             "initiating_user"
         )[:200]
+    elif active_tab == "connections":
+        connection_events = list(
+            MeterConnectionEvent.objects.filter(meter_number=meter.meter_number)[:200]
+        )
+        reconnects_last_hour = MeterConnectionEvent.objects.filter(
+            meter_number=meter.meter_number,
+            event_type=MeterConnectionEvent.EVENT_RECONNECTED,
+            occurred_at__gte=timezone.now() - timedelta(hours=1),
+        ).count()
+        detail_tab_context.update({
+            "connection_events": connection_events,
+            "reconnects_last_hour": reconnects_last_hour,
+        })
 
     return render(
         request,

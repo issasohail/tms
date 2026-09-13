@@ -278,6 +278,46 @@
         <span class="badge {% if reconnects_last_hour > 5 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">Reconnects last hour: {{ reconnects_last_hour }}</span>
       </div>
       <p class="small text-muted">Transport events are recorded independently of energy-reading freshness. Frequent <strong>Reconnected</strong> events indicate TCP churn even when Wi-Fi signal is strong.</p>
+      <div class="row g-2 mb-3">
+        <div class="col-6 col-lg-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small text-muted">Meter status</div>
+            <div class="fw-semibold {% if connection_status.is_online %}text-success{% else %}text-danger{% endif %}">
+              {% if connection_status.is_online %}Online{% else %}Offline{% endif %}
+            </div>
+            <div class="small text-muted">
+              {% if connection_status.measurement_is_fresh %}Recent valid reading{% elif connection_status.is_connected %}TCP connected; reading stale{% else %}No recent valid reading{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small text-muted">TCP socket</div>
+            <div class="fw-semibold">{% if connection_status.is_connected %}Connected{% else %}Disconnected{% endif %}</div>
+            <div class="small text-muted">
+              {% if connection_status.source_ip %}{{ connection_status.source_ip }}{% if connection_status.source_port %}:{{ connection_status.source_port }}{% endif %}{% else %}No active peer{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small text-muted">Current reconnect gap</div>
+            <div class="fw-semibold">{% if reconnect_gap_diagnostics.current_gap %}{{ reconnect_gap_diagnostics.current_gap.label }}{% else %}None{% endif %}</div>
+            <div class="small text-muted">
+              {% if reconnect_gap_diagnostics.current_gap %}Since {{ reconnect_gap_diagnostics.current_gap.started_at|date:"M d, Y H:i:s" }} · {{ reconnect_gap_diagnostics.current_gap.reason }}{% else %}A later connection was recorded{% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-lg-3">
+          <div class="border rounded p-2 h-100">
+            <div class="small text-muted">Longest completed gap</div>
+            <div class="fw-semibold">{% if reconnect_gap_diagnostics.longest_completed_gap %}{{ reconnect_gap_diagnostics.longest_completed_gap.label }}{% else %}—{% endif %}</div>
+            <div class="small text-muted">
+              {% if reconnect_gap_diagnostics.last_completed_gap %}Last gap: {{ reconnect_gap_diagnostics.last_completed_gap.label }}{% else %}No completed reconnect gap in retained events{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
       {% if connection_events %}
         <div class="table-responsive">
           <table class="table table-sm table-striped meter-table mb-0">

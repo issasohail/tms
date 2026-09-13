@@ -3005,11 +3005,18 @@ def meter_detail(request, pk):
             getattr(meter, "live", None),
         )
         reconnect_gap_diagnostics = build_reconnect_gap_diagnostics(connection_events)
+        communication_alerts = list(meter.communication_alerts.all()[:20])
+        open_communication_alert = next(
+            (item for item in communication_alerts if item.status == "open"),
+            None,
+        )
         detail_tab_context.update({
             "connection_events": connection_events,
             "reconnects_last_hour": reconnects_last_hour,
             "connection_status": connection_status,
             "reconnect_gap_diagnostics": reconnect_gap_diagnostics,
+            "communication_alerts": communication_alerts,
+            "open_communication_alert": open_communication_alert,
         })
 
     return render(

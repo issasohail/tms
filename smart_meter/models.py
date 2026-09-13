@@ -1637,6 +1637,73 @@ class MeterConnectionEvent(models.Model):
         return f"{self.meter_number} {self.event_type} at {self.occurred_at}"
 
 
+class MeterCommunicationAlert(models.Model):
+    STATUS_OPEN = "open"
+    STATUS_RESOLVED = "resolved"
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Open"),
+        (STATUS_RESOLVED, "Resolved"),
+    ]
+
+    meter = models.ForeignKey(
+        "Meter",
+        on_delete=models.CASCADE,
+        related_name="communication_alerts",
+    )
+    status = models.CharField(
+        max_length=12,
+        choices=STATUS_CHOICES,
+        default=STATUS_OPEN,
+        db_index=True,
+    )
+    threshold_minutes = models.PositiveIntegerField(default=30)
+    opened_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    last_reading_at = models.DateTimeField(db_index=True)
+    last_disconnect_at = models.DateTimeField(null=True, blank=True)
+    disconnect_reason = models.CharField(max_length=32, blank=True)
+    last_source_ip = models.GenericIPAddressField(null=True, blank=True)
+    last_source_port = models.PositiveIntegerField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    restored_reading_at = models.DateTimeField(null=True, blank=True)
+    offline_duration_seconds = models.PositiveBigIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-opened_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["meter", "status", "-opened_at"],
+                name="sm_comm_alert_state_idx",
+            ),
+        ]
+
+    @property
+    def duration_seconds(self):
+        if self.offline_duration_seconds is not None:
+            return int(self.offline_duration_seconds)
+        end = self.resolved_at or timezone.now()
+        return max(0, int((end - self.last_reading_at).total_seconds()))
+
+    @property
+    def duration_label(self):
+        seconds = self.duration_seconds
+        days, remainder = divmod(seconds, 86400)
+        hours, remainder = divmod(remainder, 3600)
+        minutes, secs = divmod(remainder, 60)
+        parts = []
+        if days:
+            parts.append(f"{days}d")
+        if hours:
+            parts.append(f"{hours}h")
+        if minutes:
+            parts.append(f"{minutes}m")
+        if not parts:
+            parts.append(f"{secs}s")
+        return " ".join(parts)
+
+    def __str__(self):
+        return f"{self.meter.meter_number} communication {self.status} at {self.opened_at}"
+
+
 class MeterEvent(models.Model):
     EVENT_TYPES = [
         ("cutoff", "Power Cut-Off"),

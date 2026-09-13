@@ -318,6 +318,39 @@
           </div>
         </div>
       </div>
+      {% if open_communication_alert %}
+        <div class="alert alert-danger py-2 mb-3">
+          <strong>Communication Lost.</strong>
+          No valid meter reading has been received for {{ open_communication_alert.duration_label }}.
+          Last reading: {{ open_communication_alert.last_reading_at|date:"M d, Y H:i:s" }}.
+          {% if open_communication_alert.last_disconnect_at %}Last disconnect: {{ open_communication_alert.last_disconnect_at|date:"M d, Y H:i:s" }}{% if open_communication_alert.disconnect_reason %} ({{ open_communication_alert.disconnect_reason }}){% endif %}.{% endif %}
+          {% if open_communication_alert.last_source_ip %} Last peer: {{ open_communication_alert.last_source_ip }}{% if open_communication_alert.last_source_port %}:{{ open_communication_alert.last_source_port }}{% endif %}.{% endif %}
+        </div>
+      {% endif %}
+      {% if communication_alerts %}
+        <div class="mb-3">
+          <h6 class="mb-2">Communication Alerts</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-striped meter-table mb-0">
+              <thead><tr><th>Opened</th><th>Status</th><th>Last reading</th><th>Disconnect</th><th>Reason</th><th>Peer</th><th>Duration</th><th>Resolved</th></tr></thead>
+              <tbody>
+                {% for alert in communication_alerts %}
+                  <tr>
+                    <td>{{ alert.opened_at|date:"M d, Y H:i:s" }}</td>
+                    <td><span class="badge {% if alert.status == 'open' %}bg-danger{% else %}bg-success{% endif %}">{{ alert.get_status_display }}</span></td>
+                    <td>{{ alert.last_reading_at|date:"M d, Y H:i:s" }}</td>
+                    <td>{% if alert.last_disconnect_at %}{{ alert.last_disconnect_at|date:"M d, Y H:i:s" }}{% else %}-{% endif %}</td>
+                    <td>{{ alert.disconnect_reason|default:"-" }}</td>
+                    <td>{{ alert.last_source_ip|default:"-" }}{% if alert.last_source_port %}:{{ alert.last_source_port }}{% endif %}</td>
+                    <td>{{ alert.duration_label }}</td>
+                    <td>{% if alert.resolved_at %}{{ alert.resolved_at|date:"M d, Y H:i:s" }}{% else %}-{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
       {% if connection_events %}
         <div class="table-responsive">
           <table class="table table-sm table-striped meter-table mb-0">

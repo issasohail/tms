@@ -193,6 +193,10 @@ PRESENCE_REFRESH_SECONDS = max(
 # explicitly configured.  A bare DI such as 028011FF is not a DL/T645 frame.
 HEARTBEAT_INTERVAL = getattr(settings, "METER_HEARTBEAT_INTERVAL", 0)  # seconds
 HEARTBEAT_FRAME_HEX = getattr(settings, "METER_HEARTBEAT_FRAME_HEX", "")
+DUPLICATE_CONNECTION_FRESH_SECONDS = max(
+    0,
+    int(getattr(settings, "METER_DUPLICATE_CONNECTION_FRESH_SECONDS", 120)),
+)
 
 MAX_BUFFER_BYTES = 1024 * 1024  # 1 MB (unchanged)
 
@@ -295,6 +299,7 @@ def _register_handler(meter_number: str, handler: ClientHandler):
     event_type = None
     previous_peer = None
     event_age = None
+    rejected_reason = ""
     rejected_duplicate = False
     with ACTIVE_LOCK:
         old = ACTIVE_HANDLERS.get(meter_number)
@@ -308,7 +313,32 @@ def _register_handler(meter_number: str, handler: ClientHandler):
             getattr(old, "accepted_at_monotonic", 0),
             getattr(old, "registration_generation", 0),
         ) if old else None
-        if old and candidate_order <= current_order:
+        old_last_seen = float(getattr(old, "last_seen", 0.0) or 0.0) if old else 0.0
+        old_last_seen_age = (
+            max(0.0, time.time() - old_last_seen)
+            if old and old_last_seen
+            else float("inf")
+        )
+        old_is_recent = bool(
+            old
+            and getattr(old, "alive", False)
+            and old_last_seen_age <= DUPLICATE_CONNECTION_FRESH_SECONDS
+        )
+
+        if old_is_recent:
+            logger.info(
+                "KEEP_EXISTING_CONNECTION meter=%s existing_peer=%s "
+                "duplicate_peer=%s last_rx_age=%.1fs threshold=%ss",
+                meter_number,
+                getattr(old, "peer", "?"),
+                handler.peer,
+                old_last_seen_age,
+                DUPLICATE_CONNECTION_FRESH_SECONDS,
+            )
+            previous_peer = getattr(old, "peer", None)
+            rejected_duplicate = True
+            rejected_reason = "healthy_existing"
+        elif old and candidate_order <= current_order:
             logger.info(
                 "Ignoring older duplicate connection for meter %s from %s "
                 "(accepted=%s); current peer is %s (accepted=%s)",
@@ -320,6 +350,7 @@ def _register_handler(meter_number: str, handler: ClientHandler):
             )
             previous_peer = getattr(old, "peer", None)
             rejected_duplicate = True
+            rejected_reason = "older_duplicate"
         else:
             if old:
                 old_age = max(
@@ -351,9 +382,9 @@ def _register_handler(meter_number: str, handler: ClientHandler):
             MeterConnectionEvent.EVENT_REJECTED_DUPLICATE,
             handler,
             previous_peer=previous_peer,
-            disconnect_reason="older_duplicate",
+            disconnect_reason=rejected_reason or "duplicate_rejected",
         )
-        handler.close(reason="older_duplicate")
+        handler.close(reason="duplicate_rejected")
         return False
     if event_type:
         _record_connection_event(
@@ -859,12 +890,22 @@ class ClientHandler(threading.Thread):
                 except TimeoutError:
                     chunk = None
                 except Exception as e:
-                    if self.alive:
-                        self.disconnect_reason = "recv_error"
+                    if not self.alive:
+                        logger.debug(
+                            "TCP_RECV_STOPPED peer=%s reason=%s error=%s",
+                            self.peer,
+                            self.disconnect_reason,
+                            e,
+                        )
+                        break
+                    self.disconnect_reason = "recv_error"
                     logger.warning("TCP_RECV_ERROR peer=%s error=%s", self.peer, e)
                     break
 
                 if chunk:
+                    # Use actual meter RX traffic to decide whether an existing
+                    # connection is still healthy when a duplicate arrives.
+                    self.last_seen = time.time()
                     if self.debug:
                         logger.debug(
                             f"â¬‡ï¸ RAW CHUNK {self.addr} ({len(chunk)}B): {chunk.hex().upper()}"

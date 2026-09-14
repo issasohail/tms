@@ -10,10 +10,11 @@ from django.utils import timezone
 
 from smart_meter.management.commands.meter_listener import (
     ACTIVE_HANDLERS,
-    ClientHandler,
-    DbCommandPoller,
+    DUPLICATE_CONNECTION_FRESH_SECONDS,
     HEARTBEAT_FRAME_HEX,
     HEARTBEAT_INTERVAL,
+    ClientHandler,
+    DbCommandPoller,
     _register_handler,
     _unregister_handler,
 )
@@ -78,6 +79,9 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         self.assertEqual(HEARTBEAT_INTERVAL, 0)
         self.assertEqual(HEARTBEAT_FRAME_HEX, "")
 
+    def test_duplicate_connection_fresh_window_defaults_to_two_minutes(self):
+        self.assertEqual(DUPLICATE_CONNECTION_FRESH_SECONDS, 120)
+
     def make_handler(self, recv_result=b""):
         return ClientHandler(FakeSocket(recv_result), ("127.0.0.1", 12345))
 
@@ -95,6 +99,62 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
                 for line in captured.output
             )
         )
+
+    @patch("smart_meter.management.commands.meter_listener._record_connection_event")
+    def test_recent_healthy_existing_connection_beats_new_duplicate(self, record_event):
+        meter_number = "260305510012"
+        existing = ClientHandler(FakeSocket(), ("203.99.190.49", 61041))
+        duplicate = ClientHandler(FakeSocket(), ("203.99.190.49", 58797))
+        existing.meter_number = meter_number
+        duplicate.meter_number = meter_number
+        existing.last_seen = time.time()
+        ACTIVE_HANDLERS[meter_number] = existing
+
+        accepted = _register_handler(meter_number, duplicate)
+
+        self.assertFalse(accepted)
+        self.assertIs(ACTIVE_HANDLERS[meter_number], existing)
+        self.assertTrue(existing.alive)
+        self.assertEqual(existing.conn.close_calls, 0)
+        self.assertFalse(duplicate.alive)
+        self.assertEqual(duplicate.disconnect_reason, "duplicate_rejected")
+        self.assertGreaterEqual(duplicate.conn.close_calls, 1)
+        self.assertEqual(
+            record_event.call_args.kwargs["disconnect_reason"],
+            "healthy_existing",
+        )
+
+    @patch("smart_meter.management.commands.meter_listener._record_connection_event")
+    def test_new_connection_replaces_existing_connection_after_fresh_window(
+        self, _record_event
+    ):
+        meter_number = "260305510012"
+        existing = ClientHandler(FakeSocket(), ("203.99.190.49", 61041))
+        replacement = ClientHandler(FakeSocket(), ("203.99.190.49", 58797))
+        existing.meter_number = meter_number
+        replacement.meter_number = meter_number
+        existing.last_seen = time.time() - DUPLICATE_CONNECTION_FRESH_SECONDS - 1
+        ACTIVE_HANDLERS[meter_number] = existing
+
+        accepted = _register_handler(meter_number, replacement)
+
+        self.assertTrue(accepted)
+        self.assertIs(ACTIVE_HANDLERS[meter_number], replacement)
+        self.assertFalse(existing.alive)
+        self.assertEqual(existing.disconnect_reason, "replaced")
+        self.assertGreaterEqual(existing.conn.close_calls, 1)
+
+    @patch("smart_meter.management.commands.meter_listener.threading.Thread.start")
+    @patch("smart_meter.management.commands.meter_listener.close_old_connections")
+    def test_incoming_socket_traffic_refreshes_last_seen(
+        self, _close_connections, _start
+    ):
+        handler = self.make_handler([b"\x01", b""])
+        handler.last_seen = 0.0
+
+        handler.run()
+
+        self.assertGreater(handler.last_seen, 0.0)
 
     @patch("smart_meter.management.commands.meter_listener.threading.Thread.start")
     @patch("smart_meter.management.commands.meter_listener.close_old_connections")
@@ -204,9 +264,7 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
 
     @patch("smart_meter.management.commands.meter_listener.threading.Thread.start")
     @patch("smart_meter.management.commands.meter_listener.close_old_connections")
-    def test_expired_frame_reports_transport_failure(
-        self, _close_connections, _start
-    ):
+    def test_expired_frame_reports_transport_failure(self, _close_connections, _start):
         handler = self.make_handler()
         transport_q = queue.Queue(maxsize=1)
         handler.enqueue_send(
@@ -290,7 +348,7 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
             "data": None,
         }
         handler = self.make_handler()
-        frame = b"\x68\x01\xAB"
+        frame = b"\x68\x01\xab"
 
         with self.assertLogs("smart_meter.listener", level="INFO") as captured:
             handler.process_frame(frame)
@@ -303,7 +361,9 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         self.assertIn("frame=6801AB", raw_log)
 
     @patch("smart_meter.management.commands.meter_listener.MeterCommand.objects.filter")
-    def test_repeated_registration_does_not_requery_waiting_commands(self, command_filter):
+    def test_repeated_registration_does_not_requery_waiting_commands(
+        self, command_filter
+    ):
         handler = self.make_handler()
         handler.meter_number = "260305510012"
 
@@ -358,6 +418,7 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         new.accepted_at_monotonic = 20
 
         self.assertTrue(_register_handler("260305510012", old))
+        old.last_seen = time.time() - DUPLICATE_CONNECTION_FRESH_SECONDS - 1
         self.assertTrue(_register_handler("260305510012", new))
         self.assertIs(ACTIVE_HANDLERS["260305510012"], new)
         self.assertFalse(old.alive)

@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -49,6 +50,75 @@ HEADERS = {
         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     ),
 }
+
+
+class VpnDetectedError(requests.ConnectionError):
+    """Raised when an active VPN adapter is detected before contacting PITC."""
+
+
+_VPN_ADAPTER_HINTS = (
+    "nordlynx",
+    "nordvpn",
+    "wireguard",
+    "wintun",
+    "openvpn",
+    "tap-windows",
+    "tailscale",
+    "zerotier",
+    "protonvpn",
+    "surfshark",
+    "expressvpn",
+    "mullvad",
+    "windscribe",
+)
+
+
+def active_vpn_adapter() -> str | None:
+    """Best-effort VPN detection for the local Windows/Linux fetch host.
+
+    The IESCO/PITC site commonly rejects traffic routed through VPN endpoints,
+    so fail fast with an actionable message instead of waiting for every bill
+    request to time out.
+    """
+
+    try:
+        if os.name == "nt":
+            result = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "Get-NetAdapter | Where-Object {$_.Status -eq 'Up'} | "
+                    "ForEach-Object { \"$($_.Name)|$($_.InterfaceDescription)\" }",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=4,
+                check=False,
+            )
+            lines = result.stdout.splitlines()
+        else:
+            result = subprocess.run(
+                ["ip", "-o", "link", "show", "up"],
+                capture_output=True,
+                text=True,
+                timeout=4,
+                check=False,
+            )
+            lines = result.stdout.splitlines()
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    for line in lines:
+        lowered = line.lower()
+        if any(hint in lowered for hint in _VPN_ADAPTER_HINTS):
+            if os.name == "nt" and "|" in line:
+                name = line.split("|", 1)[0].strip()
+                return name or line.strip()
+            match = re.search(r"\d+:\s*([^:@]+)", line)
+            return (match.group(1).strip() if match else line.strip()) or "VPN"
+    return None
 
 
 @dataclass
@@ -85,6 +155,11 @@ def validate_reference_no(reference_no: str) -> str:
 
 def fetch_raw_html(reference_no: str) -> str:
     reference_no = validate_reference_no(reference_no)
+    vpn_adapter = active_vpn_adapter()
+    if vpn_adapter:
+        raise VpnDetectedError(
+            f"VPN appears to be connected ({vpn_adapter}). Disconnect the VPN and try again."
+        )
     last_error = None
     for attempt in range(PITC_FETCH_ATTEMPTS):
         try:

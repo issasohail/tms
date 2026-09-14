@@ -29,6 +29,7 @@ from leases.models import Lease
 from properties.models import Property, Unit
 
 from .forms import IescoMeterAssignmentForm, IescoStandaloneMeterForm
+from .iesco_bill_fetch import VpnDetectedError
 from .models import IescoBillReading, IescoStandaloneMeter
 from .services_iesco import (
     IESCO_EXPORT_FIELDS,
@@ -147,6 +148,8 @@ def set_reading_trust(request, pk):
 
 
 def _validation_message(exc):
+    if isinstance(exc, VpnDetectedError):
+        return str(exc)
     if isinstance(exc, (requests.exceptions.SSLError, requests.exceptions.ConnectionError)):
         return (
             "PITC could not be reached from this server. No data was changed. "
@@ -160,6 +163,8 @@ def _validation_message(exc):
 
 def _fetch_failure_message(exc):
     message = _validation_message(exc)
+    if isinstance(exc, VpnDetectedError):
+        return message
     if "local Pakistani server" in message:
         return message
     return (
@@ -168,6 +173,28 @@ def _fetch_failure_message(exc):
         "active reference CSV here, fetch it on the local Pakistan TMS, download "
         "the bills CSV there, and upload that bills CSV back on production."
     )
+
+
+def _clean_error_message(exc):
+    if isinstance(exc, VpnDetectedError):
+        return str(exc)
+    if isinstance(exc, (requests.exceptions.SSLError, requests.exceptions.ConnectionError)):
+        return (
+            "Could not connect to PITC / IESCO server. Please check internet connection or retry."
+        )
+    if isinstance(exc, requests.exceptions.Timeout):
+        return "Connection to PITC / IESCO timed out. The server took too long to respond."
+    if isinstance(exc, requests.exceptions.HTTPError):
+        status_code = exc.response.status_code if getattr(exc, "response", None) is not None else ""
+        return f"IESCO server returned an error (HTTP {status_code})." if status_code else "IESCO server returned an HTTP error."
+    if hasattr(exc, "messages"):
+        return "; ".join(exc.messages)
+    msg = str(exc).strip()
+    if "without the required bill fields" in msg:
+        return "No bill found on PITC for this reference number (or bill page format changed)."
+    if "exactly 14 digits" in msg:
+        return "Invalid reference number: must be exactly 14 digits."
+    return msg
 
 
 def _month_sort_key(value):
@@ -212,6 +239,219 @@ def _raw_month_values(references, selected):
         except ValidationError:
             continue
     return values
+
+
+
+IESCO_PERIOD_CHOICES = (
+    ("this_month", "This month"),
+    ("last_month", "Last month"),
+    ("this_quarter", "This quarter"),
+    ("last_quarter", "Last quarter"),
+    ("this_year", "This year"),
+    ("last_year", "Last year"),
+)
+
+
+def _period_bounds(code, today=None):
+    today = today or timezone.localdate()
+    first_this_month = today.replace(day=1)
+    if code == "this_month":
+        start = first_this_month
+        end = (
+            start.replace(year=start.year + 1, month=1)
+            if start.month == 12
+            else start.replace(month=start.month + 1)
+        ) - timedelta(days=1)
+        return start, end
+    if code == "last_month":
+        end = first_this_month - timedelta(days=1)
+        return end.replace(day=1), end
+    if code in {"this_quarter", "last_quarter"}:
+        quarter_start_month = ((today.month - 1) // 3) * 3 + 1
+        start = today.replace(month=quarter_start_month, day=1)
+        if code == "last_quarter":
+            end = start - timedelta(days=1)
+            start_month = ((end.month - 1) // 3) * 3 + 1
+            start = end.replace(month=start_month, day=1)
+            return start, end
+        if quarter_start_month == 10:
+            end = start.replace(year=start.year + 1, month=1) - timedelta(days=1)
+        else:
+            end = start.replace(month=quarter_start_month + 3) - timedelta(days=1)
+        return start, end
+    if code == "this_year":
+        return date(today.year, 1, 1), date(today.year, 12, 31)
+    if code == "last_year":
+        year = today.year - 1
+        return date(year, 1, 1), date(year, 12, 31)
+    return None, None
+
+
+def _period_matches(reading, code):
+    start, end = _period_bounds(code)
+    if not start or not end:
+        return True
+    try:
+        month = bill_month_start(reading.bill_month)
+    except ValidationError:
+        return False
+    return start <= month <= end
+
+
+def _latest_saved_month_value(readings):
+    months = []
+    for reading in readings:
+        try:
+            months.append(bill_month_start(reading.bill_month))
+        except ValidationError:
+            continue
+    if not months:
+        return ""
+    return max(months).strftime("%Y-%m")
+
+
+def _reading_amount_decimal(value):
+    cleaned = re.sub(r"[^0-9.\-]", "", str(value or "").replace(",", ""))
+    if not cleaned or cleaned in {"-", ".", "-."}:
+        return Decimal("0")
+    try:
+        return Decimal(cleaned)
+    except Exception:
+        return Decimal("0")
+
+
+def _display_decimal(value, *, money=False):
+    value = value or Decimal("0")
+    if money:
+        return f"Rs. {value:,.0f}"
+    rendered = f"{value:,.2f}"
+    return rendered.rstrip("0").rstrip(".")
+
+
+def _dashboard_totals(rows):
+    total_units = Decimal("0")
+    grand_total = Decimal("0")
+    for row in rows:
+        reading = row.get("reading")
+        if not reading:
+            continue
+        imported = reading.import_units
+        if imported is None:
+            imported = _reading_amount_decimal(reading.units)
+        total_units += imported or Decimal("0")
+        grand_total += _reading_amount_decimal(reading.grand_total)
+    return {
+        "units": total_units,
+        "units_display": _display_decimal(total_units),
+        "grand_total": grand_total,
+        "grand_total_display": _display_decimal(grand_total, money=True),
+    }
+
+
+def _visible_sources_for_filters(user, *, property_id="", unit_id="", reference_no=""):
+    units = _valid_unit_meters(
+        user,
+        property_id=property_id if property_id.isdigit() else None,
+    )
+    if unit_id.isdigit():
+        units = units.filter(pk=unit_id)
+    if reference_no:
+        units = units.filter(electric_meter_num__icontains=reference_no)
+
+    active_units = _valid_unit_meters(
+        user,
+        property_id=property_id if property_id.isdigit() else None,
+        active_only=True,
+    )
+    if unit_id.isdigit():
+        active_units = active_units.filter(pk=unit_id)
+    active_unit_references = set(
+        active_units.values_list("electric_meter_num", flat=True)
+    )
+
+    sources = [
+        {
+            "reference_no": unit.electric_meter_num,
+            "property": unit.property,
+            "unit": unit,
+            "standalone": None,
+            "description": "",
+            "is_standalone": False,
+            "is_active": unit.electric_meter_num in active_unit_references,
+        }
+        for unit in units
+    ]
+    if not property_id and not unit_id:
+        standalone = _visible_standalone_meters(user)
+        if reference_no:
+            standalone = standalone.filter(reference_no__icontains=reference_no)
+        standalone = standalone.exclude(
+            reference_no__in={row["reference_no"] for row in sources}
+        )
+        sources.extend(
+            {
+                "reference_no": meter.reference_no,
+                "property": None,
+                "unit": None,
+                "standalone": meter,
+                "description": meter.description,
+                "is_standalone": True,
+                "is_active": meter.is_active,
+            }
+            for meter in standalone
+        )
+    return sources
+
+
+def _select_dashboard_readings(
+    readings,
+    *,
+    references,
+    bill_month="",
+    period="",
+    period_explicit=False,
+    history_mode=False,
+):
+    ordered = list(readings)
+    effective_bill_month = bill_month
+
+    if bill_month:
+        raw_values = set(_raw_month_values(references, bill_month))
+        ordered = [reading for reading in ordered if reading.bill_month in raw_values]
+    elif history_mode:
+        if period_explicit and period:
+            ordered = [reading for reading in ordered if _period_matches(reading, period)]
+    else:
+        effective_bill_month = _latest_saved_month_value(ordered)
+        if effective_bill_month:
+            raw_values = set(_raw_month_values(references, effective_bill_month))
+            ordered = [reading for reading in ordered if reading.bill_month in raw_values]
+
+    ordered.sort(
+        key=lambda reading: (
+            _month_sort_key(reading.bill_month),
+            reading.updated_at,
+            reading.pk,
+        ),
+        reverse=True,
+    )
+
+    if not history_mode:
+        latest = {}
+        for reading in ordered:
+            latest.setdefault(reading.reference_no, reading)
+        ordered = list(latest.values())
+    return ordered, effective_bill_month
+
+
+def _payment_status_matches(reading, payment_status):
+    if payment_status == "paid":
+        return bool(reading and reading.current_month_paid is True)
+    if payment_status == "unpaid":
+        return bool(reading and reading_requires_payment(reading))
+    if payment_status == "unknown":
+        return bool(not reading or reading.current_month_paid is None)
+    return True
 
 
 def _set_preview(request, payloads, errors, *, source):
@@ -506,92 +746,77 @@ class IescoBillReadingListView(LoginRequiredMixin, ListView):
     paginate_by = 100
 
     def get_queryset(self):
-        reference_no = (self.request.GET.get("reference_no") or "").strip()
-        bill_month = (self.request.GET.get("bill_month") or "").strip()
-        payment_status = (self.request.GET.get("payment_status") or "").strip()
-        reminder_review = self.request.GET.get("reminder_review") == "1"
-        property_id = (self.request.GET.get("property") or "").strip()
-        units = _valid_unit_meters(
-            self.request.user,
-            property_id=property_id if property_id.isdigit() else None,
-        )
-        active_unit_references = set(
-            _valid_unit_meters(
-                self.request.user,
-                property_id=property_id if property_id.isdigit() else None,
-                active_only=True,
-            ).values_list("electric_meter_num", flat=True)
-        )
-        if reference_no:
-            units = units.filter(electric_meter_num__icontains=reference_no)
+        request = self.request
+        reference_no = (request.GET.get("reference_no") or "").strip()
+        bill_month = (request.GET.get("bill_month") or "").strip()
+        payment_status = (request.GET.get("payment_status") or "").strip()
+        reminder_review = request.GET.get("reminder_review") == "1"
+        property_id = (request.GET.get("property") or "").strip()
+        unit_id = (request.GET.get("unit") or "").strip()
+        show_history = request.GET.get("show_history") == "1"
+        period = (request.GET.get("period") or "this_month").strip()
+        period_explicit = request.GET.get("period_explicit") == "1"
 
-        sources = [
-            {
-                "reference_no": unit.electric_meter_num,
-                "property": unit.property,
-                "unit": unit,
-                "standalone": None,
-                "description": "",
-                "is_standalone": False,
-                "is_active": unit.electric_meter_num in active_unit_references,
-            }
-            for unit in units
-        ]
-        if not property_id:
-            standalone = _visible_standalone_meters(self.request.user)
-            if reference_no:
-                standalone = standalone.filter(reference_no__icontains=reference_no)
-            standalone = standalone.exclude(
-                reference_no__in={row["reference_no"] for row in sources}
-            )
-            sources.extend(
-                {
-                    "reference_no": meter.reference_no,
-                    "property": None,
-                    "unit": None,
-                    "standalone": meter,
-                    "description": meter.description,
-                    "is_standalone": True,
-                    "is_active": meter.is_active,
-                }
-                for meter in standalone
-            )
-
+        sources = _visible_sources_for_filters(
+            request.user,
+            property_id=property_id,
+            unit_id=unit_id,
+            reference_no=reference_no,
+        )
         references = {row["reference_no"] for row in sources}
-        readings = IescoBillReading.objects.filter(
+        readings_qs = IescoBillReading.objects.filter(
             reference_no__in=references
         ).select_related("posted_invoice_item__invoice")
-        if bill_month:
-            readings = readings.filter(
-                bill_month__in=_raw_month_values(references, bill_month)
-            )
-        latest_by_reference = {}
-        for reading in readings.order_by("reference_no", "-updated_at", "-id"):
-            latest_by_reference.setdefault(reading.reference_no, reading)
+        readings, effective_bill_month = _select_dashboard_readings(
+            readings_qs,
+            references=references,
+            bill_month=bill_month,
+            period=period,
+            period_explicit=period_explicit,
+            history_mode=bool(show_history or unit_id or reference_no or period_explicit),
+        )
+
+        history_mode = bool(show_history or unit_id or reference_no or period_explicit)
+        source_by_reference = {}
+        for source in sources:
+            source_by_reference.setdefault(source["reference_no"], source)
 
         rows = []
-        for row in sources:
-            reading = latest_by_reference.get(row["reference_no"])
-            if reminder_review and not row["is_active"]:
-                continue
-            if payment_status == "paid" and (
-                not reading or reading.current_month_paid is not True
-            ):
-                continue
-            if payment_status == "unpaid" and (
-                not reading or not reading_requires_payment(reading)
-            ):
-                continue
-            if payment_status == "unknown" and (
-                reading and reading.current_month_paid is not None
-            ):
-                continue
-            row["reading"] = reading
-            row["requires_payment"] = bool(
-                row["is_active"] and reading and reading_requires_payment(reading)
-            )
-            rows.append(row)
+        if history_mode:
+            for reading in readings:
+                source = source_by_reference.get(reading.reference_no)
+                if source is None:
+                    continue
+                if reminder_review and not source["is_active"]:
+                    continue
+                if not _payment_status_matches(reading, payment_status):
+                    continue
+                row = dict(source)
+                row["reading"] = reading
+                row["requires_payment"] = bool(
+                    row["is_active"] and reading_requires_payment(reading)
+                )
+                rows.append(row)
+        else:
+            reading_by_reference = {reading.reference_no: reading for reading in readings}
+            for source in sources:
+                reading = reading_by_reference.get(source["reference_no"])
+                if reminder_review and not source["is_active"]:
+                    continue
+                if payment_status and not _payment_status_matches(reading, payment_status):
+                    continue
+                row = dict(source)
+                row["reading"] = reading
+                row["requires_payment"] = bool(
+                    row["is_active"] and reading and reading_requires_payment(reading)
+                )
+                rows.append(row)
+
         _attach_lease_context(rows)
+        self.iesco_history_mode = history_mode
+        self.iesco_effective_bill_month = effective_bill_month
+        self.iesco_selected_period = period
+        self.iesco_period_explicit = period_explicit
         return rows
 
     def get_context_data(self, **kwargs):
@@ -600,6 +825,58 @@ class IescoBillReadingListView(LoginRequiredMixin, ListView):
         context["properties"] = restrict_queryset_to_properties(
             properties, self.request.user, ""
         )
+        all_units = list(_valid_unit_meters(self.request.user))
+        selected_property = (self.request.GET.get("property") or "").strip()
+        selected_unit = (self.request.GET.get("unit") or "").strip()
+        unit_filter_map = {}
+        reference_options = []
+        for unit in all_units:
+            property_key = str(unit.property_id)
+            unit_filter_map.setdefault(property_key, []).append(
+                {
+                    "id": str(unit.pk),
+                    "label": unit.unit_number,
+                    "property_name": unit.property.property_name,
+                    "reference_no": unit.electric_meter_num,
+                }
+            )
+            reference_options.append(
+                {
+                    "value": unit.electric_meter_num,
+                    "label": f"{unit.electric_meter_num} — {unit.property.property_name} / {unit.unit_number}",
+                }
+            )
+        standalone_meters = list(_visible_standalone_meters(self.request.user))
+        reference_options.extend(
+            {
+                "value": meter.reference_no,
+                "label": f"{meter.reference_no} — {meter.description or 'Standalone meter'}",
+            }
+            for meter in standalone_meters
+        )
+        reference_options.sort(key=lambda item: (item["label"], item["value"]))
+        if selected_property and selected_property in unit_filter_map:
+            unit_filter_options = unit_filter_map[selected_property]
+        else:
+            unit_filter_options = [
+                {
+                    "id": str(unit.pk),
+                    "label": f"{unit.property.property_name} / {unit.unit_number}",
+                    "property_name": unit.property.property_name,
+                    "reference_no": unit.electric_meter_num,
+                }
+                for unit in all_units
+            ]
+        if selected_unit and not any(option["id"] == selected_unit for option in unit_filter_options):
+            unit_filter_options = [
+                option for option in unit_filter_options if option["id"] == selected_unit
+            ] or unit_filter_options
+
+        context["selected_property"] = selected_property
+        context["selected_unit"] = selected_unit
+        context["unit_filter_map"] = unit_filter_map
+        context["unit_filter_options"] = unit_filter_options
+        context["reference_options"] = reference_options
         context["standalone_form"] = IescoStandaloneMeterForm()
         context["can_manage"] = self.request.user.is_superuser or self.request.user.has_perm(
             "invoices.change_iescobillreading"
@@ -623,6 +900,12 @@ class IescoBillReadingListView(LoginRequiredMixin, ListView):
         context["bill_month_options"] = _month_options_for_references(
             visible_references
         )
+        context["period_options"] = IESCO_PERIOD_CHOICES
+        context["selected_period"] = getattr(self, "iesco_selected_period", "this_month")
+        context["period_explicit"] = getattr(self, "iesco_period_explicit", False)
+        context["history_mode"] = getattr(self, "iesco_history_mode", False)
+        context["effective_bill_month"] = getattr(self, "iesco_effective_bill_month", "")
+        context["dashboard_totals"] = _dashboard_totals(self.object_list)
         context["has_iesco_preview"] = bool(
             self.request.session.get(PREVIEW_SESSION_KEY)
         )
@@ -1097,6 +1380,131 @@ def fetch_reference_csv(request):
         raise PermissionDenied(
             "Importing the production reference list requires access to all properties."
         )
+
+    ajax_action = (request.POST.get("ajax_action") or "").strip()
+    if ajax_action == "start":
+        upload = request.FILES.get("file")
+        if upload is None:
+            return JsonResponse(
+                {"ok": False, "error": "Choose an active-reference CSV file."},
+                status=400,
+            )
+        if upload.size > MAX_IMPORT_BYTES:
+            return JsonResponse(
+                {"ok": False, "error": "IESCO reference files cannot exceed 2 MB."},
+                status=400,
+            )
+        try:
+            text = upload.read().decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return JsonResponse(
+                {"ok": False, "error": "The reference CSV must use UTF-8 encoding."},
+                status=400,
+            )
+
+        reader = csv.DictReader(io.StringIO(text))
+        if "reference_no" not in set(reader.fieldnames or ()):
+            return JsonResponse(
+                {"ok": False, "error": "Reference CSV is missing the reference_no column."},
+                status=400,
+            )
+
+        sources = {}
+        row_errors = []
+        for index, row in enumerate(reader, start=2):
+            if index > MAX_IMPORT_ROWS + 1:
+                row_errors.append(f"Reference import is limited to {MAX_IMPORT_ROWS} rows.")
+                break
+            raw_ref = (row.get("reference_no") or "").strip()
+            if not raw_ref:
+                continue
+            try:
+                reference_no = validate_reference_no(raw_ref)
+                description = (row.get("description") or "").strip()
+                sources[reference_no] = description or f"Imported IESCO meter {reference_no}"
+            except ValidationError as exc:
+                row_errors.append(f"Row {index} ({raw_ref}): {_clean_error_message(exc)}")
+
+        if not sources:
+            return JsonResponse(
+                {"ok": False, "error": "The reference CSV did not contain any valid meter references."},
+                status=400,
+            )
+
+        request.session[EXPORT_SESSION_KEY] = []
+        request.session.modified = True
+
+        meters = [
+            {"reference_no": ref, "description": desc, "label": f"{ref} — {desc}"}
+            for ref, desc in sources.items()
+        ]
+        return JsonResponse(
+            {
+                "ok": True,
+                "total": len(meters),
+                "meters": meters,
+                "row_errors": row_errors,
+            }
+        )
+
+    if ajax_action == "fetch":
+        reference_no = (request.POST.get("reference_no") or "").strip()
+        description = (request.POST.get("description") or "").strip() or f"Imported IESCO meter {reference_no}"
+        if not reference_no:
+            return JsonResponse(
+                {"ok": False, "error": "Missing reference number."}, status=400
+            )
+        try:
+            reference_no = validate_reference_no(reference_no)
+        except ValidationError as exc:
+            return JsonResponse(
+                {"ok": False, "reference_no": reference_no, "error": _clean_error_message(exc)},
+                status=400,
+            )
+
+        try:
+            if not Unit.objects.filter(electric_meter_num=reference_no).exists():
+                IescoStandaloneMeter.objects.update_or_create(
+                    reference_no=reference_no,
+                    defaults={"description": description, "is_active": True},
+                )
+            payload = fetch_bill_payload(reference_no, description=description)
+            created, updated, saved_ids = _save_payloads(request, [payload])
+            existing_ids = request.session.get(EXPORT_SESSION_KEY, [])
+            request.session[EXPORT_SESSION_KEY] = list(
+                dict.fromkeys([*existing_ids, *saved_ids])
+            )
+            request.session.modified = True
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "reference_no": reference_no,
+                    "created": created,
+                    "updated": updated,
+                    "bill_month": payload.get("bill_month") or "—",
+                    "grand_total": payload.get("grand_total") or "—",
+                    "units": payload.get("units_display") or payload.get("units") or "—",
+                    "consumer_name": payload.get("consumer_name") or "—",
+                }
+            )
+        except (ValidationError, requests.RequestException) as exc:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "reference_no": reference_no,
+                    "error": _clean_error_message(exc),
+                }
+            )
+        except Exception as exc:
+            logger.exception("IESCO reference CSV AJAX fetch failed for %s", reference_no)
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "reference_no": reference_no,
+                    "error": _clean_error_message(exc),
+                }
+            )
+
     upload = request.FILES.get("file")
     if upload is None:
         messages.error(request, "Choose an active-reference CSV file.")
@@ -1248,43 +1656,81 @@ def _reading_export_payload(reading, user):
     }
 
 
-@login_required
-@require_GET
-def export_last_csv(request):
+def _export_readings_for_request(request, *, reading_id="", batch_only=False):
     property_id = (request.GET.get("property") or "").strip()
+    unit_id = (request.GET.get("unit") or "").strip()
     reference_no = (request.GET.get("reference_no") or "").strip()
     bill_month = (request.GET.get("bill_month") or "").strip()
     payment_status = (request.GET.get("payment_status") or "").strip()
-    visible_references = set(
-        _valid_unit_meters(
-            request.user,
-            property_id=property_id if property_id.isdigit() else None,
-        ).values_list("electric_meter_num", flat=True)
+    show_history = request.GET.get("show_history") == "1"
+    period = (request.GET.get("period") or "this_month").strip()
+    period_explicit = request.GET.get("period_explicit") == "1"
+
+    sources = _visible_sources_for_filters(
+        request.user,
+        property_id=property_id,
+        unit_id=unit_id,
+        reference_no=reference_no,
     )
-    if not property_id:
-        visible_references.update(
-            _visible_standalone_meters(request.user).values_list("reference_no", flat=True)
+    visible_references = {row["reference_no"] for row in sources}
+    readings = IescoBillReading.objects.filter(
+        reference_no__in=visible_references
+    ).select_related("posted_invoice_item__invoice")
+
+    if reading_id and str(reading_id).isdigit():
+        selected = list(readings.filter(pk=int(reading_id)))
+    elif batch_only:
+        batch_ids = [
+            int(value)
+            for value in request.session.get(EXPORT_SESSION_KEY, [])
+            if str(value).isdigit()
+        ]
+        if not batch_ids:
+            return [], sources
+        selected = list(
+            readings.filter(pk__in=batch_ids).order_by(
+                "-fetched_at", "-updated_at", "-id"
+            )
         )
-    readings = IescoBillReading.objects.filter(reference_no__in=visible_references)
-    if reference_no:
-        readings = readings.filter(reference_no__icontains=reference_no)
-    if bill_month:
-        readings = readings.filter(
-            bill_month__in=_raw_month_values(visible_references, bill_month)
+    else:
+        history_mode = bool(
+            show_history or unit_id or reference_no or period_explicit
         )
-    visible = list(readings.order_by("reference_no", "-fetched_at", "-id"))
-    if payment_status == "paid":
-        visible = [reading for reading in visible if reading.payment_status_display == "Paid"]
-    elif payment_status == "unpaid":
-        visible = [reading for reading in visible if reading_requires_payment(reading)]
-    elif payment_status == "unknown":
-        visible = [reading for reading in visible if reading.payment_status_display == "Unknown"]
+        selected, _effective_bill_month = _select_dashboard_readings(
+            readings,
+            references=visible_references,
+            bill_month=bill_month,
+            period=period,
+            period_explicit=period_explicit,
+            history_mode=history_mode,
+        )
+
+    if payment_status:
+        selected = [
+            reading
+            for reading in selected
+            if _payment_status_matches(reading, payment_status)
+        ]
+    return selected, sources
+
+
+@login_required
+@require_GET
+def export_last_csv(request):
+    batch_only = (request.GET.get("batch") or "").strip() == "1"
+    visible, _sources = _export_readings_for_request(
+        request, batch_only=batch_only
+    )
     if not visible:
-        messages.error(request, "No saved IESCO bills are available for export.")
+        if batch_only:
+            messages.error(request, "No newly fetched IESCO bills are ready for download.")
+        else:
+            messages.error(request, "No saved IESCO bills are available for export.")
         return redirect("invoices:iesco_bill_reading_list")
 
     response = HttpResponse(content_type="text/csv; charset=utf-8")
-    filename = f"iesco-bills-{timezone.localtime():%Y%m%d-%H%M%S}.csv"
+    filename_prefix = "iesco-bills-fetched" if batch_only else "iesco-bills"
+    filename = f"{filename_prefix}-{timezone.localtime():%Y%m%d-%H%M%S}.csv"
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     response.write("\ufeff")
     writer = csv.DictWriter(response, fieldnames=IESCO_EXPORT_FIELDS)
@@ -1316,65 +1762,24 @@ def _formatted_units(reading):
 
 
 def _formatted_export_rows(request):
-    property_id = (request.GET.get("property") or "").strip()
-    reference_no = (request.GET.get("reference_no") or "").strip()
-    bill_month = (request.GET.get("bill_month") or "").strip()
-    payment_status = (request.GET.get("payment_status") or "").strip()
     reading_id = (request.GET.get("reading_id") or "").strip()
-    visible_references = set(
-        _valid_unit_meters(
-            request.user,
-            property_id=property_id if property_id.isdigit() else None,
-        ).values_list("electric_meter_num", flat=True)
+    ordered, sources = _export_readings_for_request(
+        request,
+        reading_id=reading_id,
     )
-    if not property_id:
-        visible_references.update(
-            _visible_standalone_meters(request.user).values_list("reference_no", flat=True)
-        )
-    readings = IescoBillReading.objects.filter(
-        reference_no__in=visible_references
-    ).select_related("posted_invoice_item__invoice")
-    if reading_id.isdigit():
-        readings = readings.filter(pk=int(reading_id))
-    if reference_no:
-        readings = readings.filter(reference_no__icontains=reference_no)
-    if bill_month:
-        readings = readings.filter(
-            bill_month__in=_raw_month_values(visible_references, bill_month)
-        )
-    ordered = list(readings.order_by("reference_no", "-fetched_at", "-updated_at", "-id"))
-    if not reading_id and not bill_month:
-        latest = {}
-        for reading in ordered:
-            latest.setdefault(reading.reference_no, reading)
-        ordered = list(latest.values())
-    if payment_status == "paid":
-        ordered = [reading for reading in ordered if reading.payment_status_display == "Paid"]
-    elif payment_status == "unpaid":
-        ordered = [reading for reading in ordered if reading_requires_payment(reading)]
-    elif payment_status == "unknown":
-        ordered = [reading for reading in ordered if reading.payment_status_display == "Unknown"]
-    unit_by_reference = {
-        unit.electric_meter_num: unit
-        for unit in _valid_unit_meters(
-            request.user,
-            property_id=property_id if property_id.isdigit() else None,
-        )
-    }
-    standalone_by_reference = {
-        meter.reference_no: meter
-        for meter in (_visible_standalone_meters(request.user) if not property_id else [])
-    }
+    source_by_reference = {}
+    for source in sources:
+        source_by_reference.setdefault(source["reference_no"], source)
+
     context_rows = []
     for reading in ordered:
-        unit = unit_by_reference.get(reading.reference_no)
-        standalone = standalone_by_reference.get(reading.reference_no)
+        source = source_by_reference.get(reading.reference_no, {})
         context_rows.append(
             {
                 "reading": reading,
-                "unit": unit,
-                "standalone": standalone,
-                "is_active": unit.iesco_bill_active if unit else bool(standalone and standalone.is_active),
+                "unit": source.get("unit"),
+                "standalone": source.get("standalone"),
+                "is_active": bool(source.get("is_active")),
             }
         )
     _attach_lease_context(context_rows)
@@ -1430,8 +1835,30 @@ def _formatted_export_rows(request):
                 "lease_balance": balance,
                 "update_balance": f"{timezone.localtime(reading.updated_at).strftime('%Y-%m-%d %H:%M')}\nBalance: {balance}",
                 "invoice_number": invoice_number,
+                "is_summary": False,
             }
         )
+
+    if rows and not reading_id:
+        totals = _dashboard_totals(context_rows)
+        summary = {key: "" for key in rows[0].keys()}
+        summary.update(
+            {
+                "serial": "",
+                "property_or_description": "TOTAL",
+                "unit": "",
+                "property_unit": "TOTAL",
+                "bill_month": "",
+                "bill_active": "",
+                "reference_meter": "",
+                "consumer_tenant": "",
+                "readings": "",
+                "units": totals["units_display"],
+                "grand_total": totals["grand_total_display"],
+                "is_summary": True,
+            }
+        )
+        rows.append(summary)
     return rows
 
 
@@ -1463,6 +1890,10 @@ def _iesco_export_xlsx(rows):
     ]
     for row in rows:
         sheet.append([row[key] for key in keys])
+        if row.get("is_summary"):
+            for cell in sheet[sheet.max_row]:
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill("solid", fgColor="E9ECEF")
     widths = [7, 24, 18, 10, 18, 18, 13, 24, 24, 24, 24, 22, 13, 14, 15, 15, 16, 15, 15, 18, 16, 20]
     for index, width in enumerate(widths, 1):
         sheet.column_dimensions[get_column_letter(index)].width = width

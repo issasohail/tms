@@ -6,16 +6,15 @@
   .iesco-detail-main-container { width: 1626px; max-width: calc(100vw - 24px); margin-left: auto; margin-right: auto; }
   .iesco-detail-mobile-card { border: 1px solid #d7dce2; border-radius: .7rem; background: #fff; overflow: hidden; }
   .iesco-detail-mobile-top { padding: .48rem .5rem; background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
-  .iesco-detail-mobile-heading-line, .iesco-detail-mobile-subheading-line { display: flex; align-items: center; justify-content: space-between; gap: .45rem; min-width: 0; }
-  .iesco-detail-mobile-meta-line { display: flex; align-items: baseline; gap: .35rem; min-width: 0; }
+  .iesco-detail-mobile-heading-line, .iesco-detail-mobile-subheading-line, .iesco-detail-mobile-meta-line { display: flex; align-items: center; justify-content: space-between; gap: .45rem; min-width: 0; }
   .iesco-detail-mobile-subheading-line { margin-top: .22rem; }
   .iesco-detail-mobile-serial { flex: 0 0 auto; font-size: .78rem; font-weight: 700; line-height: 1.2; }
   .iesco-detail-mobile-property { flex: 1 1 auto; min-width: 0; font-size: .78rem; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .iesco-detail-mobile-ref { flex: 0 1 auto; min-width: 0; font-size: .68rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .iesco-detail-mobile-meta { padding: .46rem .5rem; border-bottom: 1px solid #edf0f2; }
   .iesco-detail-mobile-meta-line + .iesco-detail-mobile-meta-line { margin-top: .24rem; }
-  .iesco-detail-mobile-meta-pair { flex: 1 1 auto; min-width: 0; font-size: .71rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .iesco-detail-mobile-meta-pair--right { flex: 0 0 126px; width: 126px; text-align: right; overflow: visible; }
+  .iesco-detail-mobile-meta-pair { flex: 1 1 50%; min-width: 0; font-size: .71rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .iesco-detail-mobile-meta-pair--right { text-align: right; }
   .iesco-detail-mobile-label { display: block; color: #6c757d; font-size: .64rem; line-height: 1.1; margin-bottom: .12rem; }
   .iesco-detail-mobile-value { display: block; font-size: .73rem; line-height: 1.22; overflow-wrap: anywhere; }
   .iesco-detail-reading-key { display: inline-block; width: 38px; }
@@ -28,7 +27,6 @@
   .iesco-detail-mobile-facts { display: flex; flex-wrap: wrap; gap: .45rem; padding: .5rem; }
   .iesco-detail-mobile-fact { flex: 1 1 calc(33.333% - .45rem); min-width: 92px; border: 1px solid #edf0f2; border-radius: .45rem; padding: .4rem .45rem; background: #fff; }
   .iesco-detail-mobile-fact .iesco-detail-mobile-value { font-size: .74rem; }
-  .iesco-detail-mobile-fact--emphasis .iesco-detail-mobile-value { font-size: .84rem; font-weight: 800; }
   .iesco-detail-table { table-layout: fixed; font-size: .90rem; }
   .iesco-detail-table th, .iesco-detail-table td { font-size: .90rem; vertical-align: top; padding: .3rem .35rem; }
   .iesco-detail-table thead th { position: sticky; top: 0; z-index: 5; background: #f8f9fa; border-bottom-width: 1px; }
@@ -52,9 +50,7 @@
     .iesco-detail-mobile-fact { flex-basis: calc(50% - .45rem); min-width: 118px; }
   }
   @media (max-width: 319.98px) {
-    .iesco-detail-mobile-heading-line, .iesco-detail-mobile-subheading-line { gap: .25rem; }
-    .iesco-detail-mobile-meta-line { gap: .2rem; }
-    .iesco-detail-mobile-meta-pair--right { flex-basis: 104px; width: 104px; }
+    .iesco-detail-mobile-heading-line, .iesco-detail-mobile-subheading-line, .iesco-detail-mobile-meta-line { gap: .25rem; }
     .iesco-detail-mobile-property { font-size: .72rem; }
     .iesco-detail-mobile-meta-pair { font-size: .66rem; }
     .iesco-detail-mobile-fact { flex-basis: 100%; }
@@ -67,13 +63,13 @@
     .iesco-detail-mobile-property { font-size: .77rem; }
     .iesco-detail-mobile-ref { font-size: .67rem; }
     .iesco-detail-mobile-meta { padding: .42rem .48rem; gap: .35rem; }
+    .iesco-detail-mobile-meta-col--right { border-left: 1px solid #edf0f2; padding-left: .42rem; }
     .iesco-detail-mobile-label { font-size: .59rem; }
     .iesco-detail-mobile-value { font-size: .69rem; }
     .iesco-detail-mobile-facts { gap: .3rem; padding: .42rem .48rem; }
     .iesco-detail-mobile-fact { flex: 1 1 calc(33.333% - .3rem); min-width: 0 !important; padding: .34rem .38rem; border-radius: .5rem; background: #f8fbff; }
     .iesco-detail-mobile-fact:nth-child(9) { background: #f2fbf5; }
     .iesco-detail-mobile-fact .iesco-detail-mobile-value { font-size: .7rem; }
-    .iesco-detail-mobile-fact--emphasis .iesco-detail-mobile-value { font-size: .82rem; font-weight: 800; }
   }
   @media (max-width: 339.98px) {
     .iesco-detail-mobile-fact { flex-basis: calc(50% - .3rem); }
@@ -269,15 +265,15 @@
           </div>
         </div>
         <div class="iesco-detail-mobile-facts">
-          <div class="iesco-detail-mobile-fact iesco-detail-mobile-fact--emphasis"><span class="iesco-detail-mobile-label">Bill Month</span><span class="iesco-detail-mobile-value">{{ reading.bill_month }}</span></div>
-          <div class="iesco-detail-mobile-fact iesco-detail-mobile-fact--emphasis"><span class="iesco-detail-mobile-label">Units</span><span class="iesco-detail-mobile-value fw-bold">{% if reading.has_export_registers %}<span class="d-block">Import: {{ reading.import_units_display }}</span><span class="d-block">Export: {{ reading.export_units_display }}</span><span class="d-block">Net: {{ reading.net_units_display }}</span>{% else %}{{ reading.units_display }}{% endif %}</span></div>
-          <div class="iesco-detail-mobile-fact iesco-detail-mobile-fact--emphasis"><span class="iesco-detail-mobile-label">Unit Rate</span><span class="iesco-detail-mobile-value fw-bold">{{ reading.per_unit_rate_display }}</span></div>
-          <div class="iesco-detail-mobile-fact iesco-detail-mobile-fact--emphasis"><span class="iesco-detail-mobile-label">Current Bill</span><span class="iesco-detail-mobile-value fw-bold">{{ reading.current_bill_display }}</span></div>
-          <div class="iesco-detail-mobile-fact iesco-detail-mobile-fact--emphasis"><span class="iesco-detail-mobile-label">Arrears</span><span class="iesco-detail-mobile-value">{{ reading.arrears_display }}</span></div>
+          <div class="iesco-detail-mobile-fact"><span class="iesco-detail-mobile-label">Bill Month</span><span class="iesco-detail-mobile-value">{{ reading.bill_month }}</span></div>
+          <div class="iesco-detail-mobile-fact"><span class="iesco-detail-mobile-label">Units</span><span class="iesco-detail-mobile-value fw-bold">{% if reading.has_export_registers %}<span class="d-block">Import: {{ reading.import_units_display }}</span><span class="d-block">Export: {{ reading.export_units_display }}</span><span class="d-block">Net: {{ reading.net_units_display }}</span>{% else %}{{ reading.units_display }}{% endif %}</span></div>
+          <div class="iesco-detail-mobile-fact"><span class="iesco-detail-mobile-label">Unit Rate</span><span class="iesco-detail-mobile-value fw-bold">{{ reading.per_unit_rate_display }}</span></div>
+          <div class="iesco-detail-mobile-fact"><span class="iesco-detail-mobile-label">Current Bill</span><span class="iesco-detail-mobile-value fw-bold">{{ reading.current_bill_display }}</span></div>
+          <div class="iesco-detail-mobile-fact"><span class="iesco-detail-mobile-label">Arrears</span><span class="iesco-detail-mobile-value">{{ reading.arrears_display }}</span></div>
           <div class="iesco-detail-mobile-fact"><span class="iesco-detail-mobile-label">Grand Total</span><span class="iesco-detail-mobile-value fw-semibold">{% if reading.month_invoice %}<a class="iesco-detail-grand-total" href="{% url 'invoices:invoice_detail' reading.month_invoice.pk %}">{{ reading.grand_total_display }}</a>{% else %}<button class="iesco-detail-grand-total" type="button" data-no-invoice>{{ reading.grand_total_display }}</button>{% endif %}</span></div>
           <div class="iesco-detail-mobile-fact"><span class="iesco-detail-mobile-label">Previous / Current</span><span class="iesco-detail-mobile-value">{% if reading.register_display_rows %}{% if reading.register_display_rows|length == 1 %}<span class="d-block">P: {{ reading.register_display_rows.0.previous|default:"—" }}</span><span class="d-block">C: {{ reading.register_display_rows.0.present|default:"—" }}</span>{% else %}{% for register in reading.register_display_rows %}<span class="d-block"><span class="text-muted iesco-detail-reading-key">{{ register.short_label }}</span>{{ register.previous|default:"—" }} → {{ register.present|default:"—" }}</span>{% endfor %}{% endif %}{% else %}—{% endif %}</span></div>
           <div class="iesco-detail-mobile-fact"><span class="iesco-detail-mobile-label">Last Update</span><span class="iesco-detail-mobile-value">{{ reading.updated_at|date:"Y-m-d H:i" }}</span></div>
-          <div class="iesco-detail-mobile-fact iesco-detail-mobile-fact--emphasis"><span class="iesco-detail-mobile-label">Lease Balance</span><span class="iesco-detail-mobile-value">{% if reading.occupancy_tenant_name %}<a class="iesco-detail-balance" href="{% url 'leases:lease_ledger_by_pk' reading.occupancy_lease.pk %}">Rs. {{ reading.occupancy_lease_balance|floatformat:"0g" }}</a>{% else %}—{% endif %}</span></div>
+          <div class="iesco-detail-mobile-fact"><span class="iesco-detail-mobile-label">Lease Balance</span><span class="iesco-detail-mobile-value">{% if reading.occupancy_tenant_name %}<a class="iesco-detail-balance" href="{% url 'leases:lease_ledger_by_pk' reading.occupancy_lease.pk %}">Rs. {{ reading.occupancy_lease_balance|floatformat:"0g" }}</a>{% else %}—{% endif %}</span></div>
         </div>
       </div>
 

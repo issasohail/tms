@@ -144,38 +144,18 @@
   .iesco-mobile-fact .iesco-mobile-value { font-size: .74rem; }
   .iesco-mobile-fact--emphasis .iesco-mobile-value { font-size: .84rem; font-weight: 800; }
   .iesco-history-toggle { border: 0; background: transparent; padding: 0; font: inherit; cursor: pointer; text-decoration: none; }
-  .iesco-inline-history { padding: .45rem .5rem .55rem; border-top: 1px dashed #d7dce2; background: #fbfcfd; }
-  .iesco-inline-history-title { margin: -.45rem -.5rem .45rem; padding: .34rem .5rem; background: #112b5b; color: #fff; font-size: .72rem; font-weight: 800; letter-spacing: .01em; }
-  .iesco-inline-history-table { width: 100%; margin: 0; font-size: .64rem; table-layout: fixed; }
-  .iesco-inline-history-table th, .iesco-inline-history-table td { padding: .14rem .08rem; white-space: nowrap; vertical-align: middle; overflow: hidden; text-overflow: clip; }
-  .iesco-inline-history-table th { background: #e5f3f0; font-weight: 800; text-transform: uppercase; font-size: .47rem; letter-spacing: -.02em; }
-  .iesco-inline-history-table th:nth-child(1), .iesco-inline-history-table td:nth-child(1) { width: 16%; }
-  .iesco-inline-history-table th:nth-child(2), .iesco-inline-history-table td:nth-child(2) { width: 17%; }
-  .iesco-inline-history-table th:nth-child(3), .iesco-inline-history-table td:nth-child(3) { width: 12%; text-align: right; }
-  .iesco-inline-history-table th:nth-child(4), .iesco-inline-history-table td:nth-child(4) { width: 15%; text-align: right; }
-  .iesco-inline-history-table th:nth-child(5), .iesco-inline-history-table td:nth-child(5) { width: 20%; text-align: right; }
-  .iesco-inline-history-table th:nth-child(6), .iesco-inline-history-table td:nth-child(6) { width: 20%; text-align: right; }
-  .iesco-inline-history-table .badge { font-size: .48rem; padding: .10rem .14rem; max-width: 100%; overflow: hidden; text-overflow: clip; }
+  .iesco-inline-history { padding: .45rem .5rem; border-top: 1px dashed #d7dce2; background: #fbfcfd; }
+  .iesco-inline-history-title { font-size: .7rem; font-weight: 700; margin-bottom: .3rem; }
+  .iesco-inline-history-table { width: 100%; margin: 0; font-size: .67rem; }
+  .iesco-inline-history-table th, .iesco-inline-history-table td { padding: .18rem .22rem; white-space: nowrap; }
   .iesco-inline-history-empty { font-size: .68rem; color: #6c757d; }
-  .iesco-history-table-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; align-items: start; }
-  .iesco-history-table-card { width: 100%; min-width: 0; border: 1px solid #cfd9e2; border-radius: .38rem; background: #fff; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
-  .iesco-history-split-table { width: 100%; margin: 0; table-layout: fixed; font-size: .64rem; }
-  .iesco-history-split-table th, .iesco-history-split-table td { padding: .19rem .16rem; white-space: nowrap; vertical-align: middle; overflow: hidden; text-overflow: clip; }
-  .iesco-history-split-table th { background: #dff1ee; text-transform: uppercase; font-size: .47rem; font-weight: 800; letter-spacing: -.02em; }
-  .iesco-history-split-table td:nth-child(n+3) { text-align: right; }
-  .iesco-history-split-table .badge { font-size: .48rem; padding: .10rem .14rem; }
-  .iesco-history-split-table th:nth-child(1), .iesco-history-split-table td:nth-child(1) { width: 17%; }
-  .iesco-history-split-table th:nth-child(2), .iesco-history-split-table td:nth-child(2) { width: 18%; }
-  .iesco-history-split-table th:nth-child(3), .iesco-history-split-table td:nth-child(3) { width: 11%; }
-  .iesco-history-split-table th:nth-child(4), .iesco-history-split-table td:nth-child(4) { width: 15%; }
-  .iesco-history-split-table th:nth-child(5), .iesco-history-split-table td:nth-child(5) { width: 20%; }
-  .iesco-history-split-table th:nth-child(6), .iesco-history-split-table td:nth-child(6) { width: 19%; }
-  @media (min-width: 768px) and (max-width: 1199.98px) {
-    .iesco-history-table-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
-  @media (min-width: 1200px) {
-    .iesco-history-table-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  }
+  .iesco-history-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 350px)); gap: .55rem; align-items: start; }
+  .iesco-history-mini-card { width: 100%; max-width: 350px; border: 1px solid #dfe4e8; border-radius: .5rem; background: #fff; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .iesco-history-mini-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .38rem .48rem; background: #f8f9fa; border-bottom: 1px solid #e7eaed; font-size: .7rem; }
+  .iesco-history-mini-head strong { font-size: .76rem; }
+  .iesco-history-mini-table { width: 100%; margin: 0; table-layout: fixed; font-size: .68rem; }
+  .iesco-history-mini-table th, .iesco-history-mini-table td { padding: .28rem .32rem; white-space: nowrap; text-align: right; }
+  .iesco-history-mini-table th:first-child, .iesco-history-mini-table td:first-child { text-align: left; }
   .iesco-history-desktop { display: none; }
   .iesco-history-mobile { display: block; }
   @media print {
@@ -414,65 +394,15 @@
         <div class="iesco-inline-history">
         <div class="iesco-inline-history-title">Bill history{% if row.reference_no %} — {{ row.reference_no }}{% endif %}</div>
         {% if reading and reading.bill_history %}
-        <div class="iesco-history-desktop iesco-history-table-grid">
-          {% with history_chunk=reading.bill_history|slice:":3" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
+        <div class="iesco-history-desktop iesco-history-card-grid">
+          {% for history in reading.bill_history %}{% if history.month %}
+          <div class="iesco-history-mini-card">
+            <div class="iesco-history-mini-head"><strong>{{ history.month }}</strong><span>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</span></div>
+            <table class="table table-sm iesco-history-mini-table"><thead><tr><th>Units</th><th>Bill</th><th>Payment</th></tr></thead><tbody><tr><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td></tr></tbody></table>
           </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"3:6" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"6:9" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"9:12" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
+          {% endif %}{% endfor %}
         </div>
-        <div class="iesco-history-mobile table-responsive"><table class="table table-sm table-bordered iesco-inline-history-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Pay</th><th>Out.</th></tr></thead><tbody>{% for history in reading.bill_history %}{% if history.month %}<tr><td>{{ history.month }}</td><td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td><td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td></tr>{% endif %}{% endfor %}</tbody></table></div>
+        <div class="iesco-history-mobile table-responsive"><table class="table table-sm table-bordered iesco-inline-history-table"><thead><tr><th>Month</th><th>Units</th><th>Bill</th><th>Payment</th><th>Paid</th></tr></thead><tbody>{% for history in reading.bill_history %}{% if history.month %}<tr><td>{{ history.month }}</td><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.paid is True %}Yes{% elif history.paid is False %}No{% else %}Unknown{% endif %}</td></tr>{% endif %}{% endfor %}</tbody></table></div>
         {% else %}<div class="iesco-inline-history-empty">No additional bill history is available.</div>{% endif %}
         </div>
       </td>
@@ -512,65 +442,15 @@
       <div class="iesco-inline-history" data-history-for="{{ row.reference_no }}" hidden>
         <div class="iesco-inline-history-title">Bill history{% if row.reference_no %} — {{ row.reference_no }}{% endif %}</div>
         {% if reading and reading.bill_history %}
-        <div class="iesco-history-desktop iesco-history-table-grid">
-          {% with history_chunk=reading.bill_history|slice:":3" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
+        <div class="iesco-history-desktop iesco-history-card-grid">
+          {% for history in reading.bill_history %}{% if history.month %}
+          <div class="iesco-history-mini-card">
+            <div class="iesco-history-mini-head"><strong>{{ history.month }}</strong><span>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</span></div>
+            <table class="table table-sm iesco-history-mini-table"><thead><tr><th>Units</th><th>Bill</th><th>Payment</th></tr></thead><tbody><tr><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td></tr></tbody></table>
           </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"3:6" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"6:9" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"9:12" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
+          {% endif %}{% endfor %}
         </div>
-        <div class="iesco-history-mobile table-responsive"><table class="table table-sm table-bordered iesco-inline-history-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Pay</th><th>Out.</th></tr></thead><tbody>{% for history in reading.bill_history %}{% if history.month %}<tr><td>{{ history.month }}</td><td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td><td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td></tr>{% endif %}{% endfor %}</tbody></table></div>
+        <div class="iesco-history-mobile table-responsive"><table class="table table-sm table-bordered iesco-inline-history-table"><thead><tr><th>Month</th><th>Units</th><th>Bill</th><th>Payment</th><th>Paid</th></tr></thead><tbody>{% for history in reading.bill_history %}{% if history.month %}<tr><td>{{ history.month }}</td><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.paid is True %}Yes{% elif history.paid is False %}No{% else %}Unknown{% endif %}</td></tr>{% endif %}{% endfor %}</tbody></table></div>
         {% else %}<div class="iesco-inline-history-empty">No additional bill history is available.</div>{% endif %}
       </div>
     </article>
@@ -628,65 +508,15 @@
       <div class="iesco-inline-history" data-history-for="{{ row.reference_no }}" hidden>
         <div class="iesco-inline-history-title">Bill history{% if row.reference_no %} — {{ row.reference_no }}{% endif %}</div>
         {% if reading and reading.bill_history %}
-        <div class="iesco-history-desktop iesco-history-table-grid">
-          {% with history_chunk=reading.bill_history|slice:":3" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
+        <div class="iesco-history-desktop iesco-history-card-grid">
+          {% for history in reading.bill_history %}{% if history.month %}
+          <div class="iesco-history-mini-card">
+            <div class="iesco-history-mini-head"><strong>{{ history.month }}</strong><span>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</span></div>
+            <table class="table table-sm iesco-history-mini-table"><thead><tr><th>Units</th><th>Bill</th><th>Payment</th></tr></thead><tbody><tr><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td></tr></tbody></table>
           </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"3:6" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"6:9" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"9:12" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
+          {% endif %}{% endfor %}
         </div>
-        <div class="iesco-history-mobile table-responsive"><table class="table table-sm table-bordered iesco-inline-history-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Pay</th><th>Out.</th></tr></thead><tbody>{% for history in reading.bill_history %}{% if history.month %}<tr><td>{{ history.month }}</td><td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td><td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td></tr>{% endif %}{% endfor %}</tbody></table></div>
+        <div class="iesco-history-mobile table-responsive"><table class="table table-sm table-bordered iesco-inline-history-table"><thead><tr><th>Month</th><th>Units</th><th>Bill</th><th>Payment</th><th>Paid</th></tr></thead><tbody>{% for history in reading.bill_history %}{% if history.month %}<tr><td>{{ history.month }}</td><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.paid is True %}Yes{% elif history.paid is False %}No{% else %}Unknown{% endif %}</td></tr>{% endif %}{% endfor %}</tbody></table></div>
         {% else %}<div class="iesco-inline-history-empty">No additional bill history is available.</div>{% endif %}
       </div>
     </article>
@@ -707,17 +537,6 @@
       control.addEventListener('click', function () {
         window.alert('There is no invoice generated for this bill.');
       });
-    });
-    const historyNumber = new Intl.NumberFormat('en-US', {maximumFractionDigits: 0});
-    document.querySelectorAll('.iesco-history-outstanding').forEach(function (cell) {
-      const cleanNumber = function (value) {
-        const parsed = Number(String(value || '').replace(/[^0-9.-]/g, ''));
-        return Number.isFinite(parsed) ? parsed : 0;
-      };
-      const bill = cleanNumber(cell.dataset.historyBill);
-      const payment = cleanNumber(cell.dataset.historyPayment);
-      const outstanding = Math.max(bill - payment, 0);
-      cell.textContent = 'Rs. ' + historyNumber.format(Math.round(outstanding));
     });
     document.querySelectorAll('.iesco-history-toggle').forEach(function (toggle) {
       toggle.addEventListener('click', function () {

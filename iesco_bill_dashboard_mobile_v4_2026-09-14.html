@@ -124,64 +124,21 @@
   button.iesco-grand-total-link { appearance: none; border: 0; background: transparent; color: inherit; padding: 0; font-family: inherit; cursor: pointer; }
   .iesco-mobile-card { border: 1px solid #d7dce2; border-radius: .7rem; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
   .iesco-mobile-top { padding: .48rem .5rem; background: #f8f9fa; border-bottom: 1px solid #dee2e6; }
-  .iesco-mobile-heading-line, .iesco-mobile-subheading-line { display: flex; align-items: center; justify-content: space-between; gap: .45rem; min-width: 0; }
-  .iesco-mobile-meta-line { display: flex; align-items: baseline; gap: .35rem; min-width: 0; }
+  .iesco-mobile-heading-line, .iesco-mobile-subheading-line, .iesco-mobile-meta-line { display: flex; align-items: center; justify-content: space-between; gap: .45rem; min-width: 0; }
   .iesco-mobile-subheading-line { margin-top: .22rem; }
   .iesco-mobile-serial { flex: 0 0 auto; font-size: .78rem; font-weight: 700; line-height: 1.2; }
   .iesco-mobile-property { flex: 1 1 auto; min-width: 0; font-size: .78rem; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .iesco-mobile-ref { flex: 0 1 auto; min-width: 0; font-size: .68rem; font-weight: 700; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .iesco-mobile-history-link { flex: 0 0 auto; font-size: .67rem; color: #6c757d !important; text-decoration: none; }
-  .iesco-mobile-tenant-under-property { flex: 1 1 auto; min-width: 0; font-size: .69rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .iesco-mobile-tenant-under-property .iesco-tenant-name { display: inline; }
   .iesco-mobile-meta { padding: .46rem .5rem; border-bottom: 1px solid #edf0f2; }
   .iesco-mobile-meta-line + .iesco-mobile-meta-line { margin-top: .24rem; }
-  .iesco-mobile-meta-pair { flex: 1 1 auto; min-width: 0; font-size: .71rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .iesco-mobile-meta-pair--right { flex: 0 0 126px; width: 126px; text-align: right; overflow: visible; }
+  .iesco-mobile-meta-pair { flex: 1 1 50%; min-width: 0; font-size: .71rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .iesco-mobile-meta-pair--right { text-align: right; }
   .iesco-mobile-label { display: block; color: #6c757d; font-size: .64rem; line-height: 1.1; margin-bottom: .12rem; }
   .iesco-mobile-value { display: block; font-size: .73rem; line-height: 1.22; overflow-wrap: anywhere; }
   .iesco-mobile-facts { display: flex; flex-wrap: wrap; gap: .45rem; padding: .5rem; }
   .iesco-mobile-fact { flex: 1 1 calc(33.333% - .45rem); min-width: 92px; border: 1px solid #edf0f2; border-radius: .45rem; padding: .4rem .45rem; background: #fff; }
   .iesco-mobile-fact .iesco-mobile-value { font-size: .74rem; }
-  .iesco-mobile-fact--emphasis .iesco-mobile-value { font-size: .84rem; font-weight: 800; }
-  .iesco-history-toggle { border: 0; background: transparent; padding: 0; font: inherit; cursor: pointer; text-decoration: none; }
-  .iesco-inline-history { padding: .45rem .5rem .55rem; border-top: 1px dashed #d7dce2; background: #fbfcfd; }
-  .iesco-inline-history-title { margin: -.45rem -.5rem .45rem; padding: .34rem .5rem; background: #112b5b; color: #fff; font-size: .72rem; font-weight: 800; letter-spacing: .01em; }
-  .iesco-inline-history-table { width: 100%; margin: 0; font-size: .64rem; table-layout: fixed; }
-  .iesco-inline-history-table th, .iesco-inline-history-table td { padding: .14rem .08rem; white-space: nowrap; vertical-align: middle; overflow: hidden; text-overflow: clip; }
-  .iesco-inline-history-table th { background: #e5f3f0; font-weight: 800; text-transform: uppercase; font-size: .47rem; letter-spacing: -.02em; }
-  .iesco-inline-history-table th:nth-child(1), .iesco-inline-history-table td:nth-child(1) { width: 16%; }
-  .iesco-inline-history-table th:nth-child(2), .iesco-inline-history-table td:nth-child(2) { width: 17%; }
-  .iesco-inline-history-table th:nth-child(3), .iesco-inline-history-table td:nth-child(3) { width: 12%; text-align: right; }
-  .iesco-inline-history-table th:nth-child(4), .iesco-inline-history-table td:nth-child(4) { width: 15%; text-align: right; }
-  .iesco-inline-history-table th:nth-child(5), .iesco-inline-history-table td:nth-child(5) { width: 20%; text-align: right; }
-  .iesco-inline-history-table th:nth-child(6), .iesco-inline-history-table td:nth-child(6) { width: 20%; text-align: right; }
-  .iesco-inline-history-table .badge { font-size: .48rem; padding: .10rem .14rem; max-width: 100%; overflow: hidden; text-overflow: clip; }
-  .iesco-inline-history-empty { font-size: .68rem; color: #6c757d; }
-  .iesco-history-table-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; align-items: start; }
-  .iesco-history-table-card { width: 100%; min-width: 0; border: 1px solid #cfd9e2; border-radius: .38rem; background: #fff; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
-  .iesco-history-split-table { width: 100%; margin: 0; table-layout: fixed; font-size: .64rem; }
-  .iesco-history-split-table th, .iesco-history-split-table td { padding: .19rem .16rem; white-space: nowrap; vertical-align: middle; overflow: hidden; text-overflow: clip; }
-  .iesco-history-split-table th { background: #dff1ee; text-transform: uppercase; font-size: .47rem; font-weight: 800; letter-spacing: -.02em; }
-  .iesco-history-split-table td:nth-child(n+3) { text-align: right; }
-  .iesco-history-split-table .badge { font-size: .48rem; padding: .10rem .14rem; }
-  .iesco-history-split-table th:nth-child(1), .iesco-history-split-table td:nth-child(1) { width: 17%; }
-  .iesco-history-split-table th:nth-child(2), .iesco-history-split-table td:nth-child(2) { width: 18%; }
-  .iesco-history-split-table th:nth-child(3), .iesco-history-split-table td:nth-child(3) { width: 11%; }
-  .iesco-history-split-table th:nth-child(4), .iesco-history-split-table td:nth-child(4) { width: 15%; }
-  .iesco-history-split-table th:nth-child(5), .iesco-history-split-table td:nth-child(5) { width: 20%; }
-  .iesco-history-split-table th:nth-child(6), .iesco-history-split-table td:nth-child(6) { width: 19%; }
-  @media (min-width: 768px) and (max-width: 1199.98px) {
-    .iesco-history-table-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
-  @media (min-width: 1200px) {
-    .iesco-history-table-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  }
-  .iesco-history-desktop { display: none; }
-  .iesco-history-mobile { display: block; }
-  @media print {
-    .iesco-history-toggle { display: none !important; }
-    .iesco-inline-history, .iesco-inline-history-row { break-inside: avoid; page-break-inside: avoid; }
-  }
   .iesco-mobile-actions { display: flex; flex-wrap: wrap; gap: .35rem; padding: 0 .5rem .55rem; }
   .iesco-mobile-actions > a, .iesco-mobile-actions > form, .iesco-mobile-actions > .btn { flex: 1 1 48px; min-width: 0; margin: 0; }
   .iesco-mobile-actions .btn { display: inline-flex; width: 100%; min-height: 32px; align-items: center; justify-content: center; padding: .25rem .35rem !important; font-size: .67rem; line-height: 1; white-space: nowrap; }
@@ -272,13 +229,13 @@
     .iesco-mobile-ref { font-size: .67rem; }
     .iesco-mobile-history-link { font-size: .64rem; }
     .iesco-mobile-meta { padding: .42rem .48rem; gap: .35rem; }
+    .iesco-mobile-meta-col--right { border-left: 1px solid #edf0f2; padding-left: .42rem; }
     .iesco-mobile-label { font-size: .59rem; }
     .iesco-mobile-value { font-size: .69rem; }
     .iesco-mobile-facts { gap: .3rem; padding: .42rem .48rem; }
     .iesco-mobile-fact { flex: 1 1 calc(33.333% - .3rem); min-width: 0 !important; padding: .34rem .38rem; border-radius: .5rem; background: #f8fbff; }
     .iesco-mobile-fact:nth-child(9) { background: #f2fbf5; }
     .iesco-mobile-fact .iesco-mobile-value { font-size: .7rem; }
-    .iesco-mobile-fact--month .iesco-mobile-value { font-size: .82rem; font-weight: 800; }
     .iesco-mobile-actions { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .24rem; padding: 0 .48rem .48rem; }
     .iesco-mobile-actions > a, .iesco-mobile-actions > form, .iesco-mobile-actions > .btn { min-width: 0; width: 100%; margin: 0; }
     .iesco-mobile-actions .btn { min-height: 30px; padding: .18rem .12rem !important; font-size: .56rem; }
@@ -289,17 +246,13 @@
     .iesco-mobile-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .iesco-mobile-fact { flex-basis: calc(50% - .3rem); }
   }
-  @media (min-width: 768px) {
-    .iesco-history-desktop { display: grid; }
-    .iesco-history-mobile { display: none; }
-  }
   @media (min-width: 768px) and (max-width: 1599.98px) {
-    .iesco-mobile-view, .iesco-desktop-view { display: none !important; }
-    .iesco-tablet-view { display: block !important; }
+    .iesco-mobile-view { display: none; }
+    .iesco-tablet-view { display: block; }
   }
   @media (min-width: 1600px) {
-    .iesco-mobile-view, .iesco-tablet-view { display: none !important; }
-    .iesco-desktop-view { display: block !important; }
+    .iesco-mobile-view, .iesco-tablet-view { display: none; }
+    .iesco-desktop-view { display: block; }
   }
 </style>
 <div class="container-fluid py-2">
@@ -387,7 +340,7 @@
     <thead><tr><th>#</th><th class="iesco-property-col">Property / Unit<br>or Description</th><th>Bill Month<br>Active</th><th>Reference<br>Meter #</th><th>Consumer<br>Occupant</th><th>Previous<br>Current</th><th class="text-center">Units</th><th class="text-end">Per<br>Unit</th><th class="text-end">Arrears<br>Current Bill</th><th class="text-end">Grand<br>Total</th><th>Due Date<br>Payment</th><th>Last Update<br>Balance</th><th class="text-end">Actions</th></tr></thead>
     <tbody>{% for row in meter_rows %}{% with reading=row.reading %}<tr>
       <td data-label="#" class="text-muted">{{ page_obj.start_index|default:1|add:forloop.counter0 }}</td>
-      <td data-label="Property / Unit" class="iesco-property-col">{% if row.unit %}<strong class="iesco-property-line">{{ row.property.property_name }} / {{ row.unit.unit_number }}</strong><small class="iesco-property-subline">{{ row.reference_no }}</small><button type="button" class="iesco-property-subline text-muted iesco-history-toggle" data-history-ref="{{ row.reference_no }}" aria-expanded="false">Show history</button>{% else %}<strong class="iesco-property-line">{{ row.description }}</strong><small class="iesco-property-subline">Standalone meter</small><button type="button" class="iesco-property-subline text-muted iesco-history-toggle" data-history-ref="{{ row.reference_no }}" aria-expanded="false">Show history</button>{% endif %}</td>
+      <td data-label="Property / Unit" class="iesco-property-col">{% if row.unit %}<strong class="iesco-property-line">{{ row.property.property_name }} / {{ row.unit.unit_number }}</strong><small class="iesco-property-subline">{{ row.reference_no }}</small><a class="iesco-property-subline text-primary" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}">Show history</a>{% else %}<strong class="iesco-property-line">{{ row.description }}</strong><small class="iesco-property-subline">Standalone meter</small><a class="iesco-property-subline text-primary" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}">Show history</a>{% endif %}</td>
       <td data-label="Bill Month / Active" class="text-nowrap"><span class="iesco-paired-line">{{ reading.bill_month|default:"—" }}</span><span class="iesco-paired-line">{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</span></td>
       <td data-label="Reference / Meter" class="text-nowrap"><a class="iesco-paired-line" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}" title="Open saved meter history"><strong>{{ row.reference_no }}</strong></a><span class="iesco-paired-line">{% if reading %}{{ reading.meter_number_display }}{% else %}—{% endif %}</span></td>
       <td data-label="Consumer">{% if reading %}{{ reading.consumer_name|default:reading.consumer_id|default:"—" }}{% if row.tenant_name %}<a class="iesco-tenant-name" href="{% url 'leases:lease_detail' row.lease.pk %}">{{ row.tenant_name }}</a>{% endif %}{% else %}—{% endif %}</td>
@@ -399,6 +352,7 @@
       <td data-label="Due Date / Payment" class="text-nowrap"><span class="iesco-paired-line">{{ reading.due_date|default:"—" }}</span><span class="iesco-paired-line">{% if not reading %}<span class="badge bg-secondary">No reading</span>{% elif reading.payment_status_display == "No payment due" %}<span class="badge bg-info text-dark">No payment due</span>{% elif reading.current_month_paid is True %}<span class="badge bg-success">Paid</span>{% elif reading.current_month_paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</span></td>
       <td data-label="Last Update / Balance" class="text-nowrap"><span class="iesco-paired-line">{{ reading.updated_at|date:"Y-m-d H:i"|default:"—" }}</span>{% if row.lease %}<a class="iesco-lease-balance iesco-paired-line" href="{% url 'leases:lease_ledger_by_pk' row.lease.pk %}">Balance: Rs. {{ row.lease_balance|floatformat:"0g" }}</a>{% endif %}</td>
       <td data-label="Actions"><div class="iesco-actions">
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}" title="View saved history">View</a>
         {% if reading.bill_pdf %}<a class="btn btn-danger btn-sm" href="{{ reading.bill_pdf.url }}" target="_blank" rel="noopener" title="View saved PDF">PDF</a>{% endif %}
         <a class="btn btn-info btn-sm" href="{% url 'invoices:iesco_bill_pitc' row.reference_no %}" target="_blank" rel="noopener" title="Open current bill on PITC">Bill</a>
         {% if can_manage %}
@@ -408,74 +362,6 @@
         {% if can_post and reading and row.unit %}<form method="post" action="{% url 'invoices:iesco_bill_post_to_invoice' reading.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="return_to" value="list"><button class="btn {% if row.invoice_generated %}btn-warning{% else %}btn-success{% endif %} btn-sm" type="submit" title="{% if row.invoice_generated %}Invoice {{ row.invoice_number }} exists; update it from this reading{% else %}Generate the invoice for {{ reading.bill_month }}{% endif %}">{% if row.invoice_generated %}ReInvoice{% else %}Invoice{% endif %}</button></form>{% endif %}
         {% if can_remind %}{% if reading and row.whatsapp_phone %}<form method="post" action="{% url 'invoices:iesco_bill_reminders_send' %}" class="d-inline">{% csrf_token %}<input type="hidden" name="reading_id" value="{{ reading.pk }}"><button class="btn btn-outline-success btn-sm" type="submit" title="Send bill status by WhatsApp" aria-label="Send bill status by WhatsApp"><i class="fab fa-whatsapp"></i></button></form>{% else %}<span class="btn btn-secondary btn-sm disabled" title="{% if not reading %}No saved bill data{% else %}No WhatsApp phone number{% endif %}" aria-disabled="true"><i class="fab fa-whatsapp"></i></span>{% endif %}{% endif %}
       </div></td>
-    </tr>
-    <tr class="iesco-inline-history-row" data-history-for="{{ row.reference_no }}" hidden>
-      <td colspan="13">
-        <div class="iesco-inline-history">
-        <div class="iesco-inline-history-title">Bill history{% if row.reference_no %} — {{ row.reference_no }}{% endif %}</div>
-        {% if reading and reading.bill_history %}
-        <div class="iesco-history-desktop iesco-history-table-grid">
-          {% with history_chunk=reading.bill_history|slice:":3" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"3:6" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"6:9" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"9:12" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-        </div>
-        <div class="iesco-history-mobile table-responsive"><table class="table table-sm table-bordered iesco-inline-history-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Pay</th><th>Out.</th></tr></thead><tbody>{% for history in reading.bill_history %}{% if history.month %}<tr><td>{{ history.month }}</td><td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td><td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td></tr>{% endif %}{% endfor %}</tbody></table></div>
-        {% else %}<div class="iesco-inline-history-empty">No additional bill history is available.</div>{% endif %}
-        </div>
-      </td>
     </tr>{% endwith %}{% empty %}<tr><td colspan="13" class="text-center text-muted py-4">No valid IESCO meters found.</td></tr>{% endfor %}</tbody>
     <tfoot><tr class="table-light fw-bold"><th></th><th>Total</th><th colspan="4"></th><th class="text-center">{{ dashboard_totals.units_display }}</th><th colspan="2"></th><th class="text-end">{{ dashboard_totals.grand_total_display }}</th><th colspan="3"></th></tr></tfoot>
   </table></div>
@@ -485,7 +371,7 @@
     <article class="iesco-tablet-card mb-2">
       <div class="iesco-tablet-header">
         <span><strong>{{ page_obj.start_index|default:1|add:forloop.counter0 }}</strong> — {% if row.unit %}<strong>{{ row.property.property_name }}</strong> — {{ row.unit.unit_number }}{% else %}<strong>{{ row.description }}</strong>{% endif %}<span class="iesco-tablet-meter">Meter #: {% if reading %}{{ reading.meter_number_display }}{% else %}—{% endif %}{% if reading %} · Consumer: {{ reading.consumer_name|default:reading.consumer_id|default:"—" }}{% endif %}{% if row.tenant_name %}<a class="iesco-tenant-name" href="{% url 'leases:lease_detail' row.lease.pk %}">{{ row.tenant_name }}</a>{% endif %}</span></span>
-        <span class="text-end"><strong>{{ row.reference_no }}</strong><br>{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}<br><button type="button" class="small text-muted iesco-history-toggle" data-history-ref="{{ row.reference_no }}" aria-expanded="false">Show history</button></span>
+        <span class="text-end"><a href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}"><strong>{{ row.reference_no }}</strong></a><br>{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</span>
       </div>
       <div class="iesco-tablet-row iesco-tablet-row--8">
         <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Bill Month</span><span class="iesco-tablet-value">{{ reading.bill_month|default:"—" }}</span></div>
@@ -499,6 +385,7 @@
       </div>
       <div class="iesco-tablet-row iesco-tablet-row--6">
         <div class="iesco-tablet-cell iesco-tablet-actions">
+          <a class="btn btn-outline-secondary btn-sm" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}">View</a>
           {% if reading.bill_pdf %}<a class="btn btn-danger btn-sm" href="{{ reading.bill_pdf.url }}" target="_blank" rel="noopener">PDF</a>{% endif %}
           <a class="btn btn-info btn-sm" href="{% url 'invoices:iesco_bill_pitc' row.reference_no %}" target="_blank" rel="noopener">View Bill</a>
           {% if can_manage %}{% if row.unit %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'unit' row.unit.pk %}">Edit</a>{% elif row.standalone %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'standalone' row.standalone.pk %}">Edit</a>{% endif %}<form method="post" action="{% url 'invoices:iesco_bill_fetch_one' row.reference_no %}">{% csrf_token %}<button class="btn btn-primary btn-sm" type="submit" title="Fetch latest bill" aria-label="Fetch latest bill">Refresh</button></form>{% endif %}
@@ -508,70 +395,6 @@
         <div class="iesco-tablet-cell iesco-tablet-readings"><span class="iesco-tablet-label">Previous / Current</span><span class="iesco-tablet-value">{% if reading.register_display_rows %}{% if reading.has_export_registers %}<details class="iesco-register-popover"><summary>{% for register in reading.register_display_rows %}<span class="iesco-register-current-line">{{ register.short_label }} {{ register.present|default:"—" }}</span>{% endfor %}</summary><div class="iesco-register-popover-grid iesco-reading-popover-grid"><table class="table table-bordered mb-0"><thead><tr><th>Register</th><th>Previous</th><th>Current</th><th>Net</th></tr></thead><tbody>{% for register in reading.register_display_rows %}<tr><th>{{ register.short_label }}</th><td>{{ register.previous|default:"—" }}</td><td>{{ register.present|default:"—" }}</td>{% if register.short_label == "Imp OP" %}<td rowspan="2" class="align-middle fw-bold">{{ reading.import_units_display }}</td>{% elif register.short_label == "Exp OP" %}<td rowspan="2" class="align-middle fw-bold">{{ reading.export_units_display }}</td>{% endif %}</tr>{% endfor %}</tbody></table></div></details>{% else %}<span class="d-block">Previous: {{ reading.register_display_rows.0.previous|default:"—" }}</span><span class="d-block">Current: {{ reading.register_display_rows.0.present|default:"—" }}</span>{% endif %}{% else %}—{% endif %}</span></div>
         <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Reading Date</span><span class="iesco-tablet-value">{{ reading.reading_date|default:"—" }}</span></div>
         <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Last Update</span><span class="iesco-tablet-value">{{ reading.updated_at|date:"Y-m-d H:i"|default:"—" }}{% if row.lease %}<a class="iesco-lease-balance" href="{% url 'leases:lease_ledger_by_pk' row.lease.pk %}">Balance: Rs. {{ row.lease_balance|floatformat:"0g" }}</a>{% endif %}</span></div>
-      </div>
-      <div class="iesco-inline-history" data-history-for="{{ row.reference_no }}" hidden>
-        <div class="iesco-inline-history-title">Bill history{% if row.reference_no %} — {{ row.reference_no }}{% endif %}</div>
-        {% if reading and reading.bill_history %}
-        <div class="iesco-history-desktop iesco-history-table-grid">
-          {% with history_chunk=reading.bill_history|slice:":3" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"3:6" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"6:9" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"9:12" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-        </div>
-        <div class="iesco-history-mobile table-responsive"><table class="table table-sm table-bordered iesco-inline-history-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Pay</th><th>Out.</th></tr></thead><tbody>{% for history in reading.bill_history %}{% if history.month %}<tr><td>{{ history.month }}</td><td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td><td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td></tr>{% endif %}{% endfor %}</tbody></table></div>
-        {% else %}<div class="iesco-inline-history-empty">No additional bill history is available.</div>{% endif %}
       </div>
     </article>
     {% endwith %}{% empty %}<div class="alert alert-secondary">No valid IESCO meters found.</div>{% endfor %}
@@ -584,14 +407,14 @@
         <div class="iesco-mobile-heading-line">
           <span class="iesco-mobile-serial">{{ page_obj.start_index|default:1|add:forloop.counter0 }}.</span>
           <span class="iesco-mobile-property">{% if row.unit %}{{ row.property.property_name|slice:":8" }} / {{ row.unit.unit_number }}{% else %}{{ row.description|slice:":8" }}{% endif %}</span>
-          <button type="button" class="iesco-mobile-history-link text-muted iesco-history-toggle" data-history-ref="{{ row.reference_no }}" aria-expanded="false">History</button>
-          <span>{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</span>
+          <span class="ms-auto">{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</span>
         </div>
         <div class="iesco-mobile-subheading-line">
-          <span class="iesco-mobile-tenant-under-property">{% if row.tenant_name %}<a class="iesco-tenant-name" href="{% url 'leases:lease_detail' row.lease.pk %}">{{ row.tenant_name }}</a>{% else %}—{% endif %}</span>
-          <span class="iesco-mobile-ref">Ref: {{ row.reference_no }}</span>
+          <a class="iesco-mobile-history-link text-muted" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}">Show history</a>
+          <a class="iesco-mobile-ref" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}">Ref: {{ row.reference_no }}</a>
         </div>
       </div>
+
       <div class="iesco-mobile-meta">
         <div class="iesco-mobile-meta-line">
           <span class="iesco-mobile-meta-pair"><strong>Meter #:</strong> {% if reading %}{{ reading.meter_number_display }}{% else %}—{% endif %}</span>
@@ -602,92 +425,29 @@
           <span class="iesco-mobile-meta-pair iesco-mobile-meta-pair--right"><strong>Due Date:</strong> {% if reading %}{{ reading.due_date|default:"—" }}{% else %}—{% endif %}</span>
         </div>
         <div class="iesco-mobile-meta-line">
-          <span class="iesco-mobile-meta-pair"></span>
+          <span class="iesco-mobile-meta-pair"><strong>Tenant:</strong> {% if row.tenant_name %}<a class="iesco-tenant-name d-inline" href="{% url 'leases:lease_detail' row.lease.pk %}">{{ row.tenant_name }}</a>{% else %}—{% endif %}</span>
           <span class="iesco-mobile-meta-pair iesco-mobile-meta-pair--right"><strong>Payment:</strong> {% if not reading %}<span class="badge bg-secondary">No reading</span>{% elif reading.payment_status_display == "No payment due" %}<span class="badge bg-info text-dark">No payment due</span>{% elif reading.current_month_paid is True %}<span class="badge bg-success">Paid</span>{% elif reading.current_month_paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</span>
         </div>
       </div>
 
       <div class="iesco-mobile-facts">
-        <div class="iesco-mobile-fact iesco-mobile-fact--emphasis"><span class="iesco-mobile-label">Bill Month</span><span class="iesco-mobile-value">{{ reading.bill_month|default:"—" }}</span></div>
-        <div class="iesco-mobile-fact iesco-mobile-fact--emphasis"><span class="iesco-mobile-label">Units</span><span class="iesco-mobile-value fw-bold">{% if reading and reading.has_export_registers %}<details class="iesco-register-popover"><summary>E:{{ reading.export_units_display }} · I:{{ reading.import_units_display }} · N:{{ reading.net_units_display }}</summary><div class="iesco-register-popover-grid"><table class="table table-bordered mb-0 iesco-register-summary"><thead><tr><th></th><th>Off<br>Peak</th><th>Peak</th><th>Total</th></tr></thead><tbody><tr><th>Export</th><td>{{ reading.export_off_peak_display }}</td><td>{{ reading.export_peak_display }}</td><td>{{ reading.export_units_display }}</td></tr><tr><th>Import</th><td>{{ reading.import_off_peak_display }}</td><td>{{ reading.import_peak_display }}</td><td>{{ reading.import_units_display }}</td></tr><tr><th>Net</th><td>{{ reading.net_off_peak_display }}</td><td>{{ reading.net_peak_display }}</td><td>{{ reading.net_units_display }}</td></tr></tbody></table></div></details>{% elif reading %}{{ reading.units_display }}{% else %}—{% endif %}</span></div>
-        <div class="iesco-mobile-fact iesco-mobile-fact--emphasis"><span class="iesco-mobile-label">Unit Rate</span><span class="iesco-mobile-value fw-bold">{% if reading %}{{ reading.per_unit_rate_display }}{% else %}—{% endif %}</span></div>
-        <div class="iesco-mobile-fact iesco-mobile-fact--emphasis"><span class="iesco-mobile-label">Current Bill</span><span class="iesco-mobile-value fw-bold">{% if reading %}{{ reading.current_bill_display }}{% else %}—{% endif %}</span></div>
-        <div class="iesco-mobile-fact iesco-mobile-fact--emphasis"><span class="iesco-mobile-label">Arrears</span><span class="iesco-mobile-value">{% if reading %}{{ reading.arrears_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-mobile-fact"><span class="iesco-mobile-label">Bill Month</span><span class="iesco-mobile-value">{{ reading.bill_month|default:"—" }}</span></div>
+        <div class="iesco-mobile-fact"><span class="iesco-mobile-label">Units</span><span class="iesco-mobile-value fw-bold">{% if reading and reading.has_export_registers %}<details class="iesco-register-popover"><summary>E:{{ reading.export_units_display }} · I:{{ reading.import_units_display }} · N:{{ reading.net_units_display }}</summary><div class="iesco-register-popover-grid"><table class="table table-bordered mb-0 iesco-register-summary"><thead><tr><th></th><th>Off<br>Peak</th><th>Peak</th><th>Total</th></tr></thead><tbody><tr><th>Export</th><td>{{ reading.export_off_peak_display }}</td><td>{{ reading.export_peak_display }}</td><td>{{ reading.export_units_display }}</td></tr><tr><th>Import</th><td>{{ reading.import_off_peak_display }}</td><td>{{ reading.import_peak_display }}</td><td>{{ reading.import_units_display }}</td></tr><tr><th>Net</th><td>{{ reading.net_off_peak_display }}</td><td>{{ reading.net_peak_display }}</td><td>{{ reading.net_units_display }}</td></tr></tbody></table></div></details>{% elif reading %}{{ reading.units_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-mobile-fact"><span class="iesco-mobile-label">Unit Rate</span><span class="iesco-mobile-value fw-bold">{% if reading %}{{ reading.per_unit_rate_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-mobile-fact"><span class="iesco-mobile-label">Current Bill</span><span class="iesco-mobile-value fw-bold">{% if reading %}{{ reading.current_bill_display }}{% else %}—{% endif %}</span></div>
+        <div class="iesco-mobile-fact"><span class="iesco-mobile-label">Arrears</span><span class="iesco-mobile-value">{% if reading %}{{ reading.arrears_display }}{% else %}—{% endif %}</span></div>
         <div class="iesco-mobile-fact"><span class="iesco-mobile-label">Grand Total</span><span class="iesco-mobile-value fw-semibold">{% if reading %}{% if row.invoice %}<a class="iesco-grand-total-link" href="{% url 'invoices:invoice_detail' row.invoice.pk %}">{{ reading.grand_total_display }}</a>{% else %}<button class="iesco-grand-total-link" type="button" data-no-invoice>{{ reading.grand_total_display }}</button>{% endif %}{% else %}—{% endif %}</span></div>
         <div class="iesco-mobile-fact"><span class="iesco-mobile-label">Previous / Current</span><span class="iesco-mobile-value">{% if reading and reading.register_display_rows %}{% if reading.has_export_registers %}<details class="iesco-register-popover"><summary>{% for register in reading.register_display_rows %}<span class="iesco-register-current-line">{{ register.short_label }} {{ register.present|default:"—" }}</span>{% endfor %}</summary><div class="iesco-register-popover-grid iesco-reading-popover-grid"><table class="table table-bordered mb-0"><thead><tr><th>Register</th><th>Previous</th><th>Current</th><th>Net</th></tr></thead><tbody>{% for register in reading.register_display_rows %}<tr><th>{{ register.short_label }}</th><td>{{ register.previous|default:"—" }}</td><td>{{ register.present|default:"—" }}</td>{% if register.short_label == "Imp OP" %}<td rowspan="2" class="align-middle fw-bold">{{ reading.import_units_display }}</td>{% elif register.short_label == "Exp OP" %}<td rowspan="2" class="align-middle fw-bold">{{ reading.export_units_display }}</td>{% endif %}</tr>{% endfor %}</tbody></table></div></details>{% else %}<span class="d-block">P: {{ reading.register_display_rows.0.previous|default:"—" }}</span><span class="d-block">C: {{ reading.register_display_rows.0.present|default:"—" }}</span>{% endif %}{% else %}—{% endif %}</span></div>
         <div class="iesco-mobile-fact"><span class="iesco-mobile-label">Last Update</span><span class="iesco-mobile-value">{{ reading.updated_at|date:"Y-m-d H:i"|default:"—" }}</span></div>
-        <div class="iesco-mobile-fact iesco-mobile-fact--emphasis"><span class="iesco-mobile-label">Lease Balance</span><span class="iesco-mobile-value">{% if row.lease %}<a class="iesco-lease-balance" href="{% url 'leases:lease_ledger_by_pk' row.lease.pk %}">Rs. {{ row.lease_balance|floatformat:"0g" }}</a>{% else %}—{% endif %}</span></div>
+        <div class="iesco-mobile-fact"><span class="iesco-mobile-label">Lease Balance</span><span class="iesco-mobile-value">{% if row.lease %}<a class="iesco-lease-balance" href="{% url 'leases:lease_ledger_by_pk' row.lease.pk %}">Rs. {{ row.lease_balance|floatformat:"0g" }}</a>{% else %}—{% endif %}</span></div>
       </div>
 
       <div class="iesco-mobile-actions">
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}">View</a>
         <a class="btn btn-info btn-sm" href="{% url 'invoices:iesco_bill_pitc' row.reference_no %}" target="_blank" rel="noopener">Bill</a>
         {% if can_manage %}{% if row.unit %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'unit' row.unit.pk %}">Edit</a>{% elif row.standalone %}<a class="btn btn-warning btn-sm" href="{% url 'invoices:iesco_meter_edit' 'standalone' row.standalone.pk %}">Edit</a>{% endif %}<form method="post" action="{% url 'invoices:iesco_bill_fetch_one' row.reference_no %}">{% csrf_token %}<button class="btn btn-primary btn-sm" type="submit">Refresh</button></form>{% endif %}
         {% if can_post and reading and row.unit %}<form method="post" action="{% url 'invoices:iesco_bill_post_to_invoice' reading.pk %}">{% csrf_token %}<input type="hidden" name="return_to" value="list"><button class="btn {% if row.invoice_generated %}btn-warning{% else %}btn-success{% endif %} btn-sm" type="submit">{% if row.invoice_generated %}ReInvoice{% else %}Invoice{% endif %}</button></form>{% endif %}
         {% if can_remind %}{% if reading and row.whatsapp_phone %}<form method="post" action="{% url 'invoices:iesco_bill_reminders_send' %}">{% csrf_token %}<input type="hidden" name="reading_id" value="{{ reading.pk }}"><button class="btn btn-outline-success btn-sm" type="submit" title="Send bill status by WhatsApp" aria-label="Send bill status by WhatsApp"><i class="fab fa-whatsapp"></i></button></form>{% else %}<span class="btn btn-secondary btn-sm disabled" title="{% if not reading %}No saved bill data{% else %}No WhatsApp phone number{% endif %}" aria-disabled="true"><i class="fab fa-whatsapp"></i></span>{% endif %}{% endif %}
-      </div>
-      <div class="iesco-inline-history" data-history-for="{{ row.reference_no }}" hidden>
-        <div class="iesco-inline-history-title">Bill history{% if row.reference_no %} — {{ row.reference_no }}{% endif %}</div>
-        {% if reading and reading.bill_history %}
-        <div class="iesco-history-desktop iesco-history-table-grid">
-          {% with history_chunk=reading.bill_history|slice:":3" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"3:6" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"6:9" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-          {% with history_chunk=reading.bill_history|slice:"9:12" %}{% if history_chunk %}
-          <div class="iesco-history-table-card">
-            <table class="table table-sm iesco-history-split-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Payment</th><th>Outst.</th></tr></thead><tbody>
-              {% for history in history_chunk %}{% if history.month %}<tr>
-                <td>{{ history.month }}</td>
-                <td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td>
-                <td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                <td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td>
-              </tr>{% endif %}{% endfor %}
-            </tbody></table>
-          </div>
-          {% endif %}{% endwith %}
-        </div>
-        <div class="iesco-history-mobile table-responsive"><table class="table table-sm table-bordered iesco-inline-history-table"><thead><tr><th>Month</th><th>Status</th><th>Units</th><th>Bill</th><th>Pay</th><th>Out.</th></tr></thead><tbody>{% for history in reading.bill_history %}{% if history.month %}<tr><td>{{ history.month }}</td><td>{% if history.paid is True %}<span class="badge bg-success">Paid</span>{% elif history.paid is False %}<span class="badge bg-danger">Unpaid</span>{% else %}<span class="badge bg-secondary">Unknown</span>{% endif %}</td><td>{% if history.units is not None %}{{ history.units|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.bill is not None %}{{ history.bill|floatformat:"0g" }}{% else %}—{% endif %}</td><td>{% if history.payment is not None %}Rs. {{ history.payment|floatformat:"0g" }}{% else %}—{% endif %}</td><td class="iesco-history-outstanding fw-semibold" data-history-bill="{{ history.bill|default_if_none:'' }}" data-history-payment="{{ history.payment|default_if_none:'' }}">—</td></tr>{% endif %}{% endfor %}</tbody></table></div>
-        {% else %}<div class="iesco-inline-history-empty">No additional bill history is available.</div>{% endif %}
       </div>
     </article>
     {% endwith %}{% empty %}<div class="alert alert-secondary">No valid IESCO meters found.</div>{% endfor %}
@@ -706,29 +466,6 @@
     document.querySelectorAll('[data-no-invoice]').forEach(function (control) {
       control.addEventListener('click', function () {
         window.alert('There is no invoice generated for this bill.');
-      });
-    });
-    const historyNumber = new Intl.NumberFormat('en-US', {maximumFractionDigits: 0});
-    document.querySelectorAll('.iesco-history-outstanding').forEach(function (cell) {
-      const cleanNumber = function (value) {
-        const parsed = Number(String(value || '').replace(/[^0-9.-]/g, ''));
-        return Number.isFinite(parsed) ? parsed : 0;
-      };
-      const bill = cleanNumber(cell.dataset.historyBill);
-      const payment = cleanNumber(cell.dataset.historyPayment);
-      const outstanding = Math.max(bill - payment, 0);
-      cell.textContent = 'Rs. ' + historyNumber.format(Math.round(outstanding));
-    });
-    document.querySelectorAll('.iesco-history-toggle').forEach(function (toggle) {
-      toggle.addEventListener('click', function () {
-        const referenceNo = toggle.dataset.historyRef;
-        const targets = document.querySelectorAll('[data-history-for="' + referenceNo + '"]');
-        const shouldOpen = Array.from(targets).some(function (target) { return target.hidden; });
-        targets.forEach(function (target) { target.hidden = !shouldOpen; });
-        document.querySelectorAll('.iesco-history-toggle[data-history-ref="' + referenceNo + '"]').forEach(function (button) {
-          button.textContent = shouldOpen ? 'Hide' : 'History';
-          button.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-        });
       });
     });
     const form = document.getElementById('iescoFilterForm');

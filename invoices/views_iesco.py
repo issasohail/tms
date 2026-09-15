@@ -4,11 +4,13 @@ import csv
 import io
 import logging
 import re
+import zipfile
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 import requests
 from django.contrib import messages
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -1151,6 +1153,27 @@ def pitc_bill_handoff(request, reference_no):
         "invoices/iesco_bill_external_redirect.html",
         {"reference_no": reference_no},
     )
+
+
+@login_required
+@require_GET
+def iesco_helper_download(request):
+    """Download the on-demand helper only for staff allowed to fetch bills."""
+    _require_change_permission(request.user)
+    project_root = settings.BASE_DIR
+    helper_paths = (
+        project_root / "tools" / "dist" / "TMSIESCOFetchHelper.exe",
+        project_root / "tools" / "install_iesco_on_demand_helper.ps1",
+    )
+    if not all(path.is_file() for path in helper_paths):
+        raise Http404("IESCO helper package is not available on this server.")
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in helper_paths:
+            archive.write(path, arcname=path.name)
+    response = HttpResponse(payload.getvalue(), content_type="application/zip")
+    response["Content-Disposition"] = 'attachment; filename="TMS_IESCO_On_Demand_Helper.zip"'
+    return response
 
 
 @login_required

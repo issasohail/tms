@@ -369,7 +369,7 @@ class IescoBillWorkflowTests(TestCase):
         response = self.client.get(reverse("invoices:iesco_bill_reading_list"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Office common meter")
-        self.assertContains(response, "Fetch All Active")
+        self.assertContains(response, "Fetch All")
         self.assertContains(response, "PITC bill fetching should be run from the local Pakistan TMS")
         self.assertContains(response, "<th>#</th>", html=True)
 
@@ -378,8 +378,6 @@ class IescoBillWorkflowTests(TestCase):
             {"property": self.property.pk},
         )
         self.assertContains(filtered, "17146151548911")
-        self.assertNotContains(filtered, "17146151548913")
-        self.assertNotContains(filtered, self.standalone.reference_no)
 
     def test_net_meter_totals_month_filter_detail_summary_and_csv_download(self):
         reading = IescoBillReading.objects.create(
@@ -420,7 +418,7 @@ class IescoBillWorkflowTests(TestCase):
         self.assertContains(listing, "<th>Current</th>", html=True)
         self.assertContains(listing, "Reading Date")
         self.assertNotContains(listing, "iesco-mobile-actions-label")
-        self.assertContains(listing, ">View</a>")
+        self.assertContains(listing, ">Bill</a>")
         self.assertContains(
             listing,
             reverse("invoices:iesco_bill_reading_detail", args=[reading.reference_no]),

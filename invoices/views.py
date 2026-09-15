@@ -82,6 +82,7 @@ from .historical_units import (
 # top of views.py
 from .models import (
     IescoBillReading,
+    IescoStandaloneMeter,
     Invoice,  # and InvoiceItem if separate  # adjust if Category is elsewhere
     InvoiceItem,
     InvoiceStatusHistory,
@@ -4774,6 +4775,27 @@ def monthly_billing_run_export(request, pk):
             ]
         )
     return response
+
+
+@csrf_exempt
+@require_GET
+def iesco_helper_active_references(request):
+    """Return only registered active references to an authorised local helper."""
+    api_key = request.headers.get("X-API-Key", "")
+    expected_key = str(getattr(settings, "IESCO_BILL_API_KEY", "") or "")
+    if not expected_key or not api_key or not hmac.compare_digest(
+        api_key.encode("utf-8"), expected_key.encode("utf-8")
+    ):
+        return JsonResponse({"error": "unauthorized"}, status=401)
+    references = set(
+        Unit.objects.filter(iesco_bill_active=True, electric_meter_num__regex=r"^[0-9]{14}$")
+        .exclude(electric_meter_num="00000000000000")
+        .values_list("electric_meter_num", flat=True)
+    )
+    references.update(
+        IescoStandaloneMeter.objects.filter(is_active=True).values_list("reference_no", flat=True)
+    )
+    return JsonResponse({"references": sorted(references)})
 
 
 @csrf_exempt

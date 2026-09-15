@@ -56,6 +56,7 @@ urlpatterns = [
     path('iesco-bills/meters/add/', views_iesco.standalone_meter_add, name='iesco_standalone_meter_add'),
     path('iesco-bills/meters/<str:meter_kind>/<int:pk>/edit/', views_iesco.meter_edit, name='iesco_meter_edit'),
     path('iesco-bills/meters/<str:meter_kind>/<int:pk>/delete/', views_iesco.meter_delete, name='iesco_meter_delete'),
+    path('iesco-bills/helper-download/', views_iesco.iesco_helper_download, name='iesco_helper_download'),
     path('iesco-bills/fetch/<str:reference_no>/', views_iesco.fetch_one, name='iesco_bill_fetch_one'),
     path('iesco-bills/fetch-all/', views_iesco.fetch_all_active, name='iesco_bill_fetch_all'),
     path('iesco-bills/import/', views_iesco.import_csv, name='iesco_bill_import'),
@@ -142,6 +143,7 @@ urlpatterns = [
 
 
     path("api/iesco-bill/ingest/", views.iesco_bill_ingest, name="iesco_bill_ingest"),
+    path("api/iesco-bill/active-references/", views.iesco_helper_active_references, name="iesco_helper_active_references"),
 
 
     # One-click monthly run

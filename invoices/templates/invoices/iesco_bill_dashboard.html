@@ -319,6 +319,38 @@
   </div>
 
   {% if can_manage %}
+  <div class="modal fade iesco-reference-progress-modal" id="iescoUploadProgressModal" tabindex="-1" aria-labelledby="iescoUploadProgressTitle" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="iescoUploadProgressTitle"><i class="fas fa-upload me-2 text-primary"></i>Upload IESCO Bills CSV</h5>
+            <div id="iescoUploadProgressSubtitle" class="small text-muted mt-1">Reading selected Bills CSV…</div>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <div class="iesco-fetch-summary-card"><strong id="iescoUploadTotal">0</strong><span>Total bills</span></div>
+            <div class="iesco-fetch-summary-card"><strong id="iescoUploadCompleted">0</strong><span>Completed</span></div>
+            <div class="iesco-fetch-summary-card"><strong id="iescoUploadSucceeded">0</strong><span>Successful</span></div>
+            <div class="iesco-fetch-summary-card"><strong id="iescoUploadFailed">0</strong><span>Errors</span></div>
+          </div>
+          <div class="progress mb-2" style="height: 20px;">
+            <div id="iescoUploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuemin="0" aria-valuemax="100">0%</div>
+          </div>
+          <div id="iescoUploadCurrentStep" class="small fw-semibold mb-3">Preparing Bills CSV…</div>
+          <div id="iescoUploadFileErrors" class="alert alert-warning py-2 px-3 small d-none iesco-reference-file-errors" role="alert"></div>
+          <div id="iescoUploadResults" class="iesco-reference-results" aria-live="polite"></div>
+          <div id="iescoUploadFinalMessage" class="alert mt-3 mb-0 d-none" role="status"></div>
+        </div>
+        <div class="modal-footer">
+          <button id="iescoUploadCloseButton" type="button" class="btn btn-secondary" data-bs-dismiss="modal" disabled>Close</button>
+          <button id="iescoUploadRefreshButton" type="button" class="btn btn-primary d-none"><i class="fas fa-sync-alt me-1"></i>Refresh Bill List</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade iesco-reference-progress-modal" id="iescoReferenceProgressModal" tabindex="-1" aria-labelledby="iescoReferenceProgressTitle" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content">
@@ -832,9 +864,189 @@
     }
 
     const csvUpload = document.getElementById('id_iesco_import');
-    csvUpload?.addEventListener('change', function () {
-      if (csvUpload.files.length) csvUpload.form.submit();
-    });
+    const csvUploadForm = document.getElementById('iescoCsvUploadForm');
+    const uploadModalElement = document.getElementById('iescoUploadProgressModal');
+    const uploadModal = uploadModalElement && window.bootstrap ? new bootstrap.Modal(uploadModalElement) : null;
+    const uploadTotal = document.getElementById('iescoUploadTotal');
+    const uploadCompleted = document.getElementById('iescoUploadCompleted');
+    const uploadSucceeded = document.getElementById('iescoUploadSucceeded');
+    const uploadFailed = document.getElementById('iescoUploadFailed');
+    const uploadProgressBar = document.getElementById('iescoUploadProgressBar');
+    const uploadCurrentStep = document.getElementById('iescoUploadCurrentStep');
+    const uploadSubtitle = document.getElementById('iescoUploadProgressSubtitle');
+    const uploadResults = document.getElementById('iescoUploadResults');
+    const uploadFileErrors = document.getElementById('iescoUploadFileErrors');
+    const uploadFinalMessage = document.getElementById('iescoUploadFinalMessage');
+    const uploadCloseButton = document.getElementById('iescoUploadCloseButton');
+    const uploadRefreshButton = document.getElementById('iescoUploadRefreshButton');
+
+    function uploadPost(data) {
+      return fetch(csvUploadForm.action, {
+        method: 'POST',
+        body: data,
+        credentials: 'same-origin',
+        headers: {'X-Requested-With': 'XMLHttpRequest'}
+      }).then(function (response) {
+        return response.json().then(function (body) {
+          if (!response.ok) throw new Error(body.error || 'The Bills CSV request failed.');
+          return body;
+        }).catch(function (error) {
+          if (error instanceof SyntaxError) throw new Error('The server returned an unexpected response. Please refresh and try again.');
+          throw error;
+        });
+      });
+    }
+
+    function setUploadProgress(completed, total) {
+      const percent = total ? Math.round((completed / total) * 100) : 0;
+      uploadProgressBar.style.width = percent + '%';
+      uploadProgressBar.textContent = percent + '%';
+      uploadProgressBar.setAttribute('aria-valuenow', String(percent));
+    }
+
+    function createUploadRow(source, index) {
+      const row = document.createElement('div');
+      row.className = 'iesco-reference-result-row';
+      row.innerHTML =
+        '<div class="iesco-reference-result-index">' + (index + 1) + '</div>' +
+        '<div><div class="iesco-reference-result-ref">' + escapeHtml(source.reference_no || '—') + '</div>' +
+        '<div class="iesco-reference-result-desc">' + escapeHtml(source.bill_month || '—') +
+        (source.consumer_name ? ' · ' + escapeHtml(source.consumer_name) : '') + '</div></div>' +
+        '<div class="iesco-reference-result-status"><span class="badge bg-secondary">Queued</span></div>' +
+        '<div class="iesco-reference-result-detail text-muted">Waiting to import…</div>';
+      uploadResults.appendChild(row);
+      return row;
+    }
+
+    function updateUploadRow(row, state, detailHtml) {
+      row.classList.remove('is-running', 'is-success', 'is-error');
+      const status = row.querySelector('.iesco-reference-result-status');
+      const detail = row.querySelector('.iesco-reference-result-detail');
+      if (state === 'running') {
+        row.classList.add('is-running');
+        status.innerHTML = '<span class="badge bg-primary"><span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Importing</span>';
+      } else if (state === 'success') {
+        row.classList.add('is-success');
+        status.innerHTML = '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Done</span>';
+      } else {
+        row.classList.add('is-error');
+        status.innerHTML = '<span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>Error</span>';
+      }
+      detail.innerHTML = detailHtml;
+      row.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+    }
+
+    async function runBillsCsvUpload() {
+      if (!csvUpload?.files.length || !csvUploadForm || !window.fetch || !window.FormData) return;
+      if (!uploadModal) {
+        csvUploadForm.submit();
+        return;
+      }
+
+      uploadResults.innerHTML = '';
+      uploadFileErrors.classList.add('d-none');
+      uploadFileErrors.innerHTML = '';
+      uploadFinalMessage.className = 'alert mt-3 mb-0 d-none';
+      uploadFinalMessage.textContent = '';
+      uploadCloseButton.disabled = true;
+      uploadRefreshButton.classList.add('d-none');
+      uploadProgressBar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+      uploadTotal.textContent = '0';
+      uploadCompleted.textContent = '0';
+      uploadSucceeded.textContent = '0';
+      uploadFailed.textContent = '0';
+      setUploadProgress(0, 0);
+      uploadSubtitle.textContent = 'Reading ' + csvUpload.files[0].name + '…';
+      uploadCurrentStep.textContent = 'Validating the selected Bills CSV…';
+      uploadModal.show();
+
+      try {
+        const startData = new FormData(csvUploadForm);
+        startData.append('ajax_action', 'start');
+        const batch = await uploadPost(startData);
+        const bills = batch.rows || [];
+        const total = bills.length;
+        uploadTotal.textContent = String(total);
+        uploadSubtitle.textContent = total + ' bill' + (total === 1 ? '' : 's') + ' will be imported one at a time.';
+
+        if (batch.row_errors && batch.row_errors.length) {
+          uploadFileErrors.classList.remove('d-none');
+          uploadFileErrors.innerHTML = '<strong>CSV warnings:</strong><br>' + batch.row_errors.map(escapeHtml).join('<br>');
+        }
+
+        const rows = bills.map(createUploadRow);
+        let completed = 0;
+        let succeeded = 0;
+        let failed = 0;
+
+        for (let index = 0; index < total; index += 1) {
+          const source = bills[index];
+          const row = rows[index];
+          uploadCurrentStep.textContent = 'Importing bill ' + (index + 1) + ' of ' + total + ': ' + (source.reference_no || '—');
+          updateUploadRow(row, 'running', 'Validating and saving this bill to TMS…');
+
+          const data = new FormData();
+          data.append('csrfmiddlewaretoken', csvUploadForm.querySelector('[name="csrfmiddlewaretoken"]').value);
+          data.append('ajax_action', 'import');
+          data.append('row_index', String(index));
+
+          try {
+            const result = await uploadPost(data);
+            if (!result.ok) throw new Error(result.error || 'The bill could not be imported.');
+            succeeded += 1;
+            const savedState = result.created ? 'New bill saved' : 'Existing bill updated';
+            updateUploadRow(
+              row,
+              'success',
+              '<strong>' + escapeHtml(savedState) + '</strong>' +
+              ' · Month: ' + escapeHtml(result.bill_month || '—') +
+              ' · Consumer: ' + escapeHtml(result.consumer_name || '—') +
+              ' · Units: ' + escapeHtml(result.units || '—') +
+              ' · Total: ' + escapeHtml(result.grand_total || '—')
+            );
+          } catch (error) {
+            failed += 1;
+            updateUploadRow(row, 'error', '<strong>Could not import this bill.</strong><br>' + escapeHtml(error.message || 'Unknown error.'));
+          }
+
+          completed += 1;
+          uploadCompleted.textContent = String(completed);
+          uploadSucceeded.textContent = String(succeeded);
+          uploadFailed.textContent = String(failed);
+          setUploadProgress(completed, total);
+        }
+
+        const finishData = new FormData();
+        finishData.append('csrfmiddlewaretoken', csvUploadForm.querySelector('[name="csrfmiddlewaretoken"]').value);
+        finishData.append('ajax_action', 'finish');
+        try { await uploadPost(finishData); } catch (_ignored) {}
+
+        uploadProgressBar.classList.remove('progress-bar-animated');
+        uploadCurrentStep.textContent = 'Finished processing all ' + total + ' bill' + (total === 1 ? '' : 's') + '.';
+        uploadFinalMessage.classList.remove('d-none');
+        if (failed) {
+          uploadFinalMessage.classList.add('alert-warning');
+          uploadFinalMessage.innerHTML = '<strong>Completed with issues.</strong> ' + succeeded + ' bill(s) imported successfully and ' + failed + ' failed. The failed rows above show the reason.';
+        } else {
+          uploadFinalMessage.classList.add('alert-success');
+          uploadFinalMessage.innerHTML = '<strong>Done.</strong> All ' + succeeded + ' bill(s) were imported successfully.';
+        }
+        uploadCloseButton.disabled = false;
+        uploadRefreshButton.classList.remove('d-none');
+      } catch (error) {
+        uploadProgressBar.classList.remove('progress-bar-animated');
+        uploadProgressBar.classList.add('bg-danger');
+        uploadCurrentStep.textContent = 'The upload could not be started.';
+        uploadFinalMessage.className = 'alert alert-danger mt-3 mb-0';
+        uploadFinalMessage.innerHTML = '<strong>Unable to process the selected Bills CSV.</strong><br>' + escapeHtml(error.message || 'Unknown error.');
+        uploadCloseButton.disabled = false;
+      } finally {
+        csvUpload.value = '';
+      }
+    }
+
+    csvUpload?.addEventListener('change', runBillsCsvUpload);
+    uploadRefreshButton?.addEventListener('click', function () { window.location.reload(); });
 
     const referenceUpload = document.getElementById('id_iesco_reference_import');
     const referenceUploadForm = document.getElementById('iescoReferenceUploadForm');

@@ -53,6 +53,7 @@ from .services_iesco_reminders import (
 logger = logging.getLogger(__name__)
 PREVIEW_SESSION_KEY = "iesco_bill_preview"
 EXPORT_SESSION_KEY = "iesco_bill_last_export_ids"
+IMPORT_PROGRESS_SESSION_KEY = "iesco_bill_import_progress_rows"
 MAX_IMPORT_BYTES = 2 * 1024 * 1024
 MAX_IMPORT_ROWS = 500
 IESCO_BULK_FETCH_WAIT_DAYS = 20
@@ -1290,6 +1291,143 @@ def fetch_all_active(request):
 @require_POST
 def import_csv(request):
     _require_change_permission(request.user)
+
+    ajax_action = (request.POST.get("ajax_action") or "").strip()
+    if ajax_action == "start":
+        upload = request.FILES.get("file")
+        if upload is None:
+            return JsonResponse({"ok": False, "error": "Choose an IESCO CSV file to import."}, status=400)
+        if upload.size > MAX_IMPORT_BYTES:
+            return JsonResponse({"ok": False, "error": "IESCO import files cannot exceed 2 MB."}, status=400)
+        try:
+            text = upload.read().decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return JsonResponse({"ok": False, "error": "The CSV file must use UTF-8 encoding."}, status=400)
+
+        reader = csv.DictReader(io.StringIO(text))
+        missing = {"reference_no", "bill_month"} - set(reader.fieldnames or ())
+        if missing:
+            return JsonResponse(
+                {"ok": False, "error": "CSV is missing columns: " + ", ".join(sorted(missing))},
+                status=400,
+            )
+
+        queued_rows = []
+        display_rows = []
+        row_errors = []
+        for row_number, row in enumerate(reader, start=2):
+            if row_number > MAX_IMPORT_ROWS + 1:
+                row_errors.append(f"Import is limited to {MAX_IMPORT_ROWS} rows.")
+                break
+            safe_row = {str(key): (value or "") for key, value in row.items() if key is not None}
+            try:
+                payload = normalize_bill_payload(safe_row)
+                try:
+                    _ensure_reference_access(request.user, payload["reference_no"])
+                except Http404:
+                    if not (
+                        has_all_property_access(request.user)
+                        and payload.get("description")
+                    ):
+                        raise
+            except (ValidationError, Http404) as exc:
+                raw_reference = (safe_row.get("reference_no") or "").strip()
+                row_errors.append(
+                    f"Row {row_number}{f' ({raw_reference})' if raw_reference else ''}: {_validation_message(exc)}"
+                )
+                continue
+
+            queued_rows.append({"row_number": row_number, "row": safe_row})
+            display_rows.append(
+                {
+                    "row_number": row_number,
+                    "reference_no": payload.get("reference_no") or "",
+                    "bill_month": payload.get("bill_month") or "",
+                    "consumer_name": payload.get("consumer_name") or "",
+                    "description": payload.get("description") or "",
+                }
+            )
+
+        if not queued_rows:
+            request.session.pop(IMPORT_PROGRESS_SESSION_KEY, None)
+            request.session.modified = True
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "error": "The Bills CSV did not contain any valid bill rows.",
+                    "row_errors": row_errors,
+                },
+                status=400,
+            )
+
+        request.session[IMPORT_PROGRESS_SESSION_KEY] = queued_rows
+        request.session.modified = True
+        return JsonResponse(
+            {
+                "ok": True,
+                "total": len(display_rows),
+                "rows": display_rows,
+                "row_errors": row_errors,
+            }
+        )
+
+    if ajax_action == "import":
+        batch = request.session.get(IMPORT_PROGRESS_SESSION_KEY) or []
+        try:
+            row_index = int(request.POST.get("row_index", ""))
+        except (TypeError, ValueError):
+            return JsonResponse({"ok": False, "error": "Invalid import row."}, status=400)
+        if row_index < 0 or row_index >= len(batch):
+            return JsonResponse({"ok": False, "error": "Import row is no longer available. Restart the upload."}, status=400)
+
+        stored = batch[row_index]
+        try:
+            payload = normalize_bill_payload(stored.get("row") or {})
+            try:
+                _ensure_reference_access(request.user, payload["reference_no"])
+            except Http404:
+                if not (
+                    has_all_property_access(request.user)
+                    and payload.get("description")
+                ):
+                    raise
+            created, updated, _saved_ids = _save_payloads(request, [payload])
+        except (ValidationError, Http404) as exc:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "reference_no": (stored.get("row") or {}).get("reference_no", ""),
+                    "error": _validation_message(exc),
+                }
+            )
+        except Exception as exc:
+            logger.exception("IESCO Bills CSV AJAX import failed for row %s", stored.get("row_number"))
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "reference_no": (stored.get("row") or {}).get("reference_no", ""),
+                    "error": _validation_message(exc),
+                }
+            )
+
+        return JsonResponse(
+            {
+                "ok": True,
+                "reference_no": payload.get("reference_no") or "",
+                "bill_month": payload.get("bill_month") or "—",
+                "consumer_name": payload.get("consumer_name") or "—",
+                "units": payload.get("units_display") or payload.get("units") or "—",
+                "grand_total": payload.get("grand_total") or "—",
+                "created": created,
+                "updated": updated,
+            }
+        )
+
+    if ajax_action == "finish":
+        request.session.pop(IMPORT_PROGRESS_SESSION_KEY, None)
+        request.session.modified = True
+        return JsonResponse({"ok": True})
+
     upload = request.FILES.get("file")
     if upload is None:
         messages.error(request, "Choose an IESCO CSV file to import.")

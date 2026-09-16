@@ -1188,6 +1188,124 @@ class ActiveAgreementAndMoveInBillingTests(TestCase):
             1,
         )
 
+    def test_renewal_updates_existing_rent_once_and_keeps_other_charges(self):
+        from datetime import date
+        from decimal import Decimal
+
+        from invoices.models import Invoice, InvoiceItem, ItemCategory
+        from leases.utils.billing import update_renewal_rent_invoices
+
+        rent = ItemCategory.objects.create(name="Rent")
+        maintenance = ItemCategory.objects.create(name="Society Maintenance")
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2027, 7, 1),
+            due_date=date(2027, 7, 5),
+            description="Invoice for July 2027",
+        )
+        first = InvoiceItem.objects.create(invoice=invoice, category=rent, description="Rent Jul 2027", amount=12000)
+        duplicate = InvoiceItem.objects.create(invoice=invoice, category=rent, description="Rent", amount=12000)
+        InvoiceItem.objects.create(invoice=invoice, category=maintenance, description="Maintenance", amount=800)
+
+        for _ in range(2):
+            self.assertEqual(
+                update_renewal_rent_invoices(self.lease, date(2027, 7, 1), date(2027, 7, 31), Decimal("15000")),
+                1,
+            )
+
+        first.refresh_from_db()
+        duplicate.refresh_from_db()
+        invoice.refresh_from_db()
+        self.assertEqual(first.amount, Decimal("15000"))
+        self.assertEqual(duplicate.amount, Decimal("0"))
+        self.assertEqual(invoice.amount, Decimal("15800"))
+        self.assertEqual(invoice.items.count(), 3)
+
+    def test_recurring_rent_does_not_duplicate_monthly_rent_line(self):
+        from datetime import date
+
+        from invoices.models import Invoice, InvoiceItem, ItemCategory, RecurringCharge
+        from invoices.services import apply_fixed_recurring
+
+        rent = ItemCategory.objects.create(name="Rent")
+        month = date(2026, 8, 1)
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=month,
+            due_date=month,
+            description="Invoice for August 2026",
+        )
+        InvoiceItem.objects.create(
+            invoice=invoice, category=rent, description="Rent Aug 2026", amount=12000
+        )
+        RecurringCharge.objects.create(
+            lease=self.lease,
+            category=rent,
+            description="Rent",
+            amount=15000,
+            start_date=month,
+        )
+
+        apply_fixed_recurring(month)
+        self.assertEqual(
+            InvoiceItem.objects.filter(invoice__lease=self.lease, category=rent).count(), 1
+        )
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.amount, 12000)
+
+    def test_renewal_asks_before_changing_generated_invoice_rent(self):
+        from datetime import date
+
+        from django.contrib.auth import get_user_model
+        from django.urls import reverse
+        from invoices.models import Invoice, InvoiceItem, ItemCategory
+
+        self.client.force_login(get_user_model().objects.create_superuser(
+            username="renewal-rent-user", email="renewal-rent@example.com", password="test-password"
+        ))
+        invoice = Invoice.objects.create(
+            lease=self.lease,
+            issue_date=date(2027, 7, 1),
+            due_date=date(2027, 7, 5),
+            description="Invoice for July 2027",
+        )
+        rent_item = InvoiceItem.objects.create(
+            invoice=invoice,
+            category=ItemCategory.objects.create(name="Rent"),
+            description="Rent Jul 2027",
+            amount=12000,
+        )
+        url = reverse("leases:lease_renew", args=[self.lease.pk])
+        data = {
+            "start_date": "2027-07-01",
+            "lease_months": "11",
+            "agreement_date": "2027-07-01",
+            "monthly_rent": "15000.00",
+            "society_maintenance": "800.00",
+            "water_charges": "2000.00",
+            "bill_water_charges": "on",
+            "bill_recurring_charges": "on",
+            "internet_charges": "500.00",
+            "agreement_charges": "1500.00",
+            "security_deposit": "18300.00",
+            "rent_increase_percent": "10.00",
+            "police_verification_status": "not_started",
+        }
+
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["form"].errors, response.context["form"].errors.as_json())
+        self.assertTrue(response.context["confirm_existing_rent"])
+        self.assertFalse(self.lease.renewals.filter(is_original=False).exists())
+        rent_item.refresh_from_db()
+        self.assertEqual(rent_item.amount, 12000)
+
+        response = self.client.post(url, {**data, "rent_invoice_decision": "yes"})
+        self.assertEqual(response.status_code, 302)
+        rent_item.refresh_from_db()
+        self.assertEqual(rent_item.amount, 15000)
+        self.assertEqual(invoice.items.filter(category__name="Rent").count(), 1)
+
     def test_exact_move_in_proration_uses_partial_month_before_billing_start(self):
         from datetime import date
         from decimal import Decimal

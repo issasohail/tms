@@ -1446,6 +1446,65 @@ def _find_existing_invoice_for_month(lease, month_first: date):
     )
 
 
+def renewal_rent_invoices(lease, start_date: date, end_date: date):
+    """Existing monthly invoices in a renewal period, including ones dated mid-month."""
+    Invoice = _get_model("invoices", "Invoice")
+    month_start = _first_of_month(start_date)
+    month_end = _add_month(_first_of_month(end_date))
+    return (
+        Invoice.objects.filter(
+            lease=lease,
+            issue_date__gte=month_start,
+            issue_date__lt=month_end,
+        )
+        .exclude(status="cancelled")
+        .exclude(lifecycle_status__in=("cancelled", "void"))
+        .filter(
+            Q(items__category__name__iexact=RENT)
+            | Q(description__istartswith="Monthly charges")
+            | Q(description__istartswith="Monthly rent")
+            | Q(description__istartswith="Invoice for ")
+        )
+        .exclude(description__startswith=MOVE_IN_PRORATION_MARKER)
+        .distinct()
+        .order_by("issue_date", "id")
+    )
+
+
+def update_renewal_rent_invoices(lease, start_date: date, end_date: date, rent: Decimal):
+    """Set one billable Rent line per existing renewal month, preserving other lines."""
+    InvoiceItem = _get_model("invoices", "InvoiceItem")
+    rent_category = _get_or_create_category(RENT)
+    by_month = {}
+    for invoice in renewal_rent_invoices(lease, start_date, end_date).select_for_update():
+        by_month.setdefault((invoice.issue_date.year, invoice.issue_date.month), []).append(invoice)
+
+    for (year, month), invoices in by_month.items():
+        rent_items = list(
+            InvoiceItem.objects.select_for_update().filter(
+                invoice__in=invoices, category__name__iexact=RENT
+            ).order_by("invoice__issue_date", "invoice_id", "id")
+        )
+        primary = rent_items[0] if rent_items else None
+        if primary is None:
+            primary = InvoiceItem.objects.create(
+                invoice=invoices[0],
+                category=rent_category,
+                description=f"Rent {date(year, month, 1):%b %Y}",
+                amount=rent,
+                is_recurring=True,
+            )
+        elif primary.amount != rent:
+            primary.amount = rent
+            primary.save(update_fields=["amount"])
+        # Retain historical rows, but make any other Rent lines non-billable.
+        for duplicate in rent_items[1:]:
+            if duplicate.amount:
+                duplicate.amount = Decimal("0.00")
+                duplicate.save(update_fields=["amount"])
+    return len(by_month)
+
+
 def _create_or_update_month_invoice(
     lease,
     month_first: date,

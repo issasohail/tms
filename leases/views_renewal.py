@@ -20,7 +20,12 @@ from .services.lease_history import (
     sync_history_to_master_lease,
 )
 from .utils.agreement_generator import generate_renewal_agreement_pdf
-from .utils.billing import reconcile_move_in_proration, update_billing_on_change
+from .utils.billing import (
+    reconcile_move_in_proration,
+    renewal_rent_invoices,
+    update_billing_on_change,
+    update_renewal_rent_invoices,
+)
 
 
 def _copy_clauses_to_renewal(lease, renewal):
@@ -55,6 +60,16 @@ class RenewLeaseView(LoginRequiredMixin, FormView):
 
     def form_valid(self, form):
         lease = self.lease
+        start_date = form.cleaned_data["start_date"]
+        end_date = form.cleaned_data["end_date"]
+        existing_invoices = renewal_rent_invoices(lease, start_date, end_date)
+        decision = self.request.POST.get("rent_invoice_decision")
+        if existing_invoices.exists() and decision not in {"yes", "no"}:
+            context = self.get_context_data(form=form)
+            context["confirm_existing_rent"] = True
+            context["existing_invoice_count"] = existing_invoices.count()
+            return self.render_to_response(context)
+
         with transaction.atomic():
             lease = Lease.objects.select_for_update().get(pk=lease.pk)
             last_number = (
@@ -117,10 +132,17 @@ class RenewLeaseView(LoginRequiredMixin, FormView):
                 include_backfill=False,
                 update_existing=False,
             )
+            updated_months = 0
+            if decision == "yes":
+                updated_months = update_renewal_rent_invoices(
+                    lease, renewal.start_date, renewal.end_date, renewal.monthly_rent
+                )
             proration_result = reconcile_move_in_proration(lease)
 
         if proration_result["warning"]:
             messages.warning(self.request, proration_result["warning"])
+        if updated_months:
+            messages.info(self.request, f"Rent updated in {updated_months} existing invoice month(s).")
         messages.success(
             self.request,
             f"Lease renewed. Renewal #{renewal.renewal_number} was created.",

@@ -258,8 +258,28 @@ def apply_fixed_recurring(period_date: date, cutoff_today: bool = False):
             targets = month_leases
 
         for lease in targets:
-            inv = ensure_month_invoice(lease, period_first)  # invoice date = 1st
             amt = rc.amount or Decimal("0.00")
+            if rc.category.name.lower() == "rent":
+                # Rent may already have been added under a month-specific description.
+                # Treat the category as the key so renewal never posts it twice.
+                existing_rent = InvoiceItem.objects.filter(
+                    invoice__lease=lease,
+                    invoice__issue_date__gte=period_first,
+                    invoice__issue_date__lte=period_last,
+                    category__name__iexact="Rent",
+                    amount__gt=0,
+                ).exclude(invoice__status="cancelled").exclude(
+                    invoice__lifecycle_status__in=("cancelled", "void")
+                )
+                if existing_rent.exists():
+                    continue
+            inv = ensure_month_invoice(lease, period_first)  # invoice date = 1st
+            if rc.category.name.lower() == "rent":
+                rent_item = inv.items.filter(category__name__iexact="Rent").order_by("id").first()
+                if rent_item:
+                    rent_item.amount = amt
+                    rent_item.save(update_fields=["amount"])
+                    continue
             # idempotent: avoid duplicates per (invoice, category, description)
             InvoiceItem.objects.get_or_create(
                 invoice=inv,

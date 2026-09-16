@@ -1371,14 +1371,15 @@ document.addEventListener('DOMContentLoaded', function () {
   const runUrl = onCurrentMount("{% url 'invoices:iesco_helper_run_status' '00000000-0000-0000-0000-000000000000' %}");
   const runKey = 'iesco-helper-run-{{ request.user.pk }}';
   let paired = false;
+  let needsUpdate = false;
   let timer;
   let runTimer;
   let activeRun = '';
-  function setStatus(text, connected) {
+  function setStatus(text, connected, updateRequired) {
     status.textContent = text;
-    badge.textContent = connected ? text.slice(0, 48) : (text.startsWith('Pairing request') ? 'Connecting…' : 'Local computer not connected');
+    badge.textContent = connected ? text.slice(0, 48) : (updateRequired ? 'Update local helper' : (text.startsWith('Pairing request') ? 'Connecting…' : 'Local computer not connected'));
     badge.title = text;
-    badge.className = 'badge mt-1 ' + (connected ? 'bg-success' : 'bg-secondary');
+    badge.className = 'badge mt-1 ' + (connected ? 'bg-success' : (updateRequired ? 'bg-warning text-dark' : 'bg-secondary'));
   }
   function showRun(text, percent, error) {
     progress.classList.remove('d-none');
@@ -1443,14 +1444,21 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!response.ok) throw new Error('Could not check helper status (HTTP ' + response.status + ').');
       const data = await response.json();
       if (data.status === 'paired') {
+        if (data.helper_version !== '2.1') {
+          paired = false;
+          needsUpdate = true;
+          setStatus('This computer has the old IESCO helper. Download and run the latest setup in Step 1, then click Step 2 again.', false, true);
+          clearInterval(timer);
+          return;
+        }
         paired = true;
+        needsUpdate = false;
         setStatus('Connected: ' + data.device, true);
         clearInterval(timer);
         if (data.run_id && (data.run_status === 'queued' || data.run_status === 'running')) {
           bootstrap.Modal.getInstance(modal)?.hide();
           watchRun(data.run_id);
         }
-        if (data.helper_version !== '2.1') status.textContent += ' Install the latest setup and connect again for live progress.';
       } else if (data.status === 'revoked') {
         paired = false;
         setStatus('This computer was revoked. Connect it again.');
@@ -1471,7 +1479,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const savedRun = localStorage.getItem(runKey);
   if (savedRun && /^[0-9a-f-]{36}$/i.test(savedRun)) watchRun(savedRun);
   download.addEventListener('click', function () {
-    if (!paired) setStatus('Setup downloaded. Double-click the EXE, then click Connect This Computer.');
+    if (!paired) setStatus('Run the downloaded EXE, then click Connect This Computer & Fetch All.', false, needsUpdate);
   });
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
@@ -1497,7 +1505,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!link) return;
     event.preventDefault();
     if (!paired) {
-      setStatus('Download and install IESCO Helper, then click Connect This Computer before fetching.');
+      setStatus(needsUpdate ? 'Install the latest IESCO Helper in Step 1, then click Step 2 to connect and fetch all.' : 'Download and install IESCO Helper, then click Connect This Computer before fetching.', false, needsUpdate);
       bootstrap.Modal.getOrCreateInstance(modal).show();
       return;
     }

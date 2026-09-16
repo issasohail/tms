@@ -3,9 +3,9 @@
 ## Staff guide
 
 1. On a Windows computer using a normal Pakistani internet connection, open the IESCO dashboard through its HTTPS address and click **Helper**.
-2. Under **Step 1: Download and install**, click **Download IESCO Helper Setup**. Double-click the downloaded `TMS IESCO Fetch Helper Setup.exe` once. Windows confirms installation.
-3. Under **Step 2: Connect and fetch all**, click **Connect This Computer & Fetch All**. Allow the browser to open TMS IESCO Fetch Helper. The dashboard shows the paired computer and immediately tracks Fetch All progress. Pairing from a local HTTP page is blocked with a clear HTTPS message.
-4. Later, click **Fetch** for one meter or **Fetch All** without reconnecting. The progress panel shows processed, updated, and failed counts. When complete, the bill list refreshes through AJAX. The helper checks the active reference list, refuses to contact PITC if an active VPN adapter is detected, sends parsed bills to TMS for review, and exits.
+2. Under **Step 1: Download and install**, click **Download IESCO Helper Setup**. Double-click the downloaded `TMS IESCO Fetch Helper Setup.exe` once. Windows confirms installation. The installed helper can be reused; the downloaded setup may be deleted afterward.
+3. Under **Step 2: Connect and fetch all**, click **Connect This Computer & Fetch All**. Allow the browser to open TMS IESCO Fetch Helper. The dashboard shows the paired computer, closes setup, and opens a progress modal for the automatic Fetch All. Pairing from a local HTTP page is blocked with a clear HTTPS message.
+4. Later, click **Fetch** for one meter or **Fetch All** without reconnecting or downloading again. The progress modal shows processed, updated, and failed counts. When complete, the bill list refreshes through AJAX and the modal closes. The helper checks the active reference list, refuses to contact PITC if an active VPN adapter is detected, sends parsed bills to TMS for review, and exits.
 5. Review, verify, and confirm fetched readings in TMS as usual. Fetching does not create invoices.
 
 If the browser does not open the helper, run the downloaded setup EXE again and retry pairing. Pairing requests expire after 10 minutes. A revoked device must be paired again by an authorised staff user.

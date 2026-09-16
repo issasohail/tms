@@ -58,7 +58,9 @@ class IescoHelperTests(TestCase):
         self.assertContains(page, "Download IESCO Helper Setup")
         self.assertContains(page, 'id="iescoConnectionBadge"')
         self.assertContains(page, 'id="iescoReadingsContent"')
-        self.assertIsNotNone(BeautifulSoup(page.content, "html.parser").select_one("#iescoReadingsContent .iesco-desktop-view"))
+        soup = BeautifulSoup(page.content, "html.parser")
+        self.assertIsNotNone(soup.select_one("#iescoReadingsContent .iesco-desktop-view"))
+        self.assertIsNotNone(soup.select_one("#iescoFetchProgress.modal #iescoFetchProgressBar"))
 
     def test_admin_can_create_pairing_request(self):
         url = reverse("admin:invoices_iescohelperpairing_pair")

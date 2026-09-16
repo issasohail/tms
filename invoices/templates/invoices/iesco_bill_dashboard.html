@@ -314,7 +314,6 @@
         {% if can_add_standalone %}<button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#standaloneMeterForm"><i class="fas fa-plus me-1"></i>+ Meter</button>{% endif %}
         <a href="{% url 'invoices:invoice_list' %}" class="btn btn-sm btn-secondary"><i class="fas fa-arrow-left me-1"></i>Back</a>
       </div>
-      {% if can_manage %}<div id="iescoFetchProgress" class="mt-2 d-none bg-white border rounded shadow-sm p-2" role="status" aria-live="polite" style="position:fixed;right:1rem;bottom:1rem;z-index:1055;width:min(420px,calc(100vw - 2rem));"><div class="small fw-semibold mb-1">IESCO helper fetch</div><div class="progress" style="height:18px;"><div id="iescoFetchProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%">0%</div></div><div id="iescoFetchProgressText" class="form-text mb-0">Waiting for helper…</div></div>{% endif %}
     </div>
   </div>
 
@@ -327,11 +326,25 @@
         <p id="iescoHelperStatus" role="status" aria-live="polite">{% if request.is_secure %}Helper not installed or not connected.{% else %}Open TMS over HTTPS to connect this computer.{% endif %}</p>
         <form id="iescoPairForm" method="post" action="{% url 'invoices:iesco_helper_pair' %}">{% csrf_token %}
           <div class="d-grid gap-2">
-            <div><div class="small fw-semibold mb-1">Step 1: Download and install</div><a id="iescoHelperDownload" class="btn btn-primary" href="{% url 'invoices:iesco_helper_download' %}"><i class="fas fa-download me-1"></i>Download IESCO Helper Setup</a><div class="form-text">Double-click the downloaded EXE once.</div></div>
+            <div><div class="small fw-semibold mb-1">Step 1: Download and install</div><a id="iescoHelperDownload" class="btn btn-primary" href="{% url 'invoices:iesco_helper_download' %}"><i class="fas fa-download me-1"></i>Download IESCO Helper Setup</a><div class="form-text">Install once. The same helper runs every later Fetch or Fetch All; you may delete the downloaded setup afterward.</div></div>
             <div><div class="small fw-semibold mb-1">Step 2: Connect and fetch all</div><button id="iescoHelperConnect" class="btn btn-success" type="submit">Connect This Computer &amp; Fetch All</button>{% if not request.is_secure %}<div class="form-text">Open TMS over HTTPS to connect. This HTTP page is for local development.</div>{% endif %}</div>
           </div>
         </form>
       </div>
+    </div></div>
+  </div>
+  {% endif %}
+
+  {% if can_manage %}
+  <div class="modal fade" id="iescoFetchProgress" tabindex="-1" aria-labelledby="iescoFetchProgressTitle" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" id="iescoFetchProgressTitle">IESCO helper fetch</h5></div>
+      <div class="modal-body">
+        <div id="iescoFetchStage" class="fw-semibold mb-2" role="status" aria-live="polite">Step 1: Connecting this computer…</div>
+        <div class="progress mb-2" style="height:20px;"><div id="iescoFetchProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" style="width:0%">0%</div></div>
+        <div id="iescoFetchProgressText" class="small text-muted" aria-live="polite">Waiting for the local helper…</div>
+      </div>
+      <div class="modal-footer"><button id="iescoFetchCloseButton" type="button" class="btn btn-secondary d-none" data-bs-dismiss="modal">Close</button></div>
     </div></div>
   </div>
   {% endif %}
@@ -1357,8 +1370,10 @@ document.addEventListener('DOMContentLoaded', function () {
   const download = document.getElementById('iescoHelperDownload');
   const badge = document.getElementById('iescoConnectionBadge');
   const progress = document.getElementById('iescoFetchProgress');
+  const progressStage = document.getElementById('iescoFetchStage');
   const progressBar = document.getElementById('iescoFetchProgressBar');
   const progressText = document.getElementById('iescoFetchProgressText');
+  const progressClose = document.getElementById('iescoFetchCloseButton');
   const mount = window.location.pathname.startsWith('/tms/') ? '/tms' : '';
   function onCurrentMount(path) {
     return mount && path.startsWith('/') && !path.startsWith(mount + '/') ? mount + path : path;
@@ -1372,6 +1387,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const runKey = 'iesco-helper-run-{{ request.user.pk }}';
   let paired = false;
   let needsUpdate = false;
+  let waitingForPair = false;
+  let pendingProgressOpen = false;
   let timer;
   let runTimer;
   let activeRun = '';
@@ -1381,13 +1398,30 @@ document.addEventListener('DOMContentLoaded', function () {
     badge.title = text;
     badge.className = 'badge mt-1 ' + (connected ? 'bg-success' : (updateRequired ? 'bg-warning text-dark' : 'bg-secondary'));
   }
-  function showRun(text, percent, error) {
-    progress.classList.remove('d-none');
+  function openProgress() {
+    if (progress.classList.contains('show') || pendingProgressOpen) return;
+    const setup = bootstrap.Modal.getInstance(modal);
+    if (modal.classList.contains('show') && setup) {
+      pendingProgressOpen = true;
+      modal.addEventListener('hidden.bs.modal', function () {
+        pendingProgressOpen = false;
+        bootstrap.Modal.getOrCreateInstance(progress).show();
+      }, {once: true});
+      setup.hide();
+    } else {
+      bootstrap.Modal.getOrCreateInstance(progress).show();
+    }
+  }
+  function showRun(text, percent, error, stage) {
+    openProgress();
+    progressStage.textContent = error ? 'Fetch stopped' : (stage === 'refresh' ? 'Step 3: Updating the bill list…' : (stage === 'done' ? 'Complete: Bill list updated' : (stage === 'running' ? 'Step 2: Fetching and sending bills to TMS…' : 'Step 1: Computer connected. Starting Fetch All…')));
     progressText.textContent = text;
     progressBar.style.width = percent + '%';
     progressBar.textContent = percent + '%';
+    progressBar.setAttribute('aria-valuenow', String(percent));
     progressBar.classList.toggle('bg-danger', !!error);
-    progressBar.classList.toggle('progress-bar-animated', !error && percent < 100);
+    progressBar.classList.toggle('progress-bar-animated', !error && stage !== 'done');
+    progressClose.classList.toggle('d-none', !error);
   }
   async function refreshReadings() {
     const response = await fetch(window.location.href, {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}});
@@ -1410,15 +1444,23 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!(response.headers.get('content-type') || '').includes('application/json')) throw new Error('TMS returned a page instead of fetch progress. Reload and sign in again.');
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not check fetch progress.');
+      if (activeRun !== id) return;
       const percent = data.total ? Math.round(100 * data.completed / data.total) : 0;
-      showRun((data.message || 'Waiting for local helper…') + ' · ' + data.completed + '/' + data.total + ' processed; ' + data.succeeded + ' updated; ' + data.failed + ' issues.', percent, data.status === 'failed');
+      if (data.status === 'completed') {
+        showRun('Fetched ' + data.succeeded + ' bill(s); ' + data.failed + ' issues. Refreshing TMS…', 100, false, 'refresh');
+      } else {
+        showRun((data.message || 'Waiting for local helper…') + ' · ' + data.completed + '/' + data.total + ' processed; ' + data.succeeded + ' updated; ' + data.failed + ' issues.', percent, data.status === 'failed', data.status);
+      }
       if (data.status === 'completed' || data.status === 'failed') {
         clearInterval(runTimer);
         localStorage.removeItem(runKey);
         activeRun = '';
         if (data.status === 'completed') {
           await refreshReadings();
-          window.setTimeout(function () { progress.classList.add('d-none'); }, 4000);
+          showRun('Fetched ' + data.succeeded + ' bill(s); ' + data.failed + ' issues. The bill list is current.', 100, false, 'done');
+          window.setTimeout(function () {
+            if (!activeRun) bootstrap.Modal.getInstance(progress)?.hide();
+          }, 2500);
         }
       }
     } catch (error) {
@@ -1430,7 +1472,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!id || activeRun === id) return;
     activeRun = id;
     localStorage.setItem(runKey, id);
-    showRun('Waiting for local helper…', 0, false);
+    showRun('Waiting for local helper…', 0, false, 'queued');
     clearInterval(runTimer);
     pollRun(id);
     runTimer = setInterval(function () { pollRun(id); }, 1500);
@@ -1455,10 +1497,10 @@ document.addEventListener('DOMContentLoaded', function () {
         needsUpdate = false;
         setStatus('Connected: ' + data.device, true);
         clearInterval(timer);
-        if (data.run_id && (data.run_status === 'queued' || data.run_status === 'running')) {
-          bootstrap.Modal.getInstance(modal)?.hide();
+        if (data.run_id && (waitingForPair || data.run_status === 'queued' || data.run_status === 'running')) {
           watchRun(data.run_id);
         }
+        waitingForPair = false;
       } else if (data.status === 'revoked') {
         paired = false;
         setStatus('This computer was revoked. Connect it again.');
@@ -1493,6 +1535,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not create pairing request.');
       localStorage.setItem(storageKey, data.id);
+      waitingForPair = true;
       setStatus('Pairing request created. Approve the browser prompt to open the helper.');
       window.location.href = data.url;
       clearInterval(timer);

@@ -1353,15 +1353,22 @@ document.addEventListener('DOMContentLoaded', function () {
   const form = document.getElementById('iescoPairForm');
   const status = document.getElementById('iescoHelperStatus');
   const modal = document.getElementById('iescoHelperModal');
+  const download = document.getElementById('iescoHelperDownload');
+  const mount = window.location.pathname.startsWith('/tms/') ? '/tms' : '';
+  function onCurrentMount(path) {
+    return mount && path.startsWith('/') && !path.startsWith(mount + '/') ? mount + path : path;
+  }
+  form.action = onCurrentMount(form.getAttribute('action'));
+  download.href = onCurrentMount(download.getAttribute('href'));
   const storageKey = 'iesco-helper-pairing-{{ request.user.pk }}';
-  const statusUrl = "{% url 'invoices:iesco_helper_pair_status' 999999 %}";
+  const statusUrl = onCurrentMount("{% url 'invoices:iesco_helper_pair_status' 999999 %}");
   let paired = false;
   let timer;
   function setStatus(text) { status.textContent = text; }
   async function checkPairing(id) {
     try {
       const response = await fetch(statusUrl.replace('999999', id), {credentials: 'same-origin'});
-      if (response.redirected || !(response.headers.get('content-type') || '').includes('application/json')) {
+      if (!(response.headers.get('content-type') || '').includes('application/json')) {
         throw new Error('TMS returned a page instead of helper status. Reload and sign in again.');
       }
       if (!response.ok) throw new Error('Could not check helper status (HTTP ' + response.status + ').');
@@ -1386,7 +1393,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   const savedId = localStorage.getItem(storageKey);
   if (savedId && /^[0-9]+$/.test(savedId)) checkPairing(savedId);
-  document.getElementById('iescoHelperDownload').addEventListener('click', function () {
+  download.addEventListener('click', function () {
     if (!paired) setStatus('Setup downloaded. Double-click the EXE, then click Connect This Computer.');
   });
   form.addEventListener('submit', async function (event) {
@@ -1395,7 +1402,7 @@ document.addEventListener('DOMContentLoaded', function () {
     button.disabled = true;
     try {
       const response = await fetch(form.action, {method: 'POST', body: new FormData(form), credentials: 'same-origin'});
-      if (response.redirected || !(response.headers.get('content-type') || '').includes('application/json')) {
+      if (!(response.headers.get('content-type') || '').includes('application/json')) {
         throw new Error('TMS returned a page instead of pairing data (HTTP ' + response.status + '). Reload and sign in again, or ask an administrator to check the server.');
       }
       const data = await response.json();

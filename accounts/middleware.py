@@ -122,9 +122,12 @@ EXEMPT_URL_NAMES = {
     "iesco_bill_ingest",
     "iesco_helper_pair",
     "iesco_helper_pair_status",
+    "iesco_helper_run_start",
+    "iesco_helper_run_status",
     "iesco_helper_exchange",
     "iesco_device_references",
     "iesco_device_ingest",
+    "iesco_device_run_progress",
 }
 
 ACTION_WORDS = {

@@ -304,7 +304,7 @@
 </style>
 <div class="container-fluid py-2">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
-    <div><h2 class="h4 mb-0">IESCO Bill Readings</h2></div>
+    <div><h2 class="h4 mb-0">IESCO Bill Readings</h2>{% if can_manage %}<span id="iescoConnectionBadge" class="badge bg-secondary mt-1" role="status" aria-live="polite">Checking this computer…</span>{% endif %}</div>
     <div>
       <div class="d-flex flex-wrap justify-content-end gap-1 iesco-top-actions">
         <div class="dropdown"><button class="btn btn-sm btn-success dropdown-toggle" type="button" data-bs-toggle="dropdown"><i class="fas fa-download me-1"></i>Export</button><ul class="dropdown-menu"><li><a class="dropdown-item" href="{% url 'invoices:iesco_bill_export' %}?{{ request.GET.urlencode }}">CSV</a></li><li><a class="dropdown-item" href="{% url 'invoices:iesco_bill_export_formatted' 'xlsx' %}?{{ request.GET.urlencode }}">Excel</a></li><li><a class="dropdown-item" href="{% url 'invoices:iesco_bill_export_formatted' 'pdf' %}?{{ request.GET.urlencode }}">PDF</a></li><li><a class="dropdown-item" href="{% url 'invoices:iesco_bill_export_formatted' 'jpg' %}?{{ request.GET.urlencode }}">JPG</a></li></ul></div>
@@ -314,7 +314,7 @@
         {% if can_add_standalone %}<button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#standaloneMeterForm"><i class="fas fa-plus me-1"></i>+ Meter</button>{% endif %}
         <a href="{% url 'invoices:invoice_list' %}" class="btn btn-sm btn-secondary"><i class="fas fa-arrow-left me-1"></i>Back</a>
       </div>
-      {% if can_manage %}<div id="iescoFetchProgress" class="mt-2 d-none" role="status" aria-live="polite"><div class="progress" style="height: 18px;"><div id="iescoFetchProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div></div><div id="iescoFetchProgressText" class="form-text mb-0 text-end">Preparing meter list…</div></div>{% endif %}
+      {% if can_manage %}<div id="iescoFetchProgress" class="mt-2 d-none bg-white border rounded shadow-sm p-2" role="status" aria-live="polite" style="position:fixed;right:1rem;bottom:1rem;z-index:1055;width:min(420px,calc(100vw - 2rem));"><div class="small fw-semibold mb-1">IESCO helper fetch</div><div class="progress" style="height:18px;"><div id="iescoFetchProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%">0%</div></div><div id="iescoFetchProgressText" class="form-text mb-0">Waiting for helper…</div></div>{% endif %}
     </div>
   </div>
 
@@ -323,12 +323,12 @@
     <div class="modal-dialog"><div class="modal-content">
       <div class="modal-header"><h5 class="modal-title">Pakistan IESCO Fetch Helper</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
-        <p class="small text-muted">Use a Pakistani internet connection with VPN disconnected. The helper runs only for a Fetch request.</p>
+        <p class="small text-muted">Use a Pakistani internet connection with VPN disconnected. Connecting starts Fetch All automatically. Fetch only updates readings for review.</p>
         <p id="iescoHelperStatus" role="status" aria-live="polite">{% if request.is_secure %}Helper not installed or not connected.{% else %}Open TMS over HTTPS to connect this computer.{% endif %}</p>
         <form id="iescoPairForm" method="post" action="{% url 'invoices:iesco_helper_pair' %}">{% csrf_token %}
           <div class="d-grid gap-2">
             <div><div class="small fw-semibold mb-1">Step 1: Download and install</div><a id="iescoHelperDownload" class="btn btn-primary" href="{% url 'invoices:iesco_helper_download' %}"><i class="fas fa-download me-1"></i>Download IESCO Helper Setup</a><div class="form-text">Double-click the downloaded EXE once.</div></div>
-            <div><div class="small fw-semibold mb-1">Step 2: Connect this computer</div><button id="iescoHelperConnect" class="btn btn-success" type="submit">Connect This Computer</button>{% if not request.is_secure %}<div class="form-text">Open TMS over HTTPS to connect. This HTTP page is for local development.</div>{% endif %}</div>
+            <div><div class="small fw-semibold mb-1">Step 2: Connect and fetch all</div><button id="iescoHelperConnect" class="btn btn-success" type="submit">Connect This Computer &amp; Fetch All</button>{% if not request.is_secure %}<div class="form-text">Open TMS over HTTPS to connect. This HTTP page is for local development.</div>{% endif %}</div>
           </div>
         </form>
       </div>
@@ -426,6 +426,7 @@
   </form>
   {{ unit_filter_map|json_script:"iescoUnitFilterMap" }}
 
+  <div id="iescoReadingsContent">
   <div class="card iesco-desktop-view"><table class="table table-sm table-hover align-middle mb-0 iesco-bills-table">
     <colgroup>
       <col class="iesco-col-number"><col class="iesco-col-property"><col class="iesco-col-bill-active">
@@ -748,18 +749,14 @@
   </div>
 
   {% if is_paginated %}<nav class="mt-3" aria-label="IESCO bill reading pages"><ul class="pagination pagination-sm justify-content-end">{% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&property={{ request.GET.property|urlencode }}&unit={{ request.GET.unit|urlencode }}&reference_no={{ request.GET.reference_no|urlencode }}&bill_month={{ request.GET.bill_month|urlencode }}&period={{ selected_period|urlencode }}&period_explicit={% if period_explicit %}1{% endif %}&payment_status={{ request.GET.payment_status|urlencode }}">Previous</a></li>{% endif %}<li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>{% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&property={{ request.GET.property|urlencode }}&unit={{ request.GET.unit|urlencode }}&reference_no={{ request.GET.reference_no|urlencode }}&bill_month={{ request.GET.bill_month|urlencode }}&period={{ selected_period|urlencode }}&period_explicit={% if period_explicit %}1{% endif %}&payment_status={{ request.GET.payment_status|urlencode }}">Next</a></li>{% endif %}</ul></nav>{% endif %}
+  </div>
 </div>
 {% endblock %}
 {% block extra_js %}
 <script>
   document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('[data-no-invoice]').forEach(function (control) {
-      control.addEventListener('click', function () {
-        window.alert('There is no invoice generated for this bill.');
-      });
-    });
     const historyNumber = new Intl.NumberFormat('en-US', {maximumFractionDigits: 0});
-    document.querySelectorAll('.iesco-history-outstanding').forEach(function (cell) {
+    function updateHistoryOutstanding() { document.querySelectorAll('.iesco-history-outstanding').forEach(function (cell) {
       const cleanNumber = function (value) {
         const parsed = Number(String(value || '').replace(/[^0-9.-]/g, ''));
         return Number.isFinite(parsed) ? parsed : 0;
@@ -768,9 +765,13 @@
       const payment = cleanNumber(cell.dataset.historyPayment);
       const outstanding = Math.max(bill - payment, 0);
       cell.textContent = 'Rs. ' + historyNumber.format(Math.round(outstanding));
-    });
-    document.querySelectorAll('.iesco-history-toggle').forEach(function (toggle) {
-      toggle.addEventListener('click', function () {
+    }); }
+    window.iescoUpdateHistoryOutstanding = updateHistoryOutstanding;
+    updateHistoryOutstanding();
+    document.addEventListener('click', function (event) {
+      if (event.target.closest('[data-no-invoice]')) window.alert('There is no invoice generated for this bill.');
+      const toggle = event.target.closest('.iesco-history-toggle');
+      if (toggle) {
         const referenceNo = toggle.dataset.historyRef;
         const targets = document.querySelectorAll('[data-history-for="' + referenceNo + '"]');
         const shouldOpen = Array.from(targets).some(function (target) { return target.hidden; });
@@ -779,7 +780,7 @@
           button.textContent = shouldOpen ? 'Hide' : 'History';
           button.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
         });
-      });
+      }
     });
     const form = document.getElementById('iescoFilterForm');
     const propertyFilter = document.getElementById('id_iesco_property');
@@ -1354,6 +1355,10 @@ document.addEventListener('DOMContentLoaded', function () {
   const status = document.getElementById('iescoHelperStatus');
   const modal = document.getElementById('iescoHelperModal');
   const download = document.getElementById('iescoHelperDownload');
+  const badge = document.getElementById('iescoConnectionBadge');
+  const progress = document.getElementById('iescoFetchProgress');
+  const progressBar = document.getElementById('iescoFetchProgressBar');
+  const progressText = document.getElementById('iescoFetchProgressText');
   const mount = window.location.pathname.startsWith('/tms/') ? '/tms' : '';
   function onCurrentMount(path) {
     return mount && path.startsWith('/') && !path.startsWith(mount + '/') ? mount + path : path;
@@ -1362,9 +1367,73 @@ document.addEventListener('DOMContentLoaded', function () {
   download.href = onCurrentMount(download.getAttribute('href'));
   const storageKey = 'iesco-helper-pairing-{{ request.user.pk }}';
   const statusUrl = onCurrentMount("{% url 'invoices:iesco_helper_pair_status' 999999 %}");
+  const startUrl = onCurrentMount("{% url 'invoices:iesco_helper_run_start' %}");
+  const runUrl = onCurrentMount("{% url 'invoices:iesco_helper_run_status' '00000000-0000-0000-0000-000000000000' %}");
+  const runKey = 'iesco-helper-run-{{ request.user.pk }}';
   let paired = false;
   let timer;
-  function setStatus(text) { status.textContent = text; }
+  let runTimer;
+  let activeRun = '';
+  function setStatus(text, connected) {
+    status.textContent = text;
+    badge.textContent = connected ? text.slice(0, 48) : (text.startsWith('Pairing request') ? 'Connecting…' : 'Local computer not connected');
+    badge.title = text;
+    badge.className = 'badge mt-1 ' + (connected ? 'bg-success' : 'bg-secondary');
+  }
+  function showRun(text, percent, error) {
+    progress.classList.remove('d-none');
+    progressText.textContent = text;
+    progressBar.style.width = percent + '%';
+    progressBar.textContent = percent + '%';
+    progressBar.classList.toggle('bg-danger', !!error);
+    progressBar.classList.toggle('progress-bar-animated', !error && percent < 100);
+  }
+  async function refreshReadings() {
+    const response = await fetch(window.location.href, {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}});
+    if (!response.ok) throw new Error('Could not refresh readings (HTTP ' + response.status + ').');
+    const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const fresh = page.getElementById('iescoReadingsContent');
+    if (!fresh) throw new Error('TMS did not return the bill list. Reload the page.');
+    document.getElementById('iescoReadingsContent').replaceWith(fresh);
+    window.iescoUpdateHistoryOutstanding?.();
+    const oldInvoiceForm = document.querySelector('form[action*="invoices/bulk"]');
+    const newInvoiceForm = page.querySelector('form[action*="invoices/bulk"]');
+    if (oldInvoiceForm && newInvoiceForm) oldInvoiceForm.replaceWith(newInvoiceForm);
+    const note = document.querySelector('.iesco-filter-auto-note');
+    const freshNote = page.querySelector('.iesco-filter-auto-note');
+    if (note && freshNote) note.textContent = freshNote.textContent;
+  }
+  async function pollRun(id) {
+    try {
+      const response = await fetch(runUrl.replace('00000000-0000-0000-0000-000000000000', id), {credentials: 'same-origin'});
+      if (!(response.headers.get('content-type') || '').includes('application/json')) throw new Error('TMS returned a page instead of fetch progress. Reload and sign in again.');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not check fetch progress.');
+      const percent = data.total ? Math.round(100 * data.completed / data.total) : 0;
+      showRun((data.message || 'Waiting for local helper…') + ' · ' + data.completed + '/' + data.total + ' processed; ' + data.succeeded + ' updated; ' + data.failed + ' issues.', percent, data.status === 'failed');
+      if (data.status === 'completed' || data.status === 'failed') {
+        clearInterval(runTimer);
+        localStorage.removeItem(runKey);
+        activeRun = '';
+        if (data.status === 'completed') {
+          await refreshReadings();
+          window.setTimeout(function () { progress.classList.add('d-none'); }, 4000);
+        }
+      }
+    } catch (error) {
+      clearInterval(runTimer);
+      showRun(error.message, 0, true);
+    }
+  }
+  function watchRun(id) {
+    if (!id || activeRun === id) return;
+    activeRun = id;
+    localStorage.setItem(runKey, id);
+    showRun('Waiting for local helper…', 0, false);
+    clearInterval(runTimer);
+    pollRun(id);
+    runTimer = setInterval(function () { pollRun(id); }, 1500);
+  }
   async function checkPairing(id) {
     try {
       const response = await fetch(statusUrl.replace('999999', id), {credentials: 'same-origin'});
@@ -1375,8 +1444,13 @@ document.addEventListener('DOMContentLoaded', function () {
       const data = await response.json();
       if (data.status === 'paired') {
         paired = true;
-        setStatus('Connected: ' + data.device);
+        setStatus('Connected: ' + data.device, true);
         clearInterval(timer);
+        if (data.run_id && (data.run_status === 'queued' || data.run_status === 'running')) {
+          bootstrap.Modal.getInstance(modal)?.hide();
+          watchRun(data.run_id);
+        }
+        if (data.helper_version !== '2.1') status.textContent += ' Install the latest setup and connect again for live progress.';
       } else if (data.status === 'revoked') {
         paired = false;
         setStatus('This computer was revoked. Connect it again.');
@@ -1393,6 +1467,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   const savedId = localStorage.getItem(storageKey);
   if (savedId && /^[0-9]+$/.test(savedId)) checkPairing(savedId);
+  else setStatus('Local computer not connected');
+  const savedRun = localStorage.getItem(runKey);
+  if (savedRun && /^[0-9a-f-]{36}$/i.test(savedRun)) watchRun(savedRun);
   download.addEventListener('click', function () {
     if (!paired) setStatus('Setup downloaded. Double-click the EXE, then click Connect This Computer.');
   });
@@ -1415,13 +1492,31 @@ document.addEventListener('DOMContentLoaded', function () {
     } catch (error) { setStatus(error.message); }
     finally { button.disabled = false; }
   });
-  document.querySelectorAll('.iesco-local-fetch, #iescoFetchAllButton').forEach(function (link) {
-    link.addEventListener('click', function (event) {
-      if (paired) return;
-      event.preventDefault();
+  document.addEventListener('click', async function (event) {
+    const link = event.target.closest('.iesco-local-fetch, #iescoFetchAllButton');
+    if (!link) return;
+    event.preventDefault();
+    if (!paired) {
       setStatus('Download and install IESCO Helper, then click Connect This Computer before fetching.');
       bootstrap.Modal.getOrCreateInstance(modal).show();
-    });
+      return;
+    }
+    const body = new FormData();
+    body.append('pairing_id', localStorage.getItem(storageKey));
+    if (link.classList.contains('iesco-local-fetch')) body.append('reference_no', new URL(link.href).searchParams.get('reference'));
+    try {
+      const response = await fetch(startUrl, {method: 'POST', body: body, credentials: 'same-origin', headers: {'X-CSRFToken': form.querySelector('[name="csrfmiddlewaretoken"]').value}});
+      if (!(response.headers.get('content-type') || '').includes('application/json')) throw new Error('TMS returned a page instead of fetch data. Reload and sign in again.');
+      const data = await response.json();
+      if (!response.ok) {
+        if (data.run_id) watchRun(data.run_id);
+        throw new Error(data.error || 'Could not start fetch.');
+      }
+      watchRun(data.run_id);
+      window.location.href = data.url;
+    } catch (error) {
+      showRun(error.message, 0, true);
+    }
   });
 });
 </script>

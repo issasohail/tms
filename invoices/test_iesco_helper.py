@@ -3,6 +3,7 @@ from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 from unittest.mock import patch
+from bs4 import BeautifulSoup
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -11,7 +12,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import IescoBillReading, IescoHelperDevice, IescoHelperPairing, IescoStandaloneMeter, Invoice
+from .models import IescoBillReading, IescoHelperDevice, IescoHelperFetchRun, IescoHelperPairing, IescoStandaloneMeter, Invoice
 
 
 class IescoHelperTests(TestCase):
@@ -31,10 +32,10 @@ class IescoHelperTests(TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()
 
-    def exchange(self, token, device_id=None):
+    def exchange(self, token, device_id=None, version="2.0"):
         return self.client.post(
             self.exchange_url,
-            json.dumps({"token": token, "device_id": str(device_id or uuid4()), "name": "OFFICE-PC", "version": "2.0"}),
+            json.dumps({"token": token, "device_id": str(device_id or uuid4()), "name": "OFFICE-PC", "version": version}),
             content_type="application/json", secure=True,
         )
 
@@ -55,6 +56,9 @@ class IescoHelperTests(TestCase):
         page = self.client.get(reverse("invoices:iesco_bill_reading_list"))
         self.assertContains(page, "Connect This Computer")
         self.assertContains(page, "Download IESCO Helper Setup")
+        self.assertContains(page, 'id="iescoConnectionBadge"')
+        self.assertContains(page, 'id="iescoReadingsContent"')
+        self.assertIsNotNone(BeautifulSoup(page.content, "html.parser").select_one("#iescoReadingsContent .iesco-desktop-view"))
 
     def test_admin_can_create_pairing_request(self):
         url = reverse("admin:invoices_iescohelperpairing_pair")
@@ -119,6 +123,42 @@ class IescoHelperTests(TestCase):
         self.assertEqual(IescoHelperDevice.objects.count(), 1)
         self.assertNotEqual(response.json()["device_token"], token)
         self.assertEqual(self.client.get(self.refs_url, HTTP_AUTHORIZATION="Bearer " + token).status_code, 401)
+
+    def test_connect_creates_fetch_all_run_and_reports_progress(self):
+        created = self.create_request()
+        pairing_token = parse_qs(urlsplit(created["url"]).query)["token"][0]
+        exchanged = self.exchange(pairing_token, version="2.1")
+        self.assertEqual(exchanged.status_code, 200)
+        data = exchanged.json()
+        run_id = data["run_id"]
+        self.assertEqual(IescoHelperFetchRun.objects.get(pk=run_id).status, "queued")
+        status_url = reverse("invoices:iesco_helper_pair_status", args=[created["id"]])
+        self.assertEqual(self.client.get(status_url).json()["run_id"], run_id)
+        url = reverse("invoices:iesco_device_run_progress", args=[run_id])
+        update = {"status": "running", "total": 1, "completed": 0, "succeeded": 0, "failed": 0}
+        self.assertEqual(self.client.post(url, json.dumps(update), content_type="application/json").status_code, 401)
+        headers = {"HTTP_AUTHORIZATION": "Bearer " + data["device_token"]}
+        self.assertEqual(self.client.post(url, json.dumps(update), content_type="application/json", **headers).status_code, 200)
+        update.update(status="completed", completed=1, succeeded=1)
+        self.assertEqual(self.client.post(url, json.dumps(update), content_type="application/json", **headers).status_code, 200)
+        run_status = reverse("invoices:iesco_helper_run_status", args=[run_id])
+        self.assertEqual(self.client.get(run_status).json()["succeeded"], 1)
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.get(run_status).status_code, 403)
+
+    def test_manual_fetch_run_requires_current_pairing_and_active_reference(self):
+        created = self.create_request()
+        pairing_token = parse_qs(urlsplit(created["url"]).query)["token"][0]
+        data = self.exchange(pairing_token, version="2.1").json()
+        auto = IescoHelperFetchRun.objects.get(pk=data["run_id"])
+        auto.status = "completed"
+        auto.save(update_fields=["status"])
+        start_url = reverse("invoices:iesco_helper_run_start")
+        self.assertEqual(self.client.post(start_url, {"pairing_id": created["id"], "reference_no": "17146151548912"}).status_code, 400)
+        response = self.client.post(start_url, {"pairing_id": created["id"], "reference_no": "17146151548911"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("tms-iesco://fetch?run=", response.json()["url"])
+        self.assertEqual(self.client.post(start_url, {"pairing_id": created["id"]}).status_code, 409)
 
     @patch("invoices.services_iesco.get_bill")
     def test_django_server_does_not_fetch_pitc(self, pitc):

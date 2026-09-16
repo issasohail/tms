@@ -4,11 +4,12 @@
 
 1. On a Windows computer using a normal Pakistani internet connection, open the IESCO dashboard through its HTTPS address and click **Helper**.
 2. Under **Step 1: Download and install**, click **Download IESCO Helper Setup**. Double-click the downloaded `TMS IESCO Fetch Helper Setup.exe` once. Windows confirms installation.
-3. Under **Step 2: Connect this computer**, click **Connect This Computer**. Allow the browser to open TMS IESCO Fetch Helper. The dashboard shows **Connected** when pairing finishes. Pairing from a local HTTP page is blocked with a clear HTTPS message.
-4. Click **Fetch** for one meter or **Fetch All**. The helper checks the active reference list, refuses to contact PITC if an active VPN adapter is detected, sends parsed bills to TMS for review, and exits.
+3. Under **Step 2: Connect and fetch all**, click **Connect This Computer & Fetch All**. Allow the browser to open TMS IESCO Fetch Helper. The dashboard shows the paired computer and immediately tracks Fetch All progress. Pairing from a local HTTP page is blocked with a clear HTTPS message.
+4. Later, click **Fetch** for one meter or **Fetch All** without reconnecting. The progress panel shows processed, updated, and failed counts. When complete, the bill list refreshes through AJAX. The helper checks the active reference list, refuses to contact PITC if an active VPN adapter is detected, sends parsed bills to TMS for review, and exits.
 5. Review, verify, and confirm fetched readings in TMS as usual. Fetching does not create invoices.
 
 If the browser does not open the helper, run the downloaded setup EXE again and retry pairing. Pairing requests expire after 10 minutes. A revoked device must be paired again by an authorised staff user.
+Staff who installed helper 2.0 must download and run the new setup, then reconnect once to enable automatic fetching and live progress. A server-side pairing record alone cannot prove the Windows program is still installed; if the browser cannot open it, reinstall and reconnect.
 
 ## Developer build on Windows
 
@@ -25,7 +26,7 @@ Use the actual production HTTPS base URL if it differs. The output is `tools/dis
 
 1. Back up the production database and the current application release using the normal deployment procedure.
 2. If legacy API-key jobs still run, configure `IESCO_BILL_API_KEY` in the existing production secret environment before this release, and update those jobs with the same key. The key is no longer a literal in Django settings. Rotate the formerly source-controlled key through the normal secret-change procedure. No key is needed for the new EXE.
-3. Deploy the changed Django files, migration `invoices/migrations/0036_iesco_helper_pairing.py`, and the built EXE at `tools/dist/TMS IESCO Fetch Helper Setup.exe` in the application directory. Do not deploy the build folder, build config, or any local device credential.
+3. Deploy the changed Django files, migrations through `invoices/migrations/0037_iesco_helper_fetch_run.py`, and the built EXE at `tools/dist/TMS IESCO Fetch Helper Setup.exe` in the application directory. Do not deploy the build folder, build config, or any local device credential.
 4. In the deployed Python environment run `python manage.py migrate invoices` and `python manage.py check`. Restart the existing application process using the normal deployment procedure. The pair exchange requires Django to see HTTPS through the existing reverse proxy. No nginx, systemd, or Docker files were changed here.
 5. Confirm the download is available to an authorised user. On a Pakistani Windows computer, install, pair, fetch one active test reference, and confirm the saved reading is **Parsed** and no invoice changed.
 6. In Django admin, use **Iesco helper devices** to inspect last use and revoke or delete a device. Use **Iesco helper pairings** to audit requests and create a new pairing request.

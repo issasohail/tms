@@ -1,5 +1,6 @@
 from decimal import ROUND_CEILING, Decimal
 import re
+import uuid
 
 from django.conf import settings
 from django.core.cache import cache
@@ -981,6 +982,22 @@ class IescoHelperPairing(models.Model):
 
     def __str__(self):
         return f"Pairing {self.pk}: {self.status}"
+
+
+class IescoHelperFetchRun(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    device = models.ForeignKey(IescoHelperDevice, on_delete=models.CASCADE, related_name="fetch_runs")
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    pairing = models.OneToOneField(IescoHelperPairing, null=True, blank=True, on_delete=models.SET_NULL, related_name="fetch_run")
+    reference_no = models.CharField(max_length=14, blank=True)
+    status = models.CharField(max_length=16, default="queued")
+    total = models.PositiveIntegerField(default=0)
+    completed = models.PositiveIntegerField(default=0)
+    succeeded = models.PositiveIntegerField(default=0)
+    failed = models.PositiveIntegerField(default=0)
+    message = models.CharField(max_length=200, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class IescoBillReading(models.Model):

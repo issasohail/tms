@@ -60,6 +60,8 @@ urlpatterns = [
     path('iesco-bills/helper-download/', views_iesco.iesco_helper_download, name='iesco_helper_download'),
     path('iesco-bills/helper-pair/', views_iesco_helper.create_pairing, name='iesco_helper_pair'),
     path('iesco-bills/helper-pair/<int:pk>/status/', views_iesco_helper.pairing_status, name='iesco_helper_pair_status'),
+    path('iesco-bills/helper-runs/start/', views_iesco_helper.start_fetch_run, name='iesco_helper_run_start'),
+    path('iesco-bills/helper-runs/<uuid:pk>/status/', views_iesco_helper.fetch_run_status, name='iesco_helper_run_status'),
     path('iesco-bills/fetch/<str:reference_no>/', views_iesco.fetch_one, name='iesco_bill_fetch_one'),
     path('iesco-bills/fetch-all/', views_iesco.fetch_all_active, name='iesco_bill_fetch_all'),
     path('iesco-bills/import/', views_iesco.import_csv, name='iesco_bill_import'),
@@ -150,6 +152,7 @@ urlpatterns = [
     path("api/iesco-helper/pair/", views_iesco_helper.exchange_pairing, name="iesco_helper_exchange"),
     path("api/iesco-helper/references/", views_iesco_helper.active_references, name="iesco_device_references"),
     path("api/iesco-helper/ingest/", views_iesco_helper.ingest, name="iesco_device_ingest"),
+    path("api/iesco-helper/runs/<uuid:pk>/progress/", views_iesco_helper.update_fetch_run, name="iesco_device_run_progress"),
 
 
     # One-click monthly run

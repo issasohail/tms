@@ -19,7 +19,7 @@ import winreg
 import requests
 from invoices.iesco_bill_fetch import get_bill, active_vpn_adapter, VpnDetectedError
 
-VERSION = "2.0"
+VERSION = "2.1"
 APP_DIR = Path(os.environ.get("APPDATA", Path.home())) / "TMS" / "IESCO Helper"
 DEVICE_FILE = APP_DIR / "device.json"
 INSTALLED_EXE = APP_DIR / "TMS IESCO Fetch Helper.exe"
@@ -124,66 +124,100 @@ def pair(token):
         record("pair_failed")
         return show("Could not connect to TMS. Check the internet connection and try again.", True)
     record("paired")
-    return show("Computer connected successfully. You can now use Fetch or Fetch All.")
+    run_id = response.json().get("run_id")
+    if run_id:
+        return fetch("fetch-all", {"run": [run_id]})
+    return show("Computer connected successfully. Return to TMS to start fetching.")
 
 
 def fetch(host, query):
+    run_id = query.get("run", [""])[0]
+    if not re.fullmatch(r"[0-9a-fA-F-]{36}", run_id):
+        return show("Open Fetch from the IESCO bill list in TMS.", True)
     try:
         token = _crypt(config()["credential"], False)
     except (KeyError, OSError, ValueError):
         return show("Helper installed but not connected. Click Connect This Computer in TMS.", True)
+    state = {"total": 0, "completed": 0, "succeeded": 0, "failed": 0}
+
+    def progress(status, total=0, completed=0, succeeded=0, failed=0, message=""):
+        response = call("POST", f"runs/{run_id}/progress/", token,
+                        json={"status": status, "total": total, "completed": completed,
+                              "succeeded": succeeded, "failed": failed, "message": message})
+        response.raise_for_status()
+        state.update(total=total, completed=completed, succeeded=succeeded, failed=failed)
+
+    def stop(message):
+        try:
+            progress("failed", **state, message=message)
+        except requests.RequestException:
+            pass
+        return show(message, True)
+
     try:
         result = call("GET", "references/", token)
         if result.status_code in (401, 403):
-            return show("Device revoked or IESCO permission removed. Reconnect this computer.", True)
+            return stop("Device revoked or IESCO permission removed. Reconnect this computer.")
         result.raise_for_status()
         allowed = result.json()["references"]
     except (requests.RequestException, ValueError, KeyError, TypeError):
-        return show("Could not get the active IESCO reference list from TMS.", True)
+        return stop("Could not get the active IESCO reference list from TMS.")
     if not isinstance(allowed, list):
-        return show("Invalid active reference list from TMS.", True)
+        return stop("Invalid active reference list from TMS.")
     allowed = [ref for ref in allowed if isinstance(ref, str) and re.fullmatch(r"[0-9]{14}", ref)]
     reference = query.get("reference", [""])[0]
     if host == "fetch" and (not re.fullmatch(r"[0-9]{14}", reference) or reference not in allowed):
-        return show("This IESCO reference is invalid or no longer active.", True)
+        return stop("This IESCO reference is invalid or no longer active.")
     targets = [reference] if host == "fetch" else allowed
     if not targets:
-        return show("TMS has no active IESCO references to fetch.", True)
+        return stop("TMS has no active IESCO references to fetch.")
     if active_vpn_adapter():
         record("vpn_detected")
-        return show("VPN detected. Disconnect the VPN before fetching IESCO bills.", True)
+        return stop("VPN detected. Disconnect the VPN before fetching IESCO bills.")
     record("fetch_started")
-    show(f"Fetching {len(targets)} IESCO bill(s). Click OK to continue.")
+    total = len(targets)
+    try:
+        progress("running", total=total, message=f"Starting {total} bill(s)")
+    except requests.RequestException:
+        return show("TMS could not start the fetch progress. Try again.", True)
     failed = 0
-    for ref in targets:
+    for index, ref in enumerate(targets):
         try:
             # Recheck revocation and active status before each PITC request.
             fresh = call("GET", "references/", token)
             if fresh.status_code in (401, 403):
                 record("device_revoked")
-                return show("Device revoked or IESCO access removed. Reconnect this computer.", True)
+                return stop("Device revoked or IESCO access removed. Reconnect this computer.")
             fresh.raise_for_status()
             fresh_refs = fresh.json()
             if not isinstance(fresh_refs, dict) or ref not in fresh_refs.get("references", []):
-                failed += 1
-                continue
+                raise ValueError("Reference no longer active")
             bill = get_bill(ref)
             if not bill.raw_found or not bill.bill_month:
                 raise ValueError("Incomplete PITC bill")
             result = call("POST", "ingest/", token, json=asdict(bill))
             if result.status_code in (401, 403):
-                return show("Device revoked or IESCO access removed. Reconnect this computer.", True)
+                return stop("Device revoked or IESCO access removed. Reconnect this computer.")
             result.raise_for_status()
         except VpnDetectedError:
             record("vpn_detected")
-            return show("VPN detected. Disconnect the VPN before fetching IESCO bills.", True)
+            return stop("VPN detected. Disconnect the VPN before fetching IESCO bills.")
         except (requests.RequestException, ValueError):
             failed += 1
+        try:
+            progress("running", total, index + 1, index + 1 - failed, failed, f"Processed {index + 1} of {total}")
+        except requests.RequestException:
+            return show("TMS could not update fetch progress. Check the connection and retry.", True)
+    try:
+        progress("completed", total, total, total - failed, failed,
+                 f"Updated {total - failed} bill(s); {failed} could not be fetched.")
+    except requests.RequestException:
+        return show("Bills were sent, but TMS could not finalize progress. Refresh the bill list.", True)
     if failed:
         record("fetch_failed")
-        return show(f"{failed} bill(s) could not be fetched. PITC may be unavailable; existing bills were kept.", True)
+        return 1
     record("fetch_complete")
-    return show("Fetch complete. Bills were sent to TMS for review.")
+    return 0
 
 
 def main():

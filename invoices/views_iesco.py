@@ -4,7 +4,6 @@ import csv
 import io
 import logging
 import re
-import zipfile
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -15,7 +14,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -1158,21 +1157,13 @@ def pitc_bill_handoff(request, reference_no):
 @login_required
 @require_GET
 def iesco_helper_download(request):
-    """Download the on-demand helper only for staff allowed to fetch bills."""
+    """Download the single-file Windows installer for authorised staff."""
     _require_change_permission(request.user)
-    project_root = settings.BASE_DIR
-    helper_paths = (
-        project_root / "tools" / "dist" / "TMSIESCOFetchHelper.exe",
-        project_root / "tools" / "install_iesco_on_demand_helper.ps1",
-    )
-    if not all(path.is_file() for path in helper_paths):
-        raise Http404("IESCO helper package is not available on this server.")
-    payload = io.BytesIO()
-    with zipfile.ZipFile(payload, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in helper_paths:
-            archive.write(path, arcname=path.name)
-    response = HttpResponse(payload.getvalue(), content_type="application/zip")
-    response["Content-Disposition"] = 'attachment; filename="TMS_IESCO_On_Demand_Helper.zip"'
+    path = settings.BASE_DIR / "tools" / "dist" / "TMS IESCO Fetch Helper Setup.exe"
+    if not path.is_file():
+        raise Http404("IESCO helper setup is not available on this server.")
+    response = FileResponse(path.open("rb"), as_attachment=True, filename=path.name, content_type="application/vnd.microsoft.portable-executable")
+    response["Cache-Control"] = "no-store"
     return response
 
 

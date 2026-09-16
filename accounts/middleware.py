@@ -120,6 +120,11 @@ EXEMPT_URL_NAMES = {
     "webhook",
     "whatsapp_webhook",
     "iesco_bill_ingest",
+    "iesco_helper_pair",
+    "iesco_helper_pair_status",
+    "iesco_helper_exchange",
+    "iesco_device_references",
+    "iesco_device_ingest",
 }
 
 ACTION_WORDS = {

@@ -6,6 +6,8 @@ from dataclasses import asdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
+from django.conf import settings
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -188,6 +190,8 @@ def normalize_bill_payload(payload) -> dict:
 
 
 def fetch_bill_payload(reference_no: str, *, description="") -> dict:
+    if not getattr(settings, "IESCO_SERVER_FETCH_ENABLED", False):
+        raise ValidationError("Server-side PITC fetch is disabled. Use the paired IESCO Helper.")
     bill = get_bill(validate_reference_no(reference_no))
     payload = asdict(bill)
     if not bill.raw_found or not bill.bill_month:

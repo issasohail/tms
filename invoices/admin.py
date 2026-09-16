@@ -1,6 +1,8 @@
 from django.contrib import admin
 from .models import (
     IescoBillReading,
+    IescoHelperDevice,
+    IescoHelperPairing,
     IescoStandaloneMeter,
     Invoice,
     InvoiceItem,
@@ -8,6 +10,60 @@ from .models import (
     MonthlyBillingRun,
     MonthlyBillingRunItem,
 )
+
+
+@admin.register(IescoHelperDevice)
+class IescoHelperDeviceAdmin(admin.ModelAdmin):
+    list_display = ("name", "paired_by", "paired_at", "last_used_at", "is_active", "helper_version")
+    list_filter = ("is_active", "paired_at")
+    search_fields = ("name", "paired_by__username")
+    readonly_fields = ("device_id", "token_hash", "paired_by", "paired_at", "last_used_at", "helper_version", "is_active")
+    actions = ("revoke_devices",)
+
+    @admin.action(description="Revoke selected helper devices")
+    def revoke_devices(self, request, queryset):
+        queryset.update(is_active=False)
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(IescoHelperPairing)
+class IescoHelperPairingAdmin(admin.ModelAdmin):
+    change_list_template = "admin/invoices/iescohelperpairing/change_list.html"
+    list_display = ("id", "requested_by", "created_at", "expires_at", "used_at", "status", "device")
+    list_filter = ("status", "created_at")
+    readonly_fields = ("token_hash", "requested_by", "created_at", "expires_at", "used_at", "device", "status")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def get_urls(self):
+        from django.urls import path
+        return [
+            path("pair/", self.admin_site.admin_view(self.create_from_admin), name="invoices_iescohelperpairing_pair"),
+        ] + super().get_urls()
+
+    def create_from_admin(self, request):
+        from django.core.exceptions import PermissionDenied
+        from django.http import HttpResponseNotAllowed
+        from django.http import JsonResponse
+        from django.template.response import TemplateResponse
+        from .views_iesco_helper import _can_manage, create_pairing_for
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        if not _can_manage(request.user):
+            raise PermissionDenied
+        if not request.is_secure():
+            return JsonResponse({"error": "Open TMS over HTTPS to create a pairing request."}, status=400)
+        pairing, token = create_pairing_for(request.user)
+        context = dict(self.admin_site.each_context(request), title="Connect IESCO computer", pairing=pairing, protocol_url=f"tms-iesco://pair?token={token}")
+        response = TemplateResponse(request, "admin/invoices/iescohelperpairing/pair.html", context)
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 @admin.register(IescoStandaloneMeter)

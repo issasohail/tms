@@ -956,6 +956,33 @@ def iesco_bill_pdf_upload_to(instance, _filename):
     return f"invoices/iesco_bill_pdfs/{instance.reference_no}/{month}.pdf"
 
 
+class IescoHelperDevice(models.Model):
+    device_id = models.UUIDField(unique=True)
+    name = models.CharField(max_length=128)
+    token_hash = models.CharField(max_length=64, unique=True)
+    paired_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="iesco_helper_devices")
+    paired_at = models.DateTimeField(default=timezone.now)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    helper_version = models.CharField(max_length=32, blank=True)
+
+    def __str__(self):
+        return self.name
+
+
+class IescoHelperPairing(models.Model):
+    token_hash = models.CharField(max_length=64, unique=True)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="iesco_helper_pairings")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    device = models.ForeignKey(IescoHelperDevice, null=True, blank=True, on_delete=models.SET_NULL, related_name="pairings")
+    status = models.CharField(max_length=16, default="pending", choices=[("pending", "Pending"), ("paired", "Paired"), ("expired", "Expired")])
+
+    def __str__(self):
+        return f"Pairing {self.pk}: {self.status}"
+
+
 class IescoBillReading(models.Model):
     TRUST_FETCHED = "fetched"
     TRUST_PARSED = "parsed"

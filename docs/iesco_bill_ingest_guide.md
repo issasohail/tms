@@ -1,5 +1,10 @@
 # IESCO Bill Fetch and Ingest
 
+**Staff workflow:** use the single-file helper described in
+[IESCO helper pairing](iesco_helper_pairing.md). The API-key and PowerShell
+instructions below are retained only for existing operator-managed legacy
+jobs; they are not needed by staff or by the new helper.
+
 The local fetcher is `invoices/iesco_bill_fetch.py`. The repository-root
 `iesco_bill_fetch.py` remains as a compatibility launcher for an existing
 Windows Task Scheduler command.

@@ -1,0 +1,7 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Pairing request created. Open the installed IESCO helper on this computer within 10 minutes.</p>
+<p><a id="open-helper" class="button" href="{{ protocol_url }}">Connect This Computer</a></p>
+<p><a href="{% url 'admin:invoices_iescohelperpairing_changelist' %}">View pairing requests</a></p>
+<script>document.getElementById('open-helper').click();</script>
+{% endblock %}

@@ -1,0 +1,6 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+{% block object-tools-items %}
+<li><form method="post" action="{% url 'admin:invoices_iescohelperpairing_pair' %}">{% csrf_token %}<button type="submit" class="button">Create pairing request</button></form></li>
+{{ block.super }}
+{% endblock %}

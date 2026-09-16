@@ -19,7 +19,7 @@
       <td>{{ meter.unit.property.property_name|default:"—" }} / {{ meter.display_location_name|default:"—" }}</td>
       <td>{% if meter.live_status.connection_state == 'online' %}<span class="badge bg-success">Online</span>{% elif meter.live_status.connection_state == 'stale' %}<span class="badge bg-warning text-dark">Stale</span>{% else %}<span class="badge bg-secondary">Offline</span>{% endif %}</td>
       <td>{{ meter.get_tariff_capability_display }}</td><td>{{ meter.get_billing_mode_display }}</td>
-      <td><a class="fw-semibold" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}">{% if meter.current_balance is not None %}{{ CURRENCY_SYMBOL }} {{ meter.current_balance|floatformat:2 }}{% else %}—{% endif %}</a></td>
+      <td><a class="fw-semibold" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=ledger" title="Open meter ledger">{% if meter.current_balance is not None %}{{ CURRENCY_SYMBOL }} {{ meter.current_balance|floatformat:2 }}{% else %}—{% endif %}</a></td>
       <td>{{ meter.display_electricity_rate.rate|floatformat:4 }} <small class="text-muted">{{ meter.display_electricity_rate.source }}</small></td>
       <td>{% if meter.last_read_at %}{{ meter.last_read_at|date:"Y-m-d H:i:s" }}{% else %}—{% endif %}</td>
       <td><span class="badge {% if meter.power_status == 'on' %}bg-success{% else %}bg-danger{% endif %}">{{ meter.power_status|upper }}</span></td>

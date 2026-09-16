@@ -2023,7 +2023,7 @@
             <td class="mobile-meter-card-v2" colspan="20">
               <div class="mobile-line mobile-line-one">
                 <div class="mobile-location"><span class="mobile-serial">{{ forloop.counter }}</span><span>{{ p.property_name|slice:":8" }}</span></div>
-                <div class="mobile-balance"><a href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}">{{ CURRENCY_SYMBOL }} {{ r.balance|default:"0.00"|floatformat:2|intcomma }}</a></div>
+                <div class="mobile-balance"><a href="{% url 'smart_meter:meter_detail' m.id %}?tab=ledger" title="Open meter ledger">{{ CURRENCY_SYMBOL }} {{ r.balance|default:"0.00"|floatformat:2|intcomma }}</a></div>
                 <a href="{% url 'smart_meter:meter_detail' m.id %}" class="mobile-meter-number live-detail-link">{{ m.meter_number }}</a>
               </div>
               <div class="mobile-line mobile-line-two">
@@ -2161,7 +2161,7 @@
               </button>
             </td>
 
-            <td class="text-center" data-col="balance"><a href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}">{{ CURRENCY_SYMBOL }} {{ r.balance|default:"0.00"|floatformat:2|intcomma }}</a></td>
+            <td class="text-center" data-col="balance"><a href="{% url 'smart_meter:meter_detail' m.id %}?tab=ledger" title="Open meter ledger">{{ CURRENCY_SYMBOL }} {{ r.balance|default:"0.00"|floatformat:2|intcomma }}</a></td>
 
             <!-- Total Energy stays visible; add Voltage/Current beneath on small -->
             <td class="text-right" data-col="total_energy" data-energy-url="{% url 'smart_meter:energy_dashboard' %}?meter={{ m.id }}&start={{ energy_start_date|date:'Y-m-d' }}&end={{ energy_end_date|date:'Y-m-d' }}">

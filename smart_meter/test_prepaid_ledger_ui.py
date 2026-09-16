@@ -70,6 +70,12 @@ class PrepaidLedgerUITests(TestCase):
         self.assertContains(response, "Estimated usage charge")
         self.assertContains(response, "Queue once")
         self.assertContains(response, "95.00")
+        self.assertTrue(response.context["has_collapsible_readings"])
+        self.assertTrue(response.context["readings"][0].is_daily_latest)
+        self.assertFalse(response.context["readings"][1].is_daily_latest)
+        self.assertContains(response, 'id="toggleReadingDays"')
+        self.assertContains(response, "ledger-reading-extra d-none")
+        self.assertContains(response, "ledger-mobile-detail d-none")
 
     def test_prepaid_controls_show_operational_columns_and_ledger_link(self):
         response = self.client.get(reverse("smart_meter:prepaid_controls"))
@@ -103,17 +109,20 @@ class PrepaidLedgerUITests(TestCase):
         self.assertEqual(command.expect_di, "070102FF")
 
     def test_meter_and_live_lists_link_balance_to_ledger(self):
-        ledger_url = reverse(
-            "smart_meter:prepaid_meter_ledger", args=[self.meter.pk]
-        )
+        ledger_url = f'{reverse("smart_meter:meter_detail", args=[self.meter.pk])}?tab=ledger'
         meter_response = self.client.get(reverse("smart_meter:meter_list"))
         live_response = self.client.get(reverse("smart_meter:smart_meter_live_custom"))
+        reading_response = self.client.get(reverse("smart_meter:reading_list"))
+        controls_response = self.client.get(reverse("smart_meter:prepaid_controls"))
+        detail_response = self.client.get(ledger_url)
 
-        self.assertContains(meter_response, ledger_url)
+        for response in (meter_response, live_response, reading_response, controls_response):
+            self.assertContains(response, f'href="{ledger_url}"')
         self.assertContains(meter_response, "Prepaid")
-        self.assertContains(live_response, ledger_url)
         self.assertContains(live_response, "Top up")
         self.assertContains(live_response, "Refund")
+        self.assertContains(detail_response, "Meter Balance Ledger")
+        self.assertContains(detail_response, "meter-ledger-table")
 
     def test_general_settings_redirect_to_combined_parameter_page(self):
         response = self.client.get(reverse("smart_meter:meter_settings"))

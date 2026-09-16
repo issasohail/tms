@@ -1,4 +1,31 @@
 {% load humanize %}
+<style>
+  .meter-ledger-raw-table .observation-ip-mobile { display: none; }
+  @media (max-width: 767.98px) {
+    .meter-ledger-table, .meter-ledger-table tbody, .meter-ledger-table tr, .meter-ledger-table td { display: block; width: 100%; }
+    .meter-ledger-table thead { display: none; }
+    .meter-ledger-table tr { margin-bottom: .55rem; border: 1px solid rgba(15, 23, 42, .08); border-radius: 8px; background: #fff; overflow: hidden; }
+    .meter-ledger-table td { display: flex; justify-content: space-between; gap: .5rem; padding: .35rem .55rem; border-bottom: 1px solid rgba(15, 23, 42, .06); text-align: right !important; overflow-wrap: anywhere; }
+    .meter-ledger-table td:last-child { border-bottom: 0; }
+    .meter-ledger-table td::before { content: attr(data-label); flex: 0 0 42%; color: #64748b; font-weight: 800; text-align: left; }
+    .meter-ledger-table td[colspan] { display: block; text-align: left !important; }
+    .meter-ledger-table td[colspan]::before { display: none; }
+    .meter-ledger-raw-table, .meter-ledger-raw-table thead, .meter-ledger-raw-table tbody { display: block; width: 100%; }
+    .meter-ledger-raw-table thead { display: block; }
+    .meter-ledger-raw-table thead tr, .meter-ledger-raw-table tbody tr { display: grid; grid-template-columns: 12% 23% 23% 42%; width: 100%; margin: 0; border: 0; border-bottom: 1px solid #dee2e6; border-radius: 0; }
+    .meter-ledger-raw-table tbody tr { overflow: visible; }
+    html body .tms-main table.table.meter-ledger-raw-table thead th { padding: .38rem .12rem; font-size: .63rem; letter-spacing: 0; white-space: normal; }
+    .meter-ledger-raw-table th:nth-child(n+5) { display: none; }
+    .meter-ledger-raw-table td { display: block; width: auto; min-width: 0; padding: .35rem .12rem; border-bottom: 0; text-align: left !important; overflow-wrap: anywhere; }
+    .meter-ledger-raw-table td:nth-child(-n+4)::before { display: none; }
+    .meter-ledger-raw-table td:nth-child(n+5) { display: none; }
+    .meter-ledger-raw-table td:nth-child(2) { position: relative; z-index: 1; overflow: visible; }
+    .meter-ledger-raw-table .observation-ip-mobile { display: block; width: max-content; white-space: nowrap; font-size: .61rem; line-height: 1.2; color: #64748b; }
+    .meter-ledger-raw-table td[colspan] { grid-column: 1 / -1; }
+    .meter-ledger-raw-table .observation-date, .meter-ledger-raw-table .observation-time { display: block; white-space: nowrap; }
+    .meter-ledger-raw-table .observation-time { color: #64748b; }
+  }
+</style>
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <div><h4 class="mb-0">Meter Balance Ledger</h4><small class="text-muted">Current balance: {{ CURRENCY_SYMBOL }} {{ latest_live.balance|default_if_none:0|floatformat:2|intcomma }}</small></div>
   <div class="d-flex gap-2">
@@ -9,22 +36,22 @@
 
 <div class="meter-detail-card bg-white p-3 mb-3">
   <h5>Money transactions</h5>
-  <div class="table-responsive"><table class="table table-sm meter-table mb-0"><thead><tr><th>S/N</th><th>Date</th><th>Operation</th><th>Amount</th><th>Before</th><th>After</th><th>Status</th><th>Order</th></tr></thead><tbody>
-    {% for item in ledger_transactions %}<tr><td>{{ forloop.counter }}</td><td>{{ item.created_at|date:"Y-m-d H:i:s" }}</td><td>{{ item.operation_label }}</td><td>{{ item.amount|floatformat:2|intcomma }}</td><td>{{ item.before_balance|default_if_none:"—"|floatformat:2|intcomma }}</td><td>{{ item.after_balance|default_if_none:"—"|floatformat:2|intcomma }}</td><td>{{ item.get_status_display }}</td><td>{{ item.transaction_id }}</td></tr>{% empty %}<tr><td colspan="8" class="text-muted">No top-ups or refunds recorded.</td></tr>{% endfor %}
+  <div class="table-responsive"><table class="table table-sm meter-table meter-ledger-table mb-0"><thead><tr><th>S/N</th><th>Date</th><th>Operation</th><th>Amount</th><th>Before</th><th>After</th><th>Status</th><th>Order</th></tr></thead><tbody>
+    {% for item in ledger_transactions %}<tr><td data-label="S/N">{{ forloop.counter }}</td><td data-label="Date">{{ item.created_at|date:"Y-m-d H:i:s" }}</td><td data-label="Operation">{{ item.operation_label }}</td><td data-label="Amount">{{ item.amount|floatformat:2|intcomma }}</td><td data-label="Before">{{ item.before_balance|default_if_none:"—"|floatformat:2|intcomma }}</td><td data-label="After">{{ item.after_balance|default_if_none:"—"|floatformat:2|intcomma }}</td><td data-label="Status">{{ item.get_status_display }}</td><td data-label="Order">{{ item.transaction_id }}</td></tr>{% empty %}<tr><td colspan="8" class="text-muted">No top-ups or refunds recorded.</td></tr>{% endfor %}
   </tbody></table></div>
 </div>
 
 <div class="meter-detail-card bg-white p-3 mb-3">
   <h5>Historical reading balance movements</h5>
-  <div class="table-responsive"><table class="table table-sm meter-table mb-0"><thead><tr><th>S/N</th><th>Reading</th><th>Balance</th><th>Change</th><th>Energy</th><th>Usage</th><th>Rate</th><th>Estimated charge</th></tr></thead><tbody>
-    {% for reading in ledger_readings %}<tr><td>{{ forloop.counter }}</td><td>{{ reading.ts|date:"Y-m-d H:i:s" }}</td><td>{{ reading.balance|floatformat:2|intcomma }}</td><td>{{ reading.balance_change|default_if_none:"—"|floatformat:2|intcomma }}</td><td>{% if reading.forward_active_energy_kwh is not None %}{{ reading.forward_active_energy_kwh|floatformat:3 }}{% else %}{{ reading.total_energy|default:"—" }}{% endif %}</td><td>{{ reading.energy_change|default_if_none:"—"|floatformat:3 }}</td><td>{{ reading.unit_rate|default_if_none:"—" }}</td><td>{{ reading.estimated_charge|default_if_none:"—"|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td colspan="8" class="text-muted">No historical balance movements.</td></tr>{% endfor %}
+  <div class="table-responsive"><table class="table table-sm meter-table meter-ledger-table mb-0"><thead><tr><th>S/N</th><th>Reading</th><th>Balance</th><th>Change</th><th>Energy</th><th>Usage</th><th>Rate</th><th>Estimated charge</th></tr></thead><tbody>
+    {% for reading in ledger_readings %}<tr><td data-label="S/N">{{ forloop.counter }}</td><td data-label="Reading">{{ reading.ts|date:"Y-m-d H:i:s" }}</td><td data-label="Balance">{{ reading.balance|floatformat:2|intcomma }}</td><td data-label="Change">{{ reading.balance_change|default_if_none:"—"|floatformat:2|intcomma }}</td><td data-label="Energy">{% if reading.forward_active_energy_kwh is not None %}{{ reading.forward_active_energy_kwh|floatformat:3 }}{% else %}{{ reading.total_energy|default:"—" }}{% endif %}</td><td data-label="Usage">{{ reading.energy_change|default_if_none:"—"|floatformat:3 }}</td><td data-label="Rate">{{ reading.unit_rate|default_if_none:"—" }}</td><td data-label="Estimated charge">{{ reading.estimated_charge|default_if_none:"—"|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td colspan="8" class="text-muted">No historical balance movements.</td></tr>{% endfor %}
   </tbody></table></div>
 </div>
 
 <div class="meter-detail-card bg-white p-3">
-  <div class="d-flex justify-content-between"><h5>Raw authoritative balance observations</h5>{% if ledger_raw_frames %}<button type="button" class="btn btn-sm btn-outline-secondary" id="detailExpandAllBalance">Expand all</button>{% endif %}</div>
-  <div class="table-responsive"><table class="table table-sm meter-table mb-0"><thead><tr><th>S/N</th><th>Received</th><th>Balance</th><th>Energy</th><th>Source</th><th>Trust</th></tr></thead><tbody>
-    {% for frame in ledger_raw_frames %}<tr data-detail-day="{{ frame.observation_day_key }}" {% if not frame.is_daily_latest %}class="detail-balance-extra d-none"{% endif %}><td>{% if frame.is_daily_latest %}<button type="button" class="btn btn-link btn-sm p-0 me-1 detail-day-toggle" data-day="{{ frame.observation_day_key }}" aria-expanded="false"><i class="fas fa-chevron-right"></i></button>{% endif %}<span data-detail-serial data-day="{{ frame.observation_day_number }}" data-sub="{{ frame.observation_sub_number }}">{{ frame.observation_day_number }}</span></td><td>{{ frame.received_at|date:"Y-m-d H:i:s" }}</td><td>{{ frame.reported_balance|default_if_none:"—"|floatformat:2|intcomma }}</td><td>{{ frame.reported_energy|default:"—" }}</td><td>{{ frame.source_ip|default:"—" }}:{{ frame.source_port|default:"—" }}</td><td>{{ frame.get_trust_classification_display }}</td></tr>{% empty %}<tr><td colspan="6" class="text-muted">No raw balance observations.</td></tr>{% endfor %}
+  <div class="d-flex flex-wrap justify-content-between gap-2"><h5>Raw authoritative balance observations</h5>{% if ledger_raw_frames %}<button type="button" class="btn btn-sm btn-outline-secondary" id="detailExpandAllBalance">Expand all</button>{% endif %}</div>
+  <div class="table-responsive"><table class="table table-sm meter-table meter-ledger-table meter-ledger-raw-table mb-0"><thead><tr><th>S/N</th><th>Balance</th><th>Energy</th><th>Date</th><th>Source</th><th>Trust</th></tr></thead><tbody>
+    {% for frame in ledger_raw_frames %}<tr data-detail-day="{{ frame.observation_day_key }}" {% if not frame.is_daily_latest %}class="detail-balance-extra d-none"{% endif %}><td data-label="S/N"><span>{% if frame.is_daily_latest %}<button type="button" class="btn btn-link btn-sm p-0 me-1 detail-day-toggle" data-day="{{ frame.observation_day_key }}" aria-expanded="false"><i class="fas fa-chevron-right"></i></button>{% endif %}<span data-detail-serial data-day="{{ frame.observation_day_number }}" data-sub="{{ frame.observation_sub_number }}">{{ frame.observation_day_number }}</span></span></td><td data-label="Balance">{{ frame.reported_balance|default_if_none:"—"|floatformat:2|intcomma }}<span class="observation-ip-mobile" title="Source IP and port">{{ frame.source_ip|default:"—" }}:{{ frame.source_port|default:"—" }}</span></td><td data-label="Energy">{{ frame.reported_energy|default:"—" }}</td><td data-label="Date"><span class="observation-date">{{ frame.received_at|date:"Y-m-d" }}</span> <span class="observation-time">{{ frame.received_at|date:"H:i:s" }}</span></td><td data-label="Source">{{ frame.source_ip|default:"—" }}:{{ frame.source_port|default:"—" }}</td><td data-label="Trust">{{ frame.get_trust_classification_display }}</td></tr>{% empty %}<tr><td colspan="6" class="text-muted">No raw balance observations.</td></tr>{% endfor %}
   </tbody></table></div>
 </div>
 

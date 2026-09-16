@@ -790,6 +790,15 @@ def prepaid_meter_ledger(request, meter_id):
                     ).quantize(Decimal("0.01"))
         previous = reading
     readings.reverse()
+    reading_days = set()
+    reading_day_counts = {}
+    for reading in readings:
+        reading.day_key = timezone.localtime(reading.ts).date().isoformat()
+        reading.is_daily_latest = reading.day_key not in reading_days
+        reading_days.add(reading.day_key)
+        reading_day_counts[reading.day_key] = reading_day_counts.get(reading.day_key, 0) + 1
+    for reading in readings:
+        reading.day_has_more = reading_day_counts[reading.day_key] > 1
     transactions = list(MeterPrepaidRecharge.objects.filter(
         pilot__meter=meter
     ).select_related("created_by").order_by("-created_at", "-pk")[:200])
@@ -838,6 +847,7 @@ def prepaid_meter_ledger(request, meter_id):
         "live": live,
         "transactions": transactions,
         "readings": readings,
+        "has_collapsible_readings": any(count > 1 for count in reading_day_counts.values()),
         "raw_balance_frames": raw_balance_frames,
         "electricity_rate": resolve_electricity_rate(meter=meter),
         "tariff_configuration": MeterTariffConfiguration.objects.filter(

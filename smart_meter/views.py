@@ -760,83 +760,8 @@ def prepaid_meter_ledger(request, meter_id):
                     return redirect(target)
                 return redirect("smart_meter:prepaid_meter_ledger", meter_id=meter.pk)
 
-    readings = list(
-        MeterReading.objects.filter(meter=meter, balance__isnull=False)
-        .order_by("-ts", "-pk")[:500]
-    )
-    readings.reverse()
-    previous = None
-    for reading in readings:
-        reading.balance_change = None
-        reading.energy_change = None
-        reading.estimated_charge = None
-        if previous is not None:
-            reading.balance_change = reading.balance - previous.balance
-            current_energy = (
-                reading.forward_active_energy_kwh
-                if reading.forward_active_energy_kwh is not None
-                else reading.total_energy
-            )
-            previous_energy = (
-                previous.forward_active_energy_kwh
-                if previous.forward_active_energy_kwh is not None
-                else previous.total_energy
-            )
-            if current_energy is not None and previous_energy is not None:
-                reading.energy_change = current_energy - previous_energy
-                if reading.unit_rate is not None and reading.energy_change >= 0:
-                    reading.estimated_charge = (
-                        reading.energy_change * reading.unit_rate
-                    ).quantize(Decimal("0.01"))
-        previous = reading
-    readings.reverse()
-    reading_days = set()
-    reading_day_counts = {}
-    for reading in readings:
-        reading.day_key = timezone.localtime(reading.ts).date().isoformat()
-        reading.is_daily_latest = reading.day_key not in reading_days
-        reading_days.add(reading.day_key)
-        reading_day_counts[reading.day_key] = reading_day_counts.get(reading.day_key, 0) + 1
-    for reading in readings:
-        reading.day_has_more = reading_day_counts[reading.day_key] > 1
-    transactions = list(MeterPrepaidRecharge.objects.filter(
-        pilot__meter=meter
-    ).select_related("created_by").order_by("-created_at", "-pk")[:200])
-    from smart_meter.services.prepaid_money import decode_manufacturer_charge_frame
-
-    for item in transactions:
-        try:
-            item.operation_label = decode_manufacturer_charge_frame(
-                item.raw_command
-            )["operation"].replace("recharge", "top up").title()
-        except (TypeError, ValueError):
-            item.operation_label = "Transaction"
-    raw_balance_frames = list(
-        MeterRawFrame.objects.filter(
-            meter=meter,
-            data_identifier="028011FF",
-        ).order_by("-received_at", "-pk")[:200]
-    )
-    observed_days = set()
-    observation_day_number = 0
-    observation_sub_number = 0
-    for frame in raw_balance_frames:
-        frame.reported_balance = (frame.decoded_data or {}).get("balance")
-        frame.reported_energy = (
-            (frame.decoded_data or {}).get("forward_active_energy_kwh")
-            or (frame.decoded_data or {}).get("total_energy")
-        )
-        received_day = timezone.localtime(frame.received_at).date()
-        frame.is_daily_latest = received_day not in observed_days
-        if frame.is_daily_latest:
-            observation_day_number += 1
-            observation_sub_number = 1
-        else:
-            observation_sub_number += 1
-        frame.observation_day_number = observation_day_number
-        frame.observation_sub_number = observation_sub_number
-        frame.observation_day_key = received_day.isoformat()
-        observed_days.add(received_day)
+    from smart_meter.ledger_display import build_ledger_data
+    ledger_data = build_ledger_data(request, meter)
     live = getattr(meter, "live", None)
     from smart_meter.rates import resolve_electricity_rate
     from smart_meter.models import MeterTariffConfiguration
@@ -845,10 +770,7 @@ def prepaid_meter_ledger(request, meter_id):
         "meter": meter,
         "form": form,
         "live": live,
-        "transactions": transactions,
-        "readings": readings,
-        "has_collapsible_readings": any(count > 1 for count in reading_day_counts.values()),
-        "raw_balance_frames": raw_balance_frames,
+        **ledger_data,
         "electricity_rate": resolve_electricity_rate(meter=meter),
         "tariff_configuration": MeterTariffConfiguration.objects.filter(
             meter=meter
@@ -2915,79 +2837,13 @@ def meter_detail(request, pk):
 
     detail_tab_context = {}
     if active_tab == "ledger":
-        ledger_readings = list(
-            MeterReading.objects.filter(meter=meter, balance__isnull=False)
-            .order_by("-ts", "-pk")[:500]
-        )
-        ledger_readings.reverse()
-        previous = None
-        for ledger_reading in ledger_readings:
-            ledger_reading.balance_change = None
-            ledger_reading.energy_change = None
-            ledger_reading.estimated_charge = None
-            if previous is not None:
-                ledger_reading.balance_change = ledger_reading.balance - previous.balance
-                current_reading_energy = (
-                    ledger_reading.forward_active_energy_kwh
-                    if ledger_reading.forward_active_energy_kwh is not None
-                    else ledger_reading.total_energy
-                )
-                previous_reading_energy = (
-                    previous.forward_active_energy_kwh
-                    if previous.forward_active_energy_kwh is not None
-                    else previous.total_energy
-                )
-                if current_reading_energy is not None and previous_reading_energy is not None:
-                    ledger_reading.energy_change = current_reading_energy - previous_reading_energy
-                    if ledger_reading.unit_rate is not None and ledger_reading.energy_change >= 0:
-                        ledger_reading.estimated_charge = (
-                            ledger_reading.energy_change * ledger_reading.unit_rate
-                        ).quantize(Decimal("0.01"))
-            previous = ledger_reading
-        ledger_readings.reverse()
-
-        ledger_transactions = list(
-            MeterPrepaidRecharge.objects.filter(pilot__meter=meter)
-            .select_related("created_by")
-            .order_by("-created_at", "-pk")[:200]
-        )
-        from smart_meter.services.prepaid_money import decode_manufacturer_charge_frame
-        for item in ledger_transactions:
-            try:
-                item.operation_label = decode_manufacturer_charge_frame(
-                    item.raw_command
-                )["operation"].replace("recharge", "top up").title()
-            except (TypeError, ValueError):
-                item.operation_label = "Transaction"
-
-        ledger_raw_frames = list(
-            MeterRawFrame.objects.filter(meter=meter, data_identifier="028011FF")
-            .order_by("-received_at", "-pk")[:200]
-        )
-        observed_days = set()
-        day_number = 0
-        sub_number = 0
-        for frame in ledger_raw_frames:
-            frame.reported_balance = (frame.decoded_data or {}).get("balance")
-            frame.reported_energy = (
-                (frame.decoded_data or {}).get("forward_active_energy_kwh")
-                or (frame.decoded_data or {}).get("total_energy")
-            )
-            received_day = timezone.localtime(frame.received_at).date()
-            frame.is_daily_latest = received_day not in observed_days
-            if frame.is_daily_latest:
-                day_number += 1
-                sub_number = 1
-            else:
-                sub_number += 1
-            frame.observation_day_number = day_number
-            frame.observation_sub_number = sub_number
-            frame.observation_day_key = received_day.isoformat()
-            observed_days.add(received_day)
+        from smart_meter.ledger_display import build_ledger_data
+        ledger_data = build_ledger_data(request, meter)
         detail_tab_context.update({
-            "ledger_readings": ledger_readings,
-            "ledger_transactions": ledger_transactions,
-            "ledger_raw_frames": ledger_raw_frames,
+            **ledger_data,
+            "ledger_readings": ledger_data["readings"],
+            "ledger_transactions": ledger_data["transactions"],
+            "ledger_raw_frames": ledger_data["raw_balance_frames"],
         })
     elif active_tab == "tariff" and request.user.has_perm("smart_meter.read_meter_tariff"):
         from smart_meter.views_tariff import meter_tariff_tab_context
@@ -4727,6 +4583,34 @@ def reading_list(request):
         _reading_local_date,
     )
 
+    # Group this page by local date, then by fixed two-hour clock intervals.
+    reading_groups = []
+    for reading in rows:
+        local_ts = timezone.localtime(reading.ts) if timezone.is_aware(reading.ts) else reading.ts
+        reading_date = local_ts.date()
+        if not reading_groups or reading_groups[-1]["date"] != reading_date:
+            reading_groups.append({
+                "date": reading_date,
+                "serial": len(reading_groups) + 1,
+                "count": 0,
+                "periods": [],
+            })
+        day_group = reading_groups[-1]
+        hour_start = (local_ts.hour // 2) * 2
+        if not day_group["periods"] or day_group["periods"][-1]["hour_start"] != hour_start:
+            day_group["periods"].append({
+                "hour_start": hour_start,
+                "serial": len(day_group["periods"]) + 1,
+                "label": f"{hour_start:02d}:00–{hour_start + 1:02d}:59",
+                "readings": [],
+            })
+        period = day_group["periods"][-1]
+        period["readings"].append({
+            "reading": reading,
+            "serial": f'{day_group["serial"]}.{period["serial"]}.{len(period["readings"]) + 1}',
+        })
+        day_group["count"] += 1
+
     class ReadingPage:
         def __init__(self, object_list, number, per_page, has_next_page):
             self.object_list = object_list
@@ -4792,6 +4676,7 @@ def reading_list(request):
         current_role=role,
         current_active=active_filter,
         rows=rows,
+        reading_groups=reading_groups,
         page_obj=ReadingPage(rows, page_number, page_size, has_next),
         page_numbers=page_numbers,
         total_pages=total_pages,

@@ -1,8 +1,12 @@
 from decimal import Decimal
+from datetime import datetime, timedelta
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
+from openpyxl import load_workbook
 
 from properties.models import Property, Unit
 from smart_meter.models import (
@@ -130,3 +134,59 @@ class PrepaidLedgerUITests(TestCase):
         combined = self.client.get(reverse("smart_meter:prepaid_params"))
         self.assertContains(combined, "General settings")
         self.assertContains(combined, "Prepaid Parameter 1")
+
+    def test_both_ledgers_number_days_and_paginate_without_splitting_a_day(self):
+        today = timezone.localdate()
+        for offset in range(1, 10):
+            day = today - timedelta(days=offset)
+            for hour in (10, 11):
+                MeterReading.objects.create(
+                    meter=self.meter,
+                    ts=timezone.make_aware(datetime.combine(day, datetime.min.time()) + timedelta(hours=hour)),
+                    balance=Decimal("80.00") + offset,
+                    total_energy=Decimal("11.000") + offset,
+                    unit_rate=Decimal("50.0000"),
+                )
+        for url in (
+            reverse("smart_meter:prepaid_meter_ledger", args=[self.meter.pk]),
+            reverse("smart_meter:meter_detail", args=[self.meter.pk]) + "?tab=ledger",
+        ):
+            separator = "&" if "?" in url else "?"
+            first = self.client.get(url)
+            self.assertEqual(first.status_code, 200)
+            self.assertEqual(first.context["reading_page"].paginator.num_pages, 2)
+            self.assertContains(first, 'data-day-number="1" data-sub-number="1"')
+            self.assertContains(first, "ledger-reading-extra d-none")
+            second = self.client.get(url + separator + "reading_page=2")
+            self.assertEqual(second.status_code, 200)
+            self.assertEqual(second.context["reading_page"].number, 2)
+            self.assertContains(second, 'data-day-number="8" data-sub-number="2"')
+            self.assertContains(second, "Page 2 of 2")
+
+    def test_custom_period_filters_both_ledgers_and_exports(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        MeterReading.objects.create(
+            meter=self.meter,
+            ts=timezone.make_aware(datetime.combine(yesterday, datetime.min.time()) + timedelta(hours=12)),
+            balance=Decimal("88.00"),
+            total_energy=Decimal("9.000"),
+        )
+        query = f"period=custom&from_date={yesterday}&to_date={yesterday}"
+        prepaid = self.client.get(reverse("smart_meter:prepaid_meter_ledger", args=[self.meter.pk]) + "?" + query)
+        detail = self.client.get(reverse("smart_meter:meter_detail", args=[self.meter.pk]) + "?tab=ledger&" + query)
+        self.assertEqual(len(prepaid.context["readings"]), 1)
+        self.assertEqual(len(detail.context["ledger_readings"]), 1)
+        self.assertContains(detail, 'value="' + str(yesterday) + '"')
+        for format, content_type in (
+            ("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            ("pdf", "application/pdf"),
+            ("jpg", "image/jpeg"),
+        ):
+            response = self.client.get(reverse("smart_meter:meter_ledger_export", args=[self.meter.pk, format]) + "?" + query)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response["Content-Type"], content_type)
+            self.assertGreater(len(response.content), 100)
+            if format == "xlsx":
+                workbook = load_workbook(BytesIO(response.content), read_only=True)
+                self.assertEqual(workbook["Historical movements"].max_row, 2)
+                self.assertEqual(workbook["Historical movements"]["C2"].value, 88)

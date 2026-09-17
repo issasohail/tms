@@ -105,14 +105,14 @@ def build_iesco_reminder_message(reading, recipient):
     else:
         status_note = "Please verify the payment status against the IESCO bill."
     return (
-        f"IESCO bill status\n\n"
+        f"*IESCO bill status*\n\n"
         f"Reference: {reading.reference_no}\n"
         f"Property / Unit: {recipient['label']}\n"
         f"Bill month: {reading.bill_month}\n"
         f"Units: {reading.units_display}\n"
-        f"Grand total: {reading.grand_total_display}\n"
-        f"Payment status: {payment_status}\n"
-        f"Due date: {reading.due_date or 'Not available'}\n\n"
+        f"*Grand total: {reading.grand_total_display}*\n"
+        f"*Payment status: {payment_status}*\n"
+        f"*Due date: {reading.due_date or 'Not available'}*\n\n"
         f"{status_note}\n"
         f"View the current IESCO bill online:\n"
         f"https://bill.pitc.com.pk/gbill.aspx?refno={reading.reference_no}"

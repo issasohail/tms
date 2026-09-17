@@ -6,6 +6,7 @@ import logging
 import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from urllib.parse import urlencode
 
 import requests
 from django.contrib import messages
@@ -26,6 +27,7 @@ from accounts.access import (
     has_all_property_access,
     restrict_queryset_to_properties,
 )
+from core.utils.identity import whatsapp_phone_digits
 from leases.models import Lease
 from properties.models import Property, Unit
 
@@ -2167,6 +2169,17 @@ def reminders_send(request):
         if is_single_status_message
         else [reading for reading in readings if reading_requires_payment(reading)]
     )
+    if request.POST.get("delivery") == "manual":
+        if not is_single_status_message:
+            messages.warning(request, "Choose one IESCO bill to open in WhatsApp.")
+            return redirect("invoices:iesco_bill_reading_list")
+        recipient = reminder_recipient(readings[0])
+        phone = whatsapp_phone_digits(recipient["phone"])
+        if not phone:
+            messages.warning(request, "No WhatsApp recipient number is available.")
+            return redirect("invoices:iesco_bill_reading_list")
+        message = build_iesco_reminder_message(readings[0], recipient)
+        return redirect(f"https://wa.me/{phone}?{urlencode({'text': message})}")
     if request.POST.get("confirm") != "1":
         preview_rows = [_reminder_preview_row(reading) for reading in eligible]
         return render(

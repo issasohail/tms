@@ -103,9 +103,9 @@
    ========================================================================== */
 
 @media (min-width: 1200px) {
-    body:has(.unit-page-header) main.container,
-    body:has(.unit-page-header) .container {
-        max-width: 1800px !important;
+    .tms-main > .container:has(.unit-page-header) {
+        width: calc(100% - 32px);
+        max-width: 1920px !important;
     }
 }
 
@@ -286,9 +286,9 @@
         padding-right: 6px;
     }
     .unit-table-wrap .security-text-col {
-        width: 95px;
-        min-width: 95px;
-        max-width: 100px;
+        width: 125px;
+        min-width: 125px;
+        max-width: 125px;
     }
     .unit-table-wrap .security-amount-col {
         width: 65px;
@@ -325,9 +325,9 @@
         position: sticky;
         right: 0;
         z-index: 4;
-        width: 140px;
-        min-width: 140px;
-        max-width: 140px;
+        width: 170px;
+        min-width: 170px;
+        max-width: 170px;
         background: #fff;
         box-shadow: -1px 0 0 #dee2e6;
     }

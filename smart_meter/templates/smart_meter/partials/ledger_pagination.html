@@ -1,0 +1,8 @@
+{% if page.paginator.num_pages > 1 %}
+<nav class="d-flex flex-wrap align-items-center gap-1 p-2 ledger-pagination" aria-label="{{ label }} pages">
+  <span class="small text-muted me-2">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_previous %}<a class="btn btn-sm btn-outline-secondary" href="?{{ query }}&{{ parameter }}=1">First</a><a class="btn btn-sm btn-outline-secondary" href="?{{ query }}&{{ parameter }}={{ page.previous_page_number }}">Previous</a>{% endif %}
+  {% for number in page.ledger_range %}{% if number == page.paginator.ELLIPSIS %}<span class="px-1" aria-hidden="true">&hellip;</span>{% elif number == page.number %}<span class="btn btn-sm btn-secondary" aria-current="page">{{ number }}</span>{% else %}<a class="btn btn-sm btn-outline-secondary" href="?{{ query }}&{{ parameter }}={{ number }}">{{ number }}</a>{% endif %}{% endfor %}
+  {% if page.has_next %}<a class="btn btn-sm btn-outline-secondary" href="?{{ query }}&{{ parameter }}={{ page.next_page_number }}">Next</a><a class="btn btn-sm btn-outline-secondary" href="?{{ query }}&{{ parameter }}={{ page.paginator.num_pages }}">Last</a>{% endif %}
+</nav>
+{% endif %}

@@ -22,6 +22,8 @@
     <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Last reading</div><div class="fw-semibold">{{ live.ts|date:"Y-m-d H:i:s"|default:"—" }}</div></div></div></div>
   </div>
 
+  {% include "smart_meter/partials/ledger_controls.html" %}
+
   {% if meter.billing_mode == 'prepaid_pilot' and not tariff_configuration.last_verified_at %}
   <div class="alert alert-warning py-2"><strong>Prepaid deduction is not verified.</strong> This meter is enabled for prepaid commands, but no tariff has been successfully read and verified on the meter. Its authoritative balance register is currently unchanged even while energy increases. <a href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff" class="alert-link">Open Tariff Configuration</a>.</div>
   {% endif %}
@@ -44,12 +46,12 @@
   <div class="card mb-3"><div class="card-header">Money transactions</div><div class="table-responsive"><table class="table table-sm mb-0 align-middle ledger-money-table">
     <thead><tr><th>S/N</th><th>Date</th><th>Operation</th><th>Amount</th><th>Before</th><th>After</th><th>Status</th><th>Order</th><th>User</th><th>Trace</th></tr></thead>
     <tbody>{% for item in transactions %}<tr>
-      <td data-label="S/N">{{ forloop.counter }}</td><td data-label="Date" class="text-nowrap">{{ item.created_at|date:"Y-m-d H:i:s" }}</td><td data-label="Operation">{{ item.operation_label }}</td>
+      <td data-label="S/N">{{ item.serial_number }}</td><td data-label="Date" class="text-nowrap">{{ item.created_at|date:"Y-m-d H:i:s" }}</td><td data-label="Operation">{{ item.operation_label }}</td>
       <td data-label="Amount">{{ item.amount|floatformat:2|intcomma }}</td><td data-label="Before">{% if item.before_balance is not None %}{{ item.before_balance|floatformat:2|intcomma }}{% else %}—{% endif %}</td><td data-label="After">{% if item.after_balance is not None %}{{ item.after_balance|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
       <td data-label="Status"><span class="badge {% if item.status == 'verified' %}bg-success{% elif item.status == 'failed' %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ item.get_status_display }}</span></td>
       <td data-label="Order" class="text-nowrap">{{ item.transaction_id }}</td><td data-label="User">{{ item.created_by|default:"system/payment" }}</td><td data-label="Trace">{{ item.reconciliation_note|default:"—" }}</td>
     </tr>{% empty %}<tr><td colspan="10" class="text-muted ledger-empty-cell">No top-ups or refunds recorded.</td></tr>{% endfor %}</tbody>
-  </table></div></div>
+  </table></div>{% include "smart_meter/partials/ledger_pagination.html" with page=transaction_page parameter="transaction_page" label="Money transactions" query=transaction_query %}</div>
 
   <style>
     @media (max-width: 575.98px) {
@@ -111,7 +113,7 @@
       .ledger-reading-table, .ledger-reading-table thead, .ledger-reading-table tbody { display: block; width: 100%; font-size: .72rem; }
       .ledger-reading-table thead tr, .ledger-reading-table .ledger-reading-row {
         display: grid;
-        grid-template-columns: 30% 22% 22% 26%;
+        grid-template-columns: 9% 27% 21% 19% 24%;
         width: 100%;
       }
       .ledger-reading-table .ledger-reading-row td { min-width: 0; overflow-wrap: anywhere; }
@@ -127,6 +129,7 @@
       }
       .ledger-reading-table th, .ledger-reading-table td { padding: .38rem .18rem; vertical-align: middle; }
       .ledger-reading-table .ledger-desktop-column { display: none; }
+      .ledger-reading-table .ledger-serial-column { display: block; }
       .ledger-reading-table .ledger-reading-time { display: none; }
       .ledger-reading-table .ledger-reading-extra .ledger-reading-time,
       .ledger-reading-table .ledger-reading-expanded .ledger-reading-time { display: block; font-size: .65rem; color: #6c757d; }
@@ -143,9 +146,9 @@
     }
   </style>
   <div class="card mb-3"><div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><span>Historical reading balance movements</span>{% if has_collapsible_readings %}<button type="button" class="btn btn-sm btn-outline-secondary" id="toggleReadingDays" aria-expanded="false">Expand all days</button>{% endif %}</div><div class="table-responsive"><table class="table table-sm mb-0 align-middle ledger-reading-table">
-    <thead><tr><th class="ledger-desktop-column">S/N</th><th>Reading</th><th>Balance</th><th>Energy</th><th>Balance change</th><th class="ledger-desktop-column">Usage change</th><th class="ledger-desktop-column">Rate snapshot</th><th class="ledger-desktop-column">Estimated usage charge</th></tr></thead>
+    <thead><tr><th class="ledger-serial-column">S/N</th><th>Reading</th><th>Balance</th><th>Energy</th><th>Balance change</th><th class="ledger-desktop-column">Usage change</th><th class="ledger-desktop-column">Rate snapshot</th><th class="ledger-desktop-column">Estimated usage charge</th></tr></thead>
     <tbody>{% for reading in readings %}<tr class="ledger-reading-row{% if not reading.is_daily_latest %} ledger-reading-extra d-none{% endif %}" data-reading-day="{{ reading.day_key }}">
-      <td class="ledger-desktop-column">{{ forloop.counter }}</td>
+      <td class="ledger-serial-column"><span class="ledger-reading-serial" data-day-number="{{ reading.day_number }}" data-sub-number="{{ reading.sub_number }}">{{ reading.day_number }}</span></td>
       <td><span class="text-nowrap">{% if reading.is_daily_latest and reading.day_has_more %}<button type="button" class="btn btn-sm btn-link ledger-day-toggle" data-day="{{ reading.day_key }}" aria-label="Expand readings for {{ reading.ts|date:'Y-m-d' }}" aria-expanded="false" title="Expand this day"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>{% endif %}{{ reading.ts|date:"Y-m-d" }}</span><span class="ledger-reading-time"> {{ reading.ts|date:"H:i:s" }}</span></td>
       <td>{{ reading.balance|floatformat:2|intcomma }}</td>
       <td>{% if reading.forward_active_energy_kwh is not None %}{{ reading.forward_active_energy_kwh|floatformat:3 }}{% else %}{{ reading.total_energy|default:"—" }}{% endif %}</td>
@@ -158,18 +161,21 @@
       <div><strong>Rate snapshot</strong><span>{% if reading.unit_rate is not None %}{{ reading.unit_rate|floatformat:4 }}{% else %}—{% endif %}</span></div>
       <div><strong>Usage charge</strong><span>{% if reading.estimated_charge is not None %}{{ reading.estimated_charge|floatformat:2|intcomma }}{% else %}—{% endif %}</span></div>
     </div></td></tr>{% empty %}<tr class="ledger-reading-empty"><td colspan="8" class="text-muted">Balance will appear here as new historical meter readings arrive.</td></tr>{% endfor %}</tbody>
-  </table></div><div class="card-footer small text-muted">Estimated charge is usage change × the stored rate snapshot. The meter-reported balance movement remains authoritative, especially for multi-rate meters.</div></div>
+  </table></div>{% include "smart_meter/partials/ledger_pagination.html" with page=reading_page parameter="reading_page" label="Historical movements" query=reading_query %}<div class="card-footer small text-muted">Estimated charge is usage change × the stored rate snapshot. The meter-reported balance movement remains authoritative, especially for multi-rate meters.</div></div>
 
   <div class="card"><div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><span>Raw authoritative balance observations</span>{% if raw_balance_frames %}<button type="button" class="btn btn-sm btn-outline-secondary" id="toggleBalanceObservations" aria-expanded="false">Expand all readings</button>{% endif %}</div><div class="table-responsive"><table class="table table-sm mb-0 ledger-observation-table">
     <thead><tr><th>S/N</th><th>Balance</th><th>Energy</th><th>Date</th><th>Source</th><th>Trust</th></tr></thead>
     <tbody>{% for frame in raw_balance_frames %}<tr data-observation-day="{{ frame.observation_day_key }}" class="{% if not frame.is_daily_latest %}balance-observation-extra d-none{% endif %}"><td data-label="S/N" class="text-nowrap">{% if frame.is_daily_latest %}<button type="button" class="btn btn-sm btn-link p-0 me-1 day-observation-toggle" data-day="{{ frame.observation_day_key }}" aria-expanded="false" title="Expand this day"><i class="fas fa-chevron-right"></i></button>{% else %}<span class="d-inline-block me-1" style="width:.75rem"></span>{% endif %}<span class="observation-serial" data-day-number="{{ frame.observation_day_number }}" data-sub-number="{{ frame.observation_sub_number }}">{{ frame.observation_day_number }}</span></td><td data-label="Balance">{% if frame.reported_balance is not None %}{{ frame.reported_balance|floatformat:2|intcomma }}{% else %}—{% endif %}<span class="observation-ip-mobile" title="Source IP and port">{{ frame.source_ip|default:"—" }}:{{ frame.source_port|default:"—" }}</span></td><td data-label="Energy">{{ frame.reported_energy|default:"—" }}</td><td data-label="Date"><span class="observation-date">{{ frame.received_at|date:"Y-m-d" }}</span> <span class="observation-time">{{ frame.received_at|date:"H:i:s" }}</span></td><td data-label="Source">{{ frame.source_ip|default:"—" }}:{{ frame.source_port|default:"—" }}</td><td data-label="Trust">{{ frame.get_trust_classification_display }}</td></tr>{% empty %}<tr><td colspan="6" class="text-muted ledger-empty-cell">No raw balance observations recorded.</td></tr>{% endfor %}</tbody>
-  </table></div></div>
+  </table></div>{% include "smart_meter/partials/ledger_pagination.html" with page=frame_page parameter="frame_page" label="Raw observations" query=frame_query %}</div>
 </div>
 <script>
   function setReadingDayExpanded(day, expanded) {
     document.querySelector('.ledger-reading-row[data-reading-day="' + day + '"]')?.classList.toggle('ledger-reading-expanded', expanded);
     document.querySelectorAll('.ledger-reading-extra[data-reading-day="' + day + '"]').forEach(row => {
       row.classList.toggle('d-none', !expanded);
+    });
+    document.querySelectorAll('.ledger-reading-row[data-reading-day="' + day + '"] .ledger-reading-serial').forEach(serial => {
+      serial.textContent = expanded ? `${serial.dataset.dayNumber}.${serial.dataset.subNumber}` : serial.dataset.dayNumber;
     });
     if (!expanded) {
       document.querySelectorAll('.ledger-reading-row[data-reading-day="' + day + '"] .ledger-change-toggle').forEach(button => {

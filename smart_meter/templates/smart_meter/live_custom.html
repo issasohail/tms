@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% load static humanize %}
 
+{% block extra_css %}
+<style>
+  /* Hide the mobile-only cell before the desktop table starts rendering. */
+  @media (min-width: 992px) {
+    #captureArea .mobile-meter-card-v2 { display: none !important; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="meterbar-shell">
   {% include "smart_meter/meterbar.html" %}

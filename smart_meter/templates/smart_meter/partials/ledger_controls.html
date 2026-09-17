@@ -1,0 +1,45 @@
+<div class="card mb-3 ledger-controls-card">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end" id="ledgerPeriodForm">
+      {% if ledger_in_detail %}<input type="hidden" name="tab" value="ledger">{% endif %}
+      <div class="col-12 col-sm-4 col-md-3"><label class="form-label small mb-1" for="ledgerPeriod">Period</label><select class="form-select form-select-sm" name="period" id="ledgerPeriod">{% for value, label in periods %}<option value="{{ value }}"{% if period == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+      <div class="col-6 col-sm-4 col-md-3"><label class="form-label small mb-1" for="ledgerFrom">From</label><input class="form-control form-control-sm" type="date" name="from_date" id="ledgerFrom" value="{{ from_date|date:'Y-m-d' }}"></div>
+      <div class="col-6 col-sm-4 col-md-3"><label class="form-label small mb-1" for="ledgerTo">To</label><input class="form-control form-control-sm" type="date" name="to_date" id="ledgerTo" value="{{ to_date|date:'Y-m-d' }}"></div>
+      <div class="col-12 col-md-3 d-flex flex-wrap gap-1 align-items-end"><a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_ledger_export' meter.pk 'pdf' %}?{{ ledger_query }}">PDF</a><a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_ledger_export' meter.pk 'xlsx' %}?{{ ledger_query }}">Excel</a><a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_ledger_export' meter.pk 'jpg' %}?{{ ledger_query }}">JPG</a></div>
+    </form>
+  </div>
+</div>
+<script>
+  (() => {
+    const form = document.getElementById('ledgerPeriodForm');
+    const period = document.getElementById('ledgerPeriod');
+    const from = document.getElementById('ledgerFrom');
+    const to = document.getElementById('ledgerTo');
+    const format = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+    period.addEventListener('change', () => {
+      const now = new Date();
+      let start, end;
+      const value = period.value;
+      if (value === 'this_week' || value === 'last_week') {
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7) - (value === 'last_week' ? 7 : 0));
+        end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+      } else if (value === 'this_month' || value === 'last_month') {
+        const offset = value === 'last_month' ? -1 : 0;
+        start = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+        end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+      } else if (value === 'this_quarter' || value === 'last_quarter') {
+        const first = Math.floor(now.getMonth() / 3) * 3 + (value === 'last_quarter' ? -3 : 0);
+        start = new Date(now.getFullYear(), first, 1);
+        end = new Date(now.getFullYear(), first + 3, 0);
+      } else if (value === 'this_year' || value === 'last_year') {
+        const year = now.getFullYear() - (value === 'last_year' ? 1 : 0);
+        start = new Date(year, 0, 1);
+        end = new Date(year, 11, 31);
+      }
+      if (value === 'all') { from.value = ''; to.value = ''; }
+      else if (start) { from.value = format(start); to.value = format(end); }
+      form.requestSubmit();
+    });
+    [from, to].forEach(input => input.addEventListener('change', () => { period.value = 'custom'; form.requestSubmit(); }));
+  })();
+</script>

@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from io import BytesIO
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -148,6 +149,39 @@ class IescoReminderAndExportTests(TestCase):
         self.assertIn(
             "Payment status: Paid", send_image.call_args.kwargs["caption"]
         )
+
+    @patch("whatsapp.services.whatsapp.WhatsAppService.send_image_bytes")
+    def test_list_whatsapp_opens_manual_chat_without_sending(self, send_image):
+        reading = self.reading()
+        listing = self.client.get(reverse("invoices:iesco_bill_reading_list"))
+        self.assertContains(listing, 'id="iescoWhatsAppAuto" type="checkbox"')
+        self.assertContains(listing, 'name="delivery" value="manual"')
+
+        response = self.client.post(
+            reverse("invoices:iesco_bill_reminders_send"),
+            {"reading_id": reading.pk, "delivery": "manual", "confirm": "1"},
+        )
+        self.assertEqual(response.status_code, 302)
+        chat_url = urlparse(response["Location"])
+        self.assertEqual(chat_url.netloc, "wa.me")
+        self.assertEqual(chat_url.path, "/923002223333")
+        self.assertIn(reading.reference_no, parse_qs(chat_url.query)["text"][0])
+        send_image.assert_not_called()
+        reading.refresh_from_db()
+        self.assertIsNone(reading.reminder_sent_at)
+
+    @patch("whatsapp.services.whatsapp.WhatsAppService.send_image_bytes", return_value={"ok": True})
+    def test_list_whatsapp_auto_sends_without_review(self, send_image):
+        reading = self.reading()
+        response = self.client.post(
+            reverse("invoices:iesco_bill_reminders_send"),
+            {"reading_id": reading.pk, "delivery": "auto", "confirm": "1"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("invoices:iesco_bill_reading_list"))
+        send_image.assert_called_once()
+        reading.refresh_from_db()
+        self.assertIsNotNone(reading.reminder_sent_at)
 
     def test_excel_keeps_separate_fields_and_jpg_pdf_use_compact_layout(self):
         reading = self.reading()

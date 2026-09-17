@@ -14,7 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from leases.models import Lease, LeaseUnitOccupancy
-from invoices.models import InvoiceItem, ItemCategory
+from invoices.models import Invoice, InvoiceItem, ItemCategory
 from properties.models import Property, Unit
 from smart_meter.models import LiveReading, Meter, MeterInstallation, MeterReading, MeterRoleHistory
 from smart_meter.services.invoicing import (
@@ -754,6 +754,48 @@ class SmartMeterInvoiceGenerationRegressionTests(TestCase):
         self.assertEqual(ctx.usage_amount, Decimal("500.00"))
         self.assertEqual(ctx.raw_total, Decimal("750.00"))
         self.assertEqual(ctx.invoice_amount, Decimal("750.00"))
+
+    def test_installation_opening_reading_is_authoritative_on_replacement_day(self):
+        installation = self.meter.installations.get()
+        installation.start_date = date(2026, 8, 17)
+        installation.start_reading = Decimal("159.230")
+        installation.save()
+        self.add_reading(datetime(2026, 8, 31, 23, 45), total="170.230")
+
+        ctx = self.compute()
+
+        self.assertEqual(ctx.beg_kwh, Decimal("159.230"))
+        self.assertEqual(ctx.end_kwh, Decimal("170.230"))
+        self.assertEqual(ctx.units, Decimal("11.000"))
+        self.assertEqual(ctx.segments[0]["installation"].pk, installation.pk)
+
+    def test_non_draft_existing_invoice_is_never_modified_by_regeneration(self):
+        self.add_reading(datetime(2026, 7, 31, 23, 45), total="100.000")
+        self.add_reading(datetime(2026, 8, 31, 23, 45), total="110.000")
+        protected = Invoice.objects.create(
+            lease=self.lease,
+            invoice_number="202607211-002",
+            issue_date=date(2026, 9, 1),
+            due_date=date(2026, 9, 10),
+            status="sent",
+            amount=Decimal("1720.00"),
+        )
+        item = InvoiceItem.objects.create(
+            invoice=protected,
+            category=self.category,
+            description="Protected historical electricity line",
+            amount=Decimal("1720.00"),
+            is_recurring=False,
+        )
+
+        with self.assertRaisesMessage(ValueError, "will not modify a non-draft invoice"):
+            upsert_invoice_with_electric_item(self.compute())
+
+        protected.refresh_from_db()
+        item.refresh_from_db()
+        self.assertEqual(protected.amount, Decimal("1720.00"))
+        self.assertEqual(item.description, "Protected historical electricity line")
+        self.assertEqual(item.amount, Decimal("1720.00"))
 
 
 class HistoricalMeterOccupancyTests(TestCase):

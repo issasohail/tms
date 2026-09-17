@@ -548,6 +548,8 @@
                 <th>To</th>
                 <th class="text-end">Start kWh</th>
                 <th class="text-end">End kWh</th>
+                <th>Installed By</th>
+                <th>Reason</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -562,6 +564,8 @@
                   <td><span class="meter-mobile-label">To</span>{% if installation.is_active %}Current{% elif installation.display_to_date %}{{ installation.display_to_date|date:"M d, Y" }}{% else %}-{% endif %}</td>
                   <td class="text-end"><span class="meter-mobile-label">Start kWh</span>{{ installation.start_reading|default_if_none:"-" }}</td>
                   <td class="text-end"><span class="meter-mobile-label">End kWh</span>{{ installation.display_end_reading|default_if_none:"-" }}</td>
+                  <td><span class="meter-mobile-label">Installed By</span>{{ installation.installed_by|default:"-" }}</td>
+                  <td><span class="meter-mobile-label">Reason</span>{{ installation.reason|default:"-" }}</td>
                   <td><span class="meter-mobile-label">Status</span>{% if installation.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Closed</span>{% endif %}</td>
                 </tr>
               {% empty %}
@@ -574,6 +578,8 @@
                   <td><span class="meter-mobile-label">To</span>-</td>
                   <td class="text-end"><span class="meter-mobile-label">Start kWh</span>-</td>
                   <td class="text-end"><span class="meter-mobile-label">End kWh</span>-</td>
+                  <td><span class="meter-mobile-label">Installed By</span>-</td>
+                  <td><span class="meter-mobile-label">Reason</span>-</td>
                   <td><span class="meter-mobile-label">Status</span><span class="badge bg-secondary">Meter record only</span></td>
                 </tr>
               {% endfor %}

@@ -138,14 +138,26 @@ def _month_window_local(period_start: date):
     return sdt, ndt
 
 
-def _reading_bounds(meter: Meter, start: date, end: date):
-    """Use the same strict boundary/continuity rules as energy reconciliation.
+def _reading_bounds(meter: Meter, start: date, end: date, *, installation=None):
+    """Resolve safe billing boundaries for one installation segment.
 
-    Billing periods are inclusive by date, so the closing boundary is midnight
-    immediately after ``end``. A missing/stale boundary or register decrease
-    blocks billing instead of silently converting usage to zero.
+    MeterInstallation opening/closing readings are authoritative at a physical
+    replacement boundary. This avoids using a midnight telemetry point from the
+    wrong side of a same-day meter replacement.
     """
     from smart_meter.services.reconciliation import meter_period_delta
+
+    opening = None
+    closing = None
+    if installation is not None:
+        if start == installation.start_date and installation.start_reading is not None:
+            opening = Decimal(str(installation.start_reading))
+        if (
+            installation.end_date is not None
+            and end == installation.end_date
+            and installation.end_reading is not None
+        ):
+            closing = Decimal(str(installation.end_reading))
 
     result = meter_period_delta(
         meter,
@@ -154,11 +166,37 @@ def _reading_bounds(meter: Meter, start: date, end: date):
         field_name="forward_active_energy_kwh",
         fallback_field="total_energy",
     )
-    if not result["valid"]:
+
+    if opening is None and closing is None:
+        if not result["valid"]:
+            raise ValueError(
+                f"Billing blocked for meter {meter.meter_number}: {result['reason']}"
+            )
+        return result["start"].value, result["end"].value
+
+    if opening is None:
+        boundary = result.get("start")
+        if boundary is None or boundary.value is None or boundary.status == "invalid":
+            raise ValueError(
+                f"Billing blocked for meter {meter.meter_number}: "
+                f"{result.get('reason') or 'missing or stale opening boundary'}"
+            )
+        opening = boundary.value
+    if closing is None:
+        boundary = result.get("end")
+        if boundary is None or boundary.value is None or boundary.status == "invalid":
+            raise ValueError(
+                f"Billing blocked for meter {meter.meter_number}: "
+                f"{result.get('reason') or 'missing or stale closing boundary'}"
+            )
+        closing = boundary.value
+
+    if closing < opening:
         raise ValueError(
-            f"Billing blocked for meter {meter.meter_number}: {result['reason']}"
+            f"Billing blocked for meter {meter.meter_number}: cumulative energy decreased "
+            f"from {opening} to {closing}. Resolve meter reset/replacement continuity first."
         )
-    return result["start"].value, result["end"].value
+    return opening, closing
 
 
 def compute_electric_bill(lease, meter, period_start: date, period_end: date) -> ElectricBillContext:
@@ -205,11 +243,9 @@ def compute_electric_bill(lease, meter, period_start: date, period_end: date) ->
                 continue
 
             seg_start, seg_end = segment_window
-            beg_raw, end_raw = _reading_bounds(meter, seg_start, seg_end)
-            if beg_raw is None and seg_start == installation.start_date:
-                beg_raw = installation.start_reading
-            if end_raw is None and installation.end_date and seg_end == installation.end_date:
-                end_raw = installation.end_reading
+            beg_raw, end_raw = _reading_bounds(
+                meter, seg_start, seg_end, installation=installation
+            )
 
             if beg_raw is None or end_raw is None:
                 raise ValueError(
@@ -359,6 +395,11 @@ def upsert_invoice_with_electric_item(ctx, *, item_category_id: int = 7, posting
            .filter(lease=lease, issue_date__year=posting_month.year,
                    issue_date__month=posting_month.month)
            .order_by("issue_date").first())
+    if inv and inv.status != "draft":
+        raise ValueError(
+            f"Invoice #{inv.invoice_number} already exists with status {inv.status}; "
+            "smart-meter regeneration will not modify a non-draft invoice."
+        )
     if not inv:
         # due date ~10th of posting month (or last day if shorter)
         dd = min(10, monthrange(posting_month.year, posting_month.month)[1])

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 from pathlib import Path
 
@@ -15,7 +16,8 @@ from smart_meter.models import MeterRawFrame
 class Command(BaseCommand):
     help = (
         "Archive MeterRawFrame rows older than N days to a gzip JSONL file. "
-        "Dry-run by default; --confirm writes the archive and only then deletes archived rows."
+        "Dry-run by default; --confirm writes and verifies the archive before deletion. "
+        "MeterReading and LiveReading rows are never deleted by this command."
     )
 
     def add_arguments(self, parser):
@@ -53,7 +55,37 @@ class Command(BaseCommand):
                 archived_ids.append(row["id"])
 
         if len(archived_ids) != count:
+            path.unlink(missing_ok=True)
             raise CommandError("Archive row count did not match query count; database was not changed.")
+
+        verified_count = 0
+        try:
+            with gzip.open(path, "rt", encoding="utf-8") as handle:
+                for line in handle:
+                    json.loads(line)
+                    verified_count += 1
+        except Exception as exc:
+            raise CommandError(
+                f"Archive verification failed; database was not changed: {exc}"
+            ) from exc
+        if verified_count != count:
+            raise CommandError(
+                f"Archive verification count {verified_count} != expected {count}; "
+                "database was not changed."
+            )
+
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        checksum_path = path.with_suffix(path.suffix + ".sha256")
+        checksum_path.write_text(f"{digest}  {path.name}\n", encoding="ascii")
+
         with transaction.atomic():
             deleted, _detail = MeterRawFrame.objects.filter(id__in=archived_ids).delete()
-        self.stdout.write(self.style.SUCCESS(f"Archived {count} frames to {path}; delete result={deleted}."))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Archived and verified {count} frames to {path}; "
+                f"sha256={digest}; delete result={deleted}."
+            )
+        )
+        self.stdout.write(
+            "Historical MeterReading/LiveReading telemetry was intentionally left unchanged."
+        )

@@ -2475,7 +2475,7 @@ def meter_detail(request, pk):
         active_tab = "overview"
     installation_history = list(
         MeterInstallation.objects.filter(meter=meter)
-        .select_related("unit", "unit__property", "lease", "lease__tenant")
+        .select_related("unit", "unit__property", "lease", "lease__tenant", "installed_by")
         .order_by("-is_active", "-start_date", "-id")
     )
     active_installations = [

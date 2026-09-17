@@ -777,7 +777,7 @@ function shortLabel(raw, maxLen) {
 
 // Month mode + daily all-meters lock behavior (same logic, tidied)
 
-(function(){
+document.addEventListener('DOMContentLoaded', function(){
   const form = document.getElementById('meter-filter-form'); if (!form) return;
   const selReport  = form.querySelector('select[name="report_type"]');
   const selMeter   = form.querySelector('select[name="meter"]');
@@ -829,17 +829,36 @@ function shortLabel(raw, maxLen) {
 
   // unchanged: on change, update UI + submit
   form.querySelectorAll('select, input[type="date"], input[type="month"]').forEach(el => {
-    el.addEventListener('change', () => {
+    const onChange = () => {
+      if (el.name === 'property') {
+        form.querySelector('[name="unit"]').value = '';
+        selMeter.value = '';
+      } else if (el.name === 'unit') {
+        selMeter.value = '';
+      }
       if(el===inputMonth && showMonthMode()) setStartEndFromMonth(inputMonth.value);
-      if(el===selReport || el===selMeter){
+      if(el===selReport || el===selMeter || el.name === 'property' || el.name === 'unit'){
         colMonth.style.display = showMonthMode() ? '' : 'none';
         document.getElementById('col-start').style.display = showMonthMode() ? 'none' : '';
         document.getElementById('col-end').style.display = showMonthMode() ? 'none' : '';
       }
       form.submit();
-    });
+    };
+    if (el.tagName === 'SELECT' && window.jQuery?.fn?.select2) {
+      const $select = window.jQuery(el);
+      let closing = false;
+      $select.select2({ theme: 'bootstrap-5', width: '100%' });
+      $select.on('change', onChange);
+      $select.on('select2:open', () => window.setTimeout(() => document.querySelector('.select2-container--open .select2-search__field')?.focus(), 0));
+      $select.on('select2:close', () => { closing = true; window.setTimeout(() => { closing = false; }, 0); });
+      $select.next('.select2-container').find('.select2-selection').on('focusin', () => {
+        if (!closing && !$select.next('.select2-container').hasClass('select2-container--open')) $select.select2('open');
+      });
+    } else {
+      el.addEventListener('change', onChange);
+    }
   });
-})();
+});
 </script>
 
 <script>
@@ -891,6 +910,8 @@ function shortLabel(raw, maxLen) {
 
 
 <style>
+  #meter-filter-form select + .select2-container { min-width:140px; width:100% !important; }
+  #meter-filter-form .select2-container--bootstrap-5 .select2-selection--single { min-height:31px; height:31px; font-size:.875rem; }
   /* Bootstrap's desktop container plus the requested 150px working width. */
   @media (min-width: 1200px) {
     .energy-dashboard-page { max-width: 1290px; }

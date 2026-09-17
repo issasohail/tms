@@ -180,6 +180,34 @@ class BillingSummaryTenantSelectionTests(TestCase):
 
         self.assertEqual({row["lease"].pk for row in rows}, {first.pk, second.pk})
 
+    def test_property_and_unit_filters_update_rows_and_totals(self):
+        first_unit = self._unit("Room 11")
+        second_unit = self._unit("Room 12")
+        other_property = Property.objects.create(
+            property_name="Other Billing Property",
+            owner_name="Owner",
+            owner_cnic="1234512345601",
+            type="apartment",
+            property_type="apartment",
+            total_units=1,
+        )
+        other_unit = Unit.objects.create(property=other_property, unit_number="Room 01")
+        for unit, name, amount in (
+            (first_unit, "First", "100.00"),
+            (second_unit, "Second", "200.00"),
+            (other_unit, "Other", "300.00"),
+        ):
+            self._invoice(self._lease(unit, self._tenant(name)), amount)
+
+        property_context = self._context(property=str(self.property.pk))
+        self.assertEqual({group["property"].pk for group in property_context["groups"]}, {self.property.pk})
+        self.assertEqual(next(cell["value"] for cell in property_context["grand_cells"] if cell["kind"] == "total"), Decimal("300.00"))
+        self.assertEqual({unit.pk for unit in property_context["billing_units"]}, {first_unit.pk, second_unit.pk})
+
+        unit_context = self._context(property=str(self.property.pk), unit=str(first_unit.pk))
+        self.assertEqual([row["unit"].pk for group in unit_context["groups"] for row in group["rows"]], [first_unit.pk])
+        self.assertEqual(next(cell["value"] for cell in unit_context["grand_cells"] if cell["kind"] == "total"), Decimal("100.00"))
+
     def test_active_filter_keeps_invoiced_ended_lease_and_its_drilldown(self):
         unit = self._unit("Room 04")
         ended = self._lease(

@@ -71,6 +71,12 @@
   }
   .meter-filter-field { min-width: 0; }
   .meter-filter-field .form-select { width: 100%; }
+  .meter-filter-field .select2-container { width: 100% !important; }
+  .meter-filter-field .select2-container--bootstrap-5 .select2-selection--single {
+    min-height: 31px;
+    height: 31px;
+    font-size: .875rem;
+  }
   .meter-filter-actions { display: flex; gap: .35rem; white-space: nowrap; }
 
   @media (max-width: 767.98px) {
@@ -100,11 +106,38 @@ document.addEventListener("DOMContentLoaded", function () {
   const active = document.getElementById('mf_active');
   const tariff = document.getElementById('mf_tariff');
 
-  property?.addEventListener('change', () => { unit.value = ''; meter.value = ''; form.submit(); });
-  unit?.addEventListener('change', () => { meter.value = ''; form.submit(); });
-  meter?.addEventListener('change', () => form.submit());
-  role?.addEventListener('change', () => form.submit());
-  active?.addEventListener('change', () => form.submit());
-  tariff?.addEventListener('change', () => form.submit());
+  if (window.jQuery?.fn?.select2) {
+    const $ = window.jQuery;
+    $(form).find('select').each(function () {
+      const $select = $(this);
+      let closing = false;
+      $select.select2({ theme: 'bootstrap-5', width: '100%' });
+      $select.on('select2:open', function () {
+        window.setTimeout(function () {
+          document.querySelector('.select2-container--open .select2-search__field')?.focus();
+        }, 0);
+      });
+      $select.on('select2:close', function () {
+        closing = true;
+        window.setTimeout(function () { closing = false; }, 0);
+      });
+      $select.next('.select2-container').find('.select2-selection').on('focusin', function () {
+        if (!closing && !$select.next('.select2-container').hasClass('select2-container--open')) {
+          $select.select2('open');
+        }
+      });
+    });
+  }
+
+  const onFilterChange = (element, handler) => {
+    if (window.jQuery?.fn?.select2) window.jQuery(element).on('change', handler);
+    else element?.addEventListener('change', handler);
+  };
+  onFilterChange(property, () => { unit.value = ''; meter.value = ''; form.submit(); });
+  onFilterChange(unit, () => { meter.value = ''; form.submit(); });
+  onFilterChange(meter, () => form.submit());
+  onFilterChange(role, () => form.submit());
+  onFilterChange(active, () => form.submit());
+  onFilterChange(tariff, () => form.submit());
 });
 </script>

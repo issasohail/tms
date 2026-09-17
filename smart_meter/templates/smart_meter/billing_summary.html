@@ -59,6 +59,8 @@
   .title{ font-size:1.05rem; font-weight:700; margin-right:.25rem; }
 
   .toolbar { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
+  #toolbarForm .billing-filter-select + .select2-container { min-width:130px; width:160px !important; }
+  #toolbarForm .select2-container--bootstrap-5 .select2-selection--single { min-height:31px; height:31px; font-size:.875rem; }
 
   .muted{ color:#6b7280; font-size:.72em; }
 
@@ -329,6 +331,19 @@
       </div>
     </div>
 
+    <select name="property" class="form-select form-select-sm billing-filter-select" aria-label="Property filter">
+      <option value="">All Properties</option>
+      {% for property in billing_properties %}
+        <option value="{{ property.id }}" {% if current_property == property.id|stringformat:'s' %}selected{% endif %}>{{ property.property_name }}</option>
+      {% endfor %}
+    </select>
+    <select name="unit" class="form-select form-select-sm billing-filter-select" aria-label="Unit filter">
+      <option value="">All Units</option>
+      {% for unit in billing_units %}
+        <option value="{{ unit.id }}" {% if current_unit == unit.id|stringformat:'s' %}selected{% endif %}>{{ unit.property.property_name }} / {{ unit.unit_number }}</option>
+      {% endfor %}
+    </select>
+
     <input type="hidden" name="cols" id="colsField" value="{{ visible_cat_ids|join:',' }}" />
 
     <label class="chip-btn" title="Show active leases plus any inactive lease invoiced in this month">
@@ -343,11 +358,11 @@
 
     {% with cols_param=visible_cat_ids|join:"," %}
       <a class="badge badge-excel" title="Export Excel"
-         href="{% url 'smart_meter:billing_summary_export_excel' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}{{ active_only_param }}">
+         href="{% url 'smart_meter:billing_summary_export_excel' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}{{ active_only_param }}&property={{ current_property }}&unit={{ current_unit }}">
         Excel
       </a>
       <a class="badge badge-pdf" title="Export PDF"
-         href="{% url 'smart_meter:billing_summary_export_pdf' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}{{ active_only_param }}">
+         href="{% url 'smart_meter:billing_summary_export_pdf' %}?month={{ year }}-{{ month|stringformat:'02d' }}&cols={{ cols_param }}{{ active_only_param }}&property={{ current_property }}&unit={{ current_unit }}">
         PDF
       </a>
     {% endwith %}
@@ -611,6 +626,30 @@
   function ymToDate(v){ const [y,m]=v.split('-').map(n=>+n); return new Date(y, m-1, 1); }
   function dateToYm(d){ const y=d.getFullYear(); const m=(d.getMonth()+1).toString().padStart(2,'0'); return `${y}-${m}`; }
   monthInput?.addEventListener('change', ()=> form.submit());
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!window.jQuery?.fn?.select2) {
+      form.querySelectorAll('.billing-filter-select').forEach(select => select.addEventListener('change', () => {
+        if (select.name === 'property') form.querySelector('[name="unit"]').value = '';
+        form.submit();
+      }));
+      return;
+    }
+    const $ = window.jQuery;
+    $(form).find('.billing-filter-select').each(function () {
+      const $select = $(this);
+      let closing = false;
+      $select.select2({ theme: 'bootstrap-5', width: '100%' });
+      $select.on('change', function () {
+        if (this.name === 'property') form.querySelector('[name="unit"]').value = '';
+        form.submit();
+      });
+      $select.on('select2:open', () => window.setTimeout(() => document.querySelector('.select2-container--open .select2-search__field')?.focus(), 0));
+      $select.on('select2:close', () => { closing = true; window.setTimeout(() => { closing = false; }, 0); });
+      $select.next('.select2-container').find('.select2-selection').on('focusin', () => {
+        if (!closing && !$select.next('.select2-container').hasClass('select2-container--open')) $select.select2('open');
+      });
+    });
+  });
   document.getElementById('prevMonth')?.addEventListener('click', ()=>{
     const d=ymToDate(monthInput.value); d.setMonth(d.getMonth()-1); monthInput.value=dateToYm(d); form.submit();
   });

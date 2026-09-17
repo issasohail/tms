@@ -1822,6 +1822,16 @@ def build_billing_summary_context(request):
         invoiced_lease_ids=invoiced_lease_ids,
         active_only=active_only,
     )
+    current_property = (request.GET.get("property") or "").strip()
+    current_unit = (request.GET.get("unit") or "").strip()
+    billing_properties = Property.objects.order_by("property_name")
+    billing_units = Unit.objects.select_related("property")
+    if current_property.isdecimal():
+        billing_units = billing_units.filter(property_id=current_property)
+        row_sources = [source for source in row_sources if str(source["unit"].property_id) == current_property]
+    billing_units = billing_units.order_by("unit_number", "id")
+    if current_unit.isdecimal():
+        row_sources = [source for source in row_sources if str(source["unit"].id) == current_unit]
     unit_display_labels = display_labels_for_units(
         source["unit"] for source in row_sources
     )
@@ -2046,6 +2056,10 @@ def build_billing_summary_context(request):
         "has_extras": bool(extra_ids),  # for PDF orientation
         "active_only": active_only,
         "active_only_param": active_only_param,
+        "billing_properties": billing_properties,
+        "billing_units": billing_units,
+        "current_property": current_property,
+        "current_unit": current_unit,
     }
     return ctx
 

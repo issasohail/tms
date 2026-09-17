@@ -55,6 +55,30 @@
     gap: .45rem .75rem;
   }
 
+  .meter-tariff-grid .meter-kv-value {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .meter-tariff-grid .meter-kv:nth-child(n+7) {
+    grid-column: 1 / -1;
+  }
+
+  @media (min-width: 993px) {
+    .meter-tariff-grid {
+      grid-template-columns: .85fr .9fr .75fr 1.3fr 1fr 2fr;
+      align-items: start;
+    }
+
+    .meter-tariff-grid .meter-kv-value {
+      white-space: nowrap;
+    }
+
+    .meter-tariff-grid .meter-kv:nth-child(n+6) .meter-kv-value {
+      white-space: normal;
+    }
+  }
+
   .meter-kv {
     min-width: 0;
   }
@@ -128,6 +152,10 @@
     .meter-summary-grid .meter-panel:last-child {
       grid-column: 1 / -1;
     }
+
+    .meter-tariff-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
   }
 
   @media (max-width: 576px) {
@@ -148,6 +176,10 @@
     .meter-kv-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: .4rem .55rem;
+    }
+
+    .meter-tariff-grid {
+      grid-template-columns: 1fr;
     }
 
     .meter-actions {
@@ -424,13 +456,13 @@
 
   <div class="meter-detail-card bg-white p-3 mt-3">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><h5 class="meter-panel-title mb-0">Tariff Configuration</h5><div class="d-flex gap-2">{% if perms.smart_meter.read_meter_tariff %}<a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff">Configure Tariff</a>{% endif %}{% if perms.smart_meter.view_meter_tariff_audit %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_detail' meter.pk %}?tab=tariff-audits">View Tariff Audit History</a>{% endif %}</div></div>
-    <div class="meter-kv-grid">
+    <div class="meter-kv-grid meter-tariff-grid">
       <div class="meter-kv"><span class="meter-kv-label">Capability</span><div class="meter-kv-value">{{ meter.get_tariff_capability_display }}</div></div>
       <div class="meter-kv"><span class="meter-kv-label">Mode</span><div class="meter-kv-value">{% if tariff_configuration.mode %}{{ tariff_configuration.get_mode_display }}{% else %}Not configured{% endif %}</div></div>
       <div class="meter-kv"><span class="meter-kv-label">Active rates</span><div class="meter-kv-value">{{ tariff_configuration.active_rate_count|default:"—" }}</div></div>
       <div class="meter-kv"><span class="meter-kv-label">Last verified</span><div class="meter-kv-value">{{ tariff_configuration.last_verified_at|date:"Y-m-d H:i:s"|default:"Never" }}</div></div>
       <div class="meter-kv"><span class="meter-kv-label">Last status</span><div class="meter-kv-value">{% if tariff_configuration %}{{ tariff_configuration.get_last_status_display }}{% else %}Not configured{% endif %}</div></div>
-      <div class="meter-kv"><span class="meter-kv-label">Rates</span><div class="meter-kv-value">{% if tariff_configuration.rate_1_price is not None %}{{ tariff_configuration.rate_1_label }}: {{ tariff_configuration.rate_1_price }}{% if tariff_configuration.active_rate_count > 1 %}<br>{{ tariff_configuration.rate_2_label }}: {{ tariff_configuration.rate_2_price }}{% endif %}{% if tariff_configuration.active_rate_count > 2 %}<br>{{ tariff_configuration.rate_3_label }}: {{ tariff_configuration.rate_3_price }}{% endif %}{% if tariff_configuration.active_rate_count > 3 %}<br>{{ tariff_configuration.rate_4_label }}: {{ tariff_configuration.rate_4_price }}{% endif %}{% else %}No verified prices{% endif %}</div></div>
+      <div class="meter-kv"><span class="meter-kv-label">Rates</span><div class="meter-kv-value">{% if tariff_configuration.rate_1_price is not None %}{{ tariff_configuration.rate_1_label }}: {{ tariff_configuration.rate_1_price }}{% if tariff_configuration.active_rate_count > 1 %} · {{ tariff_configuration.rate_2_label }}: {{ tariff_configuration.rate_2_price }}{% endif %}{% if tariff_configuration.active_rate_count > 2 %} · {{ tariff_configuration.rate_3_label }}: {{ tariff_configuration.rate_3_price }}{% endif %}{% if tariff_configuration.active_rate_count > 3 %} · {{ tariff_configuration.rate_4_label }}: {{ tariff_configuration.rate_4_price }}{% endif %}{% else %}No verified prices{% endif %}</div></div>
       {% if tariff_schedule_summary %}<div class="meter-kv"><span class="meter-kv-label">Schedule summary</span><div class="meter-kv-value">{% for row in tariff_schedule_summary %}{{ row.start }}–{{ row.end }} → {{ row.label }} / Rate {{ row.rate }}{% if not forloop.last %}<br>{% endif %}{% endfor %}{% if tariff_configuration.schedule_draft and not tariff_configuration.latest_verified_schedule_summary %}<div class="small text-warning mt-1">Draft only; live schedule write is disabled pending confirmed mapping.</div>{% endif %}</div></div>{% endif %}
     </div>
   </div>
@@ -501,7 +533,9 @@
           </div>
         {% endif %}
       </div>
-      {% if installation_history %}
+      {% if not installation_history %}
+        <p class="small text-muted mb-2">No installation event was recorded. The date below comes from the meter record.</p>
+      {% endif %}
         <div class="table-responsive">
           <table class="table table-sm table-striped meter-table mb-0">
             <thead>
@@ -510,7 +544,7 @@
                 <th>Tenant</th>
                 <th>Property / Unit</th>
                 <th>Lease #</th>
-                <th>From</th>
+                <th>Installed / From</th>
                 <th>To</th>
                 <th class="text-end">Start kWh</th>
                 <th class="text-end">End kWh</th>
@@ -524,19 +558,28 @@
                   <td><span class="meter-mobile-label">Tenant</span>{% if installation.lease and installation.lease.tenant %}{{ installation.lease.tenant }}{% else %}-{% endif %}</td>
                   <td><span class="meter-mobile-label">Property / Unit</span><a href="{% url 'properties:unit_detail' installation.unit.pk %}">{{ installation.unit }}</a></td>
                   <td><span class="meter-mobile-label">Lease #</span>{% if installation.lease %}<a href="{% url 'leases:lease_detail' installation.lease.pk %}">#{{ installation.lease.pk }}</a>{% else %}-{% endif %}</td>
-                  <td><span class="meter-mobile-label">From</span>{{ installation.start_date|date:"M d, Y" }}</td>
+                  <td><span class="meter-mobile-label">Installed / From</span>{{ installation.start_date|date:"M d, Y" }}</td>
                   <td><span class="meter-mobile-label">To</span>{% if installation.is_active %}Current{% elif installation.display_to_date %}{{ installation.display_to_date|date:"M d, Y" }}{% else %}-{% endif %}</td>
                   <td class="text-end"><span class="meter-mobile-label">Start kWh</span>{{ installation.start_reading|default_if_none:"-" }}</td>
                   <td class="text-end"><span class="meter-mobile-label">End kWh</span>{{ installation.display_end_reading|default_if_none:"-" }}</td>
                   <td><span class="meter-mobile-label">Status</span>{% if installation.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Closed</span>{% endif %}</td>
                 </tr>
+              {% empty %}
+                <tr>
+                  <td><span class="meter-mobile-label">S/N</span>1</td>
+                  <td><span class="meter-mobile-label">Tenant</span>-</td>
+                  <td><span class="meter-mobile-label">Property / Unit</span>{% if meter.unit %}<a href="{% url 'properties:unit_detail' meter.unit.pk %}">{{ meter.unit }}</a>{% else %}-{% endif %}</td>
+                  <td><span class="meter-mobile-label">Lease #</span>-</td>
+                  <td><span class="meter-mobile-label">Installed / From</span>{{ meter.installed_at|date:"M d, Y"|default:"-" }}</td>
+                  <td><span class="meter-mobile-label">To</span>-</td>
+                  <td class="text-end"><span class="meter-mobile-label">Start kWh</span>-</td>
+                  <td class="text-end"><span class="meter-mobile-label">End kWh</span>-</td>
+                  <td><span class="meter-mobile-label">Status</span><span class="badge bg-secondary">Meter record only</span></td>
+                </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
-      {% else %}
-        <p class="text-muted mb-0">No installation history recorded.</p>
-      {% endif %}
     </div>
 
     <div class="meter-section">

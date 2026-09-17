@@ -469,6 +469,16 @@
     max-width: var(--filter-maxw);
     font-size: var(--filter-font);
   }
+  .filters-inline select.form-select + .select2-container {
+    min-width: var(--filter-minw);
+    max-width: var(--filter-maxw);
+    flex: 1 1 auto;
+  }
+  .filters-inline .select2-container--bootstrap-5 .select2-selection--single {
+    min-height: 31px;
+    height: 31px;
+    font-size: var(--filter-font);
+  }
 
   /* Optional desktop/mobile profile helpers */
   body.profile-desktop [data-visible-desktop="0"],
@@ -1600,7 +1610,32 @@
     return ['status', 'updated', 'source_ip', 'port', 'total_energy', 'total_power', 'pf_total', 'voltage_a', 'current_a'];
   }
 
+  function initLiveFilterSelect2() {
+    if (!window.jQuery?.fn?.select2) return;
+    const $ = window.jQuery;
+    $('form.filters-inline select').each(function () {
+      const $select = $(this);
+      if ($select.data('select2')) return;
+      let closing = false;
+      $select.select2({ theme: 'bootstrap-5', width: 'auto' });
+      $select.on('select2:open', () => window.setTimeout(() => document.querySelector('.select2-container--open .select2-search__field')?.focus(), 0));
+      $select.on('select2:close', () => { closing = true; window.setTimeout(() => { closing = false; }, 0); });
+      $select.next('.select2-container').find('.select2-selection').on('focusin', () => {
+        if (!closing && !$select.next('.select2-container').hasClass('select2-container--open')) $select.select2('open');
+      });
+    });
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    initLiveFilterSelect2();
+    if (window.jQuery?.fn?.select2) {
+      window.jQuery(document).on('change', 'form.filters-inline select', function () {
+        handleLiveFilterChange(this);
+      });
+    }
+  });
+
   function refreshLiveCustomEnhancements() {
+    initLiveFilterSelect2();
     document.body.classList.toggle('profile-mobile', mqMobile.matches);
     document.body.classList.toggle('profile-desktop', !mqMobile.matches);
 
@@ -1655,9 +1690,7 @@
     ajaxLoadLiveCustom(urlFromLiveFilterForm(form));
   });
 
-  document.addEventListener('change', (e) => {
-    const control = e.target.closest('form.filters-inline select, form.filters-inline input[type="checkbox"]');
-    if (!control) return;
+  function handleLiveFilterChange(control) {
     const form = control.form;
     if (!form) return;
     if (control.name === 'property') {
@@ -1670,6 +1703,12 @@
       if (meter) meter.value = '';
     }
     ajaxLoadLiveCustom(urlFromLiveFilterForm(form));
+  }
+
+  document.addEventListener('change', (e) => {
+    const control = e.target.closest('form.filters-inline select, form.filters-inline input[type="checkbox"]');
+    if (!control || control.matches('select.select2-hidden-accessible')) return;
+    handleLiveFilterChange(control);
   });
 
   document.addEventListener('click', (e) => {
@@ -2898,6 +2937,11 @@
       min-width: 0 !important;
       max-width: none !important;
     }
+    #captureArea form.filters-inline > select.form-select + .select2-container {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: none !important;
+    }
     #captureArea form.filters-inline .meter-actions {
       grid-column: 1 / -1;
       display: grid !important;
@@ -2911,6 +2955,11 @@
       max-width: none !important;
       width: 100% !important;
       margin: 0 !important;
+    }
+    #captureArea form.filters-inline .meter-actions > select + .select2-container {
+      min-width: 0 !important;
+      max-width: none !important;
+      width: 100% !important;
     }
     #captureArea form.filters-inline .meter-actions .btn {
       white-space: nowrap;
@@ -2952,8 +3001,11 @@
     #captureArea form.filters-inline .meter-actions > select[name="meter"] {
       grid-column: 1 / -1;
     }
+    #captureArea form.filters-inline .meter-actions > select[name="meter"] + .select2-container { grid-column: 1 / -1; }
     #captureArea form.filters-inline .meter-actions > select[name="role"] { grid-column: 1; }
+    #captureArea form.filters-inline .meter-actions > select[name="role"] + .select2-container { grid-column: 1; }
     #captureArea form.filters-inline .meter-actions > select[name="active"] { grid-column: 2; }
+    #captureArea form.filters-inline .meter-actions > select[name="active"] + .select2-container { grid-column: 2; }
     #captureArea form.filters-inline .meter-actions > button[type="submit"] { grid-column: 1; }
     #captureArea form.filters-inline .meter-actions > a.btn { grid-column: 2; }
 

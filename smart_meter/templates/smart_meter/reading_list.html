@@ -326,6 +326,8 @@
      ========================= */
   .filter-grid{ display:flex; flex-wrap: wrap; gap:.25rem; }
   .filter-grid .grp{ min-width:0; }
+  #filtersForm .grp .select2-container { width:100% !important; }
+  #filtersForm .select2-container--bootstrap-5 .select2-selection--single { min-height:31px; height:31px; font-size:.875rem; }
 
   /* Large: all filters in one line; actions on the right */
   @media (min-width: 992px){
@@ -534,15 +536,39 @@
   }
 
   // auto-submit flow
-  form.addEventListener('change', (e) => {
+  function onFilterChange(e) {
     if (!e.target.classList.contains('auto-submit')) return;
 
+    if (e.target.name === 'property') {
+      form.querySelector('[name="unit"]').value = '';
+      form.querySelector('[name="meter"]').value = '';
+    } else if (e.target.name === 'unit') {
+      form.querySelector('[name="meter"]').value = '';
+    }
     if (e.target === rangeSel) {
       applyRange(rangeSel.value);
       suppressRangeParam();
     }
     submitSoon();
+  }
+  form.addEventListener('change', (e) => {
+    if (e.target.matches('select.select2-hidden-accessible')) return;
+    onFilterChange(e);
   });
+  if (window.jQuery?.fn?.select2) {
+    const $ = window.jQuery;
+    $(form).find('select.auto-submit').each(function () {
+      const $select = $(this);
+      let closing = false;
+      $select.select2({ theme: 'bootstrap-5', width: '100%' });
+      $select.on('change', () => onFilterChange({ target: this }));
+      $select.on('select2:open', () => window.setTimeout(() => document.querySelector('.select2-container--open .select2-search__field')?.focus(), 0));
+      $select.on('select2:close', () => { closing = true; window.setTimeout(() => { closing = false; }, 0); });
+      $select.next('.select2-container').find('.select2-selection').on('focusin', () => {
+        if (!closing && !$select.next('.select2-container').hasClass('select2-container--open')) $select.select2('open');
+      });
+    });
+  }
 
   // if user edits dates manually, force request to not include 'range'
   [startInp, endInp].forEach(el => el && el.addEventListener('input', () => {

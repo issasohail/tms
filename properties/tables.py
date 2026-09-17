@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 import django_tables2 as tables
 from django.contrib.humanize.templatetags.humanize import intcomma
 from django.template.loader import render_to_string
@@ -126,7 +128,13 @@ class UnitTable(ExportableTable):
     electric_meter_num = tables.Column(
         verbose_name="Electric Meter#",
         linkify=lambda record: (
-            reverse("invoices:iesco_bill_reading_detail", args=[record.electric_meter_num])
+            (
+                reverse("invoices:iesco_bill_reading_detail", args=[record.electric_meter_num])
+                if record.is_smart_meter
+                else reverse("invoices:iesco_bill_reading_list")
+                + "?"
+                + urlencode({"reference_no": record.electric_meter_num})
+            )
             if record.electric_meter_num
             else None
         ),

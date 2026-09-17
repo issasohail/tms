@@ -19,6 +19,7 @@ from smart_meter.models import (
     EnergyReconciliationAuditEvent,
     EnergySystem,
     EnergySystemMeterAssignment,
+    EnergySystemMeterLink,
     InverterPeriodStatement,
     Meter,
     MeterCheckGroup,
@@ -411,6 +412,31 @@ class EnergyReconciliationTests(TestCase):
         self.assertEqual(response.context["check_kwh"], result["check_kwh"])
         self.assertEqual(response.context["billing_kwh"], result["billing_kwh"])
         self.assertEqual(response.context["variance_kwh"], result["variance_kwh"])
+
+    def test_linked_output_list_numbers_meters_and_hides_single_phase_reverse_badge(self):
+        other_output = Meter.objects.create(
+            meter_number="FIX-OUTPUT-2", meter_role=Meter.METER_ROLE_CHECK,
+            reading_profile=Meter.READING_PROFILE_TOTAL_AND_PER_PHASE,
+        )
+        EnergySystemMeterLink.objects.create(
+            energy_system=self.system, meter=self.grid_meter,
+            side=EnergySystemMeterLink.SIDE_INPUT,
+        )
+        EnergySystemMeterLink.objects.create(
+            energy_system=self.system, meter=self.output_meter,
+            side=EnergySystemMeterLink.SIDE_OUTPUT,
+        )
+        EnergySystemMeterLink.objects.create(
+            energy_system=self.system, meter=other_output,
+            side=EnergySystemMeterLink.SIDE_OUTPUT,
+        )
+        response = self.client.get(reverse("smart_meter:energy_system_detail", args=[self.system.pk]))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("1. FIX-OUTPUT", html)
+        self.assertIn("2. FIX-OUTPUT-2", html)
+        self.assertNotIn("1. FIX-OUTPUT</strong> <span class=\"badge", html)
+        self.assertIn("2. FIX-OUTPUT-2</strong> <span class=\"badge", html)
 
     def test_new_action_routes_are_post_only_and_audited(self):
         statement = InverterPeriodStatement.objects.create(

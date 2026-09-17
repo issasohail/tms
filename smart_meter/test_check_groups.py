@@ -14,6 +14,7 @@ from smart_meter.models import (
     Meter,
     MeterCheckGroup,
     MeterCheckGroupMembership,
+    MeterInstallation,
     MeterReading,
 )
 
@@ -66,6 +67,8 @@ class CheckGroupTestCase(TestCase):
             "is_active": "on",
             "installed_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
             "notes": "Role transition test",
+            "raw_frame_capture_mode": meter.raw_frame_capture_mode,
+            "connection_event_capture_mode": meter.connection_event_capture_mode,
         }
         if replacement:
             data["replacement_check_meter"] = replacement.pk
@@ -592,3 +595,138 @@ class MeterRoleTransitionTests(CheckGroupTestCase):
         self.assertEqual(billing.meter_role, Meter.METER_ROLE_CHECK)
         self.assertFalse(membership.is_active)
         self.assertIsNotNone(membership.end_date)
+
+
+class AutomaticCoverageTests(CheckGroupTestCase):
+    def test_report_uses_each_audit_meter_only_for_its_assignment_dates(self):
+        from smart_meter.services.reconciliation import calculate_check_group_period
+
+        old_audit = self._meter("PERIOD-AUDIT-OLD", self.unit_a, role=Meter.METER_ROLE_CHECK)
+        new_audit = self._meter("PERIOD-AUDIT-NEW", self.unit_a, role=Meter.METER_ROLE_CHECK)
+        group = MeterCheckGroup.objects.create(name="Dated audit", check_meter=old_audit)
+        for meter, day, value in (
+            (old_audit, 30, 100), (old_audit, 31, 150),
+        ):
+            MeterReading.objects.create(
+                meter=meter, ts=timezone.make_aware(datetime(2026, 8, day, 12)),
+                total_energy=value,
+            )
+        for day, value in ((1, 200), (2, 230)):
+            MeterReading.objects.create(
+                meter=new_audit, ts=timezone.make_aware(datetime(2026, 9, day, 12)),
+                total_energy=value,
+            )
+        group.check_meter = new_audit
+        group.save(update_fields=["check_meter"], audit_effective_date=date(2026, 9, 1))
+
+        report = calculate_check_group_period(group, date(2026, 8, 30), date(2026, 9, 2))
+        self.assertEqual(
+            {row["meter_id"] for row in report["check_rows"]},
+            {old_audit.pk, new_audit.pk},
+        )
+        self.assertEqual(report["check_kwh"], Decimal("80"))
+        self.assertTrue(all(
+            len(dataset["data"]) == len(report["check_labels"])
+            for dataset in report["check_datasets"]
+        ))
+
+    def test_edit_preview_is_read_only_and_save_enables_existing_meter(self):
+        audit = self._meter("PREVIEW-AUDIT", self.unit_a, role=Meter.METER_ROLE_CHECK)
+        billing = self._meter("PREVIEW-BILLING", self.unit_a)
+        MeterInstallation.objects.create(
+            meter=billing, unit=self.unit_a, start_date=date(2026, 8, 1),
+        )
+        group = MeterCheckGroup.objects.create(
+            name="Preview", property=self.property_a, check_meter=audit,
+        )
+        url = reverse("smart_meter:meter_check_group_edit", args=[group.pk])
+        data = {
+            "name": group.name,
+            "property": self.property_a.pk,
+            "automatic_coverage": "on",
+            "coverage_mode": MeterCheckGroup.COVERAGE_PROPERTY,
+            "check_meter": audit.pk,
+            "is_active": "on",
+            "notes": "",
+        }
+        preview = self.client.post(url, {**data, "preview_coverage": "1"})
+        self.assertEqual(preview.status_code, 200)
+        self.assertContains(preview, "PREVIEW-BILLING")
+        group.refresh_from_db()
+        self.assertFalse(group.automatic_coverage)
+        self.assertFalse(billing.check_group_memberships.exists())
+
+        saved = self.client.post(url, data)
+        self.assertEqual(saved.status_code, 302)
+        group.refresh_from_db()
+        self.assertTrue(group.automatic_coverage)
+        self.assertEqual(billing.check_group_memberships.get().group, group)
+
+    def test_new_and_replacement_billing_meters_follow_property_rule(self):
+        audit = self._meter("AUTO-AUDIT", self.unit_a, role=Meter.METER_ROLE_CHECK)
+        group = MeterCheckGroup.objects.create(
+            name="Automatic", property=self.property_a, check_meter=audit,
+            automatic_coverage=True,
+        )
+        old_meter = self._meter("AUTO-OLD", self.unit_a)
+        old_installation = MeterInstallation.objects.create(
+            meter=old_meter, unit=self.unit_a, start_date=date(2026, 8, 1),
+        )
+        first = MeterCheckGroupMembership.objects.get(billing_meter=old_meter)
+        self.assertEqual(first.group, group)
+        self.assertTrue(first.assigned_automatically)
+
+        old_installation.close(end_date=date(2026, 9, 1))
+        replacement = self._meter("AUTO-NEW", self.unit_a)
+        MeterInstallation.objects.create(
+            meter=replacement, unit=self.unit_a, start_date=date(2026, 9, 1),
+        )
+        first.refresh_from_db()
+        second = MeterCheckGroupMembership.objects.get(billing_meter=replacement)
+        self.assertEqual(first.end_date, date(2026, 8, 31))
+        self.assertEqual(second.group, group)
+        self.assertEqual(second.start_date, date(2026, 9, 1))
+
+    def test_selected_unit_rule_overrides_property_rule(self):
+        unit_two = Unit.objects.create(property=self.property_a, unit_number="A-2")
+        property_audit = self._meter("PROPERTY-AUDIT", self.unit_a, role=Meter.METER_ROLE_CHECK)
+        unit_audit = self._meter("UNIT-AUDIT", unit_two, role=Meter.METER_ROLE_CHECK)
+        property_group = MeterCheckGroup.objects.create(
+            name="Property", property=self.property_a, check_meter=property_audit,
+            automatic_coverage=True,
+        )
+        unit_group = MeterCheckGroup.objects.create(
+            name="Unit", property=self.property_a, check_meter=unit_audit,
+            automatic_coverage=True, coverage_mode=MeterCheckGroup.COVERAGE_UNITS,
+        )
+        unit_group.coverage_units.add(unit_two)
+        meter = self._meter("UNIT-BILLING", unit_two)
+        MeterInstallation.objects.create(meter=meter, unit=unit_two, start_date=date(2026, 8, 1))
+        self.assertEqual(meter.check_group_memberships.get().group, unit_group)
+        self.assertNotEqual(meter.check_group_memberships.get().group, property_group)
+
+    def test_audit_switch_updates_group_and_preserves_assignment_dates(self):
+        old_audit = self._meter("AUDIT-SWITCH-OLD", self.unit_a, role=Meter.METER_ROLE_CHECK)
+        new_audit = self._meter("AUDIT-SWITCH-NEW", self.unit_a, role=Meter.METER_ROLE_CHECK)
+        MeterInstallation.objects.create(
+            meter=old_audit, unit=self.unit_a, start_date=date(2026, 8, 1),
+        )
+        group = MeterCheckGroup.objects.create(name="Switched audit", check_meter=old_audit)
+        response = self.client.post(
+            reverse("smart_meter:switch_meter", args=[self.unit_a.pk]),
+            {
+                "old_installation": old_audit.installations.get().pk,
+                "new_meter": new_audit.pk,
+                "switch_date": "2026-09-01",
+                "old_end_reading": "100",
+                "new_start_reading": "0",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        group.refresh_from_db()
+        self.assertEqual(group.check_meter, new_audit)
+        assignments = list(group.audit_assignments.values_list("meter_id", "start_date", "end_date"))
+        self.assertEqual(assignments[0][0], old_audit.pk)
+        self.assertEqual(assignments[0][2], date(2026, 9, 1))
+        self.assertEqual(assignments[1][0], new_audit.pk)
+        self.assertEqual(assignments[1][1], date(2026, 9, 1))

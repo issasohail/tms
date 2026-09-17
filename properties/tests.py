@@ -578,6 +578,25 @@ class UnitListInlineUpdateTests(TestCase):
         self.assertContains(response, 'id="unitFilterForm"')
         self.assertContains(response, "unitFilterForm.requestSubmit()")
 
+    def test_unit_list_meter_links_open_iesco_dashboard_for_non_smart_meters(self):
+        self.unit_one.electric_meter_num = "12345678901234"
+        self.unit_one.save(update_fields=["electric_meter_num"])
+        self.unit_two.electric_meter_num = "98765432109876"
+        self.unit_two.is_smart_meter = True
+        self.unit_two.save(update_fields=["electric_meter_num", "is_smart_meter"])
+
+        response = self.client.get(reverse("properties:unit_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="{reverse("invoices:iesco_bill_reading_list")}?reference_no=12345678901234"',
+        )
+        self.assertContains(
+            response,
+            f'href="{reverse("invoices:iesco_bill_reading_detail", args=["98765432109876"])}"',
+        )
+
     def test_unit_list_status_uses_active_leases_not_stored_occupancy(self):
         from leases.models import Lease
         from leases.models_renewal import LeaseRenewal

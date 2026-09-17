@@ -250,10 +250,13 @@ class MeterReadingProfileForm(forms.ModelForm):
 class MeterCheckGroupForm(forms.ModelForm):
     class Meta:
         model = MeterCheckGroup
-        fields = ["name", "property", "check_meter", "notes", "is_active"]
+        fields = ["name", "property", "automatic_coverage", "coverage_mode", "coverage_units", "check_meter", "notes", "is_active"]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "property": forms.Select(attrs={"class": "form-select"}),
+            "automatic_coverage": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "coverage_mode": forms.Select(attrs={"class": "form-select"}),
+            "coverage_units": forms.SelectMultiple(attrs={"class": "form-select", "size": 7}),
             "check_meter": forms.Select(attrs={"class": "form-select"}),
             "notes": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
@@ -261,10 +264,13 @@ class MeterCheckGroupForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["property"].label = "Property"
         self.fields["property"].required = False
         self.fields["property"].help_text = (
-            "Optional reference only. Coverage is determined by the billing meters assigned to this group."
+            "Choose the property whose billing meters this group should cover. Existing reference values do not activate automation."
         )
+        self.fields["coverage_units"].queryset = _ordered_units()
+        self.fields["coverage_units"].label_from_instance = _unit_choice_label
         if self.instance.pk:
             check_meters = Meter.objects.filter(
                 Q(pk=self.instance.check_meter_id)
@@ -283,6 +289,34 @@ class MeterCheckGroupForm(forms.ModelForm):
         ).order_by("meter_number")
         self.fields["check_meter"].queryset = _with_active_unit_meter_count(check_meters)
         self.fields["check_meter"].label_from_instance = _meter_choice_label
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("automatic_coverage"):
+            return cleaned
+        prop = cleaned.get("property")
+        units = cleaned.get("coverage_units")
+        mode = cleaned.get("coverage_mode")
+        if not prop:
+            self.add_error("property", "Select a property for automatic coverage.")
+            return cleaned
+        if mode == MeterCheckGroup.COVERAGE_UNITS:
+            if not units:
+                self.add_error("coverage_units", "Select at least one unit.")
+            elif units.exclude(property=prop).exists():
+                self.add_error("coverage_units", "Selected units must belong to the property.")
+            if units and MeterCheckGroup.objects.filter(
+                automatic_coverage=True, is_active=True,
+                coverage_mode=MeterCheckGroup.COVERAGE_UNITS,
+                coverage_units__in=units,
+            ).exclude(pk=self.instance.pk).exists():
+                self.add_error("coverage_units", "One of these units already has an automatic Check Group.")
+        elif MeterCheckGroup.objects.filter(
+            automatic_coverage=True, is_active=True,
+            coverage_mode=MeterCheckGroup.COVERAGE_PROPERTY, property=prop,
+        ).exclude(pk=self.instance.pk).exists():
+            self.add_error("property", "This property already has an automatic whole-property Check Group.")
+        return cleaned
 
 
 class MeterCheckGroupMembershipForm(forms.ModelForm):
@@ -619,6 +653,14 @@ class SwitchMeterForm(forms.Form):
         switch_date = cleaned.get("switch_date")
         if old_installation and switch_date and switch_date < old_installation.start_date:
             self.add_error("switch_date", "Switch date cannot be before the current installation start date.")
+        new_meter = cleaned.get("new_meter")
+        if old_installation and new_meter and MeterCheckGroup.objects.filter(
+            check_meter=old_installation.meter,
+        ).exists():
+            if new_meter.meter_role != Meter.METER_ROLE_CHECK:
+                self.add_error("new_meter", "An Audit meter must be replaced by another Audit meter.")
+            elif MeterCheckGroup.objects.filter(check_meter=new_meter).exists():
+                self.add_error("new_meter", "This Audit meter already belongs to another Check Group.")
         return cleaned
 
 

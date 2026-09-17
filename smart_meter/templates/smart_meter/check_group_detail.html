@@ -52,7 +52,7 @@
     <div>
       <h2 class="mb-0">{{ group.name }}</h2>
       <small class="text-muted">
-        {% if covered_property_names %}Covered properties: {{ covered_property_names|join:", " }} · {% elif group.property %}Reference property: {{ group.property.property_name }} · {% endif %}
+        {% if covered_property_names %}Covered properties: {{ covered_property_names|join:", " }} · {% elif group.property %}{% if group.automatic_coverage %}Automatic coverage property{% else %}Reference property{% endif %}: {{ group.property.property_name }} · {% endif %}
         Audit meter <a href="{% url 'smart_meter:meter_detail' group.check_meter_id %}" title="Open Audit meter detail">{{ group.check_meter.meter_number }}</a>
       </small>
     </div>

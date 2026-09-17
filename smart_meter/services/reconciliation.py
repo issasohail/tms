@@ -127,9 +127,41 @@ def calculate_check_group_period(group, start_date, end_date):
     """Return the existing Check Group readings and totals without request/view state."""
     from smart_meter.views_dashboard import _per_meter_series
 
-    check_labels, check_datasets, check_rows, check_totals = _per_meter_series(
-        Meter.objects.filter(pk=group.check_meter_id), start_date, end_date, "daily"
-    )
+    assignments = list(group.audit_assignments.filter(
+        start_date__lte=end_date,
+    ).filter(Q(end_date__isnull=True) | Q(end_date__gt=start_date)).order_by("start_date"))
+    check_labels, check_datasets, check_rows = [], [], []
+    check_totals = None
+    if not assignments:
+        check_labels, check_datasets, check_rows, check_totals = _per_meter_series(
+            Meter.objects.filter(pk=group.check_meter_id), start_date, end_date, "daily"
+        )
+    else:
+        for assignment in assignments:
+            segment_start = max(start_date, assignment.start_date)
+            segment_end = min(end_date, assignment.end_date - timedelta(days=1) if assignment.end_date else end_date)
+            if segment_end < segment_start:
+                continue
+            labels, datasets, rows, totals = _per_meter_series(
+                Meter.objects.filter(pk=assignment.meter_id), segment_start, segment_end, "daily"
+            )
+            previous_label_count = len(check_labels)
+            for dataset in check_datasets:
+                dataset["data"].extend([None] * len(labels))
+                dataset["reverseData"].extend([None] * len(labels))
+            for dataset in datasets:
+                dataset["data"] = [None] * previous_label_count + dataset["data"]
+                dataset["reverseData"] = [None] * previous_label_count + dataset["reverseData"]
+            check_labels.extend(labels)
+            check_datasets.extend(datasets)
+            check_rows.extend(rows)
+            if check_totals is None:
+                check_totals = dict(totals)
+            else:
+                for key, value in totals.items():
+                    check_totals[key] += value
+    if check_totals is None:
+        check_totals = {"total_kwh": ZERO}
     effective_memberships = list(
         group.memberships.filter(start_date__lte=end_date)
         .filter(Q(end_date__isnull=True) | Q(end_date__gte=start_date))

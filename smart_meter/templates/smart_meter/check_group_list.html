@@ -59,7 +59,7 @@
                 {% if group.covered_property_names %}
                   {{ group.covered_property_names }}
                 {% elif group.property %}
-                  <span class="text-muted">{{ group.property.property_name }} (reference)</span>
+                  <span class="text-muted">{{ group.property.property_name }} {% if group.automatic_coverage %}(automatic coverage){% else %}(reference){% endif %}</span>
                 {% else %}
                   <span class="text-muted">No billing meters assigned</span>
                 {% endif %}

@@ -1258,11 +1258,18 @@ def meter_list(request):
     return render(request, "smart_meter/meter_list.html", ctx)
 
 
+@transaction.atomic
 def add_meter(request):
     if request.method == "POST":
         form = MeterForm(request.POST)
         if form.is_valid():
             meter = form.save()
+            if meter.unit_id:
+                MeterInstallation.objects.create(
+                    meter=meter, unit=meter.unit, start_date=timezone.localdate(),
+                    installed_by=request.user if request.user.is_authenticated else None,
+                    reason="Meter created and assigned.",
+                )
             from smart_meter.models import MeterAssignmentHistory
 
             MeterRoleHistory.objects.create(
@@ -1299,6 +1306,8 @@ def meter_edit(request, pk):
     old_unit = meter.unit
     old_lease = meter.current_lease
     old_role = meter.meter_role
+    old_active = meter.is_active
+    old_type = meter.meter_type
     verified_tariff_history = meter.tariff_audits.filter(status="verified").exists()
     if request.method == "POST":
         form = MeterForm(request.POST, instance=meter)
@@ -1454,6 +1463,9 @@ def meter_edit(request, pk):
                     request,
                     "Meter assignment and installation history updated.",
                 )
+            if new_role != old_role or meter.is_active != old_active or meter.meter_type != old_type:
+                from smart_meter.services.check_group_coverage import sync_meter_coverage
+                sync_meter_coverage(meter, timezone.localdate())
             return redirect("smart_meter:meter_detail", pk=meter.pk)
     else:
         form = MeterForm(instance=meter)
@@ -1695,6 +1707,9 @@ def meter_role_update(request, pk):
                 user=request.user,
                 reason="Inline role update.",
             )
+            meter.refresh_from_db(fields=["meter_role"])
+            from smart_meter.services.check_group_coverage import sync_meter_coverage
+            sync_meter_coverage(meter, timezone.localdate())
     except ValidationError as exc:
         if hasattr(exc, "message_dict"):
             error = " ".join(
@@ -1719,8 +1734,6 @@ def meter_role_update(request, pk):
             },
             status=500,
         )
-
-    meter.refresh_from_db(fields=["meter_role"])
 
     return JsonResponse(
         {
@@ -2025,12 +2038,48 @@ def meter_check_group_delete_manage(request, pk):
 @login_required
 def meter_check_group_form(request, pk=None):
     group = get_object_or_404(MeterCheckGroup, pk=pk) if pk else None
+    coverage_preview = None
     if request.method == "POST":
         form = MeterCheckGroupForm(request.POST, instance=group)
         if form.is_valid():
-            group = form.save()
-            messages.success(request, "Check group saved.")
-            return redirect("smart_meter:meter_check_group_detail", pk=group.pk)
+            if "preview_coverage" in request.POST:
+                cleaned = form.cleaned_data
+                if cleaned["automatic_coverage"]:
+                    units = (
+                        Unit.objects.filter(property=cleaned["property"])
+                        if cleaned["coverage_mode"] == MeterCheckGroup.COVERAGE_PROPERTY
+                        else cleaned["coverage_units"]
+                    )
+                    meters = Meter.objects.filter(
+                        installations__unit__in=units,
+                        installations__is_active=True,
+                        installations__end_date__isnull=True,
+                        meter_role=Meter.METER_ROLE_BILLING,
+                        meter_type=Meter.METER_TYPE_ELECTRIC,
+                        is_active=True,
+                    ).distinct().order_by("meter_number")
+                    coverage_preview = [
+                        {
+                            "number": meter.meter_number,
+                            "conflict": meter.check_group_memberships.filter(
+                                is_active=True, end_date__isnull=True,
+                            ).exclude(group=group).exists(),
+                        }
+                        for meter in meters
+                    ]
+                else:
+                    coverage_preview = []
+            else:
+                from smart_meter.services.check_group_coverage import sync_group_coverage
+                try:
+                    with transaction.atomic():
+                        group = form.save()
+                        sync_group_coverage(group, timezone.localdate())
+                except ValidationError as exc:
+                    form.add_error(None, exc)
+                else:
+                    messages.success(request, "Check group saved.")
+                    return redirect("smart_meter:meter_check_group_detail", pk=group.pk)
     else:
         form = MeterCheckGroupForm(instance=group)
     return render(
@@ -2039,6 +2088,7 @@ def meter_check_group_form(request, pk=None):
         {
             "form": form,
             "group": group,
+            "coverage_preview": coverage_preview,
         },
     )
 
@@ -2997,6 +3047,15 @@ def switch_meter(request, unit_id):
                     reason=form.cleaned_data.get("reason") or "Meter switched",
                     notes=form.cleaned_data.get("notes", ""),
                 )
+                audit_group = MeterCheckGroup.objects.select_for_update().filter(
+                    check_meter=old_installation.meter,
+                ).first()
+                if audit_group:
+                    audit_group.check_meter = new_installation.meter
+                    audit_group.save(
+                        update_fields=["check_meter"],
+                        audit_effective_date=form.cleaned_data["switch_date"],
+                    )
 
             messages.success(
                 request,

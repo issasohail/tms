@@ -467,11 +467,23 @@ class MeterInstallation(models.Model):
                 raise ValidationError("This meter already has an active installation.")
 
     def save(self, *args, **kwargs):
+        previous = (
+            type(self).objects.filter(pk=self.pk).values("unit_id", "is_active", "end_date").first()
+            if self.pk else None
+        )
+        coverage_changed = previous is None or any(
+            previous[field] != getattr(self, field)
+            for field in ("unit_id", "is_active", "end_date")
+        )
         self.active_meter_key = self.meter_id if self.is_active and self.end_date is None else None
         self.full_clean()
-        super().save(*args, **kwargs)
-        if self.is_active and self.end_date is None and self.meter.unit_id != self.unit_id:
-            Meter.objects.filter(pk=self.meter_id).update(unit=self.unit)
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            if self.is_active and self.end_date is None and self.meter.unit_id != self.unit_id:
+                Meter.objects.filter(pk=self.meter_id).update(unit=self.unit)
+            if coverage_changed:
+                from smart_meter.services.check_group_coverage import sync_meter_coverage
+                sync_meter_coverage(self.meter, self.start_date if self.is_active else (self.end_date or timezone.localdate()))
 
     def close(self, *, end_date, end_reading=None, notes=""):
         self.end_date = end_date
@@ -558,6 +570,9 @@ class MeterRoleHistory(models.Model):
 
 
 class MeterCheckGroup(models.Model):
+    COVERAGE_PROPERTY = "property"
+    COVERAGE_UNITS = "units"
+    COVERAGE_CHOICES = [(COVERAGE_PROPERTY, "All units in property"), (COVERAGE_UNITS, "Selected units")]
     name = models.CharField(max_length=100)
     property = models.ForeignKey(
         "properties.Property",
@@ -574,6 +589,9 @@ class MeterCheckGroup(models.Model):
         related_name="check_group",
         limit_choices_to={"meter_role": "check"},
     )
+    automatic_coverage = models.BooleanField(default=False)
+    coverage_mode = models.CharField(max_length=10, choices=COVERAGE_CHOICES, default=COVERAGE_PROPERTY)
+    coverage_units = models.ManyToManyField("properties.Unit", blank=True, related_name="automatic_check_groups")
     notes = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -592,6 +610,29 @@ class MeterCheckGroup(models.Model):
             and self.check_meter.meter_role != Meter.METER_ROLE_CHECK
         ):
             raise ValidationError({"check_meter": "Selected meter is not marked as an Audit meter."})
+
+    def save(self, *args, **kwargs):
+        audit_effective_date = kwargs.pop("audit_effective_date", None) or timezone.localdate()
+        previous_meter_id = None
+        if self.pk:
+            previous_meter_id = type(self).objects.filter(pk=self.pk).values_list("check_meter_id", flat=True).first()
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            current = self.audit_assignments.filter(end_date__isnull=True).order_by("-start_date", "-pk").first()
+            if current is None:
+                MeterCheckGroupAuditAssignment.objects.create(
+                    group=self, meter_id=previous_meter_id or self.check_meter_id,
+                    start_date=datetime.date(1900, 1, 1),
+                )
+                current = self.audit_assignments.get(end_date__isnull=True)
+            if current.meter_id != self.check_meter_id:
+                if audit_effective_date <= current.start_date:
+                    raise ValidationError({"check_meter": "Replacement date must follow the current Audit assignment start."})
+                current.end_date = audit_effective_date
+                current.save(update_fields=["end_date"])
+                MeterCheckGroupAuditAssignment.objects.create(
+                    group=self, meter=self.check_meter, start_date=audit_effective_date,
+                )
 
     def active_billing_meters(self, as_of=None):
         as_of = as_of or timezone.localdate()
@@ -623,6 +664,7 @@ class MeterCheckGroupMembership(models.Model):
     start_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    assigned_automatically = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
 
     class Meta:
@@ -669,6 +711,24 @@ class MeterCheckGroupMembership(models.Model):
     def __str__(self):
         end = self.end_date or "current"
         return f"{self.billing_meter.meter_number} in {self.group.name} ({self.start_date} to {end})"
+
+
+class MeterCheckGroupAuditAssignment(models.Model):
+    group = models.ForeignKey(MeterCheckGroup, on_delete=models.CASCADE, related_name="audit_assignments")
+    meter = models.ForeignKey(Meter, on_delete=models.PROTECT, related_name="check_group_audit_assignments")
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True, help_text="Exclusive end date")
+
+    class Meta:
+        ordering = ["start_date", "id"]
+
+    def clean(self):
+        if self.end_date and self.end_date <= self.start_date:
+            raise ValidationError({"end_date": "End date must follow start date."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class EnergySystem(models.Model):
@@ -749,7 +809,7 @@ class EnergySystem(models.Model):
             else:
                 locked.output_group.check_meter = new_meter
                 locked.output_group.full_clean()
-                locked.output_group.save(update_fields=["check_meter"])
+                locked.output_group.save(update_fields=["check_meter"], audit_effective_date=effective_date)
             self.grid_interface_meter_id = locked.grid_interface_meter_id
             return assignment
 

@@ -183,6 +183,7 @@ def energy_system_detail(request, pk):
         "smart_meter/energy_system_detail.html",
         {
             "system": system,
+            "systems": EnergySystem.objects.select_related("output_group__check_meter").order_by("name"),
             "report": report,
             "iesco_bill_latest": iesco_bill_latest,
             "latest_snapshot": latest_snapshot,

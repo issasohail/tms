@@ -17,11 +17,15 @@
         <div class="row g-3">
           <div class="col-md-6">{{ form.name.label_tag }}{{ form.name }}{{ form.name.errors }}</div>
           <div class="col-md-6">{{ form.property.label_tag }}{{ form.property }}{{ form.property.errors }}<div class="form-text">{{ form.property.help_text }}</div></div>
+          <div class="col-12"><div class="form-check">{{ form.automatic_coverage }}{{ form.automatic_coverage.label_tag }}{{ form.automatic_coverage.errors }}</div><div class="form-text">Enable to keep Billing meter memberships aligned with installations in the selected property or units. Existing groups stay manual until enabled.</div></div>
+          <div class="col-md-6">{{ form.coverage_mode.label_tag }}{{ form.coverage_mode }}{{ form.coverage_mode.errors }}</div>
+          <div class="col-md-6">{{ form.coverage_units.label_tag }}{{ form.coverage_units }}{{ form.coverage_units.errors }}<div class="form-text">Used only when coverage mode is Selected units.</div></div>
           <div class="col-12">{{ form.check_meter.label_tag }}{{ form.check_meter }}{{ form.check_meter.errors }}<div class="form-text">Only active meters with the Audit role are available. Billing-meter assignments determine the actual coverage.</div></div>
           <div class="col-12">{{ form.notes.label_tag }}{{ form.notes }}{{ form.notes.errors }}</div>
           <div class="col-12"><div class="form-check">{{ form.is_active }}{{ form.is_active.label_tag }}{{ form.is_active.errors }}</div></div>
         </div>
-        <div class="text-end mt-3"><button class="btn btn-primary" type="submit">Save Check Group</button></div>
+        {% if coverage_preview is not None %}<div class="alert alert-info py-2 mt-3 mb-0"><strong>Current eligible Billing meters: {{ coverage_preview|length }}</strong>{% for item in coverage_preview %}<div>{{ item.number }}{% if item.conflict %} — already assigned to another group; resolve before saving{% endif %}</div>{% empty %}<div>No current meters match. Future installations will be assigned automatically.</div>{% endfor %}</div>{% endif %}
+        <div class="text-end mt-3"><button class="btn btn-outline-secondary me-2" type="submit" name="preview_coverage" value="1">Preview coverage</button><button class="btn btn-primary" type="submit">Save Check Group</button></div>
       </form>
     </div>
   </div>

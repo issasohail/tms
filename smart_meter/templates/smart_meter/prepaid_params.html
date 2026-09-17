@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
-{% block main_container_class %}container prepaid-params-page{% endblock %}
+{% block main_container_class %}container-fluid prepaid-params-page{% endblock %}
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
 
@@ -11,14 +11,21 @@
   <form method="post" class="card p-2 shadow-sm mb-3">
     {% csrf_token %}<input type="hidden" name="action" value="save_general">
     <div class="general-settings-line"><h5 class="mb-0">General settings</h5><div class="general-settings-grid">{% for field in general_form %}<div class="general-setting-field">{{ field.label_tag }}<div>{{ field }}{{ field.errors }}</div></div>{% endfor %}</div><button class="btn btn-primary btn-sm general-settings-save">Save</button></div>
+    <datalist id="connection-event-capture-reasons">
+      <option value="Investigate unexpected disconnects">
+      <option value="Investigate repeated reconnects">
+      <option value="Investigate duplicate connections">
+      <option value="Check intermittent connectivity">
+      <option value="Planned maintenance or testing">
+    </datalist>
   </form>
 
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-2">
     <div>
       <h2 class="h4 mb-1">Prepaid Parameter 1</h2>
-      <div class="small text-muted">Values are editable directly. A checked <strong>Apply all</strong> box copies that field to every eligible prepaid meter. Save updates one meter; Save All validates every eligible row first, then sends one guarded Parameter 1 command per meter.</div>
+      <div class="small text-muted">Values are editable directly for active prepaid meters; other meter rows are read-only. Use <a href="{% url 'smart_meter:prepaid_controls' %}">Prepaid Controls</a> to change a meter's mode. A checked <strong>Apply ALL</strong> box copies that field to every eligible prepaid meter. <strong>Local only</strong> means the values have not yet been confirmed against the physical meter; use Verify before Save. Save updates one meter; Save All validates every eligible row first, then sends one guarded Parameter 1 command per meter.</div>
     </div>
-    <div class="d-flex flex-wrap gap-2">
+    <div class="d-flex flex-wrap gap-2 prepaid-page-actions">
       <button type="button" class="btn btn-sm btn-outline-secondary" id="collapseTariffColumnsButton" title="Collapse Rate 1, Rate 2, Step 1 and Step 2 into their first visible column">Collapse columns</button>
       <button type="button" class="btn btn-sm btn-outline-secondary" id="showAllPrepaidColumnsButton" title="Show every prepaid parameter column">Show all</button>
       <button type="button" class="btn btn-sm btn-primary" id="saveAllPrepaidButton">Save All</button>
@@ -60,11 +67,11 @@
                 <th title="{{ item.help }}" data-field-heading="{{ item.name }}" data-parameter-group-index="{{ forloop.parentloop.counter0 }}" class="parameter-heading parameter-heading-{{ item.name }}">
                   <div class="prepaid-heading-label" title="{{ item.label }}">{{ item.label }}</div>
                   <div class="prepaid-heading-tools">
-                    <label class="apply-all-control" title="Copy this field's edited value to every eligible prepaid meter row">
-                      <input type="checkbox" data-apply-all-field="{{ item.name }}" checked>
-                      <span>Apply all</span>
-                    </label>
-                    <button type="button" class="prepaid-help" aria-label="Help for {{ item.label }}" title="{{ item.help }}">?</button>
+                    <div class="prepaid-heading-tool-row">
+                      <input type="checkbox" id="apply-all-{{ item.name }}" data-apply-all-field="{{ item.name }}" aria-label="Apply {{ item.label }} to all eligible prepaid meters" checked>
+                      <button type="button" class="prepaid-help" aria-label="Help for {{ item.label }}" title="{{ item.help }}">?</button>
+                    </div>
+                    <label class="apply-all-control" for="apply-all-{{ item.name }}" title="Copy this field's edited value to every eligible prepaid meter row">Apply<br>ALL</label>
                   </div>
                 </th>
               {% endfor %}
@@ -77,15 +84,18 @@
           <tr data-prepaid-row data-meter-id="{{ row.meter.pk }}" data-can-update="{% if row.can_update %}1{% else %}0{% endif %}" class="{% if row.is_submitted and row.form.errors %}table-danger{% endif %}">
             <td class="sticky-id sticky-sn text-center">{{ forloop.counter }}</td>
             <td class="sticky-id sticky-meter"><a href="{% url 'smart_meter:meter_detail' row.meter.pk %}">{{ row.meter.meter_number }}</a></td>
-            <td class="sticky-id sticky-location" title="{{ row.meter.unit.property.property_name|default:'Unassigned' }} - {{ row.meter.display_location_name|default:'Unassigned' }}"><span class="location-property">{{ row.meter.unit.property.property_name|default:"—"|truncatechars:8 }}</span><span class="location-separator"> - </span>{{ row.meter.display_location_name|default:"—" }}</td>
+            <td class="sticky-id sticky-location" title="{{ row.meter.unit.property.property_name|default:'Unassigned' }} - {{ row.meter.display_location_name|default:'Unassigned' }}"><span class="location-property">{{ row.meter.unit.property.property_name|default:"—" }}</span><span class="location-unit">{{ row.meter.display_location_name|default:"—" }}</span></td>
             {% for group in row.groups %}{% for item in group.fields %}<td class="parameter-cell parameter-cell-{{ item.name }}" data-field-cell="{{ item.name }}">{{ item.field }}{% for error in item.field.errors %}<div class="text-danger field-error">{{ error }}</div>{% endfor %}</td>{% endfor %}{% endfor %}
             <td class="action-column">
               <form method="post" id="{{ row.form_id }}" class="prepaid-row-form">
                 {% csrf_token %}<input type="hidden" name="action" value="save_prepaid_parameters"><input type="hidden" name="meter" value="{{ row.meter.pk }}">
-                <div class="prepaid-row-actions"><button type="submit" class="btn btn-sm btn-primary" {% if not row.can_update or row.baseline_status != 'verified' %}disabled title="Read / Verify the physical Parameter 1 baseline before saving."{% endif %}>Save</button><a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_detail' row.meter.pk %}">Detail</a></div>
+                <div class="prepaid-row-actions"><button type="submit" class="btn btn-sm btn-primary" {% if not row.can_update or row.baseline_status != 'verified' %}disabled title="Verify the physical Parameter 1 baseline before saving."{% endif %}>Save</button><a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_detail' row.meter.pk %}">Detail</a></div>
               </form>
-              <form method="post" class="prepaid-verify-form mt-1">{% csrf_token %}<input type="hidden" name="action" value="verify_prepaid_parameters"><input type="hidden" name="meter" value="{{ row.meter.pk }}"><button type="submit" class="btn btn-sm btn-outline-info w-100" {% if not row.can_update %}disabled{% endif %}>Read / Verify</button></form>
-              <div class="baseline-status mt-1 {% if row.baseline_status == 'verified' %}text-success{% elif row.baseline_status == 'mismatch' %}text-danger{% else %}text-warning{% endif %}" title="{% if row.baseline_verified_at %}Last checked {{ row.baseline_verified_at }}{% endif %}">{{ row.baseline_status|capfirst }}</div>
+              <div class="prepaid-verify-row">
+                <form method="post" class="prepaid-verify-form">{% csrf_token %}<input type="hidden" name="action" value="verify_prepaid_parameters"><input type="hidden" name="meter" value="{{ row.meter.pk }}"><button type="submit" class="btn btn-sm btn-outline-info w-100" {% if not row.can_update %}disabled{% endif %}>Verify</button></form>
+                <div class="baseline-status {% if row.baseline_status == 'verified' %}text-success{% elif row.baseline_status == 'mismatch' %}text-danger{% else %}text-warning{% endif %}" title="{% if row.baseline_status == 'local_only' %}Only local values are available. Verify reads Parameter 1 from the physical meter before Save is allowed.{% elif row.baseline_verified_at %}Last checked {{ row.baseline_verified_at }}{% endif %}">{% if row.baseline_status == 'local_only' %}Local only{% else %}{{ row.baseline_status|capfirst }}{% endif %}</div>
+              </div>
+              {% if not row.can_update %}<div class="prepaid-readonly-reason">Read-only: {% if not row.meter.is_active %}inactive meter{% else %}not prepaid{% endif %}</div>{% endif %}
               {% if row.form.non_field_errors %}<div class="text-danger field-error mt-1">{{ row.form.non_field_errors }}</div>{% endif %}
             </td>
           </tr>
@@ -100,47 +110,54 @@
 </div>
 
 <style>
-  .prepaid-params-page { max-width: 1700px; }
+  .prepaid-params-page { --prepaid-field-header-height: 185px; max-width: none; min-width: 0; padding-left: 1rem; padding-right: 1rem; }
   .prepaid-params-content { min-width: 0; }
   .general-settings-line { display:grid; grid-template-columns:auto minmax(0, 1fr) auto; align-items:center; gap:.75rem; }
-  .general-settings-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem .7rem; }
-  .general-setting-field { display: grid; grid-template-columns:auto minmax(70px, 1fr); align-items: center; gap: .3rem; }
-  .general-setting-field label { margin: 0; font-weight: 600; }
-  .general-setting-field .form-control { width: 100%; }
+  .general-settings-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); align-items:end; gap: .5rem; min-width:0; }
+  .general-setting-field { display: flex; flex-direction:column; min-width:0; gap: .15rem; }
+  .general-setting-field label { margin: 0; font-size:.78rem; font-weight:700; line-height:1.15; }
+  .general-setting-field .form-control { width: 100%; min-width:0; font-size:.88rem; font-weight:700; }
+  .general-settings-save { align-self:end; }
   .general-setting-field .errorlist { margin: .2rem 0 0; padding-left: 1rem; color: var(--bs-danger); font-size: .75rem; }
   .prepaid-table-card { min-width: 0; overflow: hidden; }
   .prepaid-scroll-top { overflow-x: auto; overflow-y: hidden; height: 18px; border-bottom: 1px solid var(--bs-border-color); background: var(--bs-light); cursor:grab; }
   .prepaid-scroll-top > div { height: 1px; }
   .prepaid-table-scroll { max-height: 68vh; overflow: auto; cursor:grab; }
   .prepaid-table-scroll.is-dragging, .prepaid-scroll-top.is-dragging { cursor:grabbing; user-select:none; }
-  .prepaid-parameter-table { width: max-content; min-width: 100%; table-layout: fixed; font-size: .82rem; }
+  .prepaid-parameter-table { width: max-content; min-width: 100%; table-layout: fixed; font-size: .84rem; }
   .prepaid-parameter-table th, .prepaid-parameter-table td { padding: .24rem .25rem; white-space: nowrap; }
+  html body .tms-main .prepaid-parameter-table thead th { padding: .3rem .2rem; }
   .prepaid-parameter-table thead th { position: sticky; z-index: 4; background: var(--bs-light); vertical-align: middle; }
   .prepaid-group-headings th { top: 0; height: 34px; }
   .prepaid-group-headings > .sticky-id, .prepaid-group-headings > .action-column { z-index: 12; background: var(--bs-light); }
   .prepaid-field-headings > .sticky-id, .prepaid-field-headings > .action-column { z-index: 11; background: var(--bs-light); }
-  .fixed-header-underlay { top: 33px !important; height:118px !important; padding:0 !important; border-top:0 !important; }
-  .prepaid-field-headings th { top: 33px; position:sticky; min-width: 56px; width:56px; max-width:56px; height:118px; overflow:visible; vertical-align:top !important; text-align:center; }
-  .prepaid-heading-label { position:absolute; left:50%; top:45px; width:82px; height:18px; display:flex; align-items:center; justify-content:center; line-height:1; text-align:center; white-space:nowrap; overflow:hidden; font-weight:600; font-size:.64rem; transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center; }
-  .prepaid-heading-tools { position:absolute; left:1px; right:1px; bottom:4px; height:18px; display:flex; align-items:center; justify-content:center; gap:2px; }
+  .fixed-header-underlay { top: 33px !important; height:var(--prepaid-field-header-height) !important; padding:0 !important; border-top:0 !important; }
+  .prepaid-field-headings th { top: 33px; position:sticky; min-width: 60px; width:60px; max-width:60px; height:var(--prepaid-field-header-height); overflow:visible; vertical-align:top !important; text-align:center; }
+  .prepaid-heading-label { position:absolute; left:50%; top:69px; width:96px; height:18px; display:flex; align-items:center; justify-content:center; line-height:1; text-align:center; white-space:nowrap; overflow:hidden; font-weight:700; font-size:.7rem; transform:translate(-50%,-50%) rotate(-90deg); transform-origin:center; }
+  .prepaid-heading-tools { position:absolute; left:1px; right:1px; bottom:3px; height:46px; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:1px; }
+  .prepaid-heading-tool-row { display:flex; align-items:center; justify-content:center; gap:5px; height:16px; }
+  .prepaid-heading-tool-row input { width:12px; height:12px; margin:0; }
   .prepaid-help { position:static; transform:none; flex:0 0 auto; width:15px; height:15px; padding:0; border:1px solid #6c757d; border-radius:50%; background:transparent; color:#495057; font-size:.58rem; line-height:13px; font-weight:700; cursor:help; }
-  .apply-all-control { position:static; transform:none; display:flex; align-items:center; justify-content:center; gap:1px; margin:0; font-size:.48rem; line-height:1; font-weight:600; white-space:nowrap; cursor:pointer; }
-  .apply-all-control input { width:10px; height:10px; margin:0; flex:0 0 auto; }
+  .apply-all-control { display:block; margin:0; font-size:.58rem; line-height:1.05; font-weight:700; text-align:center; cursor:pointer; }
   .parameter-group { border-left-width: 2px !important; font-size: .78rem; text-align:center !important; }
-  .parameter-cell { min-width: 56px; width:56px; max-width:56px; }
-  .parameter-heading-maximum_balance, .parameter-cell-maximum_balance, .parameter-heading-reconnect_amount, .parameter-cell-reconnect_amount { min-width: 64px !important; width:64px !important; max-width:64px !important; }
-  .parameter-heading-rate_switch_time, .parameter-cell-rate_switch_time, .parameter-heading-step_switch_time, .parameter-cell-step_switch_time, .parameter-heading-timezone_switch_time, .parameter-cell-timezone_switch_time, .parameter-heading-schedule_switch_time, .parameter-cell-schedule_switch_time { min-width:78px !important; width:78px !important; max-width:78px !important; }
-  .prepaid-inline-input { min-width: 48px; width:48px; max-width:48px; padding: .2rem .12rem; font-size: .68rem; text-align:center; }
-  .parameter-cell-maximum_balance .prepaid-inline-input, .parameter-cell-reconnect_amount .prepaid-inline-input { min-width:56px; width:56px; max-width:56px; }
-  .parameter-cell-rate_switch_time .prepaid-inline-input, .parameter-cell-step_switch_time .prepaid-inline-input, .parameter-cell-timezone_switch_time .prepaid-inline-input, .parameter-cell-schedule_switch_time .prepaid-inline-input { min-width:70px; width:70px; max-width:70px; }
-  .prepaid-inline-input[readonly] { border-color: transparent; background: transparent; color:var(--bs-secondary-color); }
+  .parameter-cell, .prepaid-field-headings th.parameter-heading { min-width:60px; width:60px; max-width:60px; }
+  .parameter-heading-maximum_balance, .parameter-cell-maximum_balance, .parameter-heading-reconnect_amount, .parameter-cell-reconnect_amount { min-width: 70px !important; width:70px !important; max-width:70px !important; }
+  .parameter-heading-rate_switch_time, .parameter-cell-rate_switch_time, .parameter-heading-step_switch_time, .parameter-cell-step_switch_time, .parameter-heading-timezone_switch_time, .parameter-cell-timezone_switch_time, .parameter-heading-schedule_switch_time, .parameter-cell-schedule_switch_time { min-width:88px !important; width:88px !important; max-width:88px !important; }
+  .prepaid-inline-input { min-width: 52px; width:52px; max-width:52px; padding: .2rem .12rem; font-size: .82rem; font-weight:700; text-align:center; }
+  .prepaid-inline-input[type="number"] { appearance:textfield; -moz-appearance:textfield; }
+  .prepaid-inline-input[type="number"]::-webkit-inner-spin-button,
+  .prepaid-inline-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  .parameter-cell-maximum_balance .prepaid-inline-input, .parameter-cell-reconnect_amount .prepaid-inline-input { min-width:62px; width:62px; max-width:62px; }
+  .parameter-cell-rate_switch_time .prepaid-inline-input, .parameter-cell-step_switch_time .prepaid-inline-input, .parameter-cell-timezone_switch_time .prepaid-inline-input, .parameter-cell-schedule_switch_time .prepaid-inline-input { min-width:80px; width:80px; max-width:80px; }
+  .prepaid-inline-input[readonly] { border-color: transparent; background: transparent; color:#495057; }
   .field-error { max-width: 160px; margin-top: .15rem; white-space: normal; font-size: .65rem; }
   .sticky-id { position: sticky !important; z-index: 3; background: var(--bs-body-bg); }
   thead .sticky-id { z-index: 7; background: var(--bs-light); }
   .sticky-sn { left: 0; min-width: 42px; width: 42px; max-width: 42px; }
   .sticky-meter { left: 42px; min-width: 116px; width: 116px; max-width: 116px; }
-  .sticky-location { left: 158px; min-width: 170px; width: 170px; max-width: 170px; overflow: hidden; text-overflow: ellipsis; box-shadow: 3px 0 4px rgba(15, 23, 42, .12); }
+  .sticky-location { left: 158px; min-width: 145px; width: 145px; max-width: 145px; white-space:normal !important; overflow-wrap:anywhere; line-height:1.15; box-shadow: 3px 0 4px rgba(15, 23, 42, .12); }
   .location-property { font-weight: 700; }
+  .location-property, .location-unit { display:block; }
   .action-column { position:sticky !important; right:0; min-width:125px; width:125px; max-width:125px; z-index:3; background:var(--bs-body-bg); box-shadow:-3px 0 4px rgba(15, 23, 42, .12); }
   thead .action-column { z-index:8; background:var(--bs-light); }
   .prepaid-parameter-table td.is-selected-column, .prepaid-parameter-table th.is-selected-column { box-shadow: inset 0 0 0 9999px rgba(13, 110, 253, .08); }
@@ -152,10 +169,20 @@
   .prepaid-heading-label.bundle-toggle:hover { text-decoration:underline; }
   .prepaid-row-actions { display:flex; flex-wrap:nowrap; align-items:center; justify-content:center; gap:.25rem; }
   .prepaid-row-actions .btn { padding:.2rem .35rem; font-size:.70rem; white-space:nowrap; }
-  .prepaid-verify-form .btn { padding:.12rem .2rem; font-size:.60rem; }
-  .baseline-status { font-size:.56rem; line-height:1; text-align:center; }
+  .prepaid-verify-row { display:flex; align-items:center; gap:.2rem; margin-top:.2rem; }
+  .prepaid-verify-form { flex:0 0 49%; min-width:0; }
+  .prepaid-verify-form .btn { padding:.12rem .2rem; font-size:.63rem; }
+  .prepaid-parameter-table .action-column .btn { color:#000 !important; }
+  .prepaid-parameter-table .action-column .prepaid-row-actions .btn-primary,
+  .prepaid-parameter-table .action-column .prepaid-verify-form .btn { font-weight:700; }
+  .prepaid-parameter-table .action-column .btn-primary { background:#bfdbfe; border-color:#93c5fd; }
+  .prepaid-parameter-table .action-column .btn-outline-secondary { background:#e2e8f0; border-color:#94a3b8; }
+  .prepaid-parameter-table .action-column .btn-outline-info { background:#a5f3fc; border-color:#67e8f9; }
+  .baseline-status { flex:1 1 auto; min-width:0; font-size:.60rem; line-height:1.1; text-align:center; font-weight:700; white-space:nowrap; }
+  .baseline-status.text-warning { color:#92400e !important; }
+  .prepaid-readonly-reason { margin-top:.15rem; color:#6b7280; font-size:.62rem; font-weight:700; text-align:center; white-space:nowrap; }
   @media (max-width: 991.98px) {
-    .prepaid-params-page { max-width: calc(100% - 16px); }
+    .prepaid-params-page { padding-left:.75rem; padding-right:.75rem; }
     .prepaid-params-content { padding-top: .5rem !important; }
     .prepaid-params-content h1 { font-size: 1.55rem; }
     .general-settings-line { grid-template-columns:1fr auto; }
@@ -163,17 +190,24 @@
     .general-settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .prepaid-table-scroll { max-height: 65vh; }
     .prepaid-parameter-table { font-size: .74rem; }
-    .prepaid-inline-input { font-size: .7rem; }
+    .prepaid-inline-input { font-size: .82rem; }
   }
   @media (max-width: 575.98px) {
-    .prepaid-params-page { max-width: 100%; padding-left: .45rem; padding-right: .45rem; }
-    .general-settings-line { grid-template-columns:1fr auto; gap:.4rem; }
+    .prepaid-params-page { width:100%; padding-left: .45rem; padding-right: .45rem; overflow-x:hidden; }
+    .prepaid-params-content h1 { font-size:1.3rem; line-height:1.2; }
+    .prepaid-params-content .nav-tabs { flex-wrap:wrap; }
+    .prepaid-params-content .nav-tabs .nav-link { white-space:normal; }
+    .general-settings-line { grid-template-columns:1fr; gap:.5rem; }
+    .general-settings-line h5 { grid-column:auto; }
     .general-settings-grid { grid-template-columns: 1fr; }
-    .general-setting-field { grid-template-columns: 1fr; gap: .2rem; }
+    .general-settings-save { width:100%; }
+    .prepaid-page-actions { display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)); width:100%; }
+    .prepaid-page-actions > * { min-width:0; white-space:normal; }
     .sticky-sn { min-width: 38px; width: 38px; max-width: 38px; }
     .sticky-meter { left: 38px; min-width: 105px; width: 105px; max-width: 105px; }
     .prepaid-parameter-table .sticky-location,
-    .prepaid-parameter-table thead .sticky-location { position: static !important; min-width: 150px; width: 150px; max-width: 150px; box-shadow: none; }
+    .prepaid-parameter-table thead .sticky-location { position: static !important; min-width: 140px; width: 140px; max-width: 140px; box-shadow: none; }
+    .prepaid-parameter-table .action-column { position:static !important; box-shadow:none; }
     .prepaid-row-form .btn { padding: .2rem .32rem; font-size: .66rem; }
   }
 </style>

@@ -339,7 +339,7 @@ class Meter(models.Model):
         return self.relay_state == "off"
 
     def __str__(self):
-        return f"Meter #{self.meter_number} â†’ {self.unit}"
+        return f"Meter #{self.meter_number} -> {self.unit}"
 
     class Meta:
         indexes = [
@@ -854,7 +854,7 @@ class UtilityConnection(models.Model):
     property_label = models.CharField(max_length=80, blank=True)
 
     def __str__(self):
-        return f"{self.consumer_id} â€” {self.property_label or self.energy_system.name}"
+        return f"{self.consumer_id} - {self.property_label or self.energy_system.name}"
 
 
 class UtilityBillCycle(models.Model):
@@ -1327,7 +1327,7 @@ class Tariff(models.Model):
     active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.name} â‚¹{self.rate_per_kwh}/kWh"
+        return f"{self.name} Rs. {self.rate_per_kwh}/kWh"
 
 
 class LiveReading(models.Model):
@@ -1460,7 +1460,7 @@ class Bill(models.Model):
         'unpaid', 'Unpaid'), ('paid', 'Paid')], default='unpaid')
 
     def __str__(self):
-        return f"Bill {self.unit} {self.period_start} â†’ {self.period_end}"
+        return f"Bill {self.unit} {self.period_start} -> {self.period_end}"
 
 
 class Payment(models.Model):
@@ -1472,7 +1472,7 @@ class Payment(models.Model):
     note = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
-        return f"â‚¹{self.amount} for {self.bill}"
+        return f"Rs. {self.amount} for {self.bill}"
 
 
 class MeterBalance(models.Model):
@@ -1484,7 +1484,7 @@ class MeterBalance(models.Model):
     last_alert_sent = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"{self.unit} balance: â‚¹{self.balance}"
+        return f"{self.unit} balance: Rs. {self.balance}"
 
 
 class CutoffEvent(models.Model):
@@ -1578,7 +1578,7 @@ def deduct_balance_on_reading(sender, instance, created, **kwargs):
         if dep >= deficit:
             dep = dep - deficit
         else:
-            # Not enough in deposit either â†’ consider prepaid cutoff,
+            # Not enough in deposit either -> consider prepaid cutoff,
             # but only if explicitly enabled AND meter is prepaid.
             prepaid_enabled = getattr(
                 settings, "METER_ENABLE_PREPAID_CUTOFF", False)
@@ -1610,7 +1610,7 @@ def deduct_balance_on_reading(sender, instance, created, **kwargs):
                         pass
 
                     logger.info(
-                        "%s: âš¡ Cutoff sent for %s (meter=%s)",
+                        "%s: [power] Cutoff sent for %s (meter=%s)",
                         datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"),
                         unit,
                         instance.meter.meter_number,
@@ -1626,7 +1626,7 @@ def deduct_balance_on_reading(sender, instance, created, **kwargs):
             else:
                 # Skipped cutoff due to flags or kill-switch
                 logger.info(
-                    "Skipping cutoff for %s (meter=%s) â€” prepaid_enabled=%s has_prepaid=%s cutoff_env_blocked=%s",
+                    "Skipping cutoff for %s (meter=%s) - prepaid_enabled=%s has_prepaid=%s cutoff_env_blocked=%s",
                     unit,
                     instance.meter.meter_number,
                     prepaid_enabled,
@@ -1812,7 +1812,7 @@ class MeterSettings(models.Model):
     connection_event_capture_reason = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
-        return f"Global Meter Settings: â‚¹{self.unit_rate}/kWh"
+        return f"Global Meter Settings: Rs. {self.unit_rate}/kWh"
 
 # smart_meter/models.py
 
@@ -1840,7 +1840,7 @@ class UnknownMeter(models.Model):
 class MeterPrepaidSettings(models.Model):
     meter = models.OneToOneField(
         "smart_meter.Meter", on_delete=models.CASCADE, related_name="prepaid")
-    # ---- core amounts in rupees (human friendly); weâ€™ll convert to fen/cents for the frame ----
+    # ---- core amounts in rupees (human friendly); we'll convert to fen/cents for the frame ----
     alarm_amount_1 = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00"))
     alarm_amount_2 = models.DecimalField(
@@ -1848,7 +1848,7 @@ class MeterPrepaidSettings(models.Model):
     overdraft_limit = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00"))
 
-    # two simple rates (Rs/kWh) with 4 decimal places to match the vendorâ€™s 4-dec BCD
+    # two simple rates (Rs/kWh) with 4 decimal places to match the vendor's 4-dec BCD
     rate1_price_1 = models.DecimalField(
         max_digits=10, decimal_places=4, default=Decimal("0.0000"))
     rate2_price_1 = models.DecimalField(

@@ -876,7 +876,7 @@ class ClientHandler(threading.Thread):
         while self.alive and not self._hb_stop.wait(HEARTBEAT_INTERVAL):
             # only ping if quiet for a while
             if time.time() - self.last_seen >= HEARTBEAT_INTERVAL * 0.5:
-                logger.debug("ðŸ’“ HB â†’ %s", self.meter_number or self.peer)
+                logger.debug("[heartbeat] HB -> %s", self.meter_number or self.peer)
                 try:
                     self.enqueue_send(hb, expire_at=time.time() + HEARTBEAT_INTERVAL)
                 except Exception:
@@ -947,7 +947,7 @@ class ClientHandler(threading.Thread):
                     self.last_seen = time.time()
                     if self.debug:
                         logger.debug(
-                            f"â¬‡ï¸ RAW CHUNK {self.addr} ({len(chunk)}B): {chunk.hex().upper()}"
+                            f"[raw] RAW CHUNK {self.addr} ({len(chunk)}B): {chunk.hex().upper()}"
                         )
                     self.buffer += chunk
 
@@ -991,7 +991,7 @@ class ClientHandler(threading.Thread):
 
                         if self.debug:
                             logger.debug(
-                                f"ðŸ§± FRAME {self.addr} ({len(frame)}B): {frame.hex().upper()}"
+                                f"[frame] FRAME {self.addr} ({len(frame)}B): {frame.hex().upper()}"
                             )
 
                         if self.dump_raw:
@@ -1106,7 +1106,7 @@ class ClientHandler(threading.Thread):
 
         parsed = parse_frame(frame, accept_bad_checksum=self.accept_bad)
         if self.debug:
-            logger.debug(f"ðŸ§© parse_frame -> {parsed}")
+            logger.debug(f"[parse] parse_frame -> {parsed}")
         if not parsed:
             error_meter_number = self.recognized_meter_number or self.meter_number
             error_meter = (
@@ -1199,7 +1199,7 @@ class ClientHandler(threading.Thread):
 
         self.last_seen = time.time()
 
-        msg = f"ðŸ“¥ Meter {meter_number} DI={di} "
+        msg = f"[received] Meter {meter_number} DI={di} "
         msg += "(data parsed)" if data else "(no data)"
         if parsed.get("cs_style"):
             msg += f" [cs:{parsed.get('cs_style')}]"
@@ -1213,7 +1213,7 @@ class ClientHandler(threading.Thread):
             if not matched_waiter:
                 acknowledge_late_prepaid_reply(meter_number, di, ctrl_code, frame)
             if matched_waiter and self.debug:
-                logger.debug(f"ðŸ“¤ Delivered reply to waiter for meter {meter_number}")
+                logger.debug(f"[sent] Delivered reply to waiter for meter {meter_number}")
 
             if (
                 matched_waiter
@@ -1281,7 +1281,7 @@ class ClientHandler(threading.Thread):
                         ]
                     )
             logger.info(
-                f"ðŸ†• Unknown meter discovered: {meter_number} (seen {um.seen_count}x)"
+                f"[new] Unknown meter discovered: {meter_number} (seen {um.seen_count}x)"
             )
             return
 
@@ -1386,7 +1386,7 @@ class ClientHandler(threading.Thread):
                     **history_values,
                 )
             logger.info(
-                "%s âœ… Stored live reading for meter %s",
+                "%s [ok] Stored live reading for meter %s",
                 timezone.localtime().isoformat(timespec="seconds"),
                 meter_number,
             )
@@ -1404,7 +1404,7 @@ class ClientHandler(threading.Thread):
             )
         else:
             logger.info(
-                "%s âœ… Stored live reading for meter %s",
+                "%s [ok] Stored live reading for meter %s",
                 timezone.localtime().isoformat(timespec="seconds"),
                 meter_number,
             )
@@ -1475,7 +1475,7 @@ class DbCommandPoller(threading.Thread):
         self._stop.set()
 
     def run(self):
-        logger.info("ðŸ—‚ï¸  DB command poller started")
+        logger.info("[poller]  DB command poller started")
         while not self._stop.is_set():
             try:
                 close_old_connections()
@@ -1935,7 +1935,7 @@ class Command(BaseCommand):
 
         if debug:
             logger.setLevel(logging.DEBUG)
-            logger.debug("ðŸ”§ Debug logging enabled")
+            logger.debug("[debug] Debug logging enabled")
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -1951,7 +1951,7 @@ class Command(BaseCommand):
             DbCommandPoller(debug=debug).start()
             MeterTimingSchedulePoller().start()
             start_diagnostic_server()
-            logger.info("âœ… Listening on %s:%s for DL/T 645 frames...", host, port)
+            logger.info("[ok] Listening on %s:%s for DL/T 645 frames...", host, port)
 
             while True:
                 conn, addr = s.accept()

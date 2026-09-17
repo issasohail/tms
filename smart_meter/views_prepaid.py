@@ -102,6 +102,10 @@ PREPAID_PARAMETER_HELP = {
 def _style_general_form(form):
     for field in form.fields.values():
         field.widget.attrs["class"] = "form-control form-control-sm"
+    form.fields["connection_event_capture_reason"].widget.attrs.update({
+        "list": "connection-event-capture-reasons",
+        "placeholder": "Choose or type a reason",
+    })
     return form
 
 

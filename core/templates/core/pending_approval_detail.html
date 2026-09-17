@@ -20,7 +20,7 @@
             {% if has_extracted_video_frames %}<input type="hidden" name="media_selection" value="explicit">{% endif %}
             <select name="media_destination" class="form-select form-select-sm" style="width:auto;max-width:240px;" aria-label="Media destination">
               <option value="">Choose category / destination</option>
-              <option value="payment_receipt" {% if item.purpose == "payment" %}selected{% endif %}>Payment Receipt â€” Pending Verification</option>
+              <option value="payment_receipt" {% if item.purpose == "payment" %}selected{% endif %}>Payment Receipt &mdash; Pending Verification</option>
               {% if item.lease %}
                 <option value="lease_photo:{{ item.lease_id }}" {% if item.target_kind == "lease_photo" %}selected{% endif %}>Lease Gallery — {{ item.lease }}</option>
                 <option value="lease_document:{{ item.lease_id }}" {% if item.target_kind == "lease_document" %}selected{% elif item.purpose == "lease" and item.target_kind != "lease_photo" and item.target_kind != "lease_estamp" %}selected{% endif %}>Lease Document — {{ item.lease }}</option>
@@ -44,14 +44,14 @@
             <select name="reclassify_destination" class="form-select form-select-sm" style="width:auto;max-width:260px;" aria-label="Change payment screenshot category">
               <option value="">Change screenshot category</option>
               {% if item.lease %}
-                <option value="lease_photo:{{ item.lease_id }}">Lease Gallery â€” {{ item.lease }}</option>
-                <option value="lease_document:{{ item.lease_id }}">Lease Document â€” {{ item.lease }}</option>
+                <option value="lease_photo:{{ item.lease_id }}">Lease Gallery &mdash; {{ item.lease }}</option>
+                <option value="lease_document:{{ item.lease_id }}">Lease Document &mdash; {{ item.lease }}</option>
               {% endif %}
               {% if item.property %}
-                <option value="property_photo:{{ item.property_id }}">Property Photo â€” {{ item.property }}</option>
+                <option value="property_photo:{{ item.property_id }}">Property Photo &mdash; {{ item.property }}</option>
               {% endif %}
               {% if item.unit %}
-                <option value="unit_photo:{{ item.unit_id }}">Unit Photo â€” {{ item.unit }}</option>
+                <option value="unit_photo:{{ item.unit_id }}">Unit Photo &mdash; {{ item.unit }}</option>
               {% endif %}
             </select>
           {% endif %}

@@ -608,29 +608,31 @@
 .settings-data-grid,
 .settings-checkbox-grid {
   display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
-  gap: .45rem;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: .35rem .45rem;
 }
 .settings-data-cell {
   min-width: 0;
   border-radius: .35rem;
-  padding: .28rem;
+  padding: .25rem .35rem;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #cbd5e1;
 }
 .settings-data-cell:has([data-setting-family~="branding"]),
-.settings-checkbox-cell:has([data-setting-family~="branding"]) { background: #f3e8ff; }
+.settings-checkbox-cell:has([data-setting-family~="branding"]) { background: #f3e8ff; border-left-color: #a855f7; }
 .settings-data-cell:has([data-setting-family~="billing"]),
-.settings-checkbox-cell:has([data-setting-family~="billing"]) { background: #e0f2fe; }
+.settings-checkbox-cell:has([data-setting-family~="billing"]) { background: #e0f2fe; border-left-color: #0284c7; }
 .settings-data-cell:has([data-setting-family~="late-fee"]),
-.settings-checkbox-cell:has([data-setting-family~="late-fee"]) { background: #fef3c7; }
+.settings-checkbox-cell:has([data-setting-family~="late-fee"]) { background: #fef3c7; border-left-color: #d97706; }
 .settings-data-cell:has([data-setting-family~="smtp"]),
-.settings-checkbox-cell:has([data-setting-family~="smtp"]) { background: #dcfce7; }
+.settings-checkbox-cell:has([data-setting-family~="smtp"]) { background: #dcfce7; border-left-color: #16a34a; }
 .settings-data-cell:has([data-setting-family~="meter"]),
 .settings-checkbox-cell:has([data-setting-family~="meter"]) { box-shadow: inset 0 0 0 1px #7dd3fc; }
 .settings-data-cell:has([data-setting-family~="parking-water"]),
-.settings-checkbox-cell:has([data-setting-family~="parking-water"]) { background: #ecfccb; }
+.settings-checkbox-cell:has([data-setting-family~="parking-water"]) { background: #ecfccb; border-left-color: #65a30d; }
 .settings-data-cell:has([data-setting-family~="police"]),
-.settings-checkbox-cell:has([data-setting-family~="police"]) { background: #fce7f3; }
-.settings-family-key { border-radius: 999px; padding: .15rem .5rem; }
+.settings-checkbox-cell:has([data-setting-family~="police"]) { background: #fce7f3; border-left-color: #db2777; }
+.settings-family-key { border-radius: 999px; padding: .12rem .45rem; font-weight: 700; }
 .family-branding { background: #f3e8ff; }
 .family-billing { background: #e0f2fe; }
 .family-late-fee { background: #fef3c7; }
@@ -638,25 +640,34 @@
 .family-parking-water { background: #ecfccb; }
 .family-police { background: #fce7f3; }
 .settings-data-cell > .d-flex {
-  min-height: 2.15rem;
+  min-height: 2.25rem;
   align-items: flex-start !important;
 }
 .settings-data-cell .form-label,
 .settings-checkbox-cell .form-check-label {
   white-space: normal;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  line-height: 1.05rem;
+  overflow-wrap: anywhere;
+  font-size: .8rem;
+  font-weight: 700;
+  line-height: 1.08rem;
+  color: #1e293b;
+}
+.settings-data-cell .form-label { margin-bottom: 0 !important; }
+.settings-data-cell .form-control,
+.settings-data-cell .form-select {
+  min-height: 1.85rem;
+  padding: .2rem .4rem;
+  font-size: .83rem;
+  font-weight: 600;
+  color: #172033;
 }
 .settings-checkbox-cell {
   min-width: 0;
   min-height: 3rem !important;
-  padding: .38rem .3rem .38rem 1.7rem !important;
+  padding: .3rem .35rem .3rem 1.7rem !important;
   gap: .22rem !important;
-  font-size: .72rem;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #cbd5e1;
   align-items: flex-start !important;
 }
 .settings-header h3 {
@@ -682,11 +693,13 @@
   border-radius: .35rem;
   background: #fff;
 }
+.settings-check.settings-checkbox-cell { border-left-width: 3px; }
 .settings-help-icon {
   border: 0;
   background: transparent;
-  color: #6c757d;
+  color: #64748b;
   padding: 0 .1rem;
+  font-size: .78rem;
   line-height: 1;
   vertical-align: middle;
 }

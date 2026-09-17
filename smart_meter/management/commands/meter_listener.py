@@ -60,6 +60,7 @@ from smart_meter.services.relay_status import (
     parse_authoritative_relay_state,
     sync_authoritative_relay_status,
 )
+from smart_meter.services.raw_frame_capture import should_capture_raw_frame
 from smart_meter.services.meter_presence import (
     clear_all_meter_connections,
     clear_meter_connection,
@@ -83,6 +84,41 @@ except ImportError:
     _ROTATION_ENABLED = False
 
 LOG_DIR = getattr(settings, "LOG_DIR", settings.BASE_DIR / "logs")
+
+
+def _persist_raw_frame(
+    *, meter, frame, source_ip, source_port, control_code=0,
+    data_identifier="", checksum_style="", decoded_data=None,
+    trust_classification=None, is_error=False, error_reason="",
+):
+    """Persist one frame only when its effective capture policy allows it."""
+    if not should_capture_raw_frame(meter, is_error=is_error):
+        return None
+    frame_start = frame.find(b"\x68")
+    frame_data_length = (
+        frame[frame_start + 9]
+        if frame_start >= 0 and len(frame) > frame_start + 9
+        else 0
+    )
+    payload = {key: str(value) for key, value in (decoded_data or {}).items()}
+    if error_reason:
+        payload["capture_error"] = error_reason
+    return MeterRawFrame.objects.create(
+        meter=meter,
+        received_at=timezone.now(),
+        source_ip=source_ip,
+        source_port=source_port,
+        control_code=control_code or 0,
+        data_identifier=data_identifier or "",
+        data_length=frame_data_length,
+        raw_frame_hex=frame.hex().upper(),
+        checksum_style=checksum_style or "",
+        decoded_data=payload,
+        trust_classification=(
+            trust_classification
+            or MeterRawFrame.TRUST_REPORTED_UNVERIFIED
+        ),
+    )
 Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 LOG_PATH = str(Path(LOG_DIR) / "meter_listener_worker.log")
 
@@ -1051,12 +1087,36 @@ class ClientHandler(threading.Thread):
                 )
             except Exception:
                 logger.warning("Checksum failed (unable to compute details)")
+            error_meter_number = self.recognized_meter_number or self.meter_number
+            error_meter = (
+                Meter.objects.filter(meter_number=error_meter_number).first()
+                if error_meter_number else None
+            )
+            if error_meter:
+                _persist_raw_frame(
+                    meter=error_meter, frame=frame,
+                    source_ip=self.addr[0], source_port=self.addr[1],
+                    checksum_style=cs_style, is_error=True,
+                    error_reason="checksum_failed",
+                )
             return
 
         parsed = parse_frame(frame, accept_bad_checksum=self.accept_bad)
         if self.debug:
             logger.debug(f"ðŸ§© parse_frame -> {parsed}")
         if not parsed:
+            error_meter_number = self.recognized_meter_number or self.meter_number
+            error_meter = (
+                Meter.objects.filter(meter_number=error_meter_number).first()
+                if error_meter_number else None
+            )
+            if error_meter:
+                _persist_raw_frame(
+                    meter=error_meter, frame=frame,
+                    source_ip=self.addr[0], source_port=self.addr[1],
+                    checksum_style=cs_style, is_error=True,
+                    error_reason="parse_failed",
+                )
             return
 
         meter_number = parsed.get("meter_number", "")
@@ -1165,9 +1225,33 @@ class ClientHandler(threading.Thread):
                 return
 
         if not data:
+            if di == "80808080":
+                return
+            error_meter = (
+                Meter.objects.filter(meter_number=meter_number).first()
+                if meter_number else None
+            )
+            if error_meter:
+                _persist_raw_frame(
+                    meter=error_meter, frame=frame,
+                    source_ip=self.addr[0], source_port=self.addr[1],
+                    control_code=ctrl_code, data_identifier=di or "",
+                    checksum_style=parsed.get("cs_style") or cs_style,
+                    is_error=True, error_reason="decoded_data_missing",
+                )
             return
 
         if not ok:
+            error_meter = Meter.objects.filter(meter_number=meter_number).first()
+            if error_meter:
+                _persist_raw_frame(
+                    meter=error_meter, frame=frame,
+                    source_ip=self.addr[0], source_port=self.addr[1],
+                    control_code=ctrl_code, data_identifier=di or "",
+                    checksum_style=parsed.get("cs_style") or cs_style,
+                    decoded_data=data, is_error=True,
+                    error_reason="accepted_bad_checksum",
+                )
             return
 
         # Resolve meter for storage
@@ -1216,24 +1300,12 @@ class ClientHandler(threading.Thread):
             if di in DIRECT_REGISTER_SPECS
             else MeterRawFrame.TRUST_REPORTED_UNVERIFIED
         )
-        frame_start = frame.find(b"\x68")
-        frame_data_length = (
-            frame[frame_start + 9]
-            if frame_start >= 0 and len(frame) > frame_start + 9
-            else 0
-        )
-        MeterRawFrame.objects.create(
-            meter=meter,
-            received_at=timezone.now(),
-            source_ip=self.addr[0],
-            source_port=self.addr[1],
-            control_code=ctrl_code,
-            data_identifier=di or "",
-            data_length=frame_data_length,
-            raw_frame_hex=frame.hex().upper(),
+        _persist_raw_frame(
+            meter=meter, frame=frame,
+            source_ip=self.addr[0], source_port=self.addr[1],
+            control_code=ctrl_code, data_identifier=di or "",
             checksum_style=parsed.get("cs_style") or "",
-            decoded_data={key: str(value) for key, value in data.items()},
-            trust_classification=trust,
+            decoded_data=data, trust_classification=trust,
         )
 
         # Live upsert.  Only a valid status word from the documented

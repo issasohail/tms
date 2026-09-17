@@ -240,6 +240,15 @@
       </div>
 
       <div class="meter-edit-section">
+        <h3 class="meter-edit-heading">Raw-frame diagnostics</h3>
+        <div class="meter-form-grid">
+          <div class="meter-field meter-span-1">{{ form.raw_frame_capture_mode.label_tag }}{{ form.raw_frame_capture_mode }}{{ form.raw_frame_capture_mode.errors }}<div class="form-text">Normally use the global Errors only setting. All frames is intended for temporary auditing.</div></div>
+          <div class="meter-field meter-span-1">{{ form.raw_frame_capture_until.label_tag }}{{ form.raw_frame_capture_until }}{{ form.raw_frame_capture_until.errors }}<div class="form-text">When an All frames override expires, this meter automatically returns to the global setting.</div></div>
+          <div class="meter-field meter-span-2">{{ form.raw_frame_capture_reason.label_tag }}{{ form.raw_frame_capture_reason }}{{ form.raw_frame_capture_reason.errors }}</div>
+        </div>
+      </div>
+
+      <div class="meter-edit-section">
         <h3 class="meter-edit-heading">Notes</h3>
         <div class="meter-form-grid">
           <div class="meter-field meter-span-6">{{ form.notes }}{{ form.notes.errors }}</div>

@@ -76,7 +76,10 @@ class RechargeForm(forms.Form):
 class MeterSettingsForm(forms.ModelForm):
     class Meta:
         model = MeterSettings
-        fields = ["unit_rate", "low_balance_threshold", "peak_start_hour", "peak_end_hour"]
+        fields = [
+            "unit_rate", "low_balance_threshold", "peak_start_hour", "peak_end_hour",
+            "raw_frame_capture_mode", "raw_frame_capture_reason",
+        ]
 
 
 class PrepaidControlSettingsForm(forms.ModelForm):
@@ -147,6 +150,12 @@ class MeterForm(forms.ModelForm):
             'meter_role': forms.Select(attrs={'class': 'form-select'}),
             'tariff_capability': forms.Select(attrs={'class': 'form-select'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'raw_frame_capture_mode': forms.Select(attrs={'class': 'form-select'}),
+            'raw_frame_capture_until': forms.DateTimeInput(
+                attrs={'class': 'form-control', 'type': 'datetime-local'},
+                format='%Y-%m-%dT%H:%M',
+            ),
+            'raw_frame_capture_reason': forms.TextInput(attrs={'class': 'form-control'}),
             'balance': forms.NumberInput(attrs={'class': 'form-control'}),
             'credit_balance': forms.NumberInput(attrs={'class': 'form-control'}),
         }
@@ -154,6 +163,7 @@ class MeterForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["raw_frame_capture_until"].input_formats = ["%Y-%m-%dT%H:%M"]
         self.original_meter_role = self.instance.meter_role if self.instance.pk else None
         self.original_tariff_capability = (
             self.instance.tariff_capability if self.instance.pk else None

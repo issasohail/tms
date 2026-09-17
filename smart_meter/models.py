@@ -25,6 +25,16 @@ from django.db.models import Q
 
 
 class Meter(models.Model):
+    RAW_FRAME_CAPTURE_INHERIT = "inherit"
+    RAW_FRAME_CAPTURE_ERRORS = "errors"
+    RAW_FRAME_CAPTURE_ALL = "all"
+    RAW_FRAME_CAPTURE_OFF = "off"
+    RAW_FRAME_CAPTURE_CHOICES = [
+        (RAW_FRAME_CAPTURE_INHERIT, "Use global setting"),
+        (RAW_FRAME_CAPTURE_ERRORS, "Errors only"),
+        (RAW_FRAME_CAPTURE_ALL, "All frames"),
+        (RAW_FRAME_CAPTURE_OFF, "Off"),
+    ]
     BILLING_MODE_CHOICES = [
         ("postpaid", "Postpaid"),
         ("credit_controlled", "Postpaid with Credit Limit"),
@@ -160,6 +170,18 @@ class Meter(models.Model):
     is_active = models.BooleanField(default=True)
     installed_at = models.DateTimeField(default=timezone.now)
     notes = models.TextField(blank=True)
+    raw_frame_capture_mode = models.CharField(
+        max_length=12,
+        choices=RAW_FRAME_CAPTURE_CHOICES,
+        default=RAW_FRAME_CAPTURE_INHERIT,
+        help_text="Override raw-frame storage for this meter. Use global setting is recommended.",
+    )
+    raw_frame_capture_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Optional expiry for an All frames override; after this time the global setting is used.",
+    )
+    raw_frame_capture_reason = models.CharField(max_length=255, blank=True)
 
     @cached_property
     def latest_live(self):
@@ -1731,6 +1753,14 @@ class MeterEvent(models.Model):
 
 
 class MeterSettings(models.Model):
+    RAW_FRAME_CAPTURE_ERRORS = "errors"
+    RAW_FRAME_CAPTURE_ALL = "all"
+    RAW_FRAME_CAPTURE_OFF = "off"
+    RAW_FRAME_CAPTURE_CHOICES = [
+        (RAW_FRAME_CAPTURE_ERRORS, "Errors only (recommended)"),
+        (RAW_FRAME_CAPTURE_ALL, "All frames"),
+        (RAW_FRAME_CAPTURE_OFF, "Off"),
+    ]
     unit_rate = models.DecimalField(
         max_digits=6, decimal_places=2, default=7.50)
     low_balance_threshold = models.DecimalField(
@@ -1740,6 +1770,13 @@ class MeterSettings(models.Model):
     prepaid_reads_enabled = models.BooleanField(default=False)
     prepaid_writes_enabled = models.BooleanField(default=False)
     prepaid_payment_topups_enabled = models.BooleanField(default=False)
+    raw_frame_capture_mode = models.CharField(
+        max_length=12,
+        choices=RAW_FRAME_CAPTURE_CHOICES,
+        default=RAW_FRAME_CAPTURE_ERRORS,
+        help_text="Default raw-frame storage for meters that inherit the global setting.",
+    )
+    raw_frame_capture_reason = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
         return f"Global Meter Settings: â‚¹{self.unit_rate}/kWh"

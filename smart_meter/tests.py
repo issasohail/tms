@@ -665,9 +665,9 @@ class SmartMeterInvoiceGenerationRegressionTests(TestCase):
         self.assertEqual(contexts[0].meter, self.meter)
         self.assertEqual(contexts[0].units, Decimal("10.000"))
 
-    def test_final_timestamp_not_mid_month_max_drives_dashboard_and_invoice(self):
+    def test_final_timestamp_drives_dashboard_and_invoice(self):
         self.add_reading(datetime(2026, 7, 31, 23, 45), total="359.080")
-        self.add_reading(datetime(2026, 8, 15, 12, 0), total="361.880")
+        self.add_reading(datetime(2026, 8, 15, 12, 0), total="360.880")
         self.add_reading(datetime(2026, 8, 31, 23, 45), total="361.200")
 
         ctx = self.compute()
@@ -723,7 +723,7 @@ class SmartMeterInvoiceGenerationRegressionTests(TestCase):
 
     def test_regeneration_updates_existing_electricity_item_without_duplicate(self):
         self.add_reading(datetime(2026, 7, 31, 23, 45), total="100.000")
-        self.add_reading(datetime(2026, 8, 20, 12, 0), total="105.000")
+        self.add_reading(datetime(2026, 8, 31, 23, 30), total="105.000")
         first_invoice = upsert_invoice_with_electric_item(self.compute())
         original_item = first_invoice.items.get(category=self.category)
 

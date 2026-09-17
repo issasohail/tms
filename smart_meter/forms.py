@@ -79,6 +79,7 @@ class MeterSettingsForm(forms.ModelForm):
         fields = [
             "unit_rate", "low_balance_threshold", "peak_start_hour", "peak_end_hour",
             "raw_frame_capture_mode", "raw_frame_capture_reason",
+            "connection_event_capture_mode", "connection_event_capture_reason",
         ]
 
 
@@ -156,6 +157,12 @@ class MeterForm(forms.ModelForm):
                 format='%Y-%m-%dT%H:%M',
             ),
             'raw_frame_capture_reason': forms.TextInput(attrs={'class': 'form-control'}),
+            'connection_event_capture_mode': forms.Select(attrs={'class': 'form-select'}),
+            'connection_event_capture_until': forms.DateTimeInput(
+                attrs={'class': 'form-control', 'type': 'datetime-local'},
+                format='%Y-%m-%dT%H:%M',
+            ),
+            'connection_event_capture_reason': forms.TextInput(attrs={'class': 'form-control'}),
             'balance': forms.NumberInput(attrs={'class': 'form-control'}),
             'credit_balance': forms.NumberInput(attrs={'class': 'form-control'}),
         }
@@ -164,6 +171,7 @@ class MeterForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["raw_frame_capture_until"].input_formats = ["%Y-%m-%dT%H:%M"]
+        self.fields["connection_event_capture_until"].input_formats = ["%Y-%m-%dT%H:%M"]
         self.original_meter_role = self.instance.meter_role if self.instance.pk else None
         self.original_tariff_capability = (
             self.instance.tariff_capability if self.instance.pk else None

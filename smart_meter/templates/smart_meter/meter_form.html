@@ -245,6 +245,9 @@
           <div class="meter-field meter-span-1">{{ form.raw_frame_capture_mode.label_tag }}{{ form.raw_frame_capture_mode }}{{ form.raw_frame_capture_mode.errors }}<div class="form-text">Normally use the global Errors only setting. All frames is intended for temporary auditing.</div></div>
           <div class="meter-field meter-span-1">{{ form.raw_frame_capture_until.label_tag }}{{ form.raw_frame_capture_until }}{{ form.raw_frame_capture_until.errors }}<div class="form-text">When an All frames override expires, this meter automatically returns to the global setting.</div></div>
           <div class="meter-field meter-span-2">{{ form.raw_frame_capture_reason.label_tag }}{{ form.raw_frame_capture_reason }}{{ form.raw_frame_capture_reason.errors }}</div>
+          <div class="meter-field meter-span-1">{{ form.connection_event_capture_mode.label_tag }}{{ form.connection_event_capture_mode }}{{ form.connection_event_capture_mode.errors }}<div class="form-text">Enable temporarily when diagnosing reconnects, duplicate sockets, or disconnect reasons.</div></div>
+          <div class="meter-field meter-span-1">{{ form.connection_event_capture_until.label_tag }}{{ form.connection_event_capture_until }}{{ form.connection_event_capture_until.errors }}<div class="form-text">After expiry, this meter automatically returns to the global setting.</div></div>
+          <div class="meter-field meter-span-2">{{ form.connection_event_capture_reason.label_tag }}{{ form.connection_event_capture_reason }}{{ form.connection_event_capture_reason.errors }}</div>
         </div>
       </div>
 

@@ -360,9 +360,13 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         self.assertIn("len=3", raw_log)
         self.assertIn("frame=6801AB", raw_log)
 
+    @patch(
+        "smart_meter.management.commands.meter_listener.should_capture_connection_event",
+        return_value=False,
+    )
     @patch("smart_meter.management.commands.meter_listener.MeterCommand.objects.filter")
     def test_repeated_registration_does_not_requery_waiting_commands(
-        self, command_filter
+        self, command_filter, _capture_connection_event
     ):
         handler = self.make_handler()
         handler.meter_number = "260305510012"
@@ -375,6 +379,10 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         _register_handler(handler.meter_number, handler)
         self.assertEqual(handler.conn.close_calls, 0)
 
+    @patch(
+        "smart_meter.management.commands.meter_listener.should_capture_connection_event",
+        return_value=False,
+    )
     @patch("smart_meter.management.commands.meter_listener.MeterCommand.objects.filter")
     @patch("smart_meter.management.commands.meter_listener.record_meter_contact")
     @patch("smart_meter.management.commands.meter_listener.Meter.objects.filter")
@@ -390,6 +398,7 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         meter_filter,
         record_contact,
         command_filter,
+        _capture_connection_event,
     ):
         parse_frame.return_value = {
             "meter_number": "260305510012",
@@ -407,10 +416,14 @@ class ClientHandlerConnectionLifecycleTests(SimpleTestCase):
         self.assertEqual(meter_filter.call_count, 1)
         self.assertEqual(record_contact.call_count, 2)
 
+    @patch(
+        "smart_meter.management.commands.meter_listener.should_capture_connection_event",
+        return_value=False,
+    )
     @patch("smart_meter.management.commands.meter_listener.clear_meter_connection")
     @patch("smart_meter.management.commands.meter_listener.MeterCommand.objects.filter")
     def test_newer_connection_replaces_older_and_old_cannot_return_or_unregister(
-        self, _command_filter, clear_presence
+        self, _command_filter, clear_presence, _capture_connection_event
     ):
         old = self.make_handler()
         new = self.make_handler()

@@ -35,6 +35,14 @@ class Meter(models.Model):
         (RAW_FRAME_CAPTURE_ALL, "All frames"),
         (RAW_FRAME_CAPTURE_OFF, "Off"),
     ]
+    CONNECTION_EVENT_CAPTURE_INHERIT = "inherit"
+    CONNECTION_EVENT_CAPTURE_ALL = "all"
+    CONNECTION_EVENT_CAPTURE_OFF = "off"
+    CONNECTION_EVENT_CAPTURE_CHOICES = [
+        (CONNECTION_EVENT_CAPTURE_INHERIT, "Use global setting"),
+        (CONNECTION_EVENT_CAPTURE_ALL, "All connection events"),
+        (CONNECTION_EVENT_CAPTURE_OFF, "Off"),
+    ]
     BILLING_MODE_CHOICES = [
         ("postpaid", "Postpaid"),
         ("credit_controlled", "Postpaid with Credit Limit"),
@@ -182,6 +190,18 @@ class Meter(models.Model):
         help_text="Optional expiry for an All frames override; after this time the global setting is used.",
     )
     raw_frame_capture_reason = models.CharField(max_length=255, blank=True)
+    connection_event_capture_mode = models.CharField(
+        max_length=12,
+        choices=CONNECTION_EVENT_CAPTURE_CHOICES,
+        default=CONNECTION_EVENT_CAPTURE_INHERIT,
+        help_text="Override connection-event history for this meter.",
+    )
+    connection_event_capture_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Optional expiry for All connection events; afterward the global setting is used.",
+    )
+    connection_event_capture_reason = models.CharField(max_length=255, blank=True)
 
     @cached_property
     def latest_live(self):
@@ -1761,6 +1781,12 @@ class MeterSettings(models.Model):
         (RAW_FRAME_CAPTURE_ALL, "All frames"),
         (RAW_FRAME_CAPTURE_OFF, "Off"),
     ]
+    CONNECTION_EVENT_CAPTURE_OFF = "off"
+    CONNECTION_EVENT_CAPTURE_ALL = "all"
+    CONNECTION_EVENT_CAPTURE_CHOICES = [
+        (CONNECTION_EVENT_CAPTURE_OFF, "Off (recommended)"),
+        (CONNECTION_EVENT_CAPTURE_ALL, "All connection events"),
+    ]
     unit_rate = models.DecimalField(
         max_digits=6, decimal_places=2, default=7.50)
     low_balance_threshold = models.DecimalField(
@@ -1777,6 +1803,13 @@ class MeterSettings(models.Model):
         help_text="Default raw-frame storage for meters that inherit the global setting.",
     )
     raw_frame_capture_reason = models.CharField(max_length=255, blank=True)
+    connection_event_capture_mode = models.CharField(
+        max_length=12,
+        choices=CONNECTION_EVENT_CAPTURE_CHOICES,
+        default=CONNECTION_EVENT_CAPTURE_OFF,
+        help_text="Default connection-event history for meters that inherit the global setting.",
+    )
+    connection_event_capture_reason = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
         return f"Global Meter Settings: â‚¹{self.unit_rate}/kWh"

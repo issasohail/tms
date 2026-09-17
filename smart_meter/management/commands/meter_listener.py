@@ -61,6 +61,7 @@ from smart_meter.services.relay_status import (
     sync_authoritative_relay_status,
 )
 from smart_meter.services.raw_frame_capture import should_capture_raw_frame
+from smart_meter.services.connection_event_capture import should_capture_connection_event
 from smart_meter.services.meter_presence import (
     clear_all_meter_connections,
     clear_meter_connection,
@@ -288,6 +289,8 @@ def _record_connection_event(
 ):
     """Persist diagnostics without ever interrupting meter transport."""
     if not meter_number:
+        return
+    if not should_capture_connection_event(meter_number):
         return
     # Connection-history diagnostics are best-effort. Django TestCase and a
     # few internal callers can invoke registration while the current thread is

@@ -730,28 +730,36 @@ class BasePropertyMedia(models.Model):
                 except Exception:
                     font = ImageFont.load_default()
 
-            text = self.footer_text[:140]
-            while desired_font_size > 18:
-                text_box = ImageDraw.Draw(image).textbbox((0, 0), text, font=font)
-                if text_box[2] - text_box[0] <= width - 20:
-                    break
-                desired_font_size -= 1
-                try:
-                    font = ImageFont.truetype(font_path, desired_font_size)
-                except Exception:
-                    try:
-                        font = ImageFont.truetype("DejaVuSans.ttf", desired_font_size)
-                    except Exception:
-                        font = ImageFont.load_default()
-
-            text_box = ImageDraw.Draw(image).textbbox((0, 0), text, font=font)
-            text_height = text_box[3] - text_box[1]
-            footer_height = max(42, text_height + 20)
+            text = self.footer_text
+            measure = ImageDraw.Draw(image)
+            max_text_width = max(1, width - 20)
+            lines = []
+            line = ""
+            for word in text.split():
+                candidate = f"{line} {word}" if line else word
+                if measure.textbbox((0, 0), candidate, font=font)[2] <= max_text_width:
+                    line = candidate
+                    continue
+                if line:
+                    lines.append(line)
+                    line = ""
+                for char in word:
+                    if line and measure.textbbox((0, 0), line + char, font=font)[2] > max_text_width:
+                        lines.append(line)
+                        line = char
+                    else:
+                        line += char
+            if line:
+                lines.append(line)
+            text_box = measure.textbbox((0, 0), "Ag", font=font)
+            line_height = text_box[3] - text_box[1] + 6
+            footer_height = max(42, len(lines) * line_height + 16)
             stamped = Image.new("RGB", (width, height + footer_height), "white")
             stamped.paste(image, (0, 0))
 
             draw = ImageDraw.Draw(stamped)
-            draw.text((10, height + 8), text, fill="black", font=font)
+            for index, text_line in enumerate(lines):
+                draw.text((10, height + 8 + index * line_height), text_line, fill="black", font=font)
 
             stamped_buffer = ContentFile(b"")
             import io

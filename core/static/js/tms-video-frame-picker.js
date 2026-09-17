@@ -239,8 +239,11 @@
       confirm.disabled = true;
       status.textContent = "Saving selected photos…";
       try {
-        await options.onConfirm(selectedFiles);
+        await options.onConfirm(selectedFiles, (message) => {
+          status.textContent = message;
+        });
         modal.hide();
+        if (options.onComplete) options.onComplete();
       } catch (error) {
         status.textContent = error.message || "Could not save the selected photos.";
         busy = false;

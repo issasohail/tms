@@ -374,25 +374,38 @@
     const button = event.target.closest(".js-extract-whatsapp-video");
     if (!button) return;
     button.disabled = true;
+    const savedFrameFiles = new Set();
     try {
       await window.TMSVideoFramePicker.open({
         url: button.dataset.videoUrl,
         filename: button.dataset.filename || "whatsapp-video.mp4",
         size: Number(button.dataset.size || 0),
         onConfirm: async function (frameFiles) {
-          const data = new FormData();
-          data.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]")?.value || "");
-          frameFiles.forEach(file => data.append("frames", file, file.name));
-          const response = await fetch(button.dataset.saveUrl, {
-            method: "POST",
-            body: data,
-            headers: {"X-Requested-With": "XMLHttpRequest"},
-          });
-          const payload = await response.json();
-          if (!response.ok || !payload.ok) {
-            throw new Error(payload.message || "Could not save video photos.");
+          let redirectUrl = window.location.href;
+          for (const file of frameFiles) {
+            if (savedFrameFiles.has(file)) continue;
+            const data = new FormData();
+            data.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]")?.value || "");
+            data.append("frames", file, file.name);
+            const response = await fetch(button.dataset.saveUrl, {
+              method: "POST",
+              body: data,
+              headers: {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+              credentials: "same-origin",
+            });
+            const isJson = response.headers.get("content-type")?.includes("application/json");
+            const payload = isJson ? await response.json() : null;
+            if (!response.ok || !payload?.ok) {
+              let message = payload?.message || `Could not save ${file.name} (HTTP ${response.status}).`;
+              if (response.status === 413) message = `${file.name} exceeds the server upload limit.`;
+              if (response.redirected && !isJson) message = "Your session expired. Refresh the page and sign in again.";
+              if (savedFrameFiles.size) message += ` ${savedFrameFiles.size} photo(s) were saved; retry will continue with the remaining photos.`;
+              throw new Error(message);
+            }
+            savedFrameFiles.add(file);
+            redirectUrl = payload.redirect_url || redirectUrl;
           }
-          window.location.href = payload.redirect_url || window.location.href;
+          window.location.href = redirectUrl;
         },
       });
     } catch (error) {

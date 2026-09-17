@@ -245,7 +245,14 @@ class UnitTable(ExportableTable):
             display_value or "-",
         )
 
-    def _status_badge(self, record, value, label, css_class, extra_html=""):
+    def _status_badge(self, record, value, label, css_class, extra_html="", editable=True):
+        if not editable:
+            return format_html(
+                '<span class="badge {}" title="Status follows the active lease">{}{}</span>',
+                css_class,
+                label,
+                extra_html,
+            )
         return format_html(
             '<span class="unit-status-edit badge {}" data-unit-id="{}" '
             'data-current-value="{}" tabindex="0" role="button" '
@@ -336,6 +343,7 @@ class UnitTable(ExportableTable):
                 format_html("<strong>Ending Soon</strong>"),
                 "bg-warning text-dark text-wrap",
                 format_html("<br><small>{}</small>", date_text),
+                editable=False,
             )
             if lease_id:
                 return format_html(
@@ -357,6 +365,7 @@ class UnitTable(ExportableTable):
                 "occupied",
                 "Occupied",
                 "bg-success",
+                editable=False,
             )
 
             if lease_id:
@@ -374,14 +383,6 @@ class UnitTable(ExportableTable):
                 "maintenance",
                 "Maintenance",
                 "bg-danger",
-            )
-
-        if record.status == "occupied":
-            return self._status_badge(
-                record,
-                "occupied",
-                "Occupied",
-                "bg-success",
             )
 
         return self._status_badge(

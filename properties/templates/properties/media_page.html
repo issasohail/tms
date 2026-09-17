@@ -59,12 +59,22 @@
   }
 </style>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
     <div>
         <h2 class="mb-1">{{ owner_label }} Photos</h2>
         <div class="text-muted small">{{ parent_label }}</div>
     </div>
     <div class="d-flex gap-2 flex-wrap justify-content-end">
+        {% if media_unit_choices %}
+            <form method="get" action="{{ upload_url }}" id="media-unit-filter-form" style="width:240px;max-width:100%;">
+                <label for="media-unit-filter" class="visually-hidden">Property / Unit</label>
+                <select name="unit" id="media-unit-filter" class="form-select form-select-sm" aria-label="Property / Unit">
+                    {% for choice in media_unit_choices %}
+                        <option value="{{ choice.pk }}" {% if choice.pk == owner.pk %}selected{% endif %}>{{ choice.property.property_name }} — Unit {{ choice.unit_number }} ({{ choice.photo_count }} photos)</option>
+                    {% endfor %}
+                </select>
+            </form>
+        {% endif %}
         {% if pdf_export_url %}
             <form method="get" action="{{ pdf_export_url }}" class="d-flex gap-2 align-items-center">
                 <select name="photos_per_page" class="form-select form-select-sm" style="width:auto" aria-label="Photos per page">
@@ -119,6 +129,7 @@
             </div>
             <div class="col-md-2">
                 <button type="submit" class="btn btn-primary w-100">Upload</button>
+                <div id="media-upload-status" class="small text-muted mt-1" aria-live="polite"></div>
             </div>
         </form>
     </div>
@@ -197,6 +208,28 @@
 <script>
 (() => {
   document.title = '{{ media_page_title|default:owner_label|escapejs }}';
+  document.addEventListener('DOMContentLoaded', () => {
+    const filter = document.getElementById('media-unit-filter');
+    if (!filter) return;
+    filter.addEventListener('change', () => filter.form.requestSubmit());
+    if (window.jQuery?.fn?.select2) {
+      const $filter = window.jQuery(filter);
+      $filter.select2({theme: 'bootstrap-5', width: '100%'});
+      let closing = false;
+      $filter.on('select2:closing', () => {
+        closing = true;
+        window.setTimeout(() => { closing = false; }, 0);
+      });
+      $filter.next('.select2-container').find('.select2-selection').on('focus', () => {
+        if (!closing) $filter.select2('open');
+      });
+      $filter.on('select2:open', () => {
+        window.setTimeout(() => {
+          document.querySelector('.select2-container--open .select2-search__field')?.focus();
+        }, 0);
+      });
+    }
+  });
   const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
   document.querySelectorAll('.js-copy-share-link').forEach(button => {
     button.addEventListener('click', async () => {
@@ -377,24 +410,18 @@
   const uploadForm = document.getElementById('photo-upload-form');
   const videoReview = document.getElementById('video-file-review');
   const largeVideoBytes = 16 * 1024 * 1024;
-
-  const replaceVideoWithFrames = (videoFile, frameFiles) => {
-    const transfer = new DataTransfer();
-    [...fileInput.files].forEach(file => {
-      if (file !== videoFile) transfer.items.add(file);
-    });
-    frameFiles.forEach(file => transfer.items.add(file));
-    fileInput.files = transfer.files;
-    uploadForm.dataset.compressed = '0';
-    renderVideoFiles(false);
-  };
+  const uploadedFormFiles = new Set();
 
   const extractVideoPhotos = async videoFile => {
+    const uploadedFiles = new Set();
     await window.TMSVideoFramePicker.open({
       file: videoFile,
       filename: videoFile.name,
       size: videoFile.size,
-      onConfirm: async frameFiles => replaceVideoWithFrames(videoFile, frameFiles),
+      onConfirm: (frameFiles, setStatus) => uploadFiles(
+        [...fileInput.files, ...frameFiles], setStatus, uploadedFiles
+      ),
+      onComplete: () => window.setTimeout(() => window.location.reload(), 200),
     });
   };
 
@@ -413,7 +440,7 @@
           </span>
           <button type="button" class="btn btn-sm btn-outline-primary">Choose Photos From Video</button>
         </div>
-        ${isLarge ? '<div class="mt-1">This video is too large for the normal WhatsApp limit. Extract and select photos before uploading.</div>' : ''}`;
+        ${isLarge ? '<div class="mt-1">This video is over 16 MiB. It will be compressed before upload.</div>' : ''}`;
       row.querySelector('button').addEventListener('click', () => extractVideoPhotos(videoFile));
       videoReview.appendChild(row);
     });
@@ -424,6 +451,7 @@
   };
 
   fileInput?.addEventListener('change', () => {
+    uploadedFormFiles.clear();
     uploadForm.dataset.compressed = '0';
     renderVideoFiles(true);
   });
@@ -438,7 +466,7 @@
     const objectUrl = URL.createObjectURL(file);
     image.onload = () => {
       URL.revokeObjectURL(objectUrl);
-      const maxSide = 1800;
+      const maxSide = 1600;
       const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(image.width * scale);
@@ -450,8 +478,10 @@
           return;
         }
         const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
-        resolve(new File([blob], `${baseName}.jpg`, {type: 'image/jpeg', lastModified: Date.now()}));
-      }, 'image/jpeg', 0.82);
+        resolve(blob.size < file.size
+          ? new File([blob], `${baseName}.jpg`, {type: 'image/jpeg', lastModified: Date.now()})
+          : file);
+      }, 'image/jpeg', 0.78);
     };
     image.onerror = () => {
       URL.revokeObjectURL(objectUrl);
@@ -460,9 +490,115 @@
     image.src = objectUrl;
   });
 
+  const compressVideoFile = file => new Promise(resolve => {
+    const mimeType = 'video/mp4';
+    if (!window.MediaRecorder?.isTypeSupported(mimeType) || !HTMLVideoElement.prototype.captureStream) {
+      resolve(file);
+      return;
+    }
+    const video = document.createElement('video');
+    const objectUrl = URL.createObjectURL(file);
+    let stream;
+    let recorder;
+    let finished = false;
+    const finish = result => {
+      if (finished) return;
+      finished = true;
+      video.pause();
+      stream?.getTracks().forEach(track => track.stop());
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(objectUrl);
+      resolve(result);
+    };
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.onloadedmetadata = async () => {
+      if (!Number.isFinite(video.duration) || !video.duration) {
+        finish(file);
+        return;
+      }
+      const sourceBitrate = file.size * 8 / video.duration;
+      if (sourceBitrate < 1100000) {
+        finish(file);
+        return;
+      }
+      try {
+        stream = video.captureStream();
+        const chunks = [];
+        recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: Math.min(900000, Math.round(sourceBitrate * 0.65)),
+          audioBitsPerSecond: 96000,
+        });
+        recorder.ondataavailable = event => {
+          if (event.data.size) chunks.push(event.data);
+        };
+        recorder.onerror = () => finish(file);
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, {type: mimeType});
+          const name = file.name.replace(/\.[^.]+$/, '') + '.mp4';
+          finish(blob.size && blob.size < file.size
+            ? new File([blob], name, {type: mimeType, lastModified: Date.now()})
+            : file);
+        };
+        await video.play();
+        recorder.start();
+      } catch (error) {
+        finish(file);
+      }
+    };
+    video.onended = () => {
+      if (recorder?.state === 'recording') recorder.stop();
+    };
+    video.onerror = () => finish(file);
+    video.src = objectUrl;
+  });
+
+  const uploadOneFile = (file, onProgress) => new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    const data = new FormData();
+    data.set('csrfmiddlewaretoken', uploadForm.querySelector('[name=csrfmiddlewaretoken]').value);
+    data.set('description', uploadForm.querySelector('[name=description]').value);
+    data.append('files', file, file.name);
+    request.open('POST', uploadForm.action);
+    request.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    request.responseType = 'json';
+    request.upload.onprogress = event => {
+      if (event.lengthComputable) onProgress(Math.round(event.loaded * 100 / event.total));
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300 && request.response?.ok) {
+        resolve();
+      } else {
+        reject(new Error(`${file.name}: ${request.response?.message || `upload failed (HTTP ${request.status}).`}`));
+      }
+    };
+    request.onerror = () => reject(new Error(`${file.name}: network error during upload.`));
+    request.send(data);
+  });
+
+  const uploadFiles = async (files, setStatus, uploadedFiles = new Set()) => {
+    const pending = files.filter(file => !uploadedFiles.has(file));
+    for (const [index, file] of pending.entries()) {
+      const progressLabel = `Uploading ${index + 1} of ${pending.length}`;
+      setStatus(file.type.startsWith('video/')
+        ? `Compressing video ${index + 1} of ${pending.length}: ${file.name} (may take its full length)...`
+        : `Preparing ${index + 1} of ${pending.length}: ${file.name}...`);
+      const prepared = file.type.startsWith('video/')
+        ? await compressVideoFile(file)
+        : await compressImageFile(file);
+      setStatus(`${progressLabel}: ${file.name}`);
+      await uploadOneFile(prepared, percent => setStatus(`${progressLabel}: ${file.name} (${percent}%)`));
+      uploadedFiles.add(file);
+    }
+    setStatus(`Uploaded ${pending.length} file(s).`);
+  };
+
   if (uploadForm && fileInput) {
     uploadForm.addEventListener('submit', async event => {
-      if (uploadForm.dataset.compressed === '1' || !fileInput.files.length) return;
+      if (!fileInput.files.length) return;
       event.preventDefault();
       const oversizedVideo = [...fileInput.files].find(
         file => file.type.startsWith('video/') && file.size > largeVideoBytes
@@ -471,12 +607,18 @@
         await extractVideoPhotos(oversizedVideo);
         return;
       }
-      const compressedFiles = await Promise.all([...fileInput.files].map(compressImageFile));
-      const transfer = new DataTransfer();
-      compressedFiles.forEach(file => transfer.items.add(file));
-      fileInput.files = transfer.files;
-      uploadForm.dataset.compressed = '1';
-      uploadForm.submit();
+      const uploadButton = uploadForm.querySelector('button[type="submit"]');
+      const uploadStatus = document.getElementById('media-upload-status');
+      uploadButton.disabled = true;
+      try {
+        await uploadFiles([...fileInput.files], message => {
+          if (uploadStatus) uploadStatus.textContent = message;
+        }, uploadedFormFiles);
+        window.location.reload();
+      } catch (error) {
+        if (uploadStatus) uploadStatus.textContent = error.message || 'Could not upload files.';
+        uploadButton.disabled = false;
+      }
     });
   }
 
@@ -492,6 +634,7 @@
     dropzone.addEventListener('drop', event => {
       if (event.dataTransfer?.files?.length) {
         fileInput.files = event.dataTransfer.files;
+        uploadedFormFiles.clear();
         uploadForm.dataset.compressed = '0';
         renderVideoFiles(true);
       }

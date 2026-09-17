@@ -85,6 +85,29 @@ class PropertyAndUnitMediaPathTests(SimpleTestCase):
         )
         self.assertNotIn("F35-F35-FLAT-03", media.storage_folder)
 
+    def test_narrow_unit_photo_stamp_wraps_footer_instead_of_clipping(self):
+        media = self._unit_media(property_name="F56 Basement", unit_number="F56-ROOM# 16")
+        media.description = "Bathroom condition and fixtures before tenant handover"
+        buffer = BytesIO()
+        Image.new("RGB", (320, 600), "white").save(buffer, format="JPEG")
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            media.file.save(
+                "bathroom.jpg",
+                SimpleUploadedFile("bathroom.jpg", buffer.getvalue(), content_type="image/jpeg"),
+                save=False,
+            )
+            media.file_type = "image"
+            media._build_image_derivatives()
+            with Image.open(media.stamped_file.path) as stamped:
+                self.assertGreater(stamped.height - 600, 42)
+                footer = stamped.convert("L")
+                dark_rows = [
+                    y for y in range(600, stamped.height)
+                    if footer.crop((0, y, 320, y + 1)).getextrema()[0] < 100
+                ]
+                self.assertTrue(any(b - a > 4 for a, b in zip(dark_rows, dark_rows[1:])))
+
     def test_unit_storage_folder_does_not_prepend_property_to_unit_number(self):
         media = self._unit_media(
             property_name="F56", unit_number="F56-FLAT# 05"
@@ -554,6 +577,72 @@ class UnitListInlineUpdateTests(TestCase):
         self.assertContains(response, ">3</a>", html=False)
         self.assertContains(response, 'id="unitFilterForm"')
         self.assertContains(response, "unitFilterForm.requestSubmit()")
+
+    def test_unit_list_status_uses_active_leases_not_stored_occupancy(self):
+        from leases.models import Lease
+        from leases.models_renewal import LeaseRenewal
+        from tenants.models import Tenant
+
+        today = timezone.localdate()
+        tenant = Tenant.objects.create(
+            first_name="Status", last_name="Tenant", phone="+923001234568",
+            cnic="35202-1234567-9",
+        )
+        self.unit_one.status = "occupied"
+        self.unit_one.save(update_fields=["status"])
+        active = Lease.objects.create(
+            tenant=tenant, unit=self.unit_two,
+            start_date=today - timedelta(days=30),
+            end_date=today + timedelta(days=20),
+            monthly_rent=Decimal("12000"), status="active",
+        )
+        ended = Lease.objects.create(
+            tenant=tenant, unit=self.other_unit,
+            start_date=today - timedelta(days=60),
+            end_date=today + timedelta(days=20),
+            monthly_rent=Decimal("12000"), status="ended",
+        )
+        LeaseRenewal.objects.create(
+            lease=ended, renewal_number=1,
+            start_date=today - timedelta(days=10),
+            end_date=today + timedelta(days=20),
+            monthly_rent=Decimal("12000"),
+        )
+        self.other_unit.status = "occupied"
+        self.other_unit.save(update_fields=["status"])
+
+        response = self.client.get(reverse("properties:unit_list"))
+        table = response.context["table"]
+        records = {unit.pk: unit for unit in table.data}
+        self.assertIn("Vacant", str(table.render_status(records[self.unit_one.pk].status, records[self.unit_one.pk])))
+        self.assertIn("Ending Soon", str(table.render_status(records[self.unit_two.pk].status, records[self.unit_two.pk])))
+        self.assertIn("Vacant", str(table.render_status(records[self.other_unit.pk].status, records[self.other_unit.pk])))
+        self.assertContains(response, reverse("properties:unit_media", args=[self.unit_two.pk]))
+        self.assertEqual(active.status, "active")
+
+        occupied = self.client.get(reverse("properties:unit_list"), {"status": "occupied"})
+        self.assertEqual([unit.pk for unit in occupied.context["table"].data], [self.unit_two.pk])
+
+    def test_unit_media_ajax_upload_returns_json(self):
+        output = BytesIO()
+        Image.new("RGB", (80, 60), "blue").save(output, format="JPEG")
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            response = self.client.post(
+                reverse("properties:unit_media", args=[self.unit_one.pk]),
+                {"files": SimpleUploadedFile("photo.jpg", output.getvalue(), content_type="image/jpeg")},
+                HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()["ok"])
+            self.assertEqual(self.unit_one.media_files.filter(file_type="image").count(), 1)
+            video_response = self.client.post(
+                reverse("properties:unit_media", args=[self.unit_one.pk]),
+                {"files": SimpleUploadedFile("walkthrough.mp4", b"video bytes", content_type="video/mp4")},
+                HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            )
+            self.assertEqual(video_response.status_code, 200)
+            self.assertTrue(video_response.json()["ok"])
+            self.assertEqual(self.unit_one.media_files.filter(file_type="video").count(), 1)
 
     def test_unit_list_uses_sixty_rows_and_continuous_serial_numbers(self):
         Unit.objects.bulk_create(

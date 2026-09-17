@@ -153,11 +153,13 @@ class PropertyDetailView(LoginRequiredMixin, DetailView):
         ending_date = today + timedelta(days=40)
         active_lease = Lease.objects.filter(
             unit_id=OuterRef("pk"),
+            status="active",
             start_date__lte=today,
             end_date__gte=today,
-        ).exclude(status__in=["ended", "terminated"])
+        )
         active_lease_history = LeaseRenewal.objects.filter(
             lease__unit_id=OuterRef("pk"),
+            lease__status="active",
             start_date__lte=today,
             end_date__gte=today,
         )
@@ -356,11 +358,13 @@ class UnitListView(SingleTableMixin, FilterView):
         ending_date = today + timedelta(days=40)
         active_lease = Lease.objects.filter(
             unit_id=OuterRef("pk"),
+            status="active",
             start_date__lte=today,
             end_date__gte=today,
-        ).exclude(status__in=["ended", "terminated"])
+        )
         active_lease_history = LeaseRenewal.objects.filter(
             lease__unit_id=OuterRef("pk"),
+            lease__status="active",
             start_date__lte=today,
             end_date__gte=today,
         )
@@ -461,7 +465,11 @@ class UnitListView(SingleTableMixin, FilterView):
                 Q(has_ending_soon_lease=True) | Q(has_ending_soon_lease_history=True)
             )
         elif status == "maintenance":
-            queryset = queryset.filter(status="maintenance")
+            queryset = queryset.filter(
+                status="maintenance",
+                has_active_lease=False,
+                has_active_lease_history=False,
+            )
         return queryset
 
     def get_table_data(self):
@@ -508,15 +516,16 @@ def _unit_has_current_lease(unit, today=None):
     return (
         LeaseRenewal.objects.filter(
             lease__unit=unit,
+            lease__status="active",
             start_date__lte=today,
             end_date__gte=today,
         ).exists()
         or Lease.objects.filter(
             unit=unit,
+            status="active",
             start_date__lte=today,
             end_date__gte=today,
         )
-        .exclude(status__in=["ended", "terminated"])
         .exists()
     )
 
@@ -527,6 +536,7 @@ def _attach_unit_occupancy(unit):
         LeaseRenewal.objects.select_related("lease", "lease__tenant", "lease__unit")
         .filter(
             lease__unit=unit,
+            lease__status="active",
             start_date__lte=today,
             end_date__gte=today,
         )
@@ -541,10 +551,10 @@ def _attach_unit_occupancy(unit):
             Lease.objects.select_related("tenant", "unit")
             .filter(
                 unit=unit,
+                status="active",
                 start_date__lte=today,
                 end_date__gte=today,
             )
-            .exclude(status__in=["ended", "terminated"])
             .order_by("-start_date", "-pk")
             .first()
         )
@@ -999,11 +1009,13 @@ def unit_vacant_summary_message(request):
 
     active_lease = Lease.objects.filter(
         unit_id=OuterRef("pk"),
+        status="active",
         start_date__lte=today,
         end_date__gte=today,
-    ).exclude(status__in=["ended", "terminated"])
+    )
     active_lease_history = LeaseRenewal.objects.filter(
         lease__unit_id=OuterRef("pk"),
+        lease__status="active",
         start_date__lte=today,
         end_date__gte=today,
     )
@@ -1024,7 +1036,12 @@ def unit_vacant_summary_message(request):
         LeaseRenewal.objects.select_related(
             "lease", "lease__tenant", "lease__unit", "lease__unit__property"
         )
-        .filter(start_date__lte=today, end_date__gte=today, end_date__lte=ending_date)
+        .filter(
+            lease__status="active",
+            start_date__lte=today,
+            end_date__gte=today,
+            end_date__lte=ending_date,
+        )
         .order_by(
             "end_date",
             "lease__unit__property__property_name",
@@ -1037,8 +1054,12 @@ def unit_vacant_summary_message(request):
     history_lease_ids = set(ending_histories.values_list("lease_id", flat=True))
     ending_leases = (
         Lease.objects.select_related("tenant", "unit", "unit__property")
-        .filter(start_date__lte=today, end_date__gte=today, end_date__lte=ending_date)
-        .exclude(status__in=["ended", "terminated"])
+        .filter(
+            status="active",
+            start_date__lte=today,
+            end_date__gte=today,
+            end_date__lte=ending_date,
+        )
         .exclude(id__in=history_lease_ids)
         .order_by("end_date", "unit__property__property_name", "unit__unit_number")
     )
@@ -1759,8 +1780,19 @@ def _export_media_docx(
 @login_required
 def unit_media_page(request, pk):
     unit = get_object_or_404(Unit.objects.select_related("property"), pk=pk)
+    selected_unit_id = request.GET.get("unit")
+    if selected_unit_id and selected_unit_id.isdecimal() and int(selected_unit_id) != unit.pk:
+        selected_unit = get_object_or_404(Unit, pk=selected_unit_id)
+        return redirect("properties:unit_media", pk=selected_unit.pk)
     if request.method == "POST":
-        _upload_media_files(request, unit, UnitMedia, "unit")
+        expected = len(request.FILES.getlist("files") or request.FILES.getlist("photos"))
+        created = _upload_media_files(request, unit, UnitMedia, "unit")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            ok = expected > 0 and created == expected
+            return JsonResponse(
+                {"ok": ok, "message": "Uploaded." if ok else "Could not upload the file."},
+                status=200 if ok else 400,
+            )
         return redirect("properties:unit_media", pk=unit.pk)
     media_files = unit.media_files.filter(is_active=True).order_by(
         "sort_order", "uploaded_at", "pk"
@@ -1785,6 +1817,14 @@ def unit_media_page(request, pk):
             "owner_label": f"Unit {unit.unit_number}",
             "media_page_title": f"{unit} Photos",
             "parent_label": unit.property.property_name,
+            "media_unit_choices": Unit.objects.select_related("property")
+            .annotate(
+                photo_count=Count(
+                    "media_files",
+                    filter=Q(media_files__is_active=True, media_files__file_type="image"),
+                )
+            )
+            .order_by("property__property_name", "unit_number", "pk"),
             "media_files": media_files,
             "public_token": _sign_media_token("unit", unit.pk),
             "upload_url": reverse("properties:unit_media", args=[unit.pk]),
@@ -1811,7 +1851,14 @@ def unit_media_page(request, pk):
 def property_media_page(request, pk):
     property_obj = get_object_or_404(Property, pk=pk)
     if request.method == "POST":
-        _upload_media_files(request, property_obj, PropertyMedia, "property")
+        expected = len(request.FILES.getlist("files") or request.FILES.getlist("photos"))
+        created = _upload_media_files(request, property_obj, PropertyMedia, "property")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            ok = expected > 0 and created == expected
+            return JsonResponse(
+                {"ok": ok, "message": "Uploaded." if ok else "Could not upload the file."},
+                status=200 if ok else 400,
+            )
         return redirect("properties:property_media", pk=property_obj.pk)
     media_files = property_obj.media_files.filter(is_active=True).order_by(
         "sort_order", "uploaded_at", "pk"

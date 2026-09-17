@@ -558,6 +558,9 @@
           <img id="tmsImageViewerMain" src="" alt="Image preview">
         </div>
         <div class="modal-footer py-2">
+          <button type="button" id="tmsImageViewerCopy" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-copy me-1"></i> Copy Image
+          </button>
           <a id="tmsImageViewerSave" class="btn btn-primary btn-sm" href="#" download>
             <i class="fas fa-download me-1"></i> Save Image
           </a>
@@ -886,6 +889,36 @@
         }
         bootstrap.Modal.getOrCreateInstance(modalElement).show();
       }
+
+      document.getElementById('tmsImageViewerCopy')?.addEventListener('click', async function () {
+        const image = document.getElementById('tmsImageViewerMain');
+        const original = this.innerHTML;
+        this.disabled = true;
+        try {
+          if (!navigator.clipboard?.write || !window.ClipboardItem || !window.createImageBitmap) {
+            throw new Error('Image copying is unavailable in this browser.');
+          }
+          const response = await fetch(image.src, {credentials: 'same-origin'});
+          if (!response.ok) throw new Error('Could not load the image for copying.');
+          const bitmap = await createImageBitmap(await response.blob());
+          const canvas = document.createElement('canvas');
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          canvas.getContext('2d').drawImage(bitmap, 0, 0);
+          bitmap.close();
+          const png = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          if (!png) throw new Error('Could not prepare the image for copying.');
+          await navigator.clipboard.write([new ClipboardItem({'image/png': png})]);
+          this.textContent = 'Copied';
+        } catch (error) {
+          window.alert(error.message || 'Could not copy the image.');
+        } finally {
+          window.setTimeout(() => {
+            this.innerHTML = original;
+            this.disabled = false;
+          }, 1500);
+        }
+      });
 
       document.addEventListener('DOMContentLoaded', function () {
         installDobGuides(document);

@@ -165,6 +165,10 @@
               <td class="col-ts text-start">
                 <strong>{{ day.date|date:"Y-m-d" }}</strong>
                 <small class="d-block text-muted">Last {{ day.last_ts|date:"H:i:s" }} · {{ day.count }} reading{{ day.count|pluralize }}</small>
+                <small class="reading-loading text-primary" data-reading-loading role="status" aria-live="polite" hidden>
+                  <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                  Loading readings, please wait…
+                </small>
               </td>
               {% include "smart_meter/partials/reading_group_header_cells.html" with r=day.last_reading %}
             </tr>
@@ -195,13 +199,15 @@
      TWEAKABLE KNOBS (edit here)
      ========================= */
   :root{
-    /* ===== Large (≥992px) filter widths ===== */
-    --lg-w-prop: 12%;
-    --lg-w-unit:  8%;
-    --lg-w-meter:12%;
-    --lg-w-range:12%;
-    --lg-w-start:12%;
-    --lg-w-end:  12%;
+    /* ===== Large (≥992px) filter widths: adjust each one independently ===== */
+    --lg-w-prop:   145px;
+    --lg-w-unit:    165px;
+    --lg-w-meter:  295px;
+    --lg-w-role:    95px;
+    --lg-w-status:  95px;
+    --lg-w-range:  145px;
+    --lg-w-start:  145px;
+    --lg-w-end:    145px;
     --lg-gap:   .5rem;
 
     /* ===== Large toggles ===== */
@@ -221,6 +227,16 @@
     --sm-filter-ctrl-px:  .30rem;  /* input left/right padding */
     --sm-filter-label-mb: .05rem;  /* space between label and input */
     --sm-card-py:         .20rem;  /* top/bottom padding of the filter card body */
+
+    /* ===== Small (≤576px) filter widths: adjust each one independently ===== */
+    --sm-w-prop:   calc((100% - (2 * var(--sm-col-gap))) / 3);
+    --sm-w-unit:   calc((100% - (2 * var(--sm-col-gap))) / 3);
+    --sm-w-meter:  calc((100% - (2 * var(--sm-col-gap))) / 3);
+    --sm-w-role:   calc((100% - (2 * var(--sm-col-gap))) / 3);
+    --sm-w-status: calc((100% - (2 * var(--sm-col-gap))) / 3);
+    --sm-w-range:  calc((100% - (2 * var(--sm-col-gap))) / 3);
+    --sm-w-start:  calc((100% - (2 * var(--sm-col-gap))) / 3);
+    --sm-w-end:    calc((100% - (2 * var(--sm-col-gap))) / 3);
 
     /* ===== Small toggles (side-by-side) ===== */
     --sm-toggle-col-gap:  .20rem;  /* Show IP ↔ Show Port horizontal gap */
@@ -327,8 +343,8 @@
     .filter-grid .f-prop  { width: var(--lg-w-prop); }
     .filter-grid .f-unit  { width: var(--lg-w-unit); }
     .filter-grid .f-meter { width: var(--lg-w-meter); }
-    .filter-grid .f-role,
-    .filter-grid .f-active { width: 8%; }
+    .filter-grid .f-role  { width: var(--lg-w-role); }
+    .filter-grid .f-active { width: var(--lg-w-status); }
     .filter-grid .f-range { width: var(--lg-w-range); }
     .filter-grid .f-start { width: var(--lg-w-start); }
     .filter-grid .f-end   { width: var(--lg-w-end); }
@@ -355,18 +371,15 @@
 
     .filter-grid{ gap: var(--sm-row-gap) var(--sm-col-gap); }
     .filter-grid .grp{ margin:0; }
-    /* 3 per row, gap-aware */
-    .filter-grid .f-prop,
-    .filter-grid .f-unit,
-    .filter-grid .f-meter,
-    .filter-grid .f-role,
-    .filter-grid .f-active,
-    .filter-grid .f-range,
-    .filter-grid .f-start,
-    .filter-grid .f-end{
-      flex: 0 0 calc((100% - (2 * var(--sm-col-gap))) / 3);
-      max-width: calc((100% - (2 * var(--sm-col-gap))) / 3);
-    }
+    /* Individual, gap-aware widths; defaults keep three filters per row. */
+    .filter-grid .f-prop   { flex: 0 0 var(--sm-w-prop);   max-width: var(--sm-w-prop); }
+    .filter-grid .f-unit   { flex: 0 0 var(--sm-w-unit);   max-width: var(--sm-w-unit); }
+    .filter-grid .f-meter  { flex: 0 0 var(--sm-w-meter);  max-width: var(--sm-w-meter); }
+    .filter-grid .f-role   { flex: 0 0 var(--sm-w-role);   max-width: var(--sm-w-role); }
+    .filter-grid .f-active { flex: 0 0 var(--sm-w-status); max-width: var(--sm-w-status); }
+    .filter-grid .f-range  { flex: 0 0 var(--sm-w-range);  max-width: var(--sm-w-range); }
+    .filter-grid .f-start  { flex: 0 0 var(--sm-w-start);  max-width: var(--sm-w-start); }
+    .filter-grid .f-end    { flex: 0 0 var(--sm-w-end);    max-width: var(--sm-w-end); }
 
     .filter-grid .form-label{
       font-size: var(--sm-filter-label-fz);
@@ -458,6 +471,11 @@
   .reading-summary-heading .reading-group-toggle { white-space: nowrap; }
   .reading-chevron { display: inline-block; width: 1em; }
   .reading-group-toggle[aria-expanded="true"] .reading-chevron { transform: rotate(90deg); }
+  .reading-day-heading.is-loading,
+  .reading-day-heading.is-loading .reading-group-toggle { cursor: wait; }
+  .reading-loading { display: inline-flex; align-items: center; gap: .3rem; }
+  .reading-loading[hidden] { display: none !important; }
+  .reading-loading .spinner-border { width: .7rem; height: .7rem; border-width: .1em; }
   .phase-stack,
   .energy-stack { display: inline-grid; gap: .12rem; text-align: left; line-height: 1.15; }
   .phase-stack > span,
@@ -616,10 +634,18 @@
     toggleAllReadings.textContent = allExpanded ? 'Collapse all' : 'Expand all';
     toggleAllReadings.setAttribute('aria-label', `${allExpanded ? 'Collapse' : 'Expand'} all meter readings`);
   }
+  function setDayLoading(button, loading) {
+    const row = button.closest('[data-reading-day-row]');
+    row?.classList.toggle('is-loading', loading);
+    button.setAttribute('aria-busy', String(loading));
+    const message = row?.querySelector('[data-reading-loading]');
+    if (message) message.hidden = !loading;
+  }
   async function loadDayPeriods(button) {
     if (button.dataset.loaded === 'true') return;
     if (button._loadPromise) return button._loadPromise;
     button.disabled = true;
+    setDayLoading(button, true);
     button._loadPromise = fetch(button.dataset.loadUrl, {credentials: 'same-origin'})
       .then(response => {
         if (!response.ok) throw new Error(`Unable to load readings (HTTP ${response.status}).`);
@@ -631,6 +657,7 @@
         syncOptionalColumns();
       })
       .finally(() => {
+        setDayLoading(button, false);
         button.disabled = false;
         delete button._loadPromise;
       });

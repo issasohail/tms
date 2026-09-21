@@ -36,18 +36,28 @@ def sync_meter_coverage(meter, effective_date):
         if installation and meter.is_active and meter.meter_role == Meter.METER_ROLE_BILLING
         and meter.meter_type == Meter.METER_TYPE_ELECTRIC else None
     )
-    current = list(MeterCheckGroupMembership.objects.select_for_update().filter(
+    current = list(MeterCheckGroupMembership.objects.select_for_update().select_related("group").filter(
         billing_meter=meter, is_active=True, end_date__isnull=True,
     ))
     for membership in current:
         if target and membership.group_id == target.pk:
+            if not membership.assigned_automatically:
+                membership.assigned_automatically = True
+                membership.notes = (
+                    membership.notes + "\nAdopted by automatic property/unit coverage."
+                ).strip()
+                membership.save(update_fields=["assigned_automatically", "notes"])
             return membership
         if not membership.assigned_automatically:
-            if target:
+            if membership.group.automatic_coverage:
+                membership.assigned_automatically = True
+                membership.save(update_fields=["assigned_automatically"])
+            elif target:
                 raise ValidationError(
                     f"Meter {meter.meter_number} is manually assigned to another Check Group."
                 )
-            return membership
+            else:
+                return membership
         close_date = effective_date - timedelta(days=1)
         if close_date < membership.start_date:
             raise ValidationError(
@@ -67,7 +77,7 @@ def sync_meter_coverage(meter, effective_date):
 def sync_group_coverage(group, effective_date):
     """Apply a changed rule to existing installations and prior automatic members."""
     meter_ids = set(MeterCheckGroupMembership.objects.filter(
-        group=group, assigned_automatically=True, is_active=True, end_date__isnull=True,
+        group=group, is_active=True, end_date__isnull=True,
     ).values_list("billing_meter_id", flat=True))
     if group.automatic_coverage and group.is_active:
         if group.coverage_mode == MeterCheckGroup.COVERAGE_PROPERTY and group.property_id:

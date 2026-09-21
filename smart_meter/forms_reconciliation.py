@@ -6,12 +6,20 @@ from smart_meter.models import (
     EnergySystemMeterLink,
     InverterPeriodStatement,
     Meter,
+    UtilityConnection,
     UtilityBillCycle,
     UtilityBillPayment,
 )
 
 
 BOOTSTRAP_INPUT = {"class": "form-control"}
+
+
+def energy_system_output_meter_queryset():
+    return Meter.objects.filter(
+        meter_type=Meter.METER_TYPE_ELECTRIC,
+        is_active=True,
+    ).order_by("meter_number")
 
 
 class EnergySystemReassignmentForm(forms.Form):
@@ -73,9 +81,7 @@ class EnergySystemSetupForm(forms.Form):
         self.fields["input_meters"].queryset = Meter.objects.filter(
             meter_role=Meter.METER_ROLE_CHECK, is_active=True
         ).order_by("meter_number")
-        self.fields["output_meters"].queryset = Meter.objects.filter(
-            meter_type=Meter.METER_TYPE_ELECTRIC, is_active=True
-        ).order_by("meter_number")
+        self.fields["output_meters"].queryset = energy_system_output_meter_queryset()
         if not self.is_bound and energy_system:
             links = energy_system.meter_links.all()
             input_ids = list(links.filter(side=EnergySystemMeterLink.SIDE_INPUT).values_list("meter_id", flat=True))
@@ -100,6 +106,52 @@ class EnergySystemSetupForm(forms.Form):
             self.add_error("input_meters", "Select at least one input meter.")
         if not cleaned.get("output_meters"):
             self.add_error("output_meters", "Select at least one output meter.")
+        return cleaned
+
+
+class EnergyGroupReconciliationForm(EnergySystemSetupForm):
+    """Reconciliation fields embedded in the combined Energy Group editor."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields.pop("name", None)
+
+
+class UtilityConnectionSettingsForm(forms.ModelForm):
+    class Meta:
+        model = UtilityConnection
+        fields = ["consumer_id", "reference_no", "dg_capacity_kw", "property_label"]
+        labels = {
+            "consumer_id": "IESCO Consumer ID",
+            "reference_no": "IESCO Reference No.",
+            "dg_capacity_kw": "DG capacity (kW)",
+            "property_label": "IESCO property label",
+        }
+        widgets = {
+            "consumer_id": forms.TextInput(attrs=BOOTSTRAP_INPUT),
+            "reference_no": forms.TextInput(attrs=BOOTSTRAP_INPUT),
+            "dg_capacity_kw": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "min": "0"}),
+            "property_label": forms.TextInput(attrs=BOOTSTRAP_INPUT),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.instance.pk:
+            self.fields["consumer_id"].required = False
+        self.fields["reference_no"].required = False
+        self.fields["dg_capacity_kw"].required = False
+        self.fields["property_label"].required = False
+
+    def clean(self):
+        cleaned = super().clean()
+        consumer_id = (cleaned.get("consumer_id") or "").strip()
+        has_connection_data = any([
+            (cleaned.get("reference_no") or "").strip(),
+            cleaned.get("dg_capacity_kw") is not None,
+            (cleaned.get("property_label") or "").strip(),
+        ])
+        if has_connection_data and not consumer_id:
+            self.add_error("consumer_id", "Consumer ID is required when IESCO connection details are entered.")
         return cleaned
 
 

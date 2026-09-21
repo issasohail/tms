@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.http import HttpResponseBadRequest
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -16,6 +16,7 @@ from smart_meter.forms_reconciliation import (
     InverterPeriodStatementForm,
     UtilityBillCycleForm,
     UtilityBillPaymentForm,
+    energy_system_output_meter_queryset,
 )
 from smart_meter.forms import MeterReadingProfileForm
 from smart_meter.models import (
@@ -71,6 +72,8 @@ def energy_system_setup(request, group_id):
     group = get_object_or_404(
         MeterCheckGroup.objects.select_related("check_meter"), pk=group_id
     )
+    if request.method == "GET":
+        return redirect("smart_meter:meter_check_group_edit", pk=group.pk)
     if hasattr(group, "energy_system"):
         return redirect("smart_meter:energy_system_detail", pk=group.energy_system.pk)
     form = EnergySystemSetupForm(request.POST or None, group=group)
@@ -107,6 +110,8 @@ def energy_system_edit(request, pk):
         EnergySystem.objects.select_related("output_group", "output_group__check_meter"), pk=pk
     )
     group = system.output_group
+    if request.method == "GET":
+        return redirect("smart_meter:meter_check_group_edit", pk=group.pk)
     form = EnergySystemSetupForm(request.POST or None, group=group, energy_system=system)
     if request.method == "POST" and form.is_valid():
         export_path = form.cleaned_data["output_meter_includes_grid_export"]
@@ -129,6 +134,50 @@ def energy_system_edit(request, pk):
         messages.success(request, "Energy System meter links updated.")
         return redirect("smart_meter:energy_system_detail", pk=system.pk)
     return render(request, "smart_meter/energy_system_setup.html", {"form": form, "group": group, "system": system, "is_edit": True})
+
+
+@require_POST
+@login_required
+@permission_required("smart_meter.change_energysystem", raise_exception=True)
+def energy_system_output_meters_update(request, pk):
+    raw_meter_ids = request.POST.getlist("output_meters")
+    try:
+        meter_ids = list(dict.fromkeys(int(value) for value in raw_meter_ids))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {"success": False, "error": "Select valid output meters."},
+            status=400,
+        )
+    if not meter_ids:
+        return JsonResponse(
+            {"success": False, "error": "At least one output meter is required."},
+            status=400,
+        )
+
+    meters = list(energy_system_output_meter_queryset().filter(pk__in=meter_ids))
+    if len(meters) != len(meter_ids):
+        return JsonResponse(
+            {"success": False, "error": "One or more selected meters are unavailable."},
+            status=400,
+        )
+
+    with transaction.atomic():
+        system = get_object_or_404(EnergySystem.objects.select_for_update(), pk=pk)
+        system.meter_links.filter(side=EnergySystemMeterLink.SIDE_OUTPUT).delete()
+        EnergySystemMeterLink.objects.bulk_create([
+            EnergySystemMeterLink(
+                energy_system=system,
+                meter=meter,
+                side=EnergySystemMeterLink.SIDE_OUTPUT,
+            )
+            for meter in meters
+        ])
+
+    return JsonResponse({
+        "success": True,
+        "output_meter_ids": [meter.pk for meter in meters],
+        "message": f"Saved {len(meters)} output meter(s).",
+    })
 
 
 def build_energy_system_detail_context(system, start, end):

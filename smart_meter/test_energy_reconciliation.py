@@ -24,6 +24,7 @@ from smart_meter.models import (
     Meter,
     MeterCheckGroup,
     MeterCheckGroupMembership,
+    MeterInstallation,
     MeterReading,
     UtilityBillCycle,
     UtilityBillPayment,
@@ -438,6 +439,117 @@ class EnergyReconciliationTests(TestCase):
         self.assertNotIn("1. FIX-OUTPUT</strong> <span class=\"badge", html)
         self.assertIn("2. FIX-OUTPUT-2</strong> <span class=\"badge", html)
 
+    def test_output_meter_transfer_auto_saves_without_changing_input_links(self):
+        other_output = Meter.objects.create(
+            meter_number="FIX-OUTPUT-AUTO-SAVE",
+            meter_role=Meter.METER_ROLE_BILLING,
+            unit=self.unit,
+        )
+        EnergySystemMeterLink.objects.create(
+            energy_system=self.system,
+            meter=self.grid_meter,
+            side=EnergySystemMeterLink.SIDE_INPUT,
+        )
+        EnergySystemMeterLink.objects.create(
+            energy_system=self.system,
+            meter=self.output_meter,
+            side=EnergySystemMeterLink.SIDE_OUTPUT,
+        )
+        edit_response = self.client.get(
+            reverse("smart_meter:meter_check_group_edit", args=[self.group.pk])
+        )
+        self.assertContains(edit_response, 'data-output-meter-transfer')
+        self.assertContains(edit_response, 'data-add-output')
+        self.assertContains(edit_response, 'data-remove-output')
+
+        url = reverse(
+            "smart_meter:energy_system_output_meters_update",
+            args=[self.system.pk],
+        )
+        self.assertEqual(self.client.get(url).status_code, 405)
+        response = self.client.post(url, {"output_meters": [other_output.pk]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            list(self.system.meter_links.filter(
+                side=EnergySystemMeterLink.SIDE_OUTPUT,
+            ).values_list("meter_id", flat=True)),
+            [other_output.pk],
+        )
+        self.assertTrue(self.system.meter_links.filter(
+            side=EnergySystemMeterLink.SIDE_INPUT,
+            meter=self.grid_meter,
+        ).exists())
+
+        response = self.client.post(url, {})
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(self.system.meter_links.filter(
+            side=EnergySystemMeterLink.SIDE_OUTPUT,
+            meter=other_output,
+        ).exists())
+
+    def test_combined_energy_group_editor_saves_all_sections_and_adopts_membership(self):
+        MeterInstallation.objects.create(
+            meter=self.billing_meter,
+            unit=self.unit,
+            start_date=self.start,
+        )
+        url = reverse("smart_meter:meter_check_group_edit", args=[self.group.pk])
+        self.assertRedirects(
+            self.client.get(reverse("smart_meter:energy_system_edit", args=[self.system.pk])),
+            url,
+        )
+        self.assertRedirects(
+            self.client.get(reverse("smart_meter:energy_system_setup", args=[self.group.pk])),
+            url,
+        )
+        page = self.client.get(url)
+        self.assertContains(page, "Basic Details")
+        self.assertContains(page, "Billing Coverage")
+        self.assertContains(page, "Reconciliation Meters")
+        self.assertContains(page, "IESCO Connection")
+
+        response = self.client.post(url, {
+            "name": "Combined Energy Group",
+            "property": self.property.pk,
+            "automatic_coverage": "on",
+            "coverage_mode": MeterCheckGroup.COVERAGE_PROPERTY,
+            "check_meter": self.output_meter.pk,
+            "notes": "Combined settings",
+            "is_active": "on",
+            "reconciliation-input_meters": [self.grid_meter.pk],
+            "reconciliation-output_meters": [self.billing_meter.pk],
+            "reconciliation-output_meter_includes_grid_export": "false",
+            "reconciliation-output_reverse_capability": "",
+            "iesco-consumer_id": self.connection.consumer_id,
+            "iesco-reference_no": "17140000000001",
+            "iesco-dg_capacity_kw": "25.50",
+            "iesco-property_label": "Combined property",
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.group.refresh_from_db()
+        self.system.refresh_from_db()
+        self.connection.refresh_from_db()
+        membership = self.group.memberships.get(billing_meter=self.billing_meter)
+        self.assertEqual(self.group.name, "Combined Energy Group")
+        self.assertTrue(self.group.automatic_coverage)
+        self.assertEqual(self.group.property, self.property)
+        self.assertTrue(membership.assigned_automatically)
+        self.assertEqual(self.system.name, self.group.name)
+        self.assertEqual(
+            set(self.system.meter_links.values_list("side", "meter_id")),
+            {
+                (EnergySystemMeterLink.SIDE_INPUT, self.grid_meter.pk),
+                (EnergySystemMeterLink.SIDE_OUTPUT, self.billing_meter.pk),
+            },
+        )
+        self.assertEqual(self.connection.reference_no, "17140000000001")
+        self.assertEqual(self.connection.dg_capacity_kw, Decimal("25.50"))
+        detail = self.client.get(
+            reverse("smart_meter:meter_check_group_detail", args=[self.group.pk])
+        )
+        self.assertContains(detail, "Auto managed")
+
     def test_new_action_routes_are_post_only_and_audited(self):
         statement = InverterPeriodStatement.objects.create(
             energy_system=self.system,
@@ -484,6 +596,7 @@ class EnergyReconciliationTests(TestCase):
         post_only_routes = (
             ("meter_reading_profile_update", (self.grid_meter.pk,)),
             ("energy_system_reassign_meter", (self.system.pk,)),
+            ("energy_system_output_meters_update", (self.system.pk,)),
             ("inverter_statement_confirm", (statement.pk,)),
             ("inverter_statement_reopen", (statement.pk,)),
             ("utility_bill_confirm", (bill.pk,)),
@@ -541,6 +654,7 @@ class EnergyReconciliationTests(TestCase):
             ("get", "energy_system_list", ()),
             ("get", "energy_system_detail", (self.system.pk,)),
             ("post", "energy_system_reassign_meter", (self.system.pk,)),
+            ("post", "energy_system_output_meters_update", (self.system.pk,)),
             ("get", "inverter_statement_add", (self.system.pk,)),
             ("get", "inverter_statement_edit", (statement.pk,)),
             ("post", "inverter_statement_confirm", (statement.pk,)),
@@ -570,6 +684,22 @@ class EnergyReconciliationTests(TestCase):
         url = reverse("smart_meter:meter_check_group_list")
         self.assertNotContains(self.client.get(url), "Linked input")
         self.assertContains(self.client.get(url, {"show_linked": "1"}), "Linked input")
+
+    def test_check_group_list_shows_iesco_reference_number_column(self):
+        IescoBillReading.objects.create(
+            reference_no="1714-TEST-REF",
+            consumer_id=self.connection.consumer_id,
+            bill_month="SEP 26",
+        )
+
+        response = self.client.get(reverse("smart_meter:meter_check_group_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "IESCO Reference No.")
+        self.assertContains(response, "1714-TEST-REF")
+        self.assertContains(response, "reference_no=1714-TEST-REF")
+        self.assertContains(response, 'colspan="2" class="text-center"')
+        self.assertContains(response, '<span class="d-block">Active</span>', html=True)
 
     def test_pdf_parser_captures_current_bill_credit_and_ignores_mdi(self):
         document = fitz.open()

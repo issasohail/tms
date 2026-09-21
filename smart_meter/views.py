@@ -137,10 +137,16 @@ from .forms import (
     SwitchMeterForm,
     UnknownToMeterForm,
 )
+from .forms_reconciliation import (
+    EnergyGroupReconciliationForm,
+    UtilityConnectionSettingsForm,
+)
 
 # smart_meter/views.py
 from .models import (
     Bill,
+    EnergySystem,
+    EnergySystemMeterLink,
     Lease,
     LiveReading,
     Meter,
@@ -154,6 +160,7 @@ from .models import (
     MeterRoleHistory,
     Unit,
     UnknownMeter,
+    UtilityConnection,
 )
 from .services.billing import generate_bill_for_unit
 
@@ -1780,6 +1787,23 @@ def meter_unit_rate_update(request, pk):
     })
 
 
+def _iesco_reference_for_connection(connection):
+    if connection is None:
+        return ""
+    configured_reference = (connection.reference_no or "").strip()
+    if configured_reference:
+        return configured_reference
+    from invoices.models import IescoBillReading
+    return (
+        IescoBillReading.objects.filter(consumer_id=connection.consumer_id)
+        .exclude(reference_no__in=["", "?"])
+        .order_by("-received_at", "-pk")
+        .values_list("reference_no", flat=True)
+        .first()
+        or ""
+    ).strip()
+
+
 @login_required
 def meter_check_group_list(request):
     from django.db.models import Count
@@ -1800,6 +1824,7 @@ def meter_check_group_list(request):
             "check_meter__unit__property",
             "superseded_by_energy_system",
             "energy_system",
+            "energy_system__utility_connection",
         )
         .prefetch_related("energy_system__meter_links__meter__unit__property")
         .annotate(
@@ -1842,7 +1867,7 @@ def meter_check_group_list(request):
             units_by_group[group_id].add(unit_number)
     for group in groups:
         group.covered_property_names = ", ".join(sorted(coverage_by_group[group.pk]))
-        group.covered_unit_names = ", ".join(sorted(units_by_group[group.pk]))
+        group.covered_unit_names = sorted(units_by_group[group.pk])
         system = getattr(group, "energy_system", None)
         if system:
             links = list(system.meter_links.all())
@@ -1850,10 +1875,17 @@ def meter_check_group_list(request):
             group.energy_output_links = [link for link in links if link.side == "output"]
             from smart_meter.services.reconciliation import _iesco_invoice_bill
             group.iesco_bill_latest = _iesco_invoice_bill(system)
+            connection = getattr(system, "utility_connection", None)
+            group.iesco_reference_no = (
+                _iesco_reference_for_connection(connection)
+                or getattr(group.iesco_bill_latest, "reference_no", "")
+                or ""
+            ).strip()
         else:
             group.energy_input_links = []
             group.energy_output_links = []
             group.iesco_bill_latest = None
+            group.iesco_reference_no = ""
     return render(request, "smart_meter/check_group_list.html", {"groups": groups})
 
 
@@ -2062,60 +2094,154 @@ def meter_check_group_delete_manage(request, pk):
 @login_required
 def meter_check_group_form(request, pk=None):
     group = get_object_or_404(MeterCheckGroup, pk=pk) if pk else None
+    system = getattr(group, "energy_system", None) if group else None
+    connection = getattr(system, "utility_connection", None) if system else None
+    form = MeterCheckGroupForm(
+        request.POST or None,
+        instance=group,
+        initial={"automatic_coverage": True},
+    )
+    reconciliation_form = EnergyGroupReconciliationForm(
+        request.POST or None,
+        group=group,
+        energy_system=system,
+        prefix="reconciliation",
+    )
+    connection_initial = {}
+    if connection and not connection.reference_no:
+        connection_initial["reference_no"] = _iesco_reference_for_connection(connection)
+    connection_form = UtilityConnectionSettingsForm(
+        request.POST or None,
+        instance=connection,
+        initial=connection_initial,
+        prefix="iesco",
+    )
     coverage_preview = None
     if request.method == "POST":
-        form = MeterCheckGroupForm(request.POST, instance=group)
-        if form.is_valid():
-            if "preview_coverage" in request.POST:
-                cleaned = form.cleaned_data
-                if cleaned["automatic_coverage"]:
-                    units = (
-                        Unit.objects.filter(property=cleaned["property"])
-                        if cleaned["coverage_mode"] == MeterCheckGroup.COVERAGE_PROPERTY
-                        else cleaned["coverage_units"]
-                    )
-                    meters = Meter.objects.filter(
-                        installations__unit__in=units,
-                        installations__is_active=True,
-                        installations__end_date__isnull=True,
-                        meter_role=Meter.METER_ROLE_BILLING,
-                        meter_type=Meter.METER_TYPE_ELECTRIC,
-                        is_active=True,
-                    ).distinct().order_by("meter_number")
-                    coverage_preview = [
-                        {
-                            "number": meter.meter_number,
-                            "conflict": meter.check_group_memberships.filter(
-                                is_active=True, end_date__isnull=True,
-                            ).exclude(group=group).exists(),
-                        }
-                        for meter in meters
-                    ]
-                else:
-                    coverage_preview = []
-            else:
+        group_valid = form.is_valid()
+        if "preview_coverage" in request.POST and group_valid:
+            cleaned = form.cleaned_data
+            units = (
+                Unit.objects.filter(property=cleaned["property"])
+                if cleaned["coverage_mode"] == MeterCheckGroup.COVERAGE_PROPERTY
+                else cleaned["coverage_units"]
+            )
+            meters = Meter.objects.filter(
+                installations__unit__in=units,
+                installations__is_active=True,
+                installations__end_date__isnull=True,
+                meter_role=Meter.METER_ROLE_BILLING,
+                meter_type=Meter.METER_TYPE_ELECTRIC,
+                is_active=True,
+            ).distinct().order_by("meter_number")
+            coverage_preview = [
+                {
+                    "number": meter.meter_number,
+                    "conflict": meter.check_group_memberships.filter(
+                        is_active=True, end_date__isnull=True,
+                    ).exclude(group=group).exists(),
+                }
+                for meter in meters
+            ]
+        elif "preview_coverage" not in request.POST:
+            reconciliation_submitted = any(
+                key.startswith("reconciliation-") for key in request.POST
+            )
+            connection_submitted = any(
+                key.startswith("iesco-") for key in request.POST
+            )
+            reconciliation_valid = (
+                reconciliation_form.is_valid() if reconciliation_submitted else True
+            )
+            connection_valid = (
+                connection_form.is_valid() if connection_submitted else True
+            )
+            if (
+                group_valid
+                and (system is not None or reconciliation_submitted)
+                and len(form.cleaned_data["name"]) > 80
+            ):
+                form.add_error(
+                    "name",
+                    "Energy Group names with reconciliation cannot exceed 80 characters.",
+                )
+                group_valid = False
+            if group_valid and reconciliation_valid and connection_valid:
                 from smart_meter.services.check_group_coverage import sync_group_coverage
                 try:
                     with transaction.atomic():
                         group = form.save()
                         system = getattr(group, "energy_system", None)
-                        if system is not None and system.name != group.name:
+                        if reconciliation_submitted:
+                            export_path = reconciliation_form.cleaned_data[
+                                "output_meter_includes_grid_export"
+                            ]
+                            if system is None:
+                                system = EnergySystem.objects.create(
+                                    name=group.name,
+                                    output_group=group,
+                                )
+                            system.name = group.name
+                            system.output_meter_includes_grid_export = (
+                                None if export_path == "" else export_path == "true"
+                            )
+                            system.save(update_fields=[
+                                "name", "output_meter_includes_grid_export", "updated_at"
+                            ])
+                            system.meter_links.all().delete()
+                            EnergySystemMeterLink.objects.bulk_create([
+                                EnergySystemMeterLink(
+                                    energy_system=system,
+                                    meter=meter,
+                                    side=EnergySystemMeterLink.SIDE_INPUT,
+                                )
+                                for meter in reconciliation_form.cleaned_data["input_meters"]
+                            ] + [
+                                EnergySystemMeterLink(
+                                    energy_system=system,
+                                    meter=meter,
+                                    side=EnergySystemMeterLink.SIDE_OUTPUT,
+                                )
+                                for meter in reconciliation_form.cleaned_data["output_meters"]
+                            ])
+                            reverse_capability = reconciliation_form.cleaned_data[
+                                "output_reverse_capability"
+                            ]
+                            if reverse_capability:
+                                reconciliation_form.cleaned_data["output_meters"].update(
+                                    reverse_energy_capability=reverse_capability
+                                )
+                        elif system is not None and system.name != group.name:
                             system.name = group.name
                             system.save(update_fields=["name", "updated_at"])
+
+                        if connection_submitted and connection_form.cleaned_data.get("consumer_id"):
+                            if system is None:
+                                raise ValidationError(
+                                    "Configure reconciliation meters before saving an IESCO connection."
+                                )
+                            connection_record = connection_form.save(commit=False)
+                            connection_record.energy_system = system
+                            connection_record.save()
+
                         sync_group_coverage(group, timezone.localdate())
                 except ValidationError as exc:
                     form.add_error(None, exc)
                 else:
-                    messages.success(request, "Check group saved.")
+                    messages.success(
+                        request,
+                        "Energy Group, automatic billing coverage, reconciliation meters, and IESCO connection saved.",
+                    )
                     return redirect("smart_meter:meter_check_group_detail", pk=group.pk)
-    else:
-        form = MeterCheckGroupForm(instance=group)
     return render(
         request,
         "smart_meter/check_group_form.html",
         {
             "form": form,
+            "reconciliation_form": reconciliation_form,
+            "connection_form": connection_form,
             "group": group,
+            "system": system,
             "coverage_preview": coverage_preview,
         },
     )
@@ -2158,6 +2284,12 @@ def meter_check_group_detail(request, pk):
     if end_date < start_date:
         start_date, end_date = end_date, start_date
 
+    if request.method == "POST" and group.automatic_coverage:
+        messages.warning(
+            request,
+            "Billing meters are managed automatically from this Energy Group's coverage settings.",
+        )
+        return redirect("smart_meter:meter_check_group_edit", pk=group.pk)
     if request.method == "POST":
         membership_form = MeterCheckGroupMembershipForm(request.POST, group=group)
         if membership_form.is_valid():

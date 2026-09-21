@@ -1,15 +1,31 @@
 {% extends "base.html" %}
 
 {% block title %}Energy Groups & Reconciliation{% endblock %}
+{% block main_container_class %}container energy-group-page{% endblock %}
 
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
 <style>
   .energy-group-table { min-width: 1500px; }
   .energy-group-table th { white-space: nowrap; }
+  .energy-group-unit { min-width: 190px; }
+  .energy-group-unit-item { white-space: nowrap; }
+  .energy-group-iesco { min-width: 145px; white-space: nowrap; }
+  .energy-group-output-serial { min-width: 145px; white-space: nowrap; }
+  .energy-group-output-unit { min-width: 150px; }
+  .energy-group-output-list { line-height: 1.5; }
+  .energy-group-output-item { display: block; margin: 0; white-space: nowrap; }
   .energy-group-meter { line-height: 1.15; }
   .energy-group-meter .meter-location { display: block; margin-top: .15rem; font-size: .72rem; color: #6c757d; }
+  .energy-group-actions { min-width: 180px; }
   .energy-group-actions .btn { font-weight: 600; white-space: nowrap; }
+  .energy-group-actions-row { display: inline-flex; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: .25rem; }
+  @media (min-width: 1200px) {
+    .energy-group-page { max-width: 1440px; }
+  }
+  @media (min-width: 1400px) {
+    .energy-group-page { max-width: 1620px; }
+  }
 </style>
 <div class="container-fluid">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
@@ -31,9 +47,22 @@
   <div class="card">
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0 energy-group-table">
-        <thead class="table-light"><tr>
-          <th style="width:64px;">S.N#</th><th>Name / System</th><th>Covered Property</th><th>Unit</th><th>Input Meter</th><th>Audit Meter</th><th>Output Meter Serial / Unit</th><th class="text-center">Active Billing Meter</th><th>Status</th><th class="text-end">Action</th>
-        </tr></thead>
+        <thead class="table-light">
+          <tr>
+            <th rowspan="2" style="width:64px;">S.N#</th>
+            <th rowspan="2">Name / System</th>
+            <th rowspan="2">Covered Property</th>
+            <th rowspan="2">Unit</th>
+            <th rowspan="2">Input Meter</th>
+            <th rowspan="2">IESCO Reference No.</th>
+            <th rowspan="2">Audit Meter</th>
+            <th colspan="2" class="text-center"><span class="d-block">Output</span><span class="d-block">Meter</span></th>
+            <th rowspan="2" class="text-center"><span class="d-block">Active</span><span class="d-block">Billing</span><span class="d-block">Meters</span></th>
+            <th rowspan="2">Status</th>
+            <th rowspan="2" class="text-end">Action</th>
+          </tr>
+          <tr><th>Serial #</th><th>Unit</th></tr>
+        </thead>
         <tbody>
           {% for group in groups %}
           <tr data-group-row="{{ group.pk }}">
@@ -44,25 +73,23 @@
               {% if group.energy_system %}<div class="small text-muted">System: {{ group.energy_system.name }}</div>{% else %}<div class="small text-warning">Energy System not configured</div>{% endif %}
             </td>
             <td>{% if group.covered_property_names %}{{ group.covered_property_names }}{% elif group.property %}{{ group.property.property_name }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-            <td>{% if group.covered_unit_names %}{{ group.covered_unit_names }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td class="energy-group-unit">{% for unit_name in group.covered_unit_names %}<div class="energy-group-unit-item">{{ forloop.counter }}. {{ unit_name }}</div>{% empty %}<span class="text-muted">—</span>{% endfor %}</td>
             <td class="energy-group-meter">
               {% for link in group.energy_input_links %}<div><a href="{% url 'smart_meter:meter_detail' link.meter_id %}" class="text-decoration-none fw-semibold">{{ link.meter.meter_number }}</a><span class="meter-location">{{ link.meter.display_location_name }}</span></div>{% empty %}<span class="text-muted">—</span>{% endfor %}
-              {% if group.iesco_bill_latest %}<div class="small mt-1"><a href="{% url 'invoices:iesco_bill_reading_list' %}?reference_no={{ group.iesco_bill_latest.reference_no|urlencode }}" class="text-decoration-none"><i class="fas fa-bolt me-1"></i>IESCO {{ group.iesco_bill_latest.reference_no }}</a></div>{% endif %}
             </td>
+            <td class="energy-group-iesco">{% if group.iesco_reference_no %}<a href="{% url 'invoices:iesco_bill_reading_list' %}?reference_no={{ group.iesco_reference_no|urlencode }}" class="text-decoration-none fw-semibold"><i class="fas fa-bolt me-1"></i>{{ group.iesco_reference_no }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td class="energy-group-meter"><a href="{% url 'smart_meter:meter_detail' group.check_meter_id %}" class="text-decoration-none fw-semibold">{{ group.check_meter.meter_number }}</a><span class="meter-location">{{ group.check_meter.display_location_name }}</span></td>
-            <td class="energy-group-meter">{% for link in group.energy_output_links %}<div class="mb-1"><a href="{% url 'smart_meter:meter_detail' link.meter_id %}" class="text-decoration-none fw-semibold">{{ link.meter.meter_number }}</a><span class="meter-location">{{ link.meter.display_location_name }}</span></div>{% empty %}<span class="text-muted">—</span>{% endfor %}</td>
+            <td class="energy-group-meter energy-group-output-serial"><div class="energy-group-output-list">{% for link in group.energy_output_links %}<div class="energy-group-output-item"><a href="{% url 'smart_meter:meter_detail' link.meter_id %}" class="text-decoration-none fw-semibold">{{ forloop.counter }}. {{ link.meter.meter_number }}</a></div>{% empty %}<span class="text-muted energy-group-output-item">—</span>{% endfor %}</div></td>
+            <td class="energy-group-output-unit"><div class="energy-group-output-list">{% for link in group.energy_output_links %}<div class="energy-group-output-item">{{ link.meter.display_location_name }}</div>{% empty %}<span class="text-muted energy-group-output-item">—</span>{% endfor %}</div></td>
             <td class="text-center" data-active-count="{{ group.pk }}"><span class="badge bg-primary">{{ group.active_billing_meter_count }}</span></td>
             <td>{% if group.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}{% if group.energy_system and not group.energy_system.is_active %}<div><span class="badge bg-warning text-dark">System inactive</span></div>{% endif %}</td>
-            <td class="text-end text-nowrap energy-group-actions"><div class="d-inline-flex flex-nowrap gap-1">
-              <a class="btn btn-sm btn-success" href="{% url 'smart_meter:meter_check_group_detail' group.pk %}#energy-reconciliation">Meter Recon</a>
-              <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:meter_check_group_detail' group.pk %}#billing-meter-memberships">Assign Meters</a>
-              {% if group.energy_system and perms.smart_meter.change_energysystem %}<a class="btn btn-sm btn-outline-info" href="{% url 'smart_meter:energy_system_edit' group.energy_system.pk %}" title="Configure input/output meters">Meter Config</a>{% elif perms.smart_meter.add_energysystem %}<a class="btn btn-sm btn-warning text-dark" href="{% url 'smart_meter:energy_system_setup' group.pk %}">Set up Recon</a>{% endif %}
-              <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_check_group_edit' group.pk %}" title="Edit Energy Group"><i class="fas fa-pen"></i></a>
+            <td class="text-end text-nowrap energy-group-actions"><div class="energy-group-actions-row">
+              <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:meter_check_group_detail' group.pk %}"><i class="fas fa-eye me-1"></i>View</a>
+              <a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_check_group_edit' group.pk %}" title="Edit Energy Group"><i class="fas fa-pen me-1"></i>Edit</a>
               {% if group.energy_system %}<button class="btn btn-sm btn-outline-danger" type="button" title="This group is linked to an Energy System; unlink/remove the Energy System before deleting the group." disabled><i class="fas fa-trash"></i></button>{% else %}<button class="btn btn-sm btn-danger" type="button" title="Delete Energy Group" aria-label="Delete Check Group" data-hard-delete-group data-group-id="{{ group.pk }}" data-group-name="{{ group.name }}" data-membership-count="{{ group.membership_record_count }}" data-manage-url="{% url 'smart_meter:meter_check_group_delete_manage' group.pk %}"><i class="fas fa-trash"></i></button>{% endif %}
-              <a class="btn btn-sm btn-outline-dark" href="{% url 'smart_meter:meter_check_group_detail' group.pk %}" title="Open combined detail"><i class="fas fa-folder-open"></i> Open</a>
             </div></td>
           </tr>
-          {% empty %}<tr><td colspan="10" class="text-center text-muted py-4">No Energy Groups have been configured.</td></tr>{% endfor %}
+          {% empty %}<tr><td colspan="12" class="text-center text-muted py-4">No Energy Groups have been configured.</td></tr>{% endfor %}
         </tbody>
       </table>
     </div>

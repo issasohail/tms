@@ -1,33 +1,165 @@
 {% extends "base.html" %}
 
-{% block title %}{% if group %}Edit{% else %}Add{% endif %} Check Group{% endblock %}
+{% block title %}{% if group %}Edit{% else %}New{% endif %} Energy Group{% endblock %}
+{% block main_container_class %}container energy-group-edit-shell{% endblock %}
 
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
-<div class="container" style="max-width: 760px;">
+<style>
+  .energy-group-edit-shell { width: 100%; max-width: 1220px; }
+  .energy-group-section .card-header { font-size: .95rem; }
+  .energy-output-transfer select { min-height: 260px; }
+  .energy-output-transfer-controls { min-width: 155px; }
+  @media (max-width: 767.98px) { .energy-output-transfer-controls { min-width: 0; } }
+</style>
+<div class="container-fluid px-0">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2 class="mb-0">{% if group %}Edit{% else %}New{% endif %} Check Group</h2>
+    <div><h2 class="mb-0">{% if group %}Edit{% else %}New{% endif %} Energy Group</h2><small class="text-muted">Manage group details, automatic billing coverage, reconciliation meters, and IESCO connection in one place.</small></div>
     <a class="btn btn-sm btn-outline-secondary" href="{% if group %}{% url 'smart_meter:meter_check_group_detail' group.pk %}{% else %}{% url 'smart_meter:meter_check_group_list' %}{% endif %}">Cancel</a>
   </div>
-  <div class="card">
-    <div class="card-body">
-      <form method="post" novalidate>
-        {% csrf_token %}
-        {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>{% endif %}
+
+  <form method="post" novalidate id="energyGroupForm">
+    {% csrf_token %}
+    <input type="hidden" name="automatic_coverage" value="on">
+    {% if form.non_field_errors %}<div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>{% endif %}
+    {% if reconciliation_form.non_field_errors %}<div class="alert alert-danger py-2">{{ reconciliation_form.non_field_errors }}</div>{% endif %}
+    {% if connection_form.non_field_errors %}<div class="alert alert-danger py-2">{{ connection_form.non_field_errors }}</div>{% endif %}
+
+    <section class="card energy-group-section mb-3">
+      <div class="card-header"><i class="fas fa-pen me-2"></i>Basic Details</div>
+      <div class="card-body"><div class="row g-3">
+        <div class="col-md-6">{{ form.name.label_tag }}{{ form.name }}{{ form.name.errors }}</div>
+        <div class="col-md-6">{{ form.check_meter.label_tag }}{{ form.check_meter }}{{ form.check_meter.errors }}<div class="form-text">The Audit meter used for billing variance and Check Group reconciliation.</div></div>
+        <div class="col-12">{{ form.notes.label_tag }}{{ form.notes }}{{ form.notes.errors }}</div>
+        <div class="col-12"><div class="form-check">{{ form.is_active }}{{ form.is_active.label_tag }}{{ form.is_active.errors }}</div></div>
+      </div></div>
+    </section>
+
+    <section class="card energy-group-section mb-3" id="billing-coverage">
+      <div class="card-header"><i class="fas fa-building me-2"></i>Billing Coverage</div>
+      <div class="card-body">
+        <div class="alert alert-info py-2">Billing-meter membership is fully automatic. Saving this page synchronizes currently installed active Billing meters while retaining dated membership history.</div>
         <div class="row g-3">
-          <div class="col-md-6">{{ form.name.label_tag }}{{ form.name }}{{ form.name.errors }}</div>
-          <div class="col-md-6">{{ form.property.label_tag }}{{ form.property }}{{ form.property.errors }}<div class="form-text">{{ form.property.help_text }}</div></div>
-          <div class="col-12"><div class="form-check">{{ form.automatic_coverage }}{{ form.automatic_coverage.label_tag }}{{ form.automatic_coverage.errors }}</div><div class="form-text">Enable to keep Billing meter memberships aligned with installations in the selected property or units. Existing groups stay manual until enabled.</div></div>
+          <div class="col-md-6">{{ form.property.label_tag }}{{ form.property }}{{ form.property.errors }}<div class="form-text">Required for automatic coverage.</div></div>
           <div class="col-md-6">{{ form.coverage_mode.label_tag }}{{ form.coverage_mode }}{{ form.coverage_mode.errors }}</div>
-          <div class="col-md-6">{{ form.coverage_units.label_tag }}{{ form.coverage_units }}{{ form.coverage_units.errors }}<div class="form-text">Used only when coverage mode is Selected units.</div></div>
-          <div class="col-12">{{ form.check_meter.label_tag }}{{ form.check_meter }}{{ form.check_meter.errors }}<div class="form-text">Only active meters with the Audit role are available. Billing-meter assignments determine the actual coverage.</div></div>
-          <div class="col-12">{{ form.notes.label_tag }}{{ form.notes }}{{ form.notes.errors }}</div>
-          <div class="col-12"><div class="form-check">{{ form.is_active }}{{ form.is_active.label_tag }}{{ form.is_active.errors }}</div></div>
+          <div class="col-12">{{ form.coverage_units.label_tag }}{{ form.coverage_units }}{{ form.coverage_units.errors }}<div class="form-text">Used only when coverage mode is Selected units.</div></div>
         </div>
-        {% if coverage_preview is not None %}<div class="alert alert-info py-2 mt-3 mb-0"><strong>Current eligible Billing meters: {{ coverage_preview|length }}</strong>{% for item in coverage_preview %}<div>{{ item.number }}{% if item.conflict %} — already assigned to another group; resolve before saving{% endif %}</div>{% empty %}<div>No current meters match. Future installations will be assigned automatically.</div>{% endfor %}</div>{% endif %}
-        <div class="text-end mt-3"><button class="btn btn-outline-secondary me-2" type="submit" name="preview_coverage" value="1">Preview coverage</button><button class="btn btn-primary" type="submit">Save Check Group</button></div>
-      </form>
-    </div>
-  </div>
+        {% if coverage_preview is not None %}<div class="alert alert-secondary py-2 mt-3 mb-0"><strong>Eligible Billing meters: {{ coverage_preview|length }}</strong>{% for item in coverage_preview %}<div>{{ forloop.counter }}. {{ item.number }}{% if item.conflict %} — already assigned to another group; resolve before saving{% endif %}</div>{% empty %}<div>No current meters match. Future installations will be assigned automatically.</div>{% endfor %}</div>{% endif %}
+      </div>
+    </section>
+
+    <section class="card energy-group-section mb-3">
+      <div class="card-header"><i class="fas fa-project-diagram me-2"></i>Reconciliation Meters</div>
+      <div class="card-body">
+        <div class="alert alert-light border py-2">These links define energy flow for reconciliation. Output meters may remain Billing meters and keep their normal tenant billing.</div>
+        <div class="mb-3">{{ reconciliation_form.input_meters.label_tag }}{{ reconciliation_form.input_meters }}{{ reconciliation_form.input_meters.errors }}<div class="form-text">{{ reconciliation_form.input_meters.help_text }}</div></div>
+        <div class="energy-output-transfer mb-3" data-output-meter-transfer data-save-url="{% if system %}{% url 'smart_meter:energy_system_output_meters_update' system.pk %}{% endif %}">
+          <div class="row g-2 align-items-center">
+            <div class="col-md"><label class="form-label" for="selectedOutputMeters">Output meters</label><select class="form-select" id="selectedOutputMeters" multiple size="10" aria-label="Selected output meters"></select></div>
+            <div class="col-md-auto energy-output-transfer-controls"><div class="d-grid gap-2">
+              <button class="btn btn-sm btn-primary" type="button" data-add-output><i class="fas fa-arrow-left me-1"></i>Add to output</button>
+              <button class="btn btn-sm btn-outline-danger" type="button" data-remove-output>Remove<i class="fas fa-arrow-right ms-1"></i></button>
+            </div></div>
+            <div class="col-md"><label class="form-label" for="availableOutputMeters">All meters</label><select class="form-select" id="availableOutputMeters" multiple size="10" aria-label="All available meters"></select></div>
+          </div>
+          <div class="d-none" aria-hidden="true">{{ reconciliation_form.output_meters }}</div>
+          {{ reconciliation_form.output_meters.errors }}
+          <div class="form-text">Move meters between the boxes. Existing Energy Groups save each move automatically.</div>
+          <div class="small mt-1 text-muted" data-output-save-status role="status" aria-live="polite"></div>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">{{ reconciliation_form.output_meter_includes_grid_export.label_tag }}{{ reconciliation_form.output_meter_includes_grid_export }}{{ reconciliation_form.output_meter_includes_grid_export.errors }}</div>
+          <div class="col-md-6">{{ reconciliation_form.output_reverse_capability.label_tag }}{{ reconciliation_form.output_reverse_capability }}{{ reconciliation_form.output_reverse_capability.errors }}<div class="form-text">{{ reconciliation_form.output_reverse_capability.help_text }}</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card energy-group-section mb-3">
+      <div class="card-header"><i class="fas fa-bolt me-2"></i>IESCO Connection</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">{{ connection_form.consumer_id.label_tag }}{{ connection_form.consumer_id }}{{ connection_form.consumer_id.errors }}</div>
+          <div class="col-md-6">{{ connection_form.reference_no.label_tag }}{{ connection_form.reference_no }}{{ connection_form.reference_no.errors }}</div>
+          <div class="col-md-6">{{ connection_form.dg_capacity_kw.label_tag }}{{ connection_form.dg_capacity_kw }}{{ connection_form.dg_capacity_kw.errors }}</div>
+          <div class="col-md-6">{{ connection_form.property_label.label_tag }}{{ connection_form.property_label }}{{ connection_form.property_label.errors }}</div>
+        </div>
+        <div class="form-text mt-2">Consumer ID is required when any IESCO details are entered. Reference No. links this group to fetched IESCO bills.</div>
+      </div>
+    </section>
+
+    <div class="d-flex justify-content-end gap-2 mb-4"><button class="btn btn-outline-secondary" type="submit" name="preview_coverage" value="1">Preview Billing Coverage</button><button class="btn btn-primary" type="submit">Save Energy Group</button></div>
+  </form>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const transfer = document.querySelector('[data-output-meter-transfer]');
+  if (!transfer) return;
+  const source = transfer.querySelector('select[name="reconciliation-output_meters"]');
+  const outputBox = document.getElementById('selectedOutputMeters');
+  const allBox = document.getElementById('availableOutputMeters');
+  const addButton = transfer.querySelector('[data-add-output]');
+  const removeButton = transfer.querySelector('[data-remove-output]');
+  const status = transfer.querySelector('[data-output-save-status]');
+  const choices = Array.from(source.options).map(function (option) { return {value: option.value, text: option.text, selected: option.selected}; });
+
+  function selectedIds() { return Array.from(outputBox.options).map(function (option) { return option.value; }); }
+  function render(ids) {
+    const selected = new Set(ids.map(String));
+    outputBox.innerHTML = '';
+    allBox.innerHTML = '';
+    choices.forEach(function (choice) {
+      const option = new Option(choice.text, choice.value, false, false);
+      (selected.has(choice.value) ? outputBox : allBox).appendChild(option);
+    });
+    Array.from(source.options).forEach(function (option) { option.selected = selected.has(option.value); });
+  }
+  async function save(previousIds) {
+    if (!transfer.dataset.saveUrl) {
+      status.className = 'small mt-1 text-muted';
+      status.textContent = 'Output-meter changes will be saved with the new Energy Group.';
+      return;
+    }
+    const data = new URLSearchParams();
+    selectedIds().forEach(function (id) { data.append('output_meters', id); });
+    addButton.disabled = true;
+    removeButton.disabled = true;
+    status.className = 'small mt-1 text-muted';
+    status.textContent = 'Saving output meters...';
+    try {
+      const response = await fetch(transfer.dataset.saveUrl, {
+        method: 'POST', credentials: 'same-origin',
+        headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': document.querySelector('input[name="csrfmiddlewaretoken"]').value, 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+        body: data
+      });
+      const result = await response.json().catch(function () { return {}; });
+      if (!response.ok || !result.success) throw new Error(result.error || 'Output meters could not be saved.');
+      status.className = 'small mt-1 text-success';
+      status.textContent = result.message;
+    } catch (error) {
+      render(previousIds);
+      status.className = 'small mt-1 text-danger';
+      status.textContent = error.message || 'Output meters could not be saved.';
+    } finally {
+      addButton.disabled = false;
+      removeButton.disabled = false;
+    }
+  }
+  function move(fromBox, addToOutput) {
+    const moving = Array.from(fromBox.selectedOptions).map(function (option) { return option.value; });
+    if (!moving.length) {
+      status.className = 'small mt-1 text-danger';
+      status.textContent = 'Select at least one meter to move.';
+      return;
+    }
+    const previousIds = selectedIds();
+    const nextIds = addToOutput ? previousIds.concat(moving.filter(function (id) { return !previousIds.includes(id); })) : previousIds.filter(function (id) { return !moving.includes(id); });
+    render(nextIds);
+    save(previousIds);
+  }
+  addButton.addEventListener('click', function () { move(allBox, true); });
+  removeButton.addEventListener('click', function () { move(outputBox, false); });
+  render(choices.filter(function (choice) { return choice.selected; }).map(function (choice) { return choice.value; }));
+});
+</script>
 {% endblock %}

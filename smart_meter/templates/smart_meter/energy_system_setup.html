@@ -2,6 +2,13 @@
 {% block title %}{% if is_edit %}Edit Energy Reconciliation{% else %}Set up Energy Reconciliation{% endif %}{% endblock %}
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
+<style>
+  .energy-output-transfer select { min-height: 260px; }
+  .energy-output-transfer-controls { min-width: 155px; }
+  @media (max-width: 767.98px) {
+    .energy-output-transfer-controls { min-width: 0; }
+  }
+</style>
 <div class="container-fluid" style="max-width: 980px;">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div><h2 class="mb-0">{% if is_edit %}Edit Energy Reconciliation{% else %}Set up Energy Reconciliation{% endif %}</h2><small class="text-muted">{{ group.name }} — use any number of input and output meters.</small></div>
@@ -9,8 +16,124 @@
   </div>
   <div class="alert alert-info">Output meters may remain Billing meters. Linking them here is read-only for reconciliation and does not change tenant billing.</div>
   <form method="post" class="card card-body">{% csrf_token %}
-    {% for field in form %}<div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>{% endfor %}
+    {% for field in form %}
+      <div class="mb-3">
+        {% if is_edit and field.name == "output_meters" %}
+          <div class="energy-output-transfer" data-output-meter-transfer data-save-url="{% url 'smart_meter:energy_system_output_meters_update' system.pk %}">
+            <div class="row g-2 align-items-center">
+              <div class="col-md">
+                <label class="form-label" for="selectedOutputMeters">Output meters</label>
+                <select class="form-select" id="selectedOutputMeters" multiple size="10" aria-label="Selected output meters"></select>
+              </div>
+              <div class="col-md-auto energy-output-transfer-controls">
+                <div class="d-grid gap-2">
+                  <button class="btn btn-sm btn-primary" type="button" data-add-output title="Move selected meters from All meters to Output meters"><i class="fas fa-arrow-left me-1"></i>Add to output</button>
+                  <button class="btn btn-sm btn-outline-danger" type="button" data-remove-output title="Move selected meters from Output meters to All meters">Remove<i class="fas fa-arrow-right ms-1"></i></button>
+                </div>
+              </div>
+              <div class="col-md">
+                <label class="form-label" for="availableOutputMeters">All meters</label>
+                <select class="form-select" id="availableOutputMeters" multiple size="10" aria-label="All available meters"></select>
+              </div>
+            </div>
+            <div class="d-none" aria-hidden="true">{{ field }}</div>
+            <div class="form-text">Select one or more meters, then use Add or Remove. Each move saves automatically.</div>
+            <div class="small mt-1 text-muted" data-output-save-status role="status" aria-live="polite"></div>
+          </div>
+        {% else %}
+          <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+        {% endif %}
+        {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+      </div>
+    {% endfor %}
     <button class="btn btn-primary">{% if is_edit %}Save linked meters{% else %}Create and link meters{% endif %}</button>
   </form>
 </div>
+{% if is_edit %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const transfer = document.querySelector('[data-output-meter-transfer]');
+  if (!transfer) return;
+
+  const source = transfer.querySelector('select[name="output_meters"]');
+  const outputBox = document.getElementById('selectedOutputMeters');
+  const allBox = document.getElementById('availableOutputMeters');
+  const addButton = transfer.querySelector('[data-add-output]');
+  const removeButton = transfer.querySelector('[data-remove-output]');
+  const status = transfer.querySelector('[data-output-save-status]');
+  const choices = Array.from(source.options).map(function (option) {
+    return {value: option.value, text: option.text, selected: option.selected};
+  });
+
+  function selectedIds() {
+    return Array.from(outputBox.options).map(function (option) { return option.value; });
+  }
+
+  function render(ids) {
+    const selected = new Set(ids.map(String));
+    outputBox.innerHTML = '';
+    allBox.innerHTML = '';
+    choices.forEach(function (choice) {
+      const option = new Option(choice.text, choice.value, false, false);
+      (selected.has(choice.value) ? outputBox : allBox).appendChild(option);
+    });
+    Array.from(source.options).forEach(function (option) {
+      option.selected = selected.has(option.value);
+    });
+  }
+
+  async function save(previousIds) {
+    const ids = selectedIds();
+    const data = new URLSearchParams();
+    ids.forEach(function (id) { data.append('output_meters', id); });
+    addButton.disabled = true;
+    removeButton.disabled = true;
+    status.className = 'small mt-1 text-muted';
+    status.textContent = 'Saving output meters...';
+    try {
+      const response = await fetch(transfer.dataset.saveUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': document.querySelector('input[name="csrfmiddlewaretoken"]').value,
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+        },
+        body: data
+      });
+      const result = await response.json().catch(function () { return {}; });
+      if (!response.ok || !result.success) throw new Error(result.error || 'Output meters could not be saved.');
+      status.className = 'small mt-1 text-success';
+      status.textContent = result.message;
+    } catch (error) {
+      render(previousIds);
+      status.className = 'small mt-1 text-danger';
+      status.textContent = error.message || 'Output meters could not be saved.';
+    } finally {
+      addButton.disabled = false;
+      removeButton.disabled = false;
+    }
+  }
+
+  function move(fromBox, addToOutput) {
+    const moving = Array.from(fromBox.selectedOptions).map(function (option) { return option.value; });
+    if (!moving.length) {
+      status.className = 'small mt-1 text-danger';
+      status.textContent = 'Select at least one meter to move.';
+      return;
+    }
+    const previousIds = selectedIds();
+    const nextIds = addToOutput
+      ? previousIds.concat(moving.filter(function (id) { return !previousIds.includes(id); }))
+      : previousIds.filter(function (id) { return !moving.includes(id); });
+    render(nextIds);
+    save(previousIds);
+  }
+
+  addButton.addEventListener('click', function () { move(allBox, true); });
+  removeButton.addEventListener('click', function () { move(outputBox, false); });
+  render(choices.filter(function (choice) { return choice.selected; }).map(function (choice) { return choice.value; }));
+});
+</script>
+{% endif %}
 {% endblock %}

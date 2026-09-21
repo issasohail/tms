@@ -203,33 +203,174 @@ def _boundary_readings_by_meter(
 # smart_meter/views_dashboard.py
 
 
-def _chain_rows_from_groups(groups, prev_end: Decimal | None = None):
+def _meter_uses_bidirectional_registers(meter: Meter) -> bool:
+    """Whether dashboard continuity must keep legacy totals separate from F/R registers."""
+    return meter.reverse_energy_capability == Meter.REVERSE_CAPABILITY_SUPPORTED
+
+
+def _dashboard_register_values(meter: Meter, row):
+    """Return (source, forward_like_value, reverse_value) for one stored reading.
+
+    Historical bidirectional meters used the bulk ``total_energy`` register, which
+    can represent forward + reverse.  Once direct 00010000/00020000 polling became
+    authoritative, the forward and reverse registers must not be chained to that
+    legacy total as if they were the same cumulative register.
     """
-    Build rows so that each row's start_kwh equals the previous row's end_kwh.
-    If prev_end is None (no earlier reading), we fall back to the group's min.
+    forward = row.get("forward_active_energy_kwh")
+    reverse = row.get("reverse_active_energy_kwh")
+    total = row.get("total_energy")
+
+    if _meter_uses_bidirectional_registers(meter):
+        if forward is not None and reverse is not None:
+            return (
+                "forward_reverse",
+                Decimal(str(forward)),
+                Decimal(str(reverse)),
+            )
+        if total is not None:
+            return "legacy_total", Decimal(str(total)), None
+        if forward is not None:
+            return "unpaired_forward", Decimal(str(forward)), None
+        return "missing", None, None
+
+    value = forward if forward is not None else total
+    source = "forward" if forward is not None else "total"
+    return source, Decimal(str(value)) if value is not None else None, (
+        Decimal(str(reverse)) if reverse is not None else None
+    )
+
+
+def _register_source_label(source: str) -> str:
+    return {
+        "forward_reverse": "Forward / Reverse registers",
+        "legacy_total": "Legacy combined total",
+        "unpaired_forward": "Forward register (reverse missing)",
+        "forward": "Forward register",
+        "total": "Total register",
+        "missing": "Missing register",
+        "mixed": "Register transition",
+    }.get(source, source.replace("_", " ").title())
+
+
+def _bidirectional_period_continuity(meters, start_dt, end_dt, tz, granularity):
+    """Inspect all bidirectional readings so an internal register switch is not hidden.
+
+    The normal dashboard query intentionally fetches only period boundaries for
+    performance.  Bidirectional audit meters are few, so scanning just those meters
+    lets us detect a legacy-total/direct-register switch even when it happens in the
+    middle of a day and the first/last rows alone would look compatible.
     """
+    bidirectional = [m for m in meters if _meter_uses_bidirectional_registers(m)]
+    if not bidirectional:
+        return {}
+
+    meter_map = {m.id: m for m in bidirectional}
+    summary = defaultdict(dict)
+    last_by_bucket_source = {}
+    qs = (
+        MeterReading.objects
+        .filter(meter_id__in=meter_map, ts__gte=start_dt, ts__lt=end_dt)
+        .order_by("meter_id", "ts", "id")
+        .values(
+            "id", "meter_id", "ts", "total_energy",
+            "forward_active_energy_kwh", "reverse_active_energy_kwh",
+        )
+    )
+    for row in qs:
+        meter = meter_map[row["meter_id"]]
+        key, _label = _period_key_and_label(timezone.localtime(row["ts"], tz), granularity)
+        source, value, reverse = _dashboard_register_values(meter, row)
+        bucket = summary[row["meter_id"]].setdefault(key, {
+            "sources": set(),
+            "decreased": False,
+            "reverse_decreased": False,
+        })
+        if source != "missing":
+            bucket["sources"].add(source)
+        if value is not None:
+            state_key = (row["meter_id"], key, source, "forward")
+            previous = last_by_bucket_source.get(state_key)
+            if previous is not None and value < previous:
+                bucket["decreased"] = True
+            last_by_bucket_source[state_key] = value
+        if reverse is not None:
+            state_key = (row["meter_id"], key, source, "reverse")
+            previous = last_by_bucket_source.get(state_key)
+            if previous is not None and reverse < previous:
+                bucket["reverse_decreased"] = True
+            last_by_bucket_source[state_key] = reverse
+
+    for meter_id, buckets in summary.items():
+        for key, bucket in buckets.items():
+            sources = bucket["sources"]
+            if "unpaired_forward" in sources:
+                bucket["valid"] = False
+                bucket["reason"] = "Forward register was present without its paired reverse register."
+            elif len(sources) > 1:
+                bucket["valid"] = False
+                bucket["reason"] = "Register source changed during this period."
+            elif bucket["decreased"] or bucket["reverse_decreased"]:
+                bucket["valid"] = False
+                bucket["reason"] = "A cumulative energy register decreased during this period."
+            else:
+                bucket["valid"] = True
+                bucket["reason"] = ""
+    return summary
+
+
+def _chain_rows_from_groups(
+    groups,
+    prev_end: Decimal | None = None,
+    prev_source: str | None = None,
+):
+    """Build chained period rows without crossing incompatible register series."""
     rows = []
-    last_end = prev_end  # carry-forward baseline
+    last_end = prev_end
+    last_source = prev_source
 
     for _, g in groups.items():
         gmin = Decimal(g["min"])
         gmax = Decimal(g["max"])
+        start_source = g.get("start_source") or g.get("source")
+        end_source = g.get("end_source") or g.get("source")
 
         start_kwh = gmin if last_end is None else last_end
+        effective_start_source = start_source if last_end is None else last_source
         end_kwh = gmax
 
+        valid = bool(g.get("continuity_valid", True))
+        reason = g.get("continuity_reason", "")
+        if effective_start_source and end_source and effective_start_source != end_source:
+            valid = False
+            reason = reason or "Beginning and ending readings use different register sources."
         usage = end_kwh - start_kwh
         if usage < 0:
-            # handle meter reset/replacement gracefully
-            usage = Decimal("0")
+            valid = False
+            reason = reason or "Cumulative energy register decreased between period boundaries."
 
         rows.append({
             "period_label": g["label"],
             "start_kwh": start_kwh,
             "end_kwh": end_kwh,
-            "usage": usage,
+            "usage": usage if valid else Decimal("0"),
+            "usage_valid": valid,
+            "continuity_reason": reason,
+            "register_source": end_source or start_source or "missing",
+            "register_source_label": _register_source_label(end_source or start_source or "missing"),
+            "start_register_source": effective_start_source,
+            "end_register_source": end_source,
+            # Boundary readings remain displayable even when continuity makes
+            # the derived usage unsafe. ``usage_valid`` controls calculations;
+            # it must not hide a real reading from the Begin/End columns.
+            "display_start_kwh": start_kwh,
+            "display_end_kwh": end_kwh,
+            "display_usage": usage if valid else None,
         })
+        # Even an invalid transition period establishes the new register boundary
+        # for the following period. This lets Sep 2+ calculate normally after a
+        # Sep 1 cutover without rewriting any historical readings.
         last_end = end_kwh
+        last_source = end_source
 
     return rows
 
@@ -238,6 +379,17 @@ def _fmt0(n: Decimal | float | int) -> str:
     """Round half up to 0 decimals and format with comma."""
     d = Decimal(str(n)).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
     return f"{int(d):,}"
+
+
+def _fmt_energy_boundary(value, reverse_value=None) -> str:
+    """Format one real Begin/End boundary consistently for every export."""
+    if value is None:
+        return "—"
+    forward_text = f"{Decimal(str(value)):,.3f}"
+    if reverse_value is None:
+        return forward_text
+    reverse_text = f"{Decimal(str(reverse_value)):,.3f}"
+    return f"F: {forward_text}\nR: {reverse_text}"
 
 
 def _tenant_display_name(tenant):
@@ -467,8 +619,16 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
         tz,
         granularity,
     )
+    continuity_by_meter = _bidirectional_period_continuity(
+        meters,
+        start_dt,
+        end_dt,
+        tz,
+        granularity,
+    )
 
     prev_end_by_meter = {}
+    prev_source_by_meter = {}
     prev_reverse_end_by_meter = {}
     if meter_ids:
         # Fetch the latest timestamp before the report window per meter using
@@ -509,66 +669,94 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
                 current = latest_row_by_meter.get(meter_id)
                 if current is None or row["id"] > current["id"]:
                     latest_row_by_meter[meter_id] = row
+            meter_map = {meter.id: meter for meter in meters}
             for meter_id, row in latest_row_by_meter.items():
-                forward_value = row["forward_active_energy_kwh"]
-                if forward_value is None:
-                    forward_value = row["total_energy"]
+                meter = meter_map.get(meter_id)
+                if meter is None:
+                    continue
+                source, forward_value, reverse_value = _dashboard_register_values(meter, row)
                 if forward_value is not None:
-                    prev_end_by_meter[meter_id] = Decimal(str(forward_value))
-                if row["reverse_active_energy_kwh"] is not None:
-                    prev_reverse_end_by_meter[meter_id] = Decimal(
-                        str(row["reverse_active_energy_kwh"])
-                    )
+                    prev_end_by_meter[meter_id] = forward_value
+                    prev_source_by_meter[meter_id] = source
+                if reverse_value is not None:
+                    prev_reverse_end_by_meter[meter_id] = reverse_value
 
     for m in meters:
         prev_end = prev_end_by_meter.get(m.id)
+        prev_source = prev_source_by_meter.get(m.id)
         prev_reverse_end = prev_reverse_end_by_meter.get(m.id)
 
         groups = OrderedDict()
+        meter_continuity = continuity_by_meter.get(m.id, {})
         for r in readings_by_meter.get(m.id, []):
             ts_local = timezone.localtime(r["ts"], tz)
             key, label = _period_key_and_label(ts_local, granularity)
-            forward_value = r["forward_active_energy_kwh"]
+            source, forward_value, reverse_value = _dashboard_register_values(m, r)
             if forward_value is None:
-                forward_value = r["total_energy"]
-            val = Decimal(str(forward_value or "0"))
-            reverse_value = r["reverse_active_energy_kwh"]
+                continue
+            val = forward_value
+            period_continuity = meter_continuity.get(key, {})
             if key not in groups:
                 groups[key] = {
                     "min": val,
                     "max": val,
-                    "reverse_min": Decimal(str(reverse_value)) if reverse_value is not None else None,
-                    "reverse_max": Decimal(str(reverse_value)) if reverse_value is not None else None,
+                    "reverse_start": reverse_value,
+                    "reverse_end": reverse_value,
                     "label": label,
+                    "start_source": source,
+                    "end_source": source,
+                    "continuity_valid": period_continuity.get("valid", True),
+                    "continuity_reason": period_continuity.get("reason", ""),
                 }
             else:
                 groups[key]["max"] = val
-                if reverse_value is not None:
-                    reverse_value = Decimal(str(reverse_value))
-                    if groups[key]["reverse_min"] is None:
-                        groups[key]["reverse_min"] = reverse_value
-                    groups[key]["reverse_max"] = reverse_value
+                groups[key]["end_source"] = source
+                # Preserve exactly what exists at the ending boundary. Missing
+                # reverse data must not be filled from another reading.
+                groups[key]["reverse_end"] = reverse_value
 
-        base_rows = _chain_rows_from_groups(groups, prev_end=prev_end)
+        base_rows = _chain_rows_from_groups(
+            groups,
+            prev_end=prev_end,
+            prev_source=prev_source,
+        )
 
         rows_with_key = []
+        has_previous_boundary = prev_source is not None
         for k, g in groups.items():
             row = next(
                 (x for x in base_rows if x["period_label"] == g["label"]), None)
             if row:
                 r2 = dict(row)
-                reverse_start = reverse_end = reverse_usage = None
-                if g["reverse_min"] is not None and g["reverse_max"] is not None:
-                    reverse_start = g["reverse_min"] if prev_reverse_end is None else prev_reverse_end
-                    reverse_end = g["reverse_max"]
-                    reverse_usage = reverse_end - reverse_start
-                    if reverse_usage < 0:
-                        reverse_usage = Decimal("0")
-                    prev_reverse_end = reverse_end
+                reverse_start = (
+                    prev_reverse_end
+                    if has_previous_boundary
+                    else g["reverse_start"]
+                )
+                reverse_end = g["reverse_end"]
+                reverse_usage = None
+                reverse_valid = bool(r2["usage_valid"])
+                if reverse_start is not None and reverse_end is not None:
+                    candidate_reverse_usage = reverse_end - reverse_start
+                    if candidate_reverse_usage < 0:
+                        reverse_valid = False
+                        if not r2["continuity_reason"]:
+                            r2["continuity_reason"] = "Reverse cumulative register decreased between period boundaries."
+                    if reverse_valid:
+                        reverse_usage = candidate_reverse_usage
+                prev_reverse_end = reverse_end
+                has_previous_boundary = True
                 r2["reverse_start_kwh"] = reverse_start
                 r2["reverse_end_kwh"] = reverse_end
+                r2["display_start_reverse_kwh"] = reverse_start
+                r2["display_end_reverse_kwh"] = reverse_end
                 r2["reverse_usage"] = reverse_usage
-                r2["net_usage"] = r2["usage"] - reverse_usage if reverse_usage is not None else None
+                r2["reverse_usage_valid"] = reverse_valid
+                r2["net_usage"] = (
+                    r2["usage"] - reverse_usage
+                    if r2["usage_valid"] and reverse_usage is not None
+                    else None
+                )
                 r2["period_key"] = k
                 rows_with_key.append(r2)
 
@@ -579,6 +767,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
     if not key_union:
         return [], [], [], {
             "total_kwh": Decimal("0"),
+            "invalid_period_count": 0,
             "total_reverse_kwh": Decimal("0"),
             "usage_charges": Decimal("0"),
             "service_charges": Decimal("0"),
@@ -628,7 +817,11 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
         series = []
         for k in keys_sorted:
             row = key_to_row.get(k)
-            series.append(float(row["usage"]) if row else None)
+            series.append(
+                float(row["usage"])
+                if row and row.get("usage_valid", True)
+                else None
+            )
 
         datasets.append({
             "label": legend_label,
@@ -655,8 +848,12 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
             if not row:
                 continue
             tenant_name = tenant_names.get((m.unit_id, _date_from_key(k)), "Vacant")
-            usage_amt = (row["usage"] * rate).quantize(Decimal("0.01"))
-            service_amt = svc if granularity == "monthly" else Decimal("0.00")
+            usage_valid = row.get("usage_valid", True)
+            usage_amt = (
+                (row["usage"] * rate).quantize(Decimal("0.01"))
+                if usage_valid else Decimal("0.00")
+            )
+            service_amt = svc if granularity == "monthly" and usage_valid else Decimal("0.00")
             total_amt = (usage_amt + service_amt).quantize(Decimal("0.01"))
             if granularity == "monthly":
                 total_amt = round_amount_up_to_nearest_10(total_amt)
@@ -675,8 +872,20 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
                 "period_key": k,
                 "start_kwh": row["start_kwh"],
                 "end_kwh": row["end_kwh"],
+                "display_start_kwh": row.get("display_start_kwh"),
+                "display_end_kwh": row.get("display_end_kwh"),
+                "display_start_reverse_kwh": row.get("display_start_reverse_kwh"),
+                "display_end_reverse_kwh": row.get("display_end_reverse_kwh"),
+                "display_usage": row.get("display_usage"),
                 "usage": row["usage"],
+                "usage_valid": usage_valid,
+                "continuity_reason": row.get("continuity_reason", ""),
+                "register_source": row.get("register_source", ""),
+                "register_source_label": row.get("register_source_label", ""),
+                "start_register_source": row.get("start_register_source"),
+                "end_register_source": row.get("end_register_source"),
                 "reverse_usage": row["reverse_usage"],
+                "reverse_usage_valid": row.get("reverse_usage_valid", True),
                 "net_usage": row["net_usage"],
                 "unit_rate": rate,
                 "usage_amount": usage_amt,
@@ -695,6 +904,7 @@ def _per_meter_series(meters_qs, start_d: date, end_d: date, granularity: str):
 
     totals = {
         "total_kwh": total_kwh,
+        "invalid_period_count": sum(1 for row in combined_rows if not row.get("usage_valid", True)),
         "total_reverse_kwh": sum(
             (
                 row["reverse_usage"]
@@ -993,6 +1203,9 @@ def energy_dashboard(request):
             "is_online": (r["meter_id"] in online_set) if not per_meter_mode else None,
             "start_kwh": (r["start_kwh"]),
             "end_kwh": (r["end_kwh"]),
+            "display_start_kwh": r.get("display_start_kwh"),
+            "display_end_kwh": r.get("display_end_kwh"),
+            "display_usage": r.get("display_usage"),
             "usage": (r["usage"]),
             "unit_rate": _fmt0(r["unit_rate"]),
             "usage_amount": _fmt0(r["usage_amount"]),
@@ -1102,9 +1315,17 @@ def energy_export_csv(request):
             r.get("tenant_name", ""),
             wa,
             r["period_label"],
-            _fmt0(r["start_kwh"]),
-            _fmt0(r["end_kwh"]),
-            _fmt0(r["usage"]),
+            _fmt_energy_boundary(
+                r.get("display_start_kwh", r.get("start_kwh")),
+                r.get("display_start_reverse_kwh"),
+            ),
+            _fmt_energy_boundary(
+                r.get("display_end_kwh", r.get("end_kwh")),
+                r.get("display_end_reverse_kwh"),
+            ),
+            _fmt0(r.get("display_usage", r.get("usage", 0)))
+            if r.get("usage_valid", True)
+            else "WITHHELD",
             _fmt0(r["unit_rate"]),
             _fmt0(r["usage_amount"]),
         ]
@@ -1162,15 +1383,32 @@ def energy_export_xlsx(request):
             i,
             r["meter_number"],
             r["period_label"],
-            float(r["start_kwh"]),
-            float(r["end_kwh"]),
-            float(r["usage"]),
+            _fmt_energy_boundary(
+                r.get("display_start_kwh", r.get("start_kwh")),
+                r.get("display_start_reverse_kwh"),
+            ),
+            _fmt_energy_boundary(
+                r.get("display_end_kwh", r.get("end_kwh")),
+                r.get("display_end_reverse_kwh"),
+            ),
+            float(r.get("display_usage", r.get("usage", 0)))
+            if r.get("usage_valid", True)
+            else None,
             float(r["unit_rate"]),
             float(r["usage_amount"]),
         ]
         if report_type == "monthly":
             base += [float(r["service_charges"]), float(r["total_amount"])]
         ws.append(base)
+        data_row = ws.max_row
+        for column in (4, 5):
+            ws.cell(data_row, column).alignment = Alignment(
+                horizontal="right",
+                vertical="center",
+                wrap_text=True,
+            )
+        if "\n" in base[3] or "\n" in base[4]:
+            ws.row_dimensions[data_row].height = 30
 
     total_row = ws.max_row + 1
     ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=5)
@@ -1239,9 +1477,17 @@ def energy_export_pdf(request):
         {
             **r,
             "whatsapp": wa,
-            "start_kwh": _fmt0(r["start_kwh"]),
-            "end_kwh": _fmt0(r["end_kwh"]),
-            "usage": _fmt0(r["usage"]),
+            "start_kwh": _fmt_energy_boundary(
+                r.get("display_start_kwh", r.get("start_kwh")),
+                r.get("display_start_reverse_kwh"),
+            ),
+            "end_kwh": _fmt_energy_boundary(
+                r.get("display_end_kwh", r.get("end_kwh")),
+                r.get("display_end_reverse_kwh"),
+            ),
+            "usage": _fmt0(r.get("display_usage", r.get("usage", 0)))
+            if r.get("usage_valid", True)
+            else "WITHHELD",
             "unit_rate": _fmt0(r["unit_rate"]),
             "usage_amount": _fmt0(r["usage_amount"]),
             "service_charges": _fmt0(r["service_charges"]),
@@ -1263,9 +1509,17 @@ def energy_export_pdf(request):
             page_rows_disp.append({
                 **row,
                 "sn": ((page_number - 1) * rows_per_page) + row_number,
-                "start_kwh": _fmt0(row["start_kwh"]),
-                "end_kwh": _fmt0(row["end_kwh"]),
-                "usage": _fmt0(row["usage"]),
+                "start_kwh": _fmt_energy_boundary(
+                    row.get("display_start_kwh", row.get("start_kwh")),
+                    row.get("display_start_reverse_kwh"),
+                ),
+                "end_kwh": _fmt_energy_boundary(
+                    row.get("display_end_kwh", row.get("end_kwh")),
+                    row.get("display_end_reverse_kwh"),
+                ),
+                "usage": _fmt0(row.get("display_usage", row.get("usage", 0)))
+                if row.get("usage_valid", True)
+                else "WITHHELD",
                 "unit_rate": _fmt0(row["unit_rate"]),
                 "usage_amount": _fmt0(row["usage_amount"]),
                 "service_charges": _fmt0(row["service_charges"]),
@@ -1376,9 +1630,17 @@ def energy_chart_page(request):
     rows_disp = [{
         **r,
         "whatsapp": wa,
-        "start_kwh": _fmt0(r["start_kwh"]),
-        "end_kwh": _fmt0(r["end_kwh"]),
-        "usage": _fmt0(r["usage"]),
+        "start_kwh": _fmt_energy_boundary(
+            r.get("display_start_kwh", r.get("start_kwh")),
+            r.get("display_start_reverse_kwh"),
+        ),
+        "end_kwh": _fmt_energy_boundary(
+            r.get("display_end_kwh", r.get("end_kwh")),
+            r.get("display_end_reverse_kwh"),
+        ),
+        "usage": _fmt0(r.get("display_usage", r.get("usage", 0)))
+        if r.get("usage_valid", True)
+        else "WITHHELD",
         "unit_rate": _fmt0(r["unit_rate"]),
         "usage_amount": _fmt0(r["usage_amount"]),
         "service_charges": _fmt0(r["service_charges"]),

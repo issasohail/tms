@@ -325,23 +325,45 @@
 
             <!-- Begin (small also shows End under it) -->
             <td class="col-begin">
-              {{ r.start_kwh |floatformat:3}}
-              <div class="d-sm-none small text-muted">End: {{ r.end_kwh |floatformat:2}}</div>
+              {% if r.display_start_reverse_kwh is not None %}
+                <div>F: {{ r.display_start_kwh|floatformat:3 }}</div>
+                <div>R: {{ r.display_start_reverse_kwh|floatformat:3 }}</div>
+              {% else %}
+                {{ r.display_start_kwh|floatformat:3 }}
+              {% endif %}
+              <div class="d-sm-none small text-muted">
+                {% if r.display_end_reverse_kwh is not None %}
+                  <div>End F: {{ r.display_end_kwh|floatformat:3 }}</div>
+                  <div>End R: {{ r.display_end_reverse_kwh|floatformat:3 }}</div>
+                {% else %}
+                  End: {{ r.display_end_kwh|floatformat:3 }}
+                {% endif %}
+              </div>
             </td>
 
             <!-- End (desktop only) -->
-            <td class="d-none d-sm-table-cell col-end">{{ r.end_kwh |floatformat:3}}</td>
+            <td class="d-none d-sm-table-cell col-end">
+              {% if r.display_end_reverse_kwh is not None %}
+                <div>F: {{ r.display_end_kwh|floatformat:3 }}</div>
+                <div>R: {{ r.display_end_reverse_kwh|floatformat:3 }}</div>
+              {% else %}
+                {{ r.display_end_kwh|floatformat:3 }}
+              {% endif %}
+            </td>
 
             <td class="fw-semibold col-usage">
-              {% if report_type == 'monthly' %}
-                <a href="{{ r.daily_forward_url }}" title="Show daily forward readings for {{ r.period_label }}">F: {{ r.usage|default:"0.00"|floatformat:3 }}</a>
+              {% if not r.usage_valid %}
+                <span class="text-warning-emphasis" title="{{ r.continuity_reason }}">Withheld</span>
+                <div class="small text-muted">{{ r.continuity_reason }}</div>
+              {% elif report_type == 'monthly' %}
+                <a href="{{ r.daily_forward_url }}" title="Show daily forward readings for {{ r.period_label }}">F: {{ r.display_usage|floatformat:3 }}</a>
                 {% if r.reverse_usage is not None %}<div class="small"><a class="text-warning-emphasis" href="{{ r.daily_reverse_url }}" title="Show daily reverse readings for {{ r.period_label }}">R: {{ r.reverse_usage|floatformat:3 }}</a></div><div class="small text-muted">Net: {{ r.net_usage|floatformat:3 }}</div>{% endif %}
               {% elif energy_view == 'reverse' %}
                 R: {{ r.reverse_usage|default_if_none:"-"|floatformat:3 }}
               {% elif energy_view == 'forward' %}
-                F: {{ r.usage|default:"0.00"|floatformat:3 }}
+                F: {{ r.display_usage|floatformat:3 }}
               {% else %}
-                F: {{ r.usage|default:"0.00"|floatformat:3 }}{% if r.reverse_usage is not None %}<div class="small text-warning-emphasis">R: {{ r.reverse_usage|floatformat:3 }}</div><div class="small text-muted">Net: {{ r.net_usage|floatformat:3 }}</div>{% endif %}
+                F: {{ r.display_usage|floatformat:3 }}{% if r.reverse_usage is not None %}<div class="small text-warning-emphasis">R: {{ r.reverse_usage|floatformat:3 }}</div><div class="small text-muted">Net: {{ r.net_usage|floatformat:3 }}</div>{% endif %}
               {% endif %}
             </td>
 

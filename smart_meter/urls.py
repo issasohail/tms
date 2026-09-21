@@ -118,6 +118,7 @@ urlpatterns = [
 
 
     path('readings/', views.reading_list, name='reading_list'),
+    path('readings/day-periods/', views.reading_day_periods, name='reading_day_periods'),
     path('readings/<int:pk>/edit/', views.edit_reading, name='edit_reading'),
     path('readings/<int:pk>/delete/', views.delete_reading, name='delete_reading'),
     path('meters/<int:meter_id>/readings/',

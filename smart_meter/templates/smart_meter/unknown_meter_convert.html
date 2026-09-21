@@ -196,8 +196,18 @@
 
   <form method="post" novalidate>
     {% csrf_token %}
-    {% if form.non_field_errors %}
-      <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
+    {% if form.errors %}
+      <div class="alert alert-danger py-2" role="alert">
+        <div class="fw-semibold mb-1">Please correct the following error{{ form.errors|length|pluralize }}:</div>
+        {% if form.non_field_errors %}{{ form.non_field_errors }}{% endif %}
+        <ul class="mb-0 ps-3">
+          {% for field in form %}
+            {% for error in field.errors %}
+              <li><strong>{{ field.label }}:</strong> {{ error }}</li>
+            {% endfor %}
+          {% endfor %}
+        </ul>
+      </div>
     {% endif %}
 
     <div class="meter-convert-card">

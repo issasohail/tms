@@ -102,8 +102,10 @@ def attach_tenant_names_for_dates(
         LeaseUnitOccupancy.objects.filter(
             unit_id__in=unit_ids,
             move_in_date__lte=max_date,
+            lease__start_date__lte=max_date,
         )
         .filter(Q(move_out_date__isnull=True) | Q(move_out_date__gte=min_date))
+        .filter(Q(lease__end_date__isnull=True) | Q(lease__end_date__gte=min_date))
         .select_related("lease", "lease__tenant")
         .order_by("unit_id", "-move_in_date", "-id")
     )
@@ -123,9 +125,14 @@ def attach_tenant_names_for_dates(
         for occupancy in occupancies:
             if occupancy.unit_id != unit_id:
                 continue
-            if occupancy.move_in_date <= used_date and (
+            lease = occupancy.lease
+            occupancy_covers_date = occupancy.move_in_date <= used_date and (
                 occupancy.move_out_date is None or occupancy.move_out_date >= used_date
-            ):
+            )
+            lease_covers_date = lease.start_date <= used_date and (
+                lease.end_date is None or lease.end_date >= used_date
+            )
+            if occupancy_covers_date and lease_covers_date:
                 name = tenant_display_name(occupancy.lease.tenant)
                 lease_id = occupancy.lease_id
                 break

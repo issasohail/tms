@@ -612,7 +612,13 @@ class UnitListInlineUpdateTests(TestCase):
         active = Lease.objects.create(
             tenant=tenant, unit=self.unit_two,
             start_date=today - timedelta(days=30),
-            end_date=today + timedelta(days=20),
+            end_date=today + timedelta(days=50),
+            monthly_rent=Decimal("12000"), status="active",
+        )
+        starting = Lease.objects.create(
+            tenant=tenant, unit=self.unit_one,
+            start_date=today + timedelta(days=10),
+            end_date=today + timedelta(days=345),
             monthly_rent=Decimal("12000"), status="active",
         )
         ended = Lease.objects.create(
@@ -633,14 +639,60 @@ class UnitListInlineUpdateTests(TestCase):
         response = self.client.get(reverse("properties:unit_list"))
         table = response.context["table"]
         records = {unit.pk: unit for unit in table.data}
-        self.assertIn("Vacant", str(table.render_status(records[self.unit_one.pk].status, records[self.unit_one.pk])))
-        self.assertIn("Ending Soon", str(table.render_status(records[self.unit_two.pk].status, records[self.unit_two.pk])))
-        self.assertIn("Vacant", str(table.render_status(records[self.other_unit.pk].status, records[self.other_unit.pk])))
+        starting_status = str(
+            table.render_status(
+                records[self.unit_one.pk].status, records[self.unit_one.pk]
+            )
+        )
+        self.assertIn("Starting Soon", starting_status)
+        self.assertIn(
+            (today + timedelta(days=10)).strftime("%b %d, %Y"), starting_status
+        )
+        self.assertIn(
+            reverse("leases:lease_detail", args=[starting.pk]), starting_status
+        )
+        self.assertIn(
+            "Ending Soon",
+            str(
+                table.render_status(
+                    records[self.unit_two.pk].status, records[self.unit_two.pk]
+                )
+            ),
+        )
+        self.assertIn(
+            "Vacant",
+            str(
+                table.render_status(
+                    records[self.other_unit.pk].status, records[self.other_unit.pk]
+                )
+            ),
+        )
         self.assertContains(response, reverse("properties:unit_media", args=[self.unit_two.pk]))
         self.assertEqual(active.status, "active")
 
-        occupied = self.client.get(reverse("properties:unit_list"), {"status": "occupied"})
-        self.assertEqual([unit.pk for unit in occupied.context["table"].data], [self.unit_two.pk])
+        occupied = self.client.get(
+            reverse("properties:unit_list"), {"status": "occupied"}
+        )
+        self.assertEqual(
+            [unit.pk for unit in occupied.context["table"].data],
+            [self.unit_two.pk],
+        )
+
+        starting_soon = self.client.get(
+            reverse("properties:unit_list"), {"status": "starting_soon"}
+        )
+        self.assertEqual(
+            [unit.pk for unit in starting_soon.context["table"].data],
+            [self.unit_one.pk],
+        )
+
+        vacant = self.client.get(
+            reverse("properties:unit_list"), {"status": "vacant"}
+        )
+        self.assertEqual(
+            [unit.pk for unit in vacant.context["table"].data],
+            [self.other_unit.pk],
+        )
 
     def test_unit_media_ajax_upload_returns_json(self):
         output = BytesIO()

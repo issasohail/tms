@@ -385,6 +385,32 @@ class UnitTable(ExportableTable):
 
             return badge
 
+        if getattr(record, "has_starting_soon_lease_history", False) or getattr(
+            record, "has_starting_soon_lease", False
+        ):
+            start_date = getattr(
+                record, "starting_soon_lease_history_start_date", None
+            ) or getattr(record, "starting_soon_lease_start_date", None)
+            date_text = start_date.strftime("%b %d, %Y") if start_date else ""
+            lease_id = getattr(
+                record, "starting_soon_lease_history_lease_id", None
+            ) or getattr(record, "starting_soon_lease_id", None)
+            badge = self._status_badge(
+                record,
+                "vacant",
+                format_html("<strong>Starting Soon</strong>"),
+                "bg-info text-dark text-wrap",
+                format_html("<br><small>{}</small>", date_text),
+                editable=False,
+            )
+            if lease_id:
+                return format_html(
+                    '<a href="{}" class="text-decoration-none unit-status-lease-link">{}</a>',
+                    reverse("leases:lease_detail", args=[lease_id]),
+                    badge,
+                )
+            return badge
+
         if record.status == "maintenance":
             return self._status_badge(
                 record,

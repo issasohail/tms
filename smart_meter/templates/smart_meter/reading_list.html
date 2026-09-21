@@ -9,8 +9,9 @@
 <div class="d-flex justify-content-between align-items-center mb-2">
   <h2 class="mb-0 sm-heading"><i class="fas fa-bolt text-warning me-2"></i>Meter Readings</h2>
   <div class="text-muted total-readings">
-    Showing {{ page_obj|length }}
-    {% if page_obj.number > 1 %} on page {{ page_obj.number }}{% endif %}
+    Showing {{ displayed_reading_count }} reading{{ displayed_reading_count|pluralize }}
+    across {{ displayed_day_count }} day{{ displayed_day_count|pluralize }}
+    {% if total_pages > 1 %} · page {{ page_obj.number }} of {{ total_pages }}{% endif %}
   </div>
 </div>
 
@@ -124,7 +125,8 @@
 
 <div class="card-body p-0">
   {% if reading_groups %}
-    <div class="d-flex justify-content-end mb-1">
+    <div class="d-flex justify-content-end align-items-center gap-2 mb-1">
+      {% include "smart_meter/partials/reading_pagination.html" %}
       <button type="button" id="toggleAllReadings" class="btn btn-sm btn-outline-secondary" aria-label="Expand all meter readings">Expand all</button>
     </div>
   {% endif %}
@@ -154,64 +156,27 @@
 
         {% for day in reading_groups %}
           <tbody class="reading-day-body">
-            <tr class="reading-day-heading">
-              <td colspan="15" class="text-start">
-                <button type="button" class="reading-group-toggle" data-reading-day="{{ day.serial }}" data-reading-date="{{ day.date|date:'Y-m-d' }}" aria-expanded="false" aria-label="Expand {{ day.date|date:'Y-m-d' }} readings">
-                  <span class="reading-chevron" aria-hidden="true">▸</span>
-                  <strong>{{ day.serial }}.</strong>
-                  <strong>{{ day.date|date:"Y-m-d" }}</strong>
-                  <span class="text-muted">({{ day.count }} reading{{ day.count|pluralize }})</span>
+            <tr class="reading-day-heading reading-summary-heading" data-reading-day-row>
+              <td class="col-idx">
+                <button type="button" class="reading-group-toggle" data-reading-day="{{ day.serial }}" data-reading-date="{{ day.date|date:'Y-m-d' }}" data-load-url="{% url 'smart_meter:reading_day_periods' %}?{% if qs %}{{ qs }}&amp;{% endif %}day={{ day.date|date:'Y-m-d' }}&amp;day_serial={{ day.serial }}" aria-expanded="false" aria-label="Expand {{ day.date|date:'Y-m-d' }} readings">
+                  <span class="reading-chevron" aria-hidden="true">▸</span><strong>{{ day.serial }}.</strong>
                 </button>
               </td>
+              <td class="col-ts text-start">
+                <strong>{{ day.date|date:"Y-m-d" }}</strong>
+                <small class="d-block text-muted">Last {{ day.last_ts|date:"H:i:s" }} · {{ day.count }} reading{{ day.count|pluralize }}</small>
+              </td>
+              {% include "smart_meter/partials/reading_group_header_cells.html" with r=day.last_reading %}
             </tr>
           </tbody>
-          {% for period in day.periods %}
-            <tbody class="reading-period-body" data-day="{{ day.serial }}" hidden>
-              <tr class="reading-period-heading">
-                <td colspan="15" class="text-start">
-                  <button type="button" class="reading-group-toggle reading-period-toggle" data-reading-period data-reading-period-label="{{ day.date|date:'Y-m-d' }} {{ period.label }}" aria-expanded="false" aria-label="Expand {{ day.date|date:'Y-m-d' }} {{ period.label }} readings">
-                    <span class="reading-chevron" aria-hidden="true">▸</span>
-                    <strong>{{ day.serial }}.{{ period.serial }}.</strong>
-                    <span>{{ period.label }}</span>
-                    <span class="text-muted">({{ period.readings|length }} reading{{ period.readings|length|pluralize }})</span>
-                  </button>
-                </td>
-              </tr>
-              {% for item in period.readings %}
-                {% include "smart_meter/partials/reading_row_display.html" with r=item.reading sno=item.serial %}
-              {% endfor %}
-            </tbody>
-          {% endfor %}
         {% empty %}
           <tbody><tr><td colspan="15" class="text-center py-3">No readings found.</td></tr></tbody>
         {% endfor %}
     </table>
 
-    {% if total_pages > 1 %}
-      <nav aria-label="Readings pages" class="p-2 small">
-        <ul class="pagination pagination-sm mb-0 justify-content-end">
-          <li class="page-item {% if page_obj.number == 1 %}disabled{% endif %}">
-            {% if page_obj.number == 1 %}<span class="page-link">First</span>
-            {% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page=1">First</a>{% endif %}
-          </li>
-          <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
-            {% if page_obj.has_previous %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ page_obj.previous_page_number }}">Prev</a>
-            {% else %}<span class="page-link">Prev</span>{% endif %}
-          </li>
-          {% if page_numbers.0 > 1 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
-          {% for number in page_numbers %}<li class="page-item {% if number == page_obj.number %}active{% endif %}">{% if number == page_obj.number %}<span class="page-link">{{ number }}</span>{% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ number }}">{{ number }}</a>{% endif %}</li>{% endfor %}
-          {% if page_numbers|last < total_pages %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
-          <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
-            {% if page_obj.has_next %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
-            {% else %}<span class="page-link">Next</span>{% endif %}
-          </li>
-          <li class="page-item {% if page_obj.number == total_pages %}disabled{% endif %}">
-            {% if page_obj.number == total_pages %}<span class="page-link">Last</span>
-            {% else %}<a class="page-link" href="?{% if qs %}{{ qs }}&{% endif %}page={{ total_pages }}">Last</a>{% endif %}
-          </li>
-        </ul>
-      </nav>
-    {% endif %}
+    <div class="d-flex justify-content-end p-2">
+      {% include "smart_meter/partials/reading_pagination.html" %}
+    </div>
   </div>
 </div>
 
@@ -488,7 +453,9 @@
     cursor: pointer;
   }
   .reading-group-toggle:focus-visible { outline: 2px solid #0d6efd; outline-offset: 1px; }
-  .reading-period-toggle { padding-left: 1rem; }
+  .reading-summary-heading { cursor: pointer; }
+  .reading-summary-heading td { font-weight: 500; }
+  .reading-summary-heading .reading-group-toggle { white-space: nowrap; }
   .reading-chevron { display: inline-block; width: 1em; }
   .reading-group-toggle[aria-expanded="true"] .reading-chevron { transform: rotate(90deg); }
   .phase-stack,
@@ -635,18 +602,54 @@
 
   const toggleAllReadings = document.getElementById('toggleAllReadings');
   const dayButtons = Array.from(document.querySelectorAll('[data-reading-day]'));
-  const periodBodies = Array.from(document.querySelectorAll('.reading-period-body'));
+  const getPeriodBodies = () => Array.from(document.querySelectorAll('.reading-period-body'));
+  function syncOptionalColumns() {
+    [['toggleIp', 'toggle-col-ip'], ['togglePort', 'toggle-col-port']].forEach(([checkboxId, colClass]) => {
+      const checkbox = document.getElementById(checkboxId);
+      document.querySelectorAll('.' + colClass).forEach(element => element.classList.toggle('d-none', !checkbox?.checked));
+    });
+  }
   function syncToggleAllReadings() {
     if (!toggleAllReadings) return;
     const allExpanded = dayButtons.every(button => button.getAttribute('aria-expanded') === 'true') &&
-      periodBodies.every(body => body.classList.contains('is-expanded'));
+      getPeriodBodies().every(body => body.classList.contains('is-expanded'));
     toggleAllReadings.textContent = allExpanded ? 'Collapse all' : 'Expand all';
     toggleAllReadings.setAttribute('aria-label', `${allExpanded ? 'Collapse' : 'Expand'} all meter readings`);
   }
-  function setDayExpanded(button, expanded) {
+  async function loadDayPeriods(button) {
+    if (button.dataset.loaded === 'true') return;
+    if (button._loadPromise) return button._loadPromise;
+    button.disabled = true;
+    button._loadPromise = fetch(button.dataset.loadUrl, {credentials: 'same-origin'})
+      .then(response => {
+        if (!response.ok) throw new Error(`Unable to load readings (HTTP ${response.status}).`);
+        return response.text();
+      })
+      .then(html => {
+        button.closest('.reading-day-body').insertAdjacentHTML('afterend', html);
+        button.dataset.loaded = 'true';
+        syncOptionalColumns();
+      })
+      .finally(() => {
+        button.disabled = false;
+        delete button._loadPromise;
+      });
+    return button._loadPromise;
+  }
+  async function setDayExpanded(button, expanded) {
     button.setAttribute('aria-expanded', String(expanded));
     button.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${button.dataset.readingDate} readings`);
-    periodBodies.filter(body => body.dataset.day === button.dataset.readingDay).forEach(body => { body.hidden = !expanded; });
+    if (expanded) {
+      try {
+        await loadDayPeriods(button);
+      } catch (error) {
+        button.setAttribute('aria-expanded', 'false');
+        alert(error.message || 'Unable to load readings.');
+        return;
+      }
+    }
+    getPeriodBodies().filter(body => body.dataset.day === button.dataset.readingDay).forEach(body => { body.hidden = !expanded; });
+    syncToggleAllReadings();
   }
   function setPeriodExpanded(body, expanded) {
     body.classList.toggle('is-expanded', expanded);
@@ -665,12 +668,27 @@
     if (periodButton) {
       setPeriodExpanded(periodButton.closest('.reading-period-body'), periodButton.getAttribute('aria-expanded') !== 'true');
       syncToggleAllReadings();
+      return;
+    }
+    if (event.target.closest('a, button, select, input')) return;
+    const dayRow = event.target.closest('[data-reading-day-row]');
+    if (dayRow) {
+      const button = dayRow.querySelector('[data-reading-day]');
+      setDayExpanded(button, button.getAttribute('aria-expanded') !== 'true');
+      syncToggleAllReadings();
+      return;
+    }
+    const periodRow = event.target.closest('[data-reading-period-row]');
+    if (periodRow) {
+      const button = periodRow.querySelector('[data-reading-period]');
+      setPeriodExpanded(periodRow.closest('.reading-period-body'), button.getAttribute('aria-expanded') !== 'true');
+      syncToggleAllReadings();
     }
   });
-  toggleAllReadings?.addEventListener('click', () => {
+  toggleAllReadings?.addEventListener('click', async () => {
     const expand = toggleAllReadings.textContent === 'Expand all';
-    dayButtons.forEach(button => setDayExpanded(button, expand));
-    periodBodies.forEach(body => setPeriodExpanded(body, expand));
+    await Promise.all(dayButtons.map(button => setDayExpanded(button, expand)));
+    getPeriodBodies().forEach(body => setPeriodExpanded(body, expand));
     syncToggleAllReadings();
   });
 

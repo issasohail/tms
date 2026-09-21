@@ -1,0 +1,62 @@
+{% load humanize %}
+<td class="col-prop" title="{{ r.meter.unit.property.property_name }}">
+  <div>{{ r.meter.unit.property.property_name|slice:":8" }}</div>
+  <div class="text-muted d-sm-none sm-unit-under-prop">{{ r.meter.display_location_name }}</div>
+  <div class="text-muted d-sm-none sm-unit-under-prop">{{ r.tenant_name|default:"Vacant" }}</div>
+</td>
+<td class="col-unit">{{ r.meter.display_location_name }}</td>
+<td class="col-tenant" title="{{ r.tenant_name|default:'Vacant' }}">
+  {% if r.tenant_lease_id %}<a href="{% url 'leases:lease_detail' r.tenant_lease_id %}">{{ r.tenant_name|default:"Vacant" }}</a>{% else %}{{ r.tenant_name|default:"Vacant" }}{% endif %}
+</td>
+<td class="col-meter">
+  <div><a href="{% url 'smart_meter:meter_detail' r.meter_id %}" title="Open meter details">{{ r.meter.meter_number }}</a></div>
+  <div class="text-muted d-sm-none sm-meter-sub">
+    {{ r.voltage_a|default_if_none:""|floatformat:0 }}V,
+    {{ r.current_a|default_if_none:""|floatformat:4 }}A,
+    {{ r.total_power|default_if_none:""|floatformat:3 }}W
+  </div>
+</td>
+<td class="col-energy">
+  <div class="energy-stack">
+    {% if r.meter.reading_profile == "total_and_per_phase" %}
+      <span class="fw-bold"><span class="phase-label">F</span>{{ r.display_forward_energy|default_if_none:"-"|floatformat:3 }}</span>
+      <span class="text-muted"><span class="phase-label">R</span>{{ r.reverse_active_energy_kwh|default_if_none:"-"|floatformat:3 }}</span>
+    {% else %}
+      <span class="fw-bold">{{ r.display_forward_energy|default_if_none:"-"|floatformat:3 }}</span>
+    {% endif %}
+  </div>
+  <div class="text-muted d-sm-none sm-pf">PF {{ r.pf_total|default_if_none:""|floatformat:3 }}</div>
+</td>
+<td class="col-balance">
+  <a class="fw-semibold" href="{% url 'smart_meter:meter_detail' r.meter_id %}?tab=ledger" title="Open meter ledger">
+    {% if r.display_balance is not None %}{{ CURRENCY_SYMBOL }} {{ r.display_balance|floatformat:2|intcomma }}{% else %}—{% endif %}
+  </a>
+  {% if r.unit_rate is not None %}<small class="d-block text-muted">@ {{ r.unit_rate|floatformat:4 }}</small>{% endif %}
+</td>
+<td class="ld-col-role">{{ r.meter.get_meter_role_display }}</td>
+<td class="col-active">{% if r.meter.is_active %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+<td class="col-ip toggle-col-ip d-none">{{ r.source_ip|default_if_none:"" }}</td>
+<td class="col-port toggle-col-port d-none">{{ r.source_port|default_if_none:"" }}</td>
+<td class="col-volt">
+  <div class="phase-stack">
+    {% if r.meter.reading_profile == "total_and_per_phase" %}
+      <span><span class="phase-label">A</span>{{ r.voltage_a|default_if_none:"-"|floatformat:1 }}</span>
+      <span><span class="phase-label">B</span>{{ r.voltage_b|default_if_none:"-"|floatformat:1 }}</span>
+      <span><span class="phase-label">C</span>{{ r.voltage_c|default_if_none:"-"|floatformat:1 }}</span>
+    {% else %}
+      <span>{{ r.voltage_a|default_if_none:"-"|floatformat:1 }}</span>
+    {% endif %}
+  </div>
+</td>
+<td class="col-amp">
+  <div class="phase-stack">
+    {% if r.meter.reading_profile == "total_and_per_phase" %}
+      <span><span class="phase-label">A</span>{{ r.current_a|default_if_none:"-"|floatformat:3 }}</span>
+      <span><span class="phase-label">B</span>{{ r.current_b|default_if_none:"-"|floatformat:3 }}</span>
+      <span><span class="phase-label">C</span>{{ r.current_c|default_if_none:"-"|floatformat:3 }}</span>
+    {% else %}
+      <span>{{ r.current_a|default_if_none:"-"|floatformat:3 }}</span>
+    {% endif %}
+  </div>
+</td>
+<td class="col-pf">{{ r.pf_total|default_if_none:""|floatformat:3 }}</td>

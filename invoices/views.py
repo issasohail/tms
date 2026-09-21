@@ -72,9 +72,12 @@ from core.public_urls import build_public_path_url, build_public_url
 from leases.models import Lease
 from payments.models import Payment
 from properties.models import Property, Unit  # adjust imports
+from tenants.models import Tenant
+from openpyxl import Workbook
 
 from .forms import InvoiceForm, InvoiceItemForm
 from .historical_units import (
+    annotate_historical_invoice_units,
     historical_unit_prefetch,
     prepare_historical_invoice_units,
 )
@@ -1645,6 +1648,113 @@ class CategoryListView(ListView):
         return ctx
 
 
+CATEGORY_DETAIL_PERIOD_CHOICES = (
+    ("", "All"),
+    ("this_week", "This Week"),
+    ("last_week", "Last Week"),
+    ("this_month", "This Month"),
+    ("last_month", "Last Month"),
+    ("this_quarter", "This Quarter"),
+    ("last_quarter", "Last Quarter"),
+    ("this_year", "This Year"),
+    ("last_year", "Last Year"),
+)
+
+
+def _category_period_dates(period):
+    today = timezone.localdate()
+    if period == "this_week":
+        start = today - timedelta(days=today.weekday())
+        return start, start + timedelta(days=6)
+    if period == "last_week":
+        end = today - timedelta(days=today.weekday() + 1)
+        return end - timedelta(days=6), end
+    if period == "this_month":
+        start = today.replace(day=1)
+        next_month = (
+            start.replace(year=start.year + 1, month=1, day=1)
+            if start.month == 12
+            else start.replace(month=start.month + 1, day=1)
+        )
+        return start, next_month - timedelta(days=1)
+    if period == "last_month":
+        end = today.replace(day=1) - timedelta(days=1)
+        return end.replace(day=1), end
+    if period in {"this_quarter", "last_quarter"}:
+        quarter_start_month = ((today.month - 1) // 3) * 3 + 1
+        year = today.year
+        if period == "last_quarter":
+            quarter_start_month -= 3
+            if quarter_start_month <= 0:
+                quarter_start_month += 12
+                year -= 1
+        start = date(year, quarter_start_month, 1)
+        if quarter_start_month == 10:
+            next_quarter = date(year + 1, 1, 1)
+        else:
+            next_quarter = date(year, quarter_start_month + 3, 1)
+        return start, next_quarter - timedelta(days=1)
+    if period == "this_year":
+        return date(today.year, 1, 1), date(today.year, 12, 31)
+    if period == "last_year":
+        return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31)
+    return None, None
+
+
+def _category_detail_items(category, request):
+    invoice_qs = annotate_historical_invoice_units(
+        Invoice.objects.filter(items__category=category).distinct()
+    )
+    allowed_properties = allowed_property_ids(request.user)
+    if allowed_properties is not None:
+        invoice_qs = invoice_qs.filter(historical_property_id__in=allowed_properties)
+
+    property_id = (request.GET.get("property") or "").strip()
+    unit_id = (request.GET.get("unit") or "").strip()
+    tenant_id = (request.GET.get("tenant") or "").strip()
+    period = (request.GET.get("period") or "").strip()
+    start = (request.GET.get("start_date") or "").strip()
+    end = (request.GET.get("end_date") or "").strip()
+
+    if period and not (start or end):
+        period_start, period_end = _category_period_dates(period)
+        start = period_start.isoformat() if period_start else ""
+        end = period_end.isoformat() if period_end else ""
+    if property_id.isdigit():
+        invoice_qs = invoice_qs.filter(historical_property_id=int(property_id))
+    if unit_id.isdigit():
+        invoice_qs = invoice_qs.filter(historical_unit_id=int(unit_id))
+    if tenant_id.isdigit():
+        invoice_qs = invoice_qs.filter(lease__tenant_id=int(tenant_id))
+    if start:
+        invoice_qs = invoice_qs.filter(issue_date__gte=start)
+    if end:
+        invoice_qs = invoice_qs.filter(issue_date__lte=end)
+
+    items = (
+        InvoiceItem.objects.filter(category=category, invoice_id__in=invoice_qs.values("pk"))
+        .select_related(
+            "invoice",
+            "invoice__lease",
+            "invoice__lease__tenant",
+            "invoice__lease__unit",
+            "invoice__lease__unit__property",
+        )
+        .prefetch_related(historical_unit_prefetch("invoice__"))
+    )
+    query = (request.GET.get("q") or "").strip()
+    if query:
+        items = items.filter(
+            Q(description__icontains=query)
+            | Q(invoice__invoice_number__icontains=query)
+            | Q(invoice__lease__tenant__first_name__icontains=query)
+            | Q(invoice__lease__tenant__last_name__icontains=query)
+            | Q(invoice__lease__unit__property__property_name__icontains=query)
+            | Q(invoice__lease__unit__unit_number__icontains=query)
+        )
+    return items.order_by("-invoice__issue_date", "-invoice_id", "id")
+
+
 class CategoryDetailView(DetailView):
     model = ItemCategory
     template_name = "invoices/category_detail.html"
@@ -1652,22 +1762,85 @@ class CategoryDetailView(DetailView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        items = (
-            InvoiceItem.objects.filter(category=self.object)
-            .select_related(
-                "invoice",
-                "invoice__lease",
-                "invoice__lease__tenant",
-                "invoice__lease__unit",
-                "invoice__lease__unit__property",
-            )
-            .prefetch_related(historical_unit_prefetch("invoice__"))
-            .order_by("-invoice__issue_date", "-invoice_id", "id")
-        )
+        items = _category_detail_items(self.object, self.request)
         paginator = Paginator(items, 50)
         ctx["page_obj"] = paginator.get_page(self.request.GET.get("page"))
         ctx["paginator"] = paginator
+        ctx["period_choices"] = CATEGORY_DETAIL_PERIOD_CHOICES
+
+        allowed_properties = allowed_property_ids(self.request.user)
+        properties = Property.objects.all().order_by("property_name")
+        units = Unit.objects.select_related("property").order_by(
+            "property__property_name", "unit_number"
+        )
+        if allowed_properties is not None:
+            properties = properties.filter(pk__in=allowed_properties)
+            units = units.filter(property_id__in=allowed_properties)
+        ctx["property_options"] = properties
+        ctx["unit_options"] = units
+        ctx["tenant_options"] = Tenant.objects.filter(
+            leases__invoices__items__category=self.object
+        ).distinct().order_by("first_name", "last_name", "id")
+        ctx["export_query"] = self.request.GET.copy()
+        ctx["export_query"].pop("page", None)
         return ctx
+
+
+@login_required
+def category_detail_export(request, pk, export_type):
+    category = get_object_or_404(ItemCategory, pk=pk)
+    items = list(_category_detail_items(category, request))
+    export_type = (export_type or "").lower()
+    filename_base = f"category-{category.pk}-{timezone.localdate():%Y%m%d}"
+
+    if export_type == "xlsx":
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Category Items"
+        sheet.append([
+            "S.N#", "Invoice", "Property", "Unit", "Tenant", "Lease",
+            "Lease Start", "Lease End", "Issue Date", "Due Date", "Description", "Amount",
+        ])
+        for index, item in enumerate(items, start=1):
+            invoice = item.invoice
+            lease = invoice.lease
+            unit = invoice.historical_unit
+            sheet.append([
+                index,
+                invoice.invoice_number,
+                unit.property.property_name if unit else "",
+                unit.unit_number if unit else "",
+                lease.tenant.get_full_name() if lease and lease.tenant_id else "",
+                lease.pk if lease else "",
+                lease.start_date if lease else None,
+                lease.end_date if lease else None,
+                invoice.issue_date,
+                invoice.due_date,
+                item.description or "",
+                float(item.amount or 0),
+            ])
+        widths = [8, 18, 24, 14, 24, 12, 14, 14, 14, 14, 36, 14]
+        for column_cells, width in zip(sheet.columns, widths):
+            sheet.column_dimensions[column_cells[0].column_letter].width = width
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename_base}.xlsx"'
+        workbook.save(response)
+        return response
+
+    if export_type == "pdf":
+        html = render_to_string(
+            "invoices/category_detail_export_pdf.html",
+            {"category": category, "items": items, "generated_at": timezone.localtime()},
+            request=request,
+        )
+        response = HttpResponse(content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{filename_base}.pdf"'
+        HTML(string=html, base_url=request.build_absolute_uri("/")).write_pdf(response)
+        return response
+
+    raise Http404("Unsupported category export format")
 
 
 class CategoryCreateView(CreateView):

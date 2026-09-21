@@ -1,0 +1,23 @@
+{% for period in day.periods %}
+  <tbody class="reading-period-body" data-day="{{ day.serial }}" hidden>
+    <tr class="reading-period-heading reading-summary-heading" data-reading-period-row>
+      <td class="col-idx">
+        <button type="button" class="reading-group-toggle" data-reading-period data-reading-period-label="{{ day.date|date:'Y-m-d' }} {{ period.label }}" aria-expanded="false" aria-label="Expand {{ day.date|date:'Y-m-d' }} {{ period.label }} readings">
+          <span class="reading-chevron" aria-hidden="true">▸</span><strong>{{ day.serial }}.{{ period.serial }}.</strong>
+        </button>
+      </td>
+      <td class="col-ts text-start">
+        <strong>{{ period.label }}</strong>
+        <small class="d-block text-muted">Last {{ period.last_ts|date:"H:i:s" }} · {{ period.readings|length }} reading{{ period.readings|length|pluralize }}</small>
+      </td>
+      {% include "smart_meter/partials/reading_group_header_cells.html" with r=period.last_reading %}
+    </tr>
+    {% for item in period.readings %}
+      {% include "smart_meter/partials/reading_row_display.html" with r=item.reading sno=item.serial %}
+    {% endfor %}
+  </tbody>
+{% empty %}
+  <tbody class="reading-period-body is-expanded" data-day="{{ day.serial }}" hidden>
+    <tr><td colspan="15" class="text-center text-muted py-2">No readings found for this day.</td></tr>
+  </tbody>
+{% endfor %}

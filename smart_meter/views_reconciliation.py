@@ -60,12 +60,9 @@ def _parse_period(request):
 @login_required
 @permission_required("smart_meter.view_energysystem", raise_exception=True)
 def energy_system_list(request):
-    systems = list(EnergySystem.objects.select_related(
-        "output_group", "output_group__check_meter", "grid_interface_meter"
-    ).prefetch_related("meter_links__meter").order_by("name"))
-    for system in systems:
-        system.iesco_bill_latest = _iesco_invoice_bill(system)
-    return render(request, "smart_meter/energy_system_list.html", {"systems": systems})
+    # Energy Systems and Check Groups now share one consolidated list/template.
+    from smart_meter.views import meter_check_group_list
+    return meter_check_group_list(request)
 
 
 @login_required
@@ -80,8 +77,10 @@ def energy_system_setup(request, group_id):
     if request.method == "POST" and form.is_valid():
         export_path = form.cleaned_data["output_meter_includes_grid_export"]
         with transaction.atomic():
+            group.name = form.cleaned_data["name"]
+            group.save(update_fields=["name"])
             system = EnergySystem.objects.create(
-                name=form.cleaned_data["name"],
+                name=group.name,
                 output_group=group,
                 output_meter_includes_grid_export=(
                     None if export_path == "" else export_path == "true"
@@ -112,7 +111,9 @@ def energy_system_edit(request, pk):
     if request.method == "POST" and form.is_valid():
         export_path = form.cleaned_data["output_meter_includes_grid_export"]
         with transaction.atomic():
-            system.name = form.cleaned_data["name"]
+            group.name = form.cleaned_data["name"]
+            group.save(update_fields=["name"])
+            system.name = group.name
             system.output_meter_includes_grid_export = None if export_path == "" else export_path == "true"
             system.save(update_fields=["name", "output_meter_includes_grid_export"])
             system.meter_links.all().delete()
@@ -130,21 +131,8 @@ def energy_system_edit(request, pk):
     return render(request, "smart_meter/energy_system_setup.html", {"form": form, "group": group, "system": system, "is_edit": True})
 
 
-@login_required
-@permission_required("smart_meter.view_energysystem", raise_exception=True)
-def energy_system_detail(request, pk):
-    system = get_object_or_404(
-        EnergySystem.objects.select_related(
-            "output_group", "output_group__check_meter", "grid_interface_meter"
-        ),
-        pk=pk,
-    )
-    try:
-        start, end = _parse_period(request)
-    except ValidationError as exc:
-        messages.warning(request, exc.message)
-        today = timezone.localdate()
-        start, end = today.replace(day=1), today
+def build_energy_system_detail_context(system, start, end):
+    """Build the energy/IESCO context embedded in the combined Check Group page."""
     report = build_energy_reconciliation(system, start, end)
     iesco_bill_latest = _iesco_invoice_bill(system)
     latest_snapshot = build_latest_linked_meter_snapshot(system)
@@ -159,46 +147,46 @@ def energy_system_detail(request, pk):
             ).order_by("-ts", "-id").first()
     grid_forward_total = (
         getattr(grid_reading, "forward_active_energy_kwh", None)
-        if grid_reading
-        else None
+        if grid_reading else None
     )
     if grid_forward_total is None and grid_reading:
         grid_forward_total = grid_reading.total_energy
     grid_reverse_total = (
         getattr(grid_reading, "reverse_active_energy_kwh", None)
-        if grid_reading
-        else None
+        if grid_reading else None
     )
     grid_net_total = (
         grid_forward_total - grid_reverse_total
         if grid_forward_total is not None and grid_reverse_total is not None
         else None
     )
-    reassign_form = EnergySystemReassignmentForm(
-        energy_system=system,
-        initial={"effective_date": timezone.localdate()},
-    )
-    return render(
-        request,
-        "smart_meter/energy_system_detail.html",
-        {
-            "system": system,
-            "systems": EnergySystem.objects.select_related("output_group__check_meter").order_by("name"),
-            "report": report,
-            "iesco_bill_latest": iesco_bill_latest,
-            "latest_snapshot": latest_snapshot,
-            "reassign_form": reassign_form,
-            "grid_reading": grid_reading,
-            "grid_forward_total": grid_forward_total,
-            "grid_reverse_total": grid_reverse_total,
-            "grid_net_total": grid_net_total,
-            "grid_profile_form": (
-                MeterReadingProfileForm(instance=system.grid_interface_meter)
-                if system.grid_interface_meter_id
-                else None
-            ),
-        },
-    )
+    return {
+        "system": system,
+        "report": report,
+        "iesco_bill_latest": iesco_bill_latest,
+        "latest_snapshot": latest_snapshot,
+        "reassign_form": EnergySystemReassignmentForm(
+            energy_system=system,
+            initial={"effective_date": timezone.localdate()},
+        ),
+        "grid_reading": grid_reading,
+        "grid_forward_total": grid_forward_total,
+        "grid_reverse_total": grid_reverse_total,
+        "grid_net_total": grid_net_total,
+        "grid_profile_form": (
+            MeterReadingProfileForm(instance=system.grid_interface_meter)
+            if system.grid_interface_meter_id else None
+        ),
+    }
+
+
+@login_required
+@permission_required("smart_meter.view_energysystem", raise_exception=True)
+def energy_system_detail(request, pk):
+    # Keep the old URL working, but render the single combined reconciliation page.
+    system = get_object_or_404(EnergySystem, pk=pk)
+    from smart_meter.views import meter_check_group_detail
+    return meter_check_group_detail(request, system.output_group_id)
 
 
 @require_POST

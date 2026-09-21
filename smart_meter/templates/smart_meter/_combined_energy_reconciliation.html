@@ -1,0 +1,92 @@
+{% if energy %}
+<section id="energy-reconciliation" class="mt-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <div>
+      <h4 class="mb-0"><i class="fas fa-solar-panel text-warning me-2"></i>Energy System &amp; IESCO Reconciliation</h4>
+      <small class="text-muted">{{ energy.system.name }} · selected range {{ start_date|date:'M d, Y' }}–{{ end_date|date:'M d, Y' }}</small>
+    </div>
+    <div class="d-flex flex-wrap gap-1">
+      <a class="btn btn-sm btn-outline-primary" href="{% url 'invoices:iesco_bill_reading_list' %}"><i class="fas fa-bolt me-1"></i>IESCO Bills</a>
+      {% if perms.smart_meter.change_energysystem %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:energy_system_edit' energy.system.pk %}"><i class="fas fa-sliders-h me-1"></i>Meter Config</a>{% endif %}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header">
+      <div class="row align-items-center g-2 small">
+        <div class="col-md-4">{% if energy.system.grid_interface_meter %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:meter_detail' energy.system.grid_interface_meter.pk %}">{{ energy.system.grid_interface_meter.meter_number }}</a>{% endif %}</div>
+        <div class="col-md-4 text-md-center">{% if energy.grid_reading %}<div><strong>Reading:</strong> {{ energy.grid_reading.ts|date:"M d, Y H:i:s" }} ({{ energy.grid_reading.ts|timesince }} ago)</div>{% endif %}{% if perms.smart_meter.change_meter and energy.grid_profile_form %}<form method="post" action="{% url 'smart_meter:meter_reading_profile_update' energy.system.grid_interface_meter.pk %}" class="d-flex gap-2 align-items-center justify-content-md-center mt-1">{% csrf_token %}<input type="hidden" name="energy_system_id" value="{{ energy.system.pk }}"><label class="text-nowrap">Reading profile</label>{{ energy.grid_profile_form.reading_profile }}<button class="btn btn-sm btn-outline-primary">Save</button></form>{% endif %}</div>
+        <div class="col-md-4 text-md-end"><span class="fw-semibold">Grid-interface meter snapshot</span></div>
+      </div>
+    </div>
+    {% if energy.grid_reading %}<div class="card-body py-2">
+      <div class="row g-3 small">
+        <div class="col-md-6"><div><strong>Total Forward Energy:</strong> {% if energy.grid_forward_total is not None %}{{ energy.grid_forward_total }} kWh{% else %}Unavailable{% endif %}</div><div><strong>Total Reverse Energy:</strong> {% if energy.grid_reverse_total is not None %}{{ energy.grid_reverse_total }} kWh{% else %}Unavailable{% endif %}</div><div><strong>Net Grid Energy (Forward - Reverse):</strong> {% if energy.grid_net_total is not None %}{{ energy.grid_net_total }} kWh{% else %}Unavailable{% endif %}</div></div>
+        <div class="col-md-6"><div><strong>Voltage A / B / C:</strong> {% if energy.grid_reading.voltage_a is not None %}{{ energy.grid_reading.voltage_a }} V{% else %}Unavailable{% endif %} / {% if energy.grid_reading.voltage_b is not None %}{{ energy.grid_reading.voltage_b }} V{% else %}Unavailable{% endif %} / {% if energy.grid_reading.voltage_c is not None %}{{ energy.grid_reading.voltage_c }} V{% else %}Unavailable{% endif %}</div><div><strong>Current A / B / C:</strong> {% if energy.grid_reading.current_a is not None %}{{ energy.grid_reading.current_a }} A{% else %}Unavailable{% endif %} / {% if energy.grid_reading.current_b is not None %}{{ energy.grid_reading.current_b }} A{% else %}Unavailable{% endif %} / {% if energy.grid_reading.current_c is not None %}{{ energy.grid_reading.current_c }} A{% else %}Unavailable{% endif %}</div><div><strong>Power A / B / C:</strong> {% if energy.grid_reading.power_a is not None %}{{ energy.grid_reading.power_a }}{% else %}Unavailable{% endif %} / {% if energy.grid_reading.power_b is not None %}{{ energy.grid_reading.power_b }}{% else %}Unavailable{% endif %} / {% if energy.grid_reading.power_c is not None %}{{ energy.grid_reading.power_c }}{% else %}Unavailable{% endif %}; <strong>Total:</strong> {% if energy.grid_reading.total_power is not None %}{{ energy.grid_reading.total_power }}{% else %}Unavailable{% endif %}</div></div>
+      </div>
+    </div>{% else %}<div class="card-body py-2 text-muted">No grid-interface reading is available.</div>{% endif %}
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header py-2 fw-semibold">System meter architecture</div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr><th>Side</th><th>S.N#</th><th>Meter</th><th>Property / Unit</th><th>Latest Forward</th><th>Latest Reverse</th><th>Reading Time</th></tr></thead>
+        <tbody>
+          {% for row in energy.latest_snapshot.inputs %}<tr><td><span class="badge bg-secondary">Input</span></td><td>{{ forloop.counter }}</td><td><a href="{% url 'smart_meter:meter_detail' row.meter.pk %}">{{ row.meter.meter_number }}</a></td><td>{{ row.meter.display_location_name }}</td><td>{{ row.forward|default_if_none:'—' }}</td><td>{{ row.reverse|default_if_none:'—' }}</td><td>{% if row.reading %}{{ row.reading.ts|date:'M d, Y H:i:s' }}{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="7" class="text-muted">No input meters linked.</td></tr>{% endfor %}
+          {% for row in energy.latest_snapshot.outputs %}<tr><td><span class="badge bg-primary">Output</span></td><td>{{ forloop.counter }}</td><td><a href="{% url 'smart_meter:meter_detail' row.meter.pk %}">{{ row.meter.meter_number }}</a></td><td>{{ row.meter.display_location_name }}</td><td>{{ row.forward|default_if_none:'—' }}</td><td>{{ row.reverse|default_if_none:'—' }}</td><td>{% if row.reading %}{{ row.reading.ts|date:'M d, Y H:i:s' }}{% else %}—{% endif %}</td></tr>{% empty %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer py-2 small">
+      {% if energy.latest_snapshot.status == 'provisional' %}<div class="alert alert-info py-2 mb-2"><strong>Provisional:</strong> all latest linked readings are within {{ energy.latest_snapshot.sync_tolerance_minutes }} minutes. Latest output &minus; input register difference: <strong>{{ energy.latest_snapshot.provisional_balance }} kWh</strong>. This is not a confirmed period figure.</div>{% elif energy.latest_snapshot.status == 'out_of_sync' %}<div class="alert alert-warning py-2 mb-2"><strong>Out of sync:</strong> latest values are shown below, but their timestamps exceed {{ energy.latest_snapshot.sync_tolerance_minutes }} minutes. No provisional balance is shown.</div>{% else %}<div class="alert alert-secondary py-2 mb-2"><strong>Latest readings incomplete:</strong> each linked input and output meter needs a latest forward-energy reading before a provisional comparison can be shown.</div>{% endif %}
+      <div class="row g-3"><div class="col-lg-6"><h6>Inputs</h6>{% for row in energy.latest_snapshot.inputs %}<div class="border rounded p-2 mb-2"><strong>{{ forloop.counter }}. {{ row.meter.meter_number }}</strong> {% if row.meter.reading_profile == 'total_and_per_phase' %}<span class="badge {% if row.meter.reverse_energy_capability == 'supported' %}bg-success{% elif row.meter.reverse_energy_capability == 'not_supported' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">Reverse {% if row.meter.reverse_energy_capability == 'supported' %}supported{% elif row.meter.reverse_energy_capability == 'not_supported' %}not supported{% else %}unverified{% endif %}</span>{% endif %}{% if row.reading %}<div>Timestamp: {{ row.reading.ts|date:"M d, Y H:i:s" }}</div><div>Forward: {{ row.forward|default_if_none:"Unavailable" }} kWh; Reverse: {{ row.reverse|default_if_none:"Unavailable" }} kWh</div>{% else %}<div class="text-muted">No reading available.</div>{% endif %}</div>{% empty %}<div class="text-muted">No linked input meters.</div>{% endfor %}</div><div class="col-lg-6"><h6>Outputs</h6>{% for row in energy.latest_snapshot.outputs %}<div class="border rounded p-2 mb-2"><strong>{{ forloop.counter }}. {{ row.meter.meter_number }}</strong> {% if row.meter.reading_profile == 'total_and_per_phase' %}<span class="badge {% if row.meter.reverse_energy_capability == 'supported' %}bg-success{% elif row.meter.reverse_energy_capability == 'not_supported' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">Reverse {% if row.meter.reverse_energy_capability == 'supported' %}supported{% elif row.meter.reverse_energy_capability == 'not_supported' %}not supported{% else %}unverified{% endif %}</span>{% endif %}{% if row.reading %}<div>Timestamp: {{ row.reading.ts|date:"M d, Y H:i:s" }}</div><div>Forward: {{ row.forward|default_if_none:"Unavailable" }} kWh; Reverse: {{ row.reverse|default_if_none:"Unavailable" }} kWh</div>{% else %}<div class="text-muted">No reading available.</div>{% endif %}</div>{% empty %}<div class="text-muted">No linked output meters.</div>{% endfor %}</div></div>
+    </div>
+  </div>
+
+  {% if energy.report.iesco_bill %}
+  <div class="card mb-3 border-primary">
+    <div class="card-header py-2 d-flex flex-wrap justify-content-between gap-2"><strong>IESCO invoice meter input</strong><span class="badge bg-primary">Invoices app source</span></div>
+    <div class="table-responsive"><table class="table table-sm mb-0"><thead class="table-light"><tr><th>S.N#</th><th>Meter</th><th>Reference #</th><th>Consumer ID</th><th>Bill Month</th><th>Reading Date</th><th>Import</th><th>Export</th><th>Action</th></tr></thead><tbody><tr><td>1</td><td>{{ energy.report.iesco_bill.meter_number_display }}</td><td>{{ energy.report.iesco_bill.reference_no }}</td><td>{{ energy.report.iesco_bill.consumer_id }}</td><td>{{ energy.report.iesco_bill.bill_month }}</td><td>{{ energy.report.iesco_bill.reading_date }}</td><td>{{ energy.report.iesco_bill.import_units_display }} kWh</td><td>{{ energy.report.iesco_bill.export_units_display }} kWh</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'invoices:iesco_bill_reading_list' %}?reference_no={{ energy.report.iesco_bill.reference_no|urlencode }}">Open IESCO</a></td></tr></tbody></table></div>
+  </div>
+  {% elif energy.iesco_bill_latest %}
+  <div class="alert alert-secondary py-2 mb-3"><strong>No confirmed IESCO bill matches the selected period.</strong> Latest available: {{ energy.iesco_bill_latest.bill_month }} / reading date {{ energy.iesco_bill_latest.reading_date }}. Its energy values are excluded from this period.</div>
+  {% else %}
+  <div class="alert alert-warning py-2 mb-3">No confirmed IESCO source is linked to this Energy System. Use <a href="{% url 'invoices:iesco_bill_reading_list' %}">IESCO Bills</a> to fetch/verify the meter bill.</div>
+  {% endif %}
+
+  {% if energy.report.withheld_reasons %}<div class="alert alert-warning py-2"><strong>Withheld inputs:</strong><ul class="mb-0">{% for reason in energy.report.withheld_reasons %}<li>{{ reason }}</li>{% endfor %}</ul></div>{% endif %}
+
+  <div class="row g-3 mb-3">
+    <div class="col-xl-6"><div class="card h-100"><div class="card-header py-2 fw-semibold">Energy balance</div><div class="table-responsive"><table class="table table-sm mb-0">
+      <tr><th>Output</th><td class="text-end">{{ energy.report.output_kwh|default_if_none:'Unavailable' }}</td></tr>
+      <tr><th>Billing total</th><td class="text-end">{{ energy.report.billing_total_kwh|default_if_none:'Unavailable' }}</td></tr>
+      <tr><th>Grid Import ({{ energy.report.grid_source }})</th><td class="text-end">{{ energy.report.grid_import_kwh|default_if_none:'Unavailable' }}</td></tr>
+      <tr><th>Grid Export ({{ energy.report.grid_source }})</th><td class="text-end">{{ energy.report.grid_export_kwh|default_if_none:'Unavailable' }}</td></tr>
+      <tr><th>Net Grid Energy (Import - Export)</th><td class="text-end">{{ energy.report.net_grid_energy_kwh|default_if_none:'Unavailable' }}</td></tr>
+      <tr><th>Utility-bill Export</th><td class="text-end">{{ energy.report.export_kwh|default_if_none:'Unavailable for this period' }}</td></tr>
+      <tr><th>Building consumption</th><td class="text-end fw-semibold">{{ energy.report.building_consumption_kwh|default_if_none:'Withheld' }}</td></tr>
+      {% if energy.system.output_meter_includes_grid_export == None %}<tr><th>Raw Output-to-Billing Difference</th><td class="text-end fw-semibold">{{ energy.report.raw_output_to_billing_difference_kwh|default_if_none:'Withheld' }}</td></tr>{% else %}<tr><th>Distribution variance</th><td class="text-end fw-semibold">{{ energy.report.distribution_variance_kwh|default_if_none:'Withheld' }}</td></tr>{% endif %}
+      <tr><th>Net Non-Grid Contribution</th><td class="text-end">{{ energy.report.net_non_grid_contribution_kwh|default_if_none:'Withheld' }}</td></tr>
+      <tr><th>{{ energy.report.pv_storage_residual_label }}</th><td class="text-end">{{ energy.report.pv_storage_residual_kwh|default_if_none:'Unavailable' }}</td></tr>
+    </table></div></div></div>
+    <div class="col-xl-6"><div class="card h-100"><div class="card-header py-2 fw-semibold">Financial reconciliation</div><div class="table-responsive"><table class="table table-sm mb-0">
+      <tr><th>Tenant Energy Revenue</th><td class="text-end">{{ energy.report.tenant_energy_revenue }}</td></tr>
+      <tr><th>Current-Cycle Utility Cost</th><td class="text-end">{{ energy.report.current_cycle_utility_cost|default_if_none:'Unavailable' }}</td></tr>
+      <tr><th>Operating Energy Margin</th><td class="text-end fw-semibold">{{ energy.report.operating_energy_margin|default_if_none:'Withheld' }}</td></tr>
+      <tr><th>Tenant Electricity Collections</th><td class="text-end">{{ energy.report.tenant_electricity_collections }}</td></tr>
+      <tr><th>Utility Amount Paid</th><td class="text-end">{{ energy.report.utility_amount_paid|default_if_none:'Not recorded' }}</td></tr>
+      <tr><th>Cash Position</th><td class="text-end fw-semibold">{{ energy.report.cash_position|default_if_none:'Withheld' }}</td></tr>
+      <tr><th>Utility Payable/Credit</th><td class="text-end">{{ energy.report.utility_payable_credit|default_if_none:'Unavailable' }}</td></tr>
+      <tr><th>Tenant Outstanding</th><td class="text-end">{{ energy.report.tenant_outstanding }}</td></tr>
+    </table></div></div></div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-xl-6"><div class="card h-100"><div class="card-header py-2 d-flex justify-content-between align-items-center"><span class="fw-semibold">Inverter statements</span>{% if perms.smart_meter.add_inverterperiodstatement %}<a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:inverter_statement_add' energy.system.pk %}">Add</a>{% endif %}</div><div class="list-group list-group-flush">{% for statement in energy.system.inverter_statements.all %}<div class="list-group-item d-flex flex-wrap justify-content-between gap-2"><span>{{ statement.period_start }} to {{ statement.period_end }} · {{ statement.pv_generation_kwh }} kWh</span><span>{% if statement.confirmed_at %}<span class="badge bg-success">Confirmed</span> <form method="post" action="{% url 'smart_meter:inverter_statement_reopen' statement.pk %}" class="d-inline">{% csrf_token %}<input type="hidden" name="reason" value="Correction required"><button class="btn btn-sm btn-outline-warning">Reopen</button></form>{% else %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'smart_meter:inverter_statement_edit' statement.pk %}">Edit</a> <form method="post" action="{% url 'smart_meter:inverter_statement_confirm' statement.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-success">Confirm</button></form>{% endif %}</span></div>{% empty %}<div class="list-group-item text-muted">No inverter statements.</div>{% endfor %}</div></div></div>
+    {% if perms.smart_meter.change_energysystem %}<div class="col-xl-6"><div class="card h-100"><div class="card-header py-2 fw-semibold">Reassign audit/system meter</div><div class="card-body"><form method="post" action="{% url 'smart_meter:energy_system_reassign_meter' energy.system.pk %}">{% csrf_token %}{{ energy.reassign_form.as_p }}<button class="btn btn-sm btn-primary">Apply assignment</button></form></div></div></div>{% endif %}
+  </div>
+</section>
+{% else %}
+<section id="energy-reconciliation" class="mt-4"><div class="alert alert-light border d-flex flex-wrap justify-content-between align-items-center gap-2"><span>This Check Group is not yet linked to an Energy System, so IESCO/input/output reconciliation is not available.</span>{% if perms.smart_meter.add_energysystem %}<a class="btn btn-sm btn-warning" href="{% url 'smart_meter:energy_system_setup' group.pk %}">Set up Energy Reconciliation</a>{% endif %}</div></section>
+{% endif %}

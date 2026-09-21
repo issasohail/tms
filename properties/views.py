@@ -38,6 +38,7 @@ from django_filters.views import FilterView
 from django_tables2 import SingleTableView
 from django_tables2.paginators import LazyPaginator
 from django_tables2.views import SingleTableMixin
+from dateutil.relativedelta import relativedelta
 from docx import Document
 from docx.enum.text import WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
@@ -355,7 +356,7 @@ class UnitListView(SingleTableMixin, FilterView):
 
     def get_queryset(self):
         today = timezone.now().date()
-        ending_date = today + timedelta(days=40)
+        soon_date = today + relativedelta(months=2)
         active_lease = Lease.objects.filter(
             unit_id=OuterRef("pk"),
             status="active",
@@ -378,10 +379,34 @@ class UnitListView(SingleTableMixin, FilterView):
         active_lease_history_lease_id = active_lease_history.order_by(
             "end_date", "id"
         ).values("lease_id")[:1]
-        ending_soon_lease = active_lease.filter(end_date__lte=ending_date)
+        ending_soon_lease = active_lease.filter(end_date__lte=soon_date)
         ending_soon_lease_history = active_lease_history.filter(
-            end_date__lte=ending_date
+            end_date__lte=soon_date
         )
+        starting_soon_lease = Lease.objects.filter(
+            unit_id=OuterRef("pk"),
+            status="active",
+            start_date__gt=today,
+            start_date__lte=soon_date,
+        )
+        starting_soon_lease_history = LeaseRenewal.objects.filter(
+            lease__unit_id=OuterRef("pk"),
+            lease__status="active",
+            start_date__gt=today,
+            start_date__lte=soon_date,
+        )
+        starting_soon_lease_start = starting_soon_lease.order_by(
+            "start_date", "id"
+        ).values("start_date")[:1]
+        starting_soon_lease_id = starting_soon_lease.order_by(
+            "start_date", "id"
+        ).values("id")[:1]
+        starting_soon_lease_history_start = starting_soon_lease_history.order_by(
+            "start_date", "id"
+        ).values("start_date")[:1]
+        starting_soon_lease_history_lease_id = starting_soon_lease_history.order_by(
+            "start_date", "id"
+        ).values("lease_id")[:1]
         queryset = (
             super()
             .get_queryset()
@@ -433,6 +458,8 @@ class UnitListView(SingleTableMixin, FilterView):
                 has_active_lease_history=Exists(active_lease_history),
                 has_ending_soon_lease=Exists(ending_soon_lease),
                 has_ending_soon_lease_history=Exists(ending_soon_lease_history),
+                has_starting_soon_lease=Exists(starting_soon_lease),
+                has_starting_soon_lease_history=Exists(starting_soon_lease_history),
                 active_lease_end_date=Subquery(
                     active_lease_end, output_field=DateField()
                 ),
@@ -442,6 +469,19 @@ class UnitListView(SingleTableMixin, FilterView):
                 ),
                 active_lease_history_lease_id=Subquery(
                     active_lease_history_lease_id, output_field=IntegerField()
+                ),
+                starting_soon_lease_start_date=Subquery(
+                    starting_soon_lease_start, output_field=DateField()
+                ),
+                starting_soon_lease_id=Subquery(
+                    starting_soon_lease_id, output_field=IntegerField()
+                ),
+                starting_soon_lease_history_start_date=Subquery(
+                    starting_soon_lease_history_start, output_field=DateField()
+                ),
+                starting_soon_lease_history_lease_id=Subquery(
+                    starting_soon_lease_history_lease_id,
+                    output_field=IntegerField(),
                 ),
             )
         )
@@ -455,6 +495,8 @@ class UnitListView(SingleTableMixin, FilterView):
             queryset = queryset.filter(
                 has_active_lease=False,
                 has_active_lease_history=False,
+                has_starting_soon_lease=False,
+                has_starting_soon_lease_history=False,
             ).exclude(status="maintenance")
         elif status == "occupied":
             queryset = queryset.filter(
@@ -464,11 +506,21 @@ class UnitListView(SingleTableMixin, FilterView):
             queryset = queryset.filter(
                 Q(has_ending_soon_lease=True) | Q(has_ending_soon_lease_history=True)
             )
+        elif status == "starting_soon":
+            queryset = queryset.filter(
+                has_active_lease=False,
+                has_active_lease_history=False,
+            ).filter(
+                Q(has_starting_soon_lease=True)
+                | Q(has_starting_soon_lease_history=True)
+            )
         elif status == "maintenance":
             queryset = queryset.filter(
                 status="maintenance",
                 has_active_lease=False,
                 has_active_lease_history=False,
+                has_starting_soon_lease=False,
+                has_starting_soon_lease_history=False,
             )
         return queryset
 

@@ -11,9 +11,17 @@
   <h2 class="h4 mb-0">Invoices</h2>
 
   <div class="top-actions invoice-header-actions d-flex align-items-center flex-wrap gap-2">
+    <a href="{% url 'invoices:category_list' %}" class="btn btn-outline-secondary">
+      <i class="fas fa-list"></i><span class="btn-label"> View Category</span>
+    </a>
+
     <a href="{% url 'invoices:invoice_create' %}" class="btn btn-primary">
       <i class="fas fa-plus"></i><span class="btn-label"> New Invoice</span>
     </a>
+
+    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#invoiceRollbackModal">
+      <i class="fas fa-rotate-left"></i><span class="btn-label"> Roll Back</span>
+    </button>
 
     <div class="dropdown invoice-monthly-dropdown">
       <button class="btn btn-success dropdown-toggle" type="button" id="invoiceMonthlyBillingMenu" data-bs-toggle="dropdown" aria-expanded="false">
@@ -56,7 +64,7 @@
       <i class="fas fa-clock"></i><span class="btn-label"> Late Fee Control &amp; Log</span>
     </a>
 
-    <a href="{% url 'invoices:iesco_bill_reading_list' %}" class="btn btn-outline-info">
+    <a href="{% url 'invoices:iesco_bill_reading_list' %}" class="btn btn-outline-info invoice-iesco-btn">
       <i class="fas fa-bolt"></i><span class="btn-label"> IESCO Bills</span>
     </a>
 
@@ -73,35 +81,36 @@
       <i class="fab fa-whatsapp"></i><span class="btn-label"> Send Bulk Invoice</span>
     </button>
 
-    <div class="dropdown invoice-more-dropdown">
-      <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="invoiceMoreMenu" data-bs-toggle="dropdown" aria-expanded="false">
-        <i class="fas fa-ellipsis-h"></i><span class="btn-label"> More</span>
-      </button>
-      <div class="dropdown-menu dropdown-menu-end invoice-toolbar-menu p-2" aria-labelledby="invoiceMoreMenu">
-        <a href="{% url 'invoices:waterbill_list' %}" class="dropdown-item">
-          <i class="fas fa-tint me-2"></i>Water Bill
-        </a>
-        <a href="{% url 'invoices:category_list' %}" class="dropdown-item">
-          <i class="fas fa-list me-2"></i>View Category
-        </a>
-        <div class="dropdown-divider"></div>
-        <form method="get" action="{% url 'invoices:invoices_bulk_delete_preview' %}">
-          <label class="form-label small text-muted mb-1" for="invoice-rollback-month">Rollback month</label>
-          <div class="input-group input-group-sm">
-            <input type="month" name="month" id="invoice-rollback-month" required class="form-control">
-            <button type="submit" class="btn btn-danger">
-              <i class="bi bi-trash"></i><span class="btn-label"> Preview</span>
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <a href="{% url 'invoices:waterbill_list' %}" class="btn btn-outline-primary">
+      <i class="fas fa-tint"></i><span class="btn-label"> Water Bill</span>
+    </a>
 
     <div class="export-group">{% include "includes/export_buttons.html" %}</div>
   </div>
 
 </div>
 
+<div class="modal fade" id="invoiceRollbackModal" tabindex="-1" aria-labelledby="invoiceRollbackModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <form method="get" action="{% url 'invoices:invoices_bulk_delete_preview' %}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="invoiceRollbackModalLabel">Roll Back Invoices</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label" for="invoice-rollback-month">Select month</label>
+          <input type="month" name="month" id="invoice-rollback-month" required class="form-control">
+          <div class="form-text">Preview the invoices for this month before any deletion is confirmed.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger"><i class="fas fa-eye me-1"></i>Preview</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 
 <form id="invoice-filter-form" method="get" class="card card-body mb-3 filters-card invoice-page-compact">
   <script id="invoice-units-data" type="application/json">{{ units_by_property_json|safe }}</script>
@@ -231,6 +240,18 @@
 .invoice-list-page-shell {
   width: 100%;
   margin: 0 auto;
+}
+
+.invoice-header-actions .btn,
+.invoice-page-compact .btn {
+  font-weight: 600;
+}
+
+.invoice-header-actions .invoice-iesco-btn,
+.invoice-header-actions .invoice-iesco-btn:hover,
+.invoice-header-actions .invoice-iesco-btn:focus {
+  color: #000 !important;
+  font-weight: 700;
 }
 
 .invoice-page-compact .btn,

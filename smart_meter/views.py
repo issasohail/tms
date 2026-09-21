@@ -22,10 +22,11 @@ from django.core.paginator import Paginator
 
 # smart_meter/views.py
 # smart_meter/views.py
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import (
     BooleanField,
     Case,
+    Count,
     F,
     Max,
     Min,
@@ -35,7 +36,7 @@ from django.db.models import (
     Value,
     When,
 )
-from django.db.models.functions import Lower, TruncMonth
+from django.db.models.functions import Lower, TruncDate, TruncMonth
 from django.http import (
     Http404,
     HttpResponse,
@@ -1784,6 +1785,9 @@ def meter_check_group_list(request):
     from django.db.models import Count
 
     today = timezone.localdate()
+    # Superseded input groups are legacy rows already represented by an Energy System.
+    # The consolidated UI hides them by default to prevent duplicate systems, while
+    # preserving the old ?show_linked=1 diagnostic URL for backward compatibility.
     show_linked = request.GET.get("show_linked") == "1"
     group_queryset = MeterCheckGroup.objects.all()
     if not show_linked:
@@ -1797,6 +1801,7 @@ def meter_check_group_list(request):
             "superseded_by_energy_system",
             "energy_system",
         )
+        .prefetch_related("energy_system__meter_links__meter__unit__property")
         .annotate(
             membership_record_count=Count("memberships", distinct=True),
             active_billing_meter_count=Count(
@@ -1817,6 +1822,7 @@ def meter_check_group_list(request):
         .order_by("property__property_name", "name")
     )
     coverage_by_group = defaultdict(set)
+    units_by_group = defaultdict(set)
     coverage_rows = MeterCheckGroupMembership.objects.filter(
         group_id__in=[group.pk for group in groups],
         is_active=True,
@@ -1824,17 +1830,31 @@ def meter_check_group_list(request):
         billing_meter__is_active=True,
     ).filter(
         Q(end_date__isnull=True) | Q(end_date__gte=today)
-    ).values_list("group_id", "billing_meter__unit__property__property_name")
-    for group_id, property_name in coverage_rows:
+    ).values_list(
+        "group_id",
+        "billing_meter__unit__property__property_name",
+        "billing_meter__unit__unit_number",
+    )
+    for group_id, property_name, unit_number in coverage_rows:
         if property_name:
             coverage_by_group[group_id].add(property_name)
+        if unit_number:
+            units_by_group[group_id].add(unit_number)
     for group in groups:
         group.covered_property_names = ", ".join(sorted(coverage_by_group[group.pk]))
-    return render(
-        request,
-        "smart_meter/check_group_list.html",
-        {"groups": groups, "show_linked": show_linked},
-    )
+        group.covered_unit_names = ", ".join(sorted(units_by_group[group.pk]))
+        system = getattr(group, "energy_system", None)
+        if system:
+            links = list(system.meter_links.all())
+            group.energy_input_links = [link for link in links if link.side == "input"]
+            group.energy_output_links = [link for link in links if link.side == "output"]
+            from smart_meter.services.reconciliation import _iesco_invoice_bill
+            group.iesco_bill_latest = _iesco_invoice_bill(system)
+        else:
+            group.energy_input_links = []
+            group.energy_output_links = []
+            group.iesco_bill_latest = None
+    return render(request, "smart_meter/check_group_list.html", {"groups": groups})
 
 
 @require_POST
@@ -1857,6 +1877,10 @@ def meter_check_group_name_update(request, pk):
         )
         group.name = name
         group.save(update_fields=["name"])
+        system = getattr(group, "energy_system", None)
+        if system is not None and system.name != name:
+            system.name = name
+            system.save(update_fields=["name", "updated_at"])
     return JsonResponse({"success": True, "name": group.name})
 
 
@@ -2074,6 +2098,10 @@ def meter_check_group_form(request, pk=None):
                 try:
                     with transaction.atomic():
                         group = form.save()
+                        system = getattr(group, "energy_system", None)
+                        if system is not None and system.name != group.name:
+                            system.name = group.name
+                            system.save(update_fields=["name", "updated_at"])
                         sync_group_coverage(group, timezone.localdate())
                 except ValidationError as exc:
                     form.add_error(None, exc)
@@ -2384,6 +2412,13 @@ def meter_check_group_detail(request, pk):
         and membership.billing_meter.unit_id
         and membership.billing_meter.unit.property_id
     })
+    energy = None
+    system = getattr(group, "energy_system", None)
+    if system is not None and request.user.has_perm("smart_meter.view_energysystem"):
+        from smart_meter.views_reconciliation import build_energy_system_detail_context
+        energy = build_energy_system_detail_context(
+            system, start_date, end_date + timedelta(days=1)
+        )
     return render(
         request,
         "smart_meter/check_group_detail.html",
@@ -2416,6 +2451,7 @@ def meter_check_group_detail(request, pk):
             "variance_type": variance_type,
             "variance_absolute_kwh": abs(variance_kwh),
             "audit_group_options": audit_group_options,
+            "energy": energy,
         },
     )
 
@@ -3792,18 +3828,78 @@ def unknown_meter_list(request):
 def unknown_meter_convert(request, pk):
     um = get_object_or_404(UnknownMeter, pk=pk)
     if request.method == "POST":
+        existing_meter = Meter.objects.filter(meter_number=um.meter_number).first()
         form = UnknownToMeterForm(
-            request.POST, initial={"meter_number": um.meter_number}
+            request.POST,
+            instance=existing_meter,
+            initial={"meter_number": um.meter_number},
         )
         if form.is_valid():
-            meter = form.save(commit=False)
-            meter.meter_number = um.meter_number  # enforce
-            meter.save()
-            # unit is not a field on Meter in some schemas; if your Meter has FK unit, then save above already covered it
-            um.status = "added"
-            um.save(update_fields=["status"])
-            messages.success(request, f"Meter {meter.meter_number} created.")
-            return redirect("smart_meter:unknown_meter_list")
+            try:
+                with transaction.atomic():
+                    locked_um = UnknownMeter.objects.select_for_update().get(pk=um.pk)
+                    meter = form.save(commit=False)
+                    if meter.pk:
+                        Meter.objects.select_for_update().get(pk=meter.pk)
+                        active_installation = (
+                            MeterInstallation.objects.select_for_update()
+                            .select_related("unit", "unit__property")
+                            .filter(
+                                meter_id=meter.pk,
+                                is_active=True,
+                                end_date__isnull=True,
+                            )
+                            .first()
+                        )
+                        if active_installation:
+                            raise ValidationError(
+                                "This physical meter already has an active "
+                                f"installation in {active_installation.unit}."
+                            )
+
+                    selected_unit = form.cleaned_data["unit"]
+                    meter.meter_number = locked_um.meter_number
+                    meter.unit = selected_unit
+                    meter.save()
+                    MeterInstallation.objects.create(
+                        meter=meter,
+                        unit=selected_unit,
+                        start_date=timezone.localdate(),
+                        installed_by=(
+                            request.user if request.user.is_authenticated else None
+                        ),
+                        reason="Unknown meter approved and assigned.",
+                    )
+                    locked_um.status = "added"
+                    locked_um.save(update_fields=["status"])
+            except ValidationError as exc:
+                reasons = []
+                if hasattr(exc, "message_dict"):
+                    for field_reasons in exc.message_dict.values():
+                        reasons.extend(str(reason) for reason in field_reasons)
+                else:
+                    reasons.extend(str(reason) for reason in exc.messages)
+                reason = "; ".join(reasons) or "Validation failed."
+                if reason.startswith("This physical meter already has"):
+                    form.add_error(None, reason)
+                else:
+                    form.add_error(
+                        None,
+                        f"Unable to create meter installation: {reason}",
+                    )
+            except IntegrityError:
+                logger.exception(
+                    "Unknown meter conversion failed for %s due to an integrity error.",
+                    um.meter_number,
+                )
+                form.add_error(
+                    None,
+                    "Unable to create meter installation because the meter or "
+                    "installation conflicts with existing data.",
+                )
+            else:
+                messages.success(request, f"Meter {meter.meter_number} created.")
+                return redirect("smart_meter:unknown_meter_list")
     else:
         form = UnknownToMeterForm(initial={"meter_number": um.meter_number})
     return render(
@@ -4451,11 +4547,74 @@ def _reading_local_date(reading):
     return ts.date()
 
 
+def _prepare_reading_rows(rows):
+    """Attach fallback register, balance, meter-count, and tenant display data."""
+    rows_by_meter = defaultdict(list)
+    for reading in rows:
+        rows_by_meter[reading.meter_id].append(reading)
+
+    for row_meter_id, meter_rows in rows_by_meter.items():
+        meter_rows.sort(key=lambda reading: (reading.ts, reading.pk), reverse=True)
+        newest_ts = meter_rows[0].ts
+        energy_history = list(
+            MeterReading.objects.filter(meter_id=row_meter_id, ts__lte=newest_ts)
+            .filter(Q(forward_active_energy_kwh__isnull=False) | Q(total_energy__isnull=False))
+            .only("ts", "forward_active_energy_kwh", "total_energy")
+            .order_by("-ts", "-pk")[:2000]
+        )
+        balance_history = list(
+            MeterReading.objects.filter(
+                meter_id=row_meter_id, ts__lte=newest_ts, balance__isnull=False
+            )
+            .only("ts", "balance")
+            .order_by("-ts", "-pk")[:2000]
+        )
+        energy_index = balance_index = 0
+        for reading in meter_rows:
+            while energy_index < len(energy_history) and energy_history[energy_index].ts > reading.ts:
+                energy_index += 1
+            while balance_index < len(balance_history) and balance_history[balance_index].ts > reading.ts:
+                balance_index += 1
+            known_energy = energy_history[energy_index] if energy_index < len(energy_history) else None
+            known_balance = balance_history[balance_index] if balance_index < len(balance_history) else None
+            reading.last_known_forward_energy = (
+                known_energy.forward_active_energy_kwh if known_energy else None
+            )
+            reading.last_known_total_energy = known_energy.total_energy if known_energy else None
+            reading.last_known_balance = known_balance.balance if known_balance else None
+
+    for reading in rows:
+        reading.display_forward_energy = (
+            reading.forward_active_energy_kwh
+            if reading.forward_active_energy_kwh is not None
+            else reading.total_energy
+            if reading.total_energy is not None
+            else reading.last_known_forward_energy
+            if reading.last_known_forward_energy is not None
+            else reading.last_known_total_energy
+        )
+        reading.display_balance = (
+            reading.balance if reading.balance is not None else reading.last_known_balance
+        )
+        reading.display_net_energy = (
+            reading.display_forward_energy - reading.reverse_active_energy_kwh
+            if reading.display_forward_energy is not None
+            and reading.reverse_active_energy_kwh is not None
+            else None
+        )
+    attach_active_meter_counts(rows, lambda reading: reading.meter)
+    attach_tenant_names_for_dates(
+        rows,
+        lambda reading: reading.meter.unit_id if reading.meter else None,
+        _reading_local_date,
+    )
+
+
 def reading_list(request):
-    page_size = 100
     prop_id = request.GET.get("property") or ""
     unit_id = request.GET.get("unit") or ""
     meter_id = request.GET.get("meter") or ""
+    days_per_page = 100
     role = (request.GET.get("role") or "").strip().lower()
     active_filter = (request.GET.get("active") or "").strip().lower()
 
@@ -4561,114 +4720,62 @@ def reading_list(request):
     if end_dt_excl:
         readings = readings.filter(ts__lt=end_dt_excl)
 
-    readings = readings.order_by("-ts")
-
     try:
         page_number = max(1, int(request.GET.get("page") or 1))
     except (TypeError, ValueError):
         page_number = 1
 
-    offset = (page_number - 1) * page_size
-    page_items = list(readings[offset : offset + page_size + 1])
-    has_next = len(page_items) > page_size
-    rows = page_items[:page_size]
-    total_results = readings.count()
-    total_pages = max(1, (total_results + page_size - 1) // page_size)
+    # Paginate collapsed day headers. Detailed rows are loaded only when the
+    # user expands a day, so a long range can show every date without placing
+    # tens of thousands of hidden table rows in the initial response.
+    day_counts = list(
+        readings.annotate(reading_day=TruncDate("ts", tzinfo=tz))
+        .values("reading_day")
+        .annotate(reading_count=Count("pk"), last_ts=Max("ts"))
+        .order_by("-reading_day")
+    )
+    total_results = sum(item["reading_count"] for item in day_counts)
+    total_days = len(day_counts)
+    total_pages = max(1, (total_days + days_per_page - 1) // days_per_page)
+    page_number = min(page_number, total_pages)
+    offset = (page_number - 1) * days_per_page
+    selected_day_counts = day_counts[offset : offset + days_per_page]
+    selected_days = [item["reading_day"] for item in selected_day_counts]
+    has_next = page_number < total_pages
+
+    latest_timestamps = [item["last_ts"] for item in selected_day_counts]
+    latest_candidates = list(
+        readings.filter(ts__in=latest_timestamps).order_by("-ts", "-pk")
+    )
+    latest_by_day = {}
+    for reading in latest_candidates:
+        reading_day = _reading_local_date(reading)
+        if reading_day in selected_days and reading_day not in latest_by_day:
+            latest_by_day[reading_day] = reading
+    rows = [latest_by_day[day] for day in selected_days if day in latest_by_day]
+    _prepare_reading_rows(rows)
+    displayed_reading_count = sum(
+        item["reading_count"] for item in selected_day_counts
+    )
     page_numbers = range(
         max(1, page_number - 2),
         min(total_pages, page_number + 2) + 1,
     )
-    rows_by_meter = defaultdict(list)
-    for reading in rows:
-        rows_by_meter[reading.meter_id].append(reading)
-
-    # Some frequent instantaneous rows intentionally omit cumulative registers.
-    # Resolve the last known values in small per-meter batches. Correlated
-    # subqueries made the MySQL list request unacceptably slow on large history.
-    for row_meter_id, meter_rows in rows_by_meter.items():
-        newest_ts = meter_rows[0].ts
-        energy_history = list(
-            MeterReading.objects.filter(meter_id=row_meter_id, ts__lte=newest_ts)
-            .filter(Q(forward_active_energy_kwh__isnull=False) | Q(total_energy__isnull=False))
-            .only("ts", "forward_active_energy_kwh", "total_energy")
-            .order_by("-ts", "-pk")[:2000]
-        )
-        balance_history = list(
-            MeterReading.objects.filter(
-                meter_id=row_meter_id, ts__lte=newest_ts, balance__isnull=False
-            )
-            .only("ts", "balance")
-            .order_by("-ts", "-pk")[:2000]
-        )
-        energy_index = balance_index = 0
-        for reading in meter_rows:
-            while energy_index < len(energy_history) and energy_history[energy_index].ts > reading.ts:
-                energy_index += 1
-            while balance_index < len(balance_history) and balance_history[balance_index].ts > reading.ts:
-                balance_index += 1
-            known_energy = energy_history[energy_index] if energy_index < len(energy_history) else None
-            known_balance = balance_history[balance_index] if balance_index < len(balance_history) else None
-            reading.last_known_forward_energy = (
-                known_energy.forward_active_energy_kwh if known_energy else None
-            )
-            reading.last_known_total_energy = known_energy.total_energy if known_energy else None
-            reading.last_known_balance = known_balance.balance if known_balance else None
-
-    for reading in rows:
-        reading.display_forward_energy = (
-            reading.forward_active_energy_kwh
-            if reading.forward_active_energy_kwh is not None
-            else reading.total_energy
-            if reading.total_energy is not None
-            else reading.last_known_forward_energy
-            if reading.last_known_forward_energy is not None
-            else reading.last_known_total_energy
-        )
-        reading.display_balance = (
-            reading.balance
-            if reading.balance is not None
-            else reading.last_known_balance
-        )
-        reading.display_net_energy = (
-            reading.display_forward_energy - reading.reverse_active_energy_kwh
-            if reading.display_forward_energy is not None
-            and reading.reverse_active_energy_kwh is not None
-            else None
-        )
-    attach_active_meter_counts(rows, lambda reading: reading.meter)
-    attach_tenant_names_for_dates(
-        rows,
-        lambda reading: reading.meter.unit_id if reading.meter else None,
-        _reading_local_date,
-    )
-
-    # Group this page by local date, then by fixed two-hour clock intervals.
     reading_groups = []
-    for reading in rows:
+    for day_serial, item in enumerate(selected_day_counts, 1):
+        reading = latest_by_day.get(item["reading_day"])
+        if not reading:
+            continue
         local_ts = timezone.localtime(reading.ts) if timezone.is_aware(reading.ts) else reading.ts
-        reading_date = local_ts.date()
-        if not reading_groups or reading_groups[-1]["date"] != reading_date:
-            reading_groups.append({
-                "date": reading_date,
-                "serial": len(reading_groups) + 1,
-                "count": 0,
-                "periods": [],
-            })
-        day_group = reading_groups[-1]
-        hour_start = (local_ts.hour // 2) * 2
-        if not day_group["periods"] or day_group["periods"][-1]["hour_start"] != hour_start:
-            day_group["periods"].append({
-                "hour_start": hour_start,
-                "serial": len(day_group["periods"]) + 1,
-                "label": f"{hour_start:02d}:00–{hour_start + 1:02d}:59",
-                "readings": [],
-            })
-        period = day_group["periods"][-1]
-        period["readings"].append({
-            "reading": reading,
-            "serial": f'{day_group["serial"]}.{period["serial"]}.{len(period["readings"]) + 1}',
+        reading_groups.append({
+            "date": item["reading_day"],
+            "serial": day_serial,
+            "count": item["reading_count"],
+            "last_ts": local_ts,
+            "last_energy": reading.display_forward_energy,
+            "last_reverse_energy": reading.reverse_active_energy_kwh,
+            "last_reading": reading,
         })
-        day_group["count"] += 1
 
     class ReadingPage:
         def __init__(self, object_list, number, per_page, has_next_page):
@@ -4736,7 +4843,11 @@ def reading_list(request):
         current_active=active_filter,
         rows=rows,
         reading_groups=reading_groups,
-        page_obj=ReadingPage(rows, page_number, page_size, has_next),
+        page_obj=ReadingPage(rows, page_number, days_per_page, has_next),
+        displayed_reading_count=displayed_reading_count,
+        displayed_day_count=len(selected_days),
+        total_results=total_results,
+        total_days=total_days,
         page_numbers=page_numbers,
         total_pages=total_pages,
         range=range_key,  # keeps the dropdown state
@@ -4789,6 +4900,51 @@ def _filtered_readings_qs(request):
             | Q(meter__unit__property__property_name__icontains=q)
         )
     return qs
+
+
+def reading_day_periods(request):
+    try:
+        reading_day = date.fromisoformat((request.GET.get("day") or "").strip())
+        day_serial = max(1, int(request.GET.get("day_serial") or 1))
+    except (TypeError, ValueError):
+        return HttpResponse("Invalid reading day.", status=400)
+
+    tz = timezone.get_current_timezone()
+    day_start = timezone.make_aware(datetime.combine(reading_day, time.min), tz)
+    day_end = timezone.make_aware(
+        datetime.combine(reading_day + timedelta(days=1), time.min), tz
+    )
+    rows = list(
+        _filtered_readings_qs(request)
+        .filter(ts__gte=day_start, ts__lt=day_end)
+        .order_by("-ts", "-pk")
+    )
+    _prepare_reading_rows(rows)
+
+    periods = []
+    for reading in rows:
+        local_ts = timezone.localtime(reading.ts) if timezone.is_aware(reading.ts) else reading.ts
+        hour_start = (local_ts.hour // 2) * 2
+        if not periods or periods[-1]["hour_start"] != hour_start:
+            periods.append({
+                "hour_start": hour_start,
+                "serial": len(periods) + 1,
+                "label": f"{hour_start:02d}:00–{hour_start + 1:02d}:59",
+                "last_ts": local_ts,
+                "last_reading": reading,
+                "readings": [],
+            })
+        period = periods[-1]
+        period["readings"].append({
+            "reading": reading,
+            "serial": f'{day_serial}.{period["serial"]}.{len(period["readings"]) + 1}',
+        })
+
+    return render(
+        request,
+        "smart_meter/partials/reading_day_periods.html",
+        {"day": {"date": reading_day, "serial": day_serial, "periods": periods}},
+    )
 
 
 # smart_meter/views.py (replace the headers/rows in both exporters)

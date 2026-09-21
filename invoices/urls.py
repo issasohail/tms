@@ -118,6 +118,7 @@ urlpatterns = [
     path('categories/add/', CategoryCreateView.as_view(), name='category_add'),
     path('categories/merge/', category_merge, name='category_merge'),
     path('categories/<int:pk>/', CategoryDetailView.as_view(), name='category_detail'),
+    path('categories/<int:pk>/export/<str:export_type>/', views.category_detail_export, name='category_detail_export'),
     path('categories/<int:pk>/edit/',
          CategoryUpdateView.as_view(), name='category_edit'),
     path('categories/<int:pk>/delete/',

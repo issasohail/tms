@@ -381,7 +381,22 @@ class UnknownToMeterForm(forms.ModelForm):
 
     class Meta:
         model = Meter
-        fields = "__all__"
+        fields = [
+            "unit",
+            "meter_number",
+            "name",
+            "meter_type",
+            "billing_mode",
+            "meter_role",
+            "power_status",
+            "unit_rate",
+            "service_charges",
+            "min_balance_alert",
+            "min_balance_cutoff",
+            "installed_at",
+            "is_active",
+            "notes",
+        ]
         widgets = {
             "meter_number": forms.TextInput(attrs={"readonly": "readonly"}),
         }

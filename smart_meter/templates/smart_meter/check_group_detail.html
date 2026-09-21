@@ -111,7 +111,7 @@
 
   <div class="row g-3 ld-reconciliation-grid">
     <div class="col-12 ld-membership-panel">
-      <div class="card h-100">
+      <div class="card h-100" id="billing-meter-memberships">
         <div class="card-header py-2 fw-semibold">Billing-meter memberships</div>
         <div class="table-responsive ld-reconciliation-table">
           <table class="table table-sm align-middle mb-0">
@@ -195,6 +195,8 @@
       </div>
     </div>
   </div>
+
+  {% include "smart_meter/_combined_energy_reconciliation.html" %}
 </div>
 {{ billing_chart_data|json_script:"billing-chart-data" }}
 </div>

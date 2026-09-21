@@ -16,7 +16,14 @@ from django.utils import timezone
 from leases.models import Lease, LeaseUnitOccupancy
 from invoices.models import Invoice, InvoiceItem, ItemCategory
 from properties.models import Property, Unit
-from smart_meter.models import LiveReading, Meter, MeterInstallation, MeterReading, MeterRoleHistory
+from smart_meter.models import (
+    LiveReading,
+    Meter,
+    MeterInstallation,
+    MeterReading,
+    MeterRoleHistory,
+    UnknownMeter,
+)
 from smart_meter.services.invoicing import (
     ElectricBillContext,
     billing_contexts_for_period,
@@ -1031,3 +1038,578 @@ class InstantLiveReadingRegressionTests(TestCase):
         )
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["error"], "Meter offline")
+
+
+class EnergyDashboardRegisterContinuityTests(TestCase):
+    """Regression coverage for legacy-total -> direct F/R register cutovers."""
+
+    def setUp(self):
+        property_obj = Property.objects.create(
+            property_name="Register Continuity",
+            owner_name="Owner",
+            owner_cnic="1234512345670",
+            type="apartment",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(property=property_obj, unit_number="Audit")
+        self.meter = Meter.objects.create(
+            meter_number="BIDIR-CUTOVER-1",
+            unit=self.unit,
+            meter_role=Meter.METER_ROLE_CHECK,
+            reverse_energy_capability=Meter.REVERSE_CAPABILITY_SUPPORTED,
+            reading_profile=Meter.READING_PROFILE_TOTAL_AND_PER_PHASE,
+        )
+        self.tz = timezone.get_current_timezone()
+
+    def add_reading(self, ts, *, total=None, forward=None, reverse=None):
+        return MeterReading.objects.create(
+            meter=self.meter,
+            ts=timezone.make_aware(ts, self.tz),
+            total_energy=Decimal(total) if total is not None else None,
+            forward_active_energy_kwh=Decimal(forward) if forward is not None else None,
+            reverse_active_energy_kwh=Decimal(reverse) if reverse is not None else None,
+        )
+
+    def test_cutover_period_is_withheld_and_next_period_resumes(self):
+        # Pre-window and early Sep 1 rows use the historical combined total.
+        self.add_reading(datetime(2026, 8, 31, 23, 45), total="7681.840", forward="7681.840")
+        self.add_reading(datetime(2026, 9, 1, 0, 9), total="7681.990", forward="7681.990")
+        # Direct F/R polling becomes authoritative during Sep 1.
+        self.add_reading(
+            datetime(2026, 9, 1, 16, 49),
+            total="3078.900", forward="3078.900", reverse="4609.900",
+        )
+        self.add_reading(
+            datetime(2026, 9, 1, 23, 57),
+            total="3085.130", forward="3085.130", reverse="4609.920",
+        )
+        self.add_reading(
+            datetime(2026, 9, 2, 0, 10),
+            total="3085.270", forward="3085.270", reverse="4610.000",
+        )
+        self.add_reading(
+            datetime(2026, 9, 2, 23, 55),
+            total="3117.460", forward="3117.460", reverse="4628.550",
+        )
+
+        from smart_meter.views_dashboard import _per_meter_series
+
+        _labels, datasets, rows, totals = _per_meter_series(
+            Meter.objects.filter(pk=self.meter.pk),
+            date(2026, 9, 1),
+            date(2026, 9, 2),
+            "daily",
+        )
+
+        self.assertEqual(len(rows), 2)
+        sep1, sep2 = rows
+        self.assertFalse(sep1["usage_valid"])
+        self.assertEqual(sep1["display_start_kwh"], Decimal("7681.840"))
+        self.assertIsNone(sep1["display_start_reverse_kwh"])
+        self.assertEqual(
+            sep1["display_end_reverse_kwh"],
+            Decimal("4609.920"),
+        )
+        self.assertIsNone(sep1["display_usage"])
+        self.assertIn("Register source changed", sep1["continuity_reason"])
+        self.assertEqual(sep1["end_kwh"], Decimal("3085.130"))
+
+        self.assertTrue(sep2["usage_valid"])
+        self.assertEqual(sep2["start_kwh"], Decimal("3085.130"))
+        self.assertEqual(sep2["end_kwh"], Decimal("3117.460"))
+        self.assertEqual(sep2["usage"], Decimal("32.330"))
+        self.assertEqual(totals["invalid_period_count"], 1)
+        self.assertEqual(totals["total_kwh"], Decimal("32.330"))
+        self.assertIsNone(datasets[0]["data"][0])
+        self.assertEqual(datasets[0]["data"][1], 32.33)
+
+    def test_bidirectional_legacy_rows_stay_legacy_until_paired_reverse_exists(self):
+        from smart_meter.views_dashboard import _dashboard_register_values
+
+        source, value, reverse = _dashboard_register_values(
+            self.meter,
+            {
+                "total_energy": Decimal("7688.770"),
+                "forward_active_energy_kwh": Decimal("7688.770"),
+                "reverse_active_energy_kwh": None,
+            },
+        )
+        self.assertEqual(source, "legacy_total")
+        self.assertEqual(value, Decimal("7688.770"))
+        self.assertIsNone(reverse)
+
+        source, value, reverse = _dashboard_register_values(
+            self.meter,
+            {
+                "total_energy": Decimal("3078.900"),
+                "forward_active_energy_kwh": Decimal("3078.900"),
+                "reverse_active_energy_kwh": Decimal("4609.900"),
+            },
+        )
+        self.assertEqual(source, "forward_reverse")
+        self.assertEqual(value, Decimal("3078.900"))
+        self.assertEqual(reverse, Decimal("4609.900"))
+
+
+class EnergyDashboardReadingDisplayTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="energy-display-user",
+            password="test-pass",
+            email="energy-display@example.com",
+        )
+        self.client.force_login(self.user)
+        property_obj = Property.objects.create(
+            property_name="Energy Display",
+            owner_name="Owner",
+            owner_cnic="1234512345680",
+            type="apartment",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(property=property_obj, unit_number="1")
+
+    def dashboard(self, meter):
+        selected_day = timezone.localdate()
+        return self.client.get(
+            reverse("smart_meter:energy_dashboard"),
+            {
+                "meter": meter.pk,
+                "start": selected_day.isoformat(),
+                "end": selected_day.isoformat(),
+                "report_type": "daily",
+            },
+        )
+
+    def test_single_register_boundaries_are_plain_values(self):
+        meter = Meter.objects.create(
+            meter_number="DISPLAY-SINGLE-1",
+            unit=self.unit,
+        )
+        now = timezone.now()
+        MeterReading.objects.create(
+            meter=meter,
+            ts=now - timedelta(minutes=10),
+            total_energy=Decimal("3080.000"),
+        )
+        MeterReading.objects.create(
+            meter=meter,
+            ts=now,
+            total_energy=Decimal("3085.130"),
+        )
+
+        response = self.dashboard(meter)
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        begin_cell = html.split(
+            "<!-- Begin (small also shows End under it) -->", 1
+        )[1].split("</td>", 1)[0]
+        self.assertIn("3080.000", begin_cell)
+        self.assertIn("3085.130", begin_cell)
+        self.assertNotIn("F:", begin_cell)
+        self.assertNotContains(response, "Legacy combined total")
+
+    def test_paired_register_boundaries_show_forward_and_reverse(self):
+        meter = Meter.objects.create(
+            meter_number="DISPLAY-BIDIR-1",
+            unit=self.unit,
+            reverse_energy_capability=Meter.REVERSE_CAPABILITY_SUPPORTED,
+        )
+        now = timezone.now()
+        MeterReading.objects.create(
+            meter=meter,
+            ts=now - timedelta(minutes=10),
+            total_energy=Decimal("3080.000"),
+            forward_active_energy_kwh=Decimal("3080.000"),
+            reverse_active_energy_kwh=Decimal("4600.000"),
+        )
+        MeterReading.objects.create(
+            meter=meter,
+            ts=now,
+            total_energy=Decimal("3085.130"),
+            forward_active_energy_kwh=Decimal("3085.130"),
+            reverse_active_energy_kwh=Decimal("4609.920"),
+        )
+
+        response = self.dashboard(meter)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "F: 3080.000")
+        self.assertContains(response, "R: 4600.000")
+        self.assertContains(response, "F: 3085.130")
+        self.assertContains(response, "R: 4609.920")
+        self.assertNotContains(response, "Forward / Reverse registers")
+
+
+class MeterReadingCollapsedDaySummaryTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="reading-summary-user",
+            password="test-pass",
+            email="reading-summary@example.com",
+        )
+        self.client.force_login(self.user)
+        property_obj = Property.objects.create(
+            property_name="Reading Summary",
+            owner_name="Owner",
+            owner_cnic="1234512345681",
+            type="apartment",
+            property_type="apartment",
+            total_units=1,
+        )
+        self.unit = Unit.objects.create(property=property_obj, unit_number="1")
+
+    def test_latest_daily_reading_shows_forward_and_reverse(self):
+        meter = Meter.objects.create(
+            meter_number="SUMMARY-BIDIR-1",
+            unit=self.unit,
+            reading_profile=Meter.READING_PROFILE_TOTAL_AND_PER_PHASE,
+        )
+        selected_day = timezone.localdate()
+        early = timezone.make_aware(datetime.combine(selected_day, datetime.min.time())).replace(hour=8)
+        same_period_earlier = early.replace(hour=16, minute=10, second=0)
+        late = early.replace(hour=16, minute=25, second=13)
+        MeterReading.objects.create(
+            meter=meter,
+            ts=early,
+            total_energy=Decimal("3400.000"),
+            forward_active_energy_kwh=Decimal("3400.000"),
+            reverse_active_energy_kwh=Decimal("5140.000"),
+        )
+        MeterReading.objects.create(
+            meter=meter,
+            ts=same_period_earlier,
+            total_energy=Decimal("3405.000"),
+            forward_active_energy_kwh=Decimal("3405.000"),
+            reverse_active_energy_kwh=Decimal("5148.000"),
+        )
+        MeterReading.objects.create(
+            meter=meter,
+            ts=late,
+            total_energy=Decimal("3407.080"),
+            forward_active_energy_kwh=Decimal("3407.080"),
+            reverse_active_energy_kwh=Decimal("5150.570"),
+        )
+
+        response = self.client.get(
+            reverse("smart_meter:reading_list"),
+            {"meter": meter.pk, "start": selected_day, "end": selected_day},
+        )
+
+        day = response.context["reading_groups"][0]
+        self.assertEqual(day["last_ts"].time(), late.time())
+        self.assertEqual(day["last_energy"], Decimal("3407.080"))
+        self.assertEqual(day["last_reverse_energy"], Decimal("5150.570"))
+        period_response = self.client.get(
+            reverse("smart_meter:reading_day_periods"),
+            {
+                "meter": meter.pk,
+                "start": selected_day,
+                "end": selected_day,
+                "day": selected_day,
+                "day_serial": 1,
+            },
+        )
+        latest_period = period_response.context["day"]["periods"][0]
+        self.assertEqual(latest_period["last_ts"].time(), late.time())
+        self.assertEqual(
+            latest_period["last_reading"].display_forward_energy,
+            Decimal("3407.080"),
+        )
+        self.assertEqual(
+            latest_period["last_reading"].reverse_active_energy_kwh,
+            Decimal("5150.570"),
+        )
+        html = response.content.decode()
+        period_html = period_response.content.decode()
+        day_summary = html.split(
+            '<tr class="reading-day-heading reading-summary-heading"', 1
+        )[1].split("</tr>", 1)[0]
+        period_summary = period_html.split(
+            '<tr class="reading-period-heading reading-summary-heading"', 1
+        )[1].split("</tr>", 1)[0]
+        for summary in (day_summary, period_summary):
+            self.assertIn("16:25:13", summary)
+            self.assertIn('class="phase-label">F</span>3407.080', summary)
+            self.assertIn('class="phase-label">R</span>5150.570', summary)
+            self.assertIn("SUMMARY-BIDIR-1", summary)
+        period_headers = period_html.split(
+            '<tr class="reading-period-heading reading-summary-heading"'
+        )[1:]
+        self.assertEqual(len(period_headers), 2)
+        older_period_header = period_headers[1].split("</tr>", 1)[0]
+        self.assertIn("08:00:00", older_period_header)
+        self.assertIn('class="phase-label">F</span>3400.000', older_period_header)
+        self.assertIn('class="phase-label">R</span>5140.000', older_period_header)
+
+    def test_busy_day_does_not_hide_older_day_behind_reading_pagination(self):
+        meter = Meter.objects.create(
+            meter_number="SUMMARY-MULTI-DAY-1",
+            unit=self.unit,
+        )
+        newest_day = timezone.localdate()
+        newest_base = timezone.make_aware(
+            datetime.combine(newest_day, datetime.min.time())
+        ).replace(hour=12)
+        older_timestamps = [newest_base - timedelta(days=offset) for offset in range(1, 11)]
+        MeterReading.objects.bulk_create(
+            [
+                MeterReading(
+                    meter=meter,
+                    ts=newest_base + timedelta(seconds=index),
+                    total_energy=Decimal(index),
+                )
+                for index in range(105)
+            ]
+            + [
+                MeterReading(
+                    meter=meter,
+                    ts=older_ts,
+                    total_energy=Decimal("1.000"),
+                )
+                for older_ts in older_timestamps
+            ]
+        )
+
+        response = self.client.get(
+            reverse("smart_meter:reading_list"),
+            {
+                "meter": meter.pk,
+                "start": older_timestamps[-1].date(),
+                "end": newest_day,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["reading_groups"]), 11)
+        self.assertEqual(response.context["reading_groups"][0]["count"], 105)
+        self.assertTrue(all(day["count"] == 1 for day in response.context["reading_groups"][1:]))
+        self.assertEqual(response.context["displayed_reading_count"], 115)
+        self.assertEqual(response.context["displayed_day_count"], 11)
+        self.assertEqual(response.context["total_pages"], 1)
+        html = response.content.decode()
+        self.assertEqual(html.count('aria-label="Readings pages"'), 2)
+        self.assertLess(
+            html.index('aria-label="Readings pages"'),
+            html.index('id="toggleAllReadings"'),
+        )
+        self.assertNotIn('<tr class="reading-period-heading', html)
+        self.assertIn(reverse("smart_meter:reading_day_periods"), html)
+
+    def test_latest_daily_reading_without_reverse_is_plain(self):
+        meter = Meter.objects.create(
+            meter_number="SUMMARY-SINGLE-1",
+            unit=self.unit,
+        )
+        selected_day = timezone.localdate()
+        ts = timezone.make_aware(datetime.combine(selected_day, datetime.min.time())).replace(
+            hour=12,
+            minute=5,
+            second=9,
+        )
+        MeterReading.objects.create(
+            meter=meter,
+            ts=ts,
+            total_energy=Decimal("125.750"),
+        )
+
+        response = self.client.get(
+            reverse("smart_meter:reading_list"),
+            {"meter": meter.pk, "start": selected_day, "end": selected_day},
+        )
+
+        summary_html = response.content.decode().split(
+            '<tr class="reading-day-heading reading-summary-heading"', 1
+        )[1].split("</tr>", 1)[0]
+        summary_text = summary_html
+        self.assertIn("125.750", summary_text)
+        self.assertNotIn('class="phase-label">F</span>', summary_text)
+        self.assertNotIn('class="phase-label">R</span>', summary_text)
+        period_response = self.client.get(
+            reverse("smart_meter:reading_day_periods"),
+            {
+                "meter": meter.pk,
+                "start": selected_day,
+                "end": selected_day,
+                "day": selected_day,
+                "day_serial": 1,
+            },
+        )
+        period_summary = period_response.content.decode().split(
+            '<tr class="reading-period-heading reading-summary-heading"', 1
+        )[1].split("</tr>", 1)[0]
+        self.assertIn("12:05:09", period_summary)
+        self.assertIn("125.750", period_summary)
+        self.assertNotIn('class="phase-label">F</span>', period_summary)
+        self.assertNotIn('class="phase-label">R</span>', period_summary)
+
+    def test_open_occupancy_does_not_outlive_ended_lease(self):
+        tenant = Tenant.objects.create(
+            first_name="Former",
+            last_name="Occupant",
+            cnic="1234512345689",
+        )
+        reading_day = timezone.localdate()
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=self.unit,
+            start_date=reading_day - timedelta(days=60),
+            end_date=reading_day - timedelta(days=1),
+            status="ended",
+            monthly_rent=Decimal("10000.00"),
+        )
+        LeaseUnitOccupancy.objects.create(
+            lease=lease,
+            unit=self.unit,
+            move_in_date=lease.start_date,
+        )
+        meter = Meter.objects.create(
+            meter_number="VACANT-AFTER-1",
+            unit=self.unit,
+        )
+        reading = MeterReading.objects.create(
+            meter=meter,
+            ts=timezone.make_aware(datetime.combine(reading_day, datetime.min.time())).replace(hour=12),
+            total_energy=Decimal("200.000"),
+        )
+
+        response = self.client.get(
+            reverse("smart_meter:reading_list"),
+            {"meter": meter.pk, "start": reading_day, "end": reading_day},
+        )
+
+        header_reading = response.context["reading_groups"][0]["last_reading"]
+        self.assertEqual(header_reading.pk, reading.pk)
+        self.assertEqual(header_reading.tenant_name, "Vacant")
+        self.assertIsNone(header_reading.tenant_lease_id)
+        self.assertContains(response, 'title="Vacant"')
+        self.assertNotContains(response, "Former Occupant")
+
+
+class UnknownMeterConversionTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="unknown-convert-user",
+            password="test-pass",
+            email="unknown-convert@example.com",
+        )
+        self.client.force_login(self.user)
+        self.property = Property.objects.create(
+            property_name="Unknown Conversion",
+            owner_name="Owner",
+            owner_cnic="1234512345682",
+            type="apartment",
+            property_type="apartment",
+            total_units=2,
+        )
+        self.unit_one = Unit.objects.create(property=self.property, unit_number="1")
+        self.unit_two = Unit.objects.create(property=self.property, unit_number="2")
+
+    def payload(self, meter_number, unit):
+        return {
+            "unit": unit.pk,
+            "meter_number": meter_number,
+            "name": "Converted meter",
+            "meter_type": Meter.METER_TYPE_ELECTRIC,
+            "billing_mode": "postpaid",
+            "meter_role": Meter.METER_ROLE_BILLING,
+            "power_status": "on",
+            "unit_rate": "50.0000",
+            "service_charges": "250.00",
+            "min_balance_alert": "100.00",
+            "min_balance_cutoff": "0.00",
+            "installed_at": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "is_active": "on",
+            "notes": "Approved from unknown meters",
+        }
+
+    def test_conversion_allows_another_active_meter_on_same_unit(self):
+        old_meter = Meter.objects.create(meter_number="KNOWN-METER-A", unit=self.unit_one)
+        old_installation = MeterInstallation.objects.create(
+            meter=old_meter,
+            unit=self.unit_one,
+            start_date=timezone.localdate() - timedelta(days=30),
+        )
+        unknown = UnknownMeter.objects.create(meter_number="UNKNOWN-METER-B")
+
+        response = self.client.post(
+            reverse("smart_meter:unknown_meter_convert", args=[unknown.pk]),
+            self.payload(unknown.meter_number, self.unit_one),
+        )
+
+        self.assertEqual(
+            response.status_code,
+            302,
+            response.context["form"].errors.as_json() if response.context else "",
+        )
+        self.assertRedirects(response, reverse("smart_meter:unknown_meter_list"))
+        new_meter = Meter.objects.get(meter_number=unknown.meter_number)
+        self.assertEqual(
+            self.unit_one.meter_installations.filter(
+                is_active=True,
+                end_date__isnull=True,
+            ).count(),
+            2,
+        )
+        old_installation.refresh_from_db()
+        self.assertTrue(old_installation.is_active)
+        self.assertIsNone(old_installation.end_date)
+        self.assertTrue(
+            new_meter.installations.filter(
+                unit=self.unit_one,
+                is_active=True,
+                end_date__isnull=True,
+            ).exists()
+        )
+
+    def test_conversion_rejects_meter_already_installed_elsewhere(self):
+        meter = Meter.objects.create(
+            meter_number="UNKNOWN-INSTALLED-B",
+            unit=self.unit_two,
+        )
+        MeterInstallation.objects.create(
+            meter=meter,
+            unit=self.unit_two,
+            start_date=timezone.localdate() - timedelta(days=10),
+        )
+        unknown = UnknownMeter.objects.create(meter_number=meter.meter_number)
+
+        response = self.client.post(
+            reverse("smart_meter:unknown_meter_convert", args=[unknown.pk]),
+            self.payload(unknown.meter_number, self.unit_one),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f"This physical meter already has an active installation in {self.unit_two}.",
+            msg_prefix=response.context["form"].errors.as_json(),
+        )
+        self.assertEqual(meter.installations.filter(is_active=True).count(), 1)
+        unknown.refresh_from_db()
+        self.assertEqual(unknown.status, "new")
+        self.assertEqual(response.context["form"].data["unit"], str(self.unit_one.pk))
+
+    def test_failed_installation_rolls_back_meter_and_unknown_status(self):
+        unknown = UnknownMeter.objects.create(meter_number="UNKNOWN-ROLLBACK-C")
+
+        with patch(
+            "smart_meter.views.MeterInstallation.objects.create",
+            side_effect=ValidationError("Installation validation failed."),
+        ):
+            response = self.client.post(
+                reverse("smart_meter:unknown_meter_convert", args=[unknown.pk]),
+                self.payload(unknown.meter_number, self.unit_one),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Unable to create meter installation: Installation validation failed.",
+        )
+        self.assertFalse(Meter.objects.filter(meter_number=unknown.meter_number).exists())
+        self.assertFalse(MeterInstallation.objects.filter(unit=self.unit_one).exists())
+        unknown.refresh_from_db()
+        self.assertEqual(unknown.status, "new")

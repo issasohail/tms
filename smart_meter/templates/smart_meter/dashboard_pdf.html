@@ -87,8 +87,8 @@
               <td class="center">{{ row.sn }}</td>
               <td class="nowrap">{{ row.meter_number }}</td>
               <td>{{ row.period_label }}</td>
-              <td class="right">{{ row.start_kwh }}</td>
-              <td class="right">{{ row.end_kwh }}</td>
+              <td class="right">{{ row.start_kwh|linebreaksbr }}</td>
+              <td class="right">{{ row.end_kwh|linebreaksbr }}</td>
               <td class="right">{{ row.usage }}</td>
               <td class="right">{{ row.unit_rate }}</td>
               <td class="right">{{ row.usage_amount }}</td>

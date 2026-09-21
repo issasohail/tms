@@ -4809,7 +4809,14 @@ def reading_list(request):
     qs = request.GET.copy()
     qs.pop("page", None)
 
-    meter_options = Meter.objects.only("id", "meter_number", "meter_role", "unit_id")
+    meter_options = Meter.objects.select_related("unit").only(
+        "id",
+        "meter_number",
+        "name",
+        "meter_role",
+        "unit_id",
+        "unit__unit_number",
+    )
     filtered_meters_ctx = (
         meter_options.filter(unit_id=unit_id)
         if unit_id
@@ -4823,6 +4830,15 @@ def reading_list(request):
         filtered_meters_ctx = filtered_meters_ctx.filter(is_active=True)
     elif active_filter == "inactive":
         filtered_meters_ctx = filtered_meters_ctx.filter(is_active=False)
+    filtered_meters_ctx = attach_active_meter_counts(
+        filtered_meters_ctx.order_by("meter_number")
+    )
+    for meter in filtered_meters_ctx:
+        unit_name = meter.unit.unit_number if meter.unit_id and meter.unit else ""
+        label_parts = [meter.meter_number, unit_name]
+        if meter._active_unit_meter_count > 1 and (meter.name or "").strip():
+            label_parts.append(meter.name.strip())
+        meter.reading_filter_label = " — ".join(part for part in label_parts if part)
 
     ctx = dict(
         all_properties=Property.objects.only("id", "property_name").order_by(
@@ -4835,7 +4851,7 @@ def reading_list(request):
             if prop_id
             else Unit.objects.only("id", "property_id", "unit_number")
         ).order_by("unit_number"),
-        filtered_meters=filtered_meters_ctx.order_by("meter_number"),
+        filtered_meters=filtered_meters_ctx,
         current_property=prop_id,
         current_unit=unit_id,
         current_meter=meter_id,

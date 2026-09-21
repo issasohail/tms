@@ -56,6 +56,8 @@
     --filter-font: .80rem;
     --filter-minw: 160px;
     --filter-maxw: 260px;
+    --meter-filter-minw: 320px;
+    --meter-filter-maxw: 520px;
 
     /* ====== NEW: per-row action controls (small-screen under Meter #) */
     --row-action-font: .58rem;
@@ -104,6 +106,8 @@
       --filter-font: .58rem;
       --filter-minw: 130px;
       --filter-maxw: 130px;
+      --meter-filter-minw: 260px;
+      --meter-filter-maxw: 260px;
 
       /* Row actions (beneath Meter #) */
       --row-action-font: .56rem;
@@ -134,6 +138,8 @@
       --filter-font: .54rem;
       --filter-minw: 110px;
       --filter-maxw: 180px;
+      --meter-filter-minw: 220px;
+      --meter-filter-maxw: 360px;
 
       --w-sno: 18px;
       --w-prop: 42px;
@@ -1975,7 +1981,7 @@
           <!-- Meter + Filter + Reset grouped on small -->
           <div class="meter-actions d-flex align-items-center gap-2">
             <select name="meter" class="form-select form-select-sm text-truncate"
-              style="min-width:var(--filter-minw);max-width:var(--filter-maxw)">
+              style="min-width:var(--meter-filter-minw);max-width:var(--meter-filter-maxw)">
               <option value="">All meters</option>
               {% for m in filtered_meters %}
               <option value="{{ m.id }}" {% if m.is_selected %} selected{% endif %}>

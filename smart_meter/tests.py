@@ -184,8 +184,8 @@ class ReadingListEnergyColumnTests(TestCase):
         self.assertNotContains(response, "col-pf-smpf")
         html = response.content.decode()
         self.assertIn("container reading-list-page", html)
-        self.assertIn(".reading-list-page{ max-width:1340px; }", html)
-        self.assertIn(".reading-list-page{ max-width:1520px; }", html)
+        self.assertIn(".reading-list-page{ max-width:1540px; }", html)
+        self.assertIn(".reading-list-page{ max-width:1720px; }", html)
         self.assertLess(
             html.index('<th class="col-meter">Meter #</th>'),
             html.index('<th class="col-energy">Energy (kWh)</th>'),
@@ -1343,6 +1343,29 @@ class MeterReadingCollapsedDaySummaryTests(TestCase):
         self.assertIn("08:00:00", older_period_header)
         self.assertIn('class="phase-label">F</span>3400.000', older_period_header)
         self.assertIn('class="phase-label">R</span>5140.000', older_period_header)
+
+    def test_meter_filter_shows_unit_and_name_for_multi_meter_unit(self):
+        first_meter = Meter.objects.create(
+            meter_number="FILTER-METER-1",
+            name="Input",
+            unit=self.unit,
+        )
+        second_meter = Meter.objects.create(
+            meter_number="FILTER-METER-2",
+            name="Output",
+            unit=self.unit,
+        )
+
+        response = self.client.get(reverse("smart_meter:reading_list"))
+
+        self.assertContains(
+            response,
+            f"{first_meter.meter_number} — {self.unit.unit_number} — Input",
+        )
+        self.assertContains(
+            response,
+            f"{second_meter.meter_number} — {self.unit.unit_number} — Output",
+        )
 
     def test_busy_day_does_not_hide_older_day_behind_reading_pagination(self):
         meter = Meter.objects.create(

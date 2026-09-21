@@ -45,7 +45,7 @@
           <select name="meter" class="form-select form-select-sm auto-submit">
             <option value="">All</option>
             {% for m in filtered_meters %}
-              <option value="{{ m.id }}" {% if current_meter|stringformat:'s' == m.id|stringformat:'s' %}selected{% endif %}>{{ m.meter_number }}</option>
+              <option value="{{ m.id }}" {% if current_meter|stringformat:'s' == m.id|stringformat:'s' %}selected{% endif %}>{{ m.reading_filter_label }}</option>
             {% endfor %}
           </select>
         </div>
@@ -183,12 +183,12 @@
 
 {# Compact styles + column widths #}
 <style>
-  /* Add 200px to Bootstrap's normal desktop container width on this page only. */
+  /* Add another 200px of working width on this page only. */
   @media (min-width: 1200px){
-    .reading-list-page{ max-width:1340px; }
+    .reading-list-page{ max-width:1540px; }
   }
   @media (min-width: 1400px){
-    .reading-list-page{ max-width:1520px; }
+    .reading-list-page{ max-width:1720px; }
   }
 
   /* =========================

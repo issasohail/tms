@@ -41,7 +41,7 @@
         </div>
         <!-- Meter -->
         {% with dropdown_meters=filtered_meters|default:meters %}
-        <div class="col">
+        <div class="col meter-filter-col">
           <label class="form-label mb-1">Meter</label>
           <select name="meter" class="form-select form-select-sm">
             <option value="">All meters</option>
@@ -933,6 +933,9 @@ document.addEventListener('DOMContentLoaded', function(){
 
 <style>
   #meter-filter-form select + .select2-container { min-width:140px; width:100% !important; }
+  #meter-filter-form .meter-filter-col { width: 280px; }
+  #meter-filter-form .meter-filter-col select,
+  #meter-filter-form .meter-filter-col select + .select2-container { min-width:280px; width:100% !important; }
   #meter-filter-form .select2-container--bootstrap-5 .select2-selection--single { min-height:31px; height:31px; font-size:.875rem; }
   /* Bootstrap's desktop container plus the requested 150px working width. */
   @media (min-width: 1200px) {

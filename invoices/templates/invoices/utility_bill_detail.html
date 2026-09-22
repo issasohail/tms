@@ -1,4 +1,24 @@
-{% extends "base.html" %}{% block content %}<div class="container" style="max-width:1100px">{% include "invoices/_utility_tabs.html" %}<h4>{{reading.account.get_provider_display}} - {{reading.bill_month}}</h4><p class="text-muted">{{reading.account.location_display}}</p>
+{% extends "base.html" %}{% block content %}<div class="container" style="max-width:1100px">{% include "invoices/_utility_tabs.html" %}
+
+<!-- UTILITY_ONLINE_DETAIL_V5 -->
+<div class="d-flex justify-content-end gap-2 flex-wrap mb-3">
+  {% if reading.account.provider == 'sngpl' %}
+    <a class="btn btn-outline-info btn-sm"
+       target="_blank"
+       rel="noopener noreferrer"
+       href="https://www.sngpl.com.pk/viewbill?artcl=artuyh709123465&amp;cats=ct456712337&amp;client=ANDROID&amp;consumer={{ reading.account.consumer_number|urlencode }}&amp;contype=NewCon&amp;mdids=85&amp;pgname=PAGES_NAME&amp;proc=viewbill&amp;secs=ss7xa852op845">
+      View Bill Online
+    </a>
+  {% elif reading.account.provider == 'ptcl' %}
+    <a class="btn btn-outline-info btn-sm"
+       target="_blank"
+       rel="noopener noreferrer"
+       href="https://dbill.ptcl.net.pk/PTCLSearchInvoice.aspx">
+      View Bill Online
+    </a>
+  {% endif %}
+</div>
+<h4>{{reading.account.get_provider_display}} - {{reading.bill_month}}</h4><p class="text-muted">{{reading.account.location_display}}</p>
 <div class="row g-3"><div class="col-md-6"><div class="card"><div class="card-header fw-bold">Bill Summary</div><div class="card-body"><table class="table table-sm">
 <tr><th>Account</th><td>{{reading.account.account_number}}</td></tr>{% if reading.account.provider == 'ptcl' %}<tr><th>Phone</th><td>{{reading.account.ptcl_phone}}</td></tr><tr><th>Invoice #</th><td>{{reading.invoice_number}}</td></tr>{% endif %}
 <tr><th>Issue Date</th><td>{{reading.issue_date}}</td></tr><tr><th>Due Date</th><td>{{reading.due_date}}</td></tr><tr><th>Current Bill</th><td>{{reading.current_bill}}</td></tr><tr><th>Arrears</th><td>{{reading.arrears}}</td></tr><tr><th>Total Due</th><td>{{reading.amount_due}}</td></tr>{% if reading.amount_after_due != None %}<tr><th>After Due</th><td>{{reading.amount_after_due}}</td></tr>{% endif %}

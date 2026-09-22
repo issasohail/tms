@@ -33,6 +33,20 @@
 <td><div class="d-flex flex-wrap gap-1">
 {% if can_fetch %}<form method="post" action="{% url 'invoices:utility_fetch_one' provider a.pk %}">{% csrf_token %}<button class="btn btn-success btn-sm">Fetch{% if provider == 'ptcl' %} / Captcha{% endif %}</button></form>{% endif %}
 {% if r %}<a class="btn btn-outline-primary btn-sm" href="{% url 'invoices:utility_bill_detail' r.pk %}">View</a>{% endif %}
+
+      {% if provider == 'sngpl' %}
+        <a class="btn btn-outline-info btn-sm"
+           target="_blank" rel="noopener noreferrer"
+           href="https://www.sngpl.com.pk/viewbill?artcl=artuyh709123465&amp;cats=ct456712337&amp;client=ANDROID&amp;consumer={{ a.consumer_number|urlencode }}&amp;contype=NewCon&amp;mdids=85&amp;pgname=PAGES_NAME&amp;proc=viewbill&amp;secs=ss7xa852op845">
+          View Bill Online
+        </a>
+      {% elif provider == 'ptcl' %}
+        <a class="btn btn-outline-info btn-sm"
+           target="_blank" rel="noopener noreferrer"
+           href="https://dbill.ptcl.net.pk/PTCLSearchInvoice.aspx">
+          View Bill Online
+        </a>
+      {% endif %}
 {% if can_manage %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'invoices:utility_account_edit' provider a.pk %}">Edit</a>
 <form method="post" action="{% url 'invoices:utility_account_delete' provider a.pk %}" onsubmit="return confirm('Delete account and saved history?')">{% csrf_token %}<button class="btn btn-outline-danger btn-sm">Delete</button></form>{% endif %}
 </div></td></tr>{% endwith %}{% empty %}<tr><td colspan="14" class="text-center text-muted py-4">No {{provider_label}} accounts added yet.</td></tr>{% endfor %}</tbody></table></div>

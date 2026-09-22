@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ provider_label }} Bills{% endblock %}
+{% block main_container_class %}container-fluid{% endblock %}
+{% block content %}
+<div style="max-width:1700px;margin:auto">
+{% include "invoices/_utility_tabs.html" %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+<div><h4 class="mb-0">{{ provider_label }} Bills</h4><small class="text-muted">Current bills and history</small></div>
+<div class="d-flex gap-2">
+{% if can_manage %}<a class="btn btn-primary btn-sm" href="{% url 'invoices:utility_account_add' provider %}">Add Account</a>{% endif %}
+{% if provider == 'sngpl' and can_fetch %}<form method="post" action="{% url 'invoices:utility_fetch_all' provider %}">{% csrf_token %}<button class="btn btn-success btn-sm">Fetch All Active</button></form>{% endif %}
+<a class="btn btn-outline-secondary btn-sm" href="?{% if not show_history %}show_history=1{% endif %}">{% if show_history %}Current View{% else %}Show History{% endif %}</a>
+</div></div>
+<form method="get" class="card card-body py-2 mb-3"><div class="row g-2">
+<div class="col-md-4"><select name="property" class="form-select form-select-sm" onchange="this.form.submit()"><option value="">All properties</option>{% for p in properties %}<option value="{{p.pk}}" {% if selected_property == p.pk|stringformat:"s" %}selected{% endif %}>{{p.property_name}}</option>{% endfor %}</select></div>
+<div class="col-md-4"><select name="unit" class="form-select form-select-sm" onchange="this.form.submit()"><option value="">All units</option>{% for u in units %}<option value="{{u.pk}}" {% if selected_unit == u.pk|stringformat:"s" %}selected{% endif %}>{{u.property.property_name}} / {{u.unit_number}}</option>{% endfor %}</select></div>
+{% if show_history %}<input type="hidden" name="show_history" value="1">{% endif %}</div></form>
+<div class="table-responsive"><table class="table table-bordered table-hover table-sm align-middle" style="font-size:.82rem">
+<thead class="table-light"><tr><th>#</th><th>Property / Unit</th><th>Active</th><th>Account</th><th>Bill Month</th>
+{% if provider == 'sngpl' %}<th>Previous</th><th>Current</th><th>Consumption</th>{% else %}<th>Invoice #</th><th>Package / Usage</th>{% endif %}
+<th>Current Bill</th><th>Arrears</th><th>Total Due</th><th>Due Date</th><th>Last Update</th><th>Actions</th></tr></thead>
+<tbody>{% for row in rows %}{% with a=row.account r=row.reading %}<tr>
+<td>{{forloop.counter}}</td><td><strong>{{a.location_display}}</strong>{% if a.description %}<br><small class="text-muted">{{a.description}}</small>{% endif %}</td>
+<td>{% if a.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td>
+<td>{% if provider == 'sngpl' %}{{a.consumer_number}}{% else %}{{a.ptcl_account_id}}<br><small>{{a.ptcl_phone}}</small>{% endif %}</td>
+<td>{{r.bill_month|default:"-"}}</td>
+{% if provider == 'sngpl' %}<td>{{r.previous_reading|default_if_none:"-"}}</td><td>{{r.current_reading|default_if_none:"-"}}</td><td>{{r.consumption|default_if_none:"-"}} {{r.consumption_unit}}</td>
+{% else %}<td>{{r.invoice_number|default:"-"}}</td><td>{% if r %}{{r.service_details.package_speed|default:"-"}}{% if r.service_details.usage_gb %}<br><small>{{r.service_details.usage_gb}} / {{r.service_details.usage_limit_gb}} GB</small>{% endif %}{% else %}-{% endif %}</td>{% endif %}
+<td>{% if r.current_bill != None %}Rs. {{r.current_bill|floatformat:2}}{% else %}-{% endif %}</td>
+<td>{% if r.arrears != None %}Rs. {{r.arrears|floatformat:2}}{% else %}-{% endif %}</td>
+<td>{% if r.amount_due != None %}<strong>Rs. {{r.amount_due|floatformat:2}}</strong>{% else %}-{% endif %}</td>
+<td>{{r.due_date|default:"-"}}</td><td>{% if r %}{{r.fetched_at|date:"d M Y H:i"}}{% else %}-{% endif %}</td>
+<td><div class="d-flex flex-wrap gap-1">
+{% if can_fetch %}<form method="post" action="{% url 'invoices:utility_fetch_one' provider a.pk %}">{% csrf_token %}<button class="btn btn-success btn-sm">Fetch{% if provider == 'ptcl' %} / Captcha{% endif %}</button></form>{% endif %}
+{% if r %}<a class="btn btn-outline-primary btn-sm" href="{% url 'invoices:utility_bill_detail' r.pk %}">View</a>{% endif %}
+{% if can_manage %}<a class="btn btn-outline-secondary btn-sm" href="{% url 'invoices:utility_account_edit' provider a.pk %}">Edit</a>
+<form method="post" action="{% url 'invoices:utility_account_delete' provider a.pk %}" onsubmit="return confirm('Delete account and saved history?')">{% csrf_token %}<button class="btn btn-outline-danger btn-sm">Delete</button></form>{% endif %}
+</div></td></tr>{% endwith %}{% empty %}<tr><td colspan="14" class="text-center text-muted py-4">No {{provider_label}} accounts added yet.</td></tr>{% endfor %}</tbody></table></div>
+</div>
+{% endblock %}

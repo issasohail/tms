@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block content %}<div class="container" style="max-width:650px">{% include "invoices/_utility_tabs.html" %}<div class="card"><div class="card-header"><strong>PTCL Security Verification</strong></div><div class="card-body">
+<p><strong>{{account.location_display}}</strong><br><small>Account {{account.ptcl_account_id}} - {{account.ptcl_phone}}</small></p>
+<div class="border rounded p-3 text-center bg-light mb-3"><img src="{{captcha_data_url}}" alt="PTCL captcha" style="max-width:100%"></div>
+<form method="post" action="{% url 'invoices:ptcl_captcha_submit' account.pk %}">{% csrf_token %}<label class="form-label">Enter captcha</label><input name="captcha" class="form-control form-control-lg" required autofocus autocomplete="off"><div class="mt-3"><button class="btn btn-success">Fetch Bill</button> <a class="btn btn-outline-secondary" href="{% url 'invoices:utility_bill_list' 'ptcl' %}">Cancel</a></div></form>
+</div></div></div>{% endblock %}

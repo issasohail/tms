@@ -1,0 +1,5 @@
+<ul class="nav nav-tabs mb-3">
+<li class="nav-item"><a class="nav-link {% if not provider %}active{% endif %}" href="{% url 'invoices:iesco_bill_reading_list' %}">Electricity - IESCO</a></li>
+<li class="nav-item"><a class="nav-link {% if provider == 'sngpl' %}active{% endif %}" href="{% url 'invoices:utility_bill_list' 'sngpl' %}">Gas - SNGPL</a></li>
+<li class="nav-item"><a class="nav-link {% if provider == 'ptcl' %}active{% endif %}" href="{% url 'invoices:utility_bill_list' 'ptcl' %}">PTCL</a></li>
+</ul>

@@ -1277,3 +1277,83 @@ class IescoBillReading(models.Model):
 
     def __str__(self):
         return f"{self.reference_no} — {self.bill_month} — {self.grand_total}"
+
+
+class UtilityBillAccount(models.Model):
+    PROVIDER_SNGPL = "sngpl"
+    PROVIDER_PTCL = "ptcl"
+    PROVIDER_CHOICES = ((PROVIDER_SNGPL, "SNGPL"), (PROVIDER_PTCL, "PTCL"))
+
+    provider = models.CharField(max_length=12, choices=PROVIDER_CHOICES, db_index=True)
+    unit = models.ForeignKey("properties.Unit", null=True, blank=True, on_delete=models.SET_NULL, related_name="utility_bill_accounts")
+    description = models.CharField(max_length=255, blank=True, default="")
+    consumer_number = models.CharField(max_length=32, blank=True, default="")
+    ptcl_account_id = models.CharField(max_length=32, blank=True, default="")
+    ptcl_phone = models.CharField(max_length=32, blank=True, default="")
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["provider", "id"]
+        permissions = [("fetch_utility_bill", "Can fetch utility bills")]
+
+    @property
+    def account_number(self):
+        return self.consumer_number if self.provider == self.PROVIDER_SNGPL else self.ptcl_account_id
+
+    @property
+    def location_display(self):
+        if self.unit_id:
+            return f"{self.unit.property.property_name} / {self.unit.unit_number}"
+        return self.description or "Standalone"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.provider == self.PROVIDER_SNGPL:
+            self.consumer_number = re.sub(r"\D", "", self.consumer_number or "")
+            if not self.consumer_number:
+                raise ValidationError({"consumer_number":"SNGPL consumer number is required."})
+            self.ptcl_account_id = ""; self.ptcl_phone = ""
+        else:
+            self.ptcl_phone = re.sub(r"\D", "", self.ptcl_phone or "")
+            self.ptcl_account_id = (self.ptcl_account_id or "").strip()
+            if not self.ptcl_account_id:
+                raise ValidationError({"ptcl_account_id":"PTCL Account ID is required."})
+            if len(self.ptcl_phone) < 7:
+                raise ValidationError({"ptcl_phone":"Enter PTCL phone including area code."})
+            self.consumer_number = ""
+
+    def __str__(self):
+        return f"{self.get_provider_display()} - {self.location_display} - {self.account_number}"
+
+
+class UtilityBillReading(models.Model):
+    account = models.ForeignKey(UtilityBillAccount, on_delete=models.CASCADE, related_name="readings")
+    bill_month = models.CharField(max_length=20, db_index=True)
+    issue_date = models.CharField(max_length=20, blank=True, default="")
+    due_date = models.CharField(max_length=20, blank=True, default="")
+    amount_due = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    amount_after_due = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    current_bill = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    arrears = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    previous_reading = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    current_reading = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    consumption = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    consumption_unit = models.CharField(max_length=20, blank=True, default="")
+    invoice_number = models.CharField(max_length=40, blank=True, default="")
+    customer_name = models.CharField(max_length=255, blank=True, default="")
+    address = models.TextField(blank=True, default="")
+    service_details = models.JSONField(default=dict, blank=True)
+    bill_history = models.JSONField(default=list, blank=True)
+    raw_data = models.JSONField(default=dict, blank=True)
+    fetched_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-fetched_at", "-id"]
+        constraints = [models.UniqueConstraint(fields=("account","bill_month"), name="uniq_utility_account_bill_month")]
+
+    def __str__(self):
+        return f"{self.account} - {self.bill_month}"

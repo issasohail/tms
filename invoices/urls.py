@@ -31,6 +31,7 @@ from . import views
 from . import views_late_fee
 from . import views_iesco
 from . import views_iesco_helper
+from . import views_utility
 
 app_name = 'invoices'
 
@@ -82,6 +83,15 @@ urlpatterns = [
         views_iesco.IescoBillReadingDetailView.as_view(),
         name='iesco_bill_reading_detail',
     ),
+    path("utility-bills/<str:provider>/", views_utility.utility_bill_list, name="utility_bill_list"),
+    path("utility-bills/<str:provider>/accounts/add/", views_utility.utility_account_form, name="utility_account_add"),
+    path("utility-bills/<str:provider>/accounts/<int:pk>/edit/", views_utility.utility_account_form, name="utility_account_edit"),
+    path("utility-bills/<str:provider>/accounts/<int:pk>/delete/", views_utility.utility_account_delete, name="utility_account_delete"),
+    path("utility-bills/<str:provider>/accounts/<int:pk>/fetch/", views_utility.fetch_one, name="utility_fetch_one"),
+    path("utility-bills/<str:provider>/fetch-all/", views_utility.fetch_all, name="utility_fetch_all"),
+    path("utility-bills/ptcl/accounts/<int:pk>/captcha/", views_utility.ptcl_submit, name="ptcl_captcha_submit"),
+    path("utility-bills/readings/<int:pk>/", views_utility.detail, name="utility_bill_detail"),
+
     path('create/', InvoiceCreateView.as_view(), name='invoice_create'),
 
     # Detail/Update/Delete

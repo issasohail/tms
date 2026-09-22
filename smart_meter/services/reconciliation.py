@@ -14,7 +14,9 @@ from smart_meter.models import (
     EnergyReconciliationAuditEvent,
     EnergySystem,
     EnergySystemMeterLink,
+    Inverter,
     InverterPeriodStatement,
+    InverterReading,
     LiveReading,
     Meter,
     MeterReading,
@@ -505,6 +507,81 @@ def iesco_bill_history(system, limit=6):
             lookup, trust_status=IescoBillReading.TRUST_CONFIRMED, confirmed_at__isnull=False
         ).order_by("-confirmed_at", "-received_at", "-pk")[:limit]
     )
+
+
+def inverter_reading_period_delta(inverter, start_date, end_date):
+    """Generation for one inverter over a period: the closest logged reading at/before the
+    period end minus the closest logged reading at/before the period start. Mirrors the
+    smart-meter delta pattern but against the simpler InverterReading log."""
+    start_at = _aware_midnight(start_date)
+    end_at = _aware_midnight(end_date)
+
+    def closest(target_at):
+        before = (
+            InverterReading.objects.filter(inverter=inverter, recorded_at__lte=target_at)
+            .order_by("-recorded_at", "-id").first()
+        )
+        after = (
+            InverterReading.objects.filter(inverter=inverter, recorded_at__gt=target_at)
+            .order_by("recorded_at", "id").first()
+        )
+        candidates = [row for row in (before, after) if row is not None]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda row: abs(row.recorded_at - target_at))
+
+    start_reading = closest(start_at)
+    end_reading = closest(end_at)
+    if start_reading is None or end_reading is None:
+        return {"kwh": None, "valid": False, "reason": "Missing a logged reading near this boundary", "start": start_reading, "end": end_reading}
+    if end_reading.recorded_at <= start_reading.recorded_at:
+        return {"kwh": None, "valid": False, "reason": "Only one reading is logged for this inverter in range", "start": start_reading, "end": end_reading}
+    return {
+        "kwh": end_reading.reading_kwh - start_reading.reading_kwh,
+        "valid": True,
+        "reason": "",
+        "start": start_reading,
+        "end": end_reading,
+    }
+
+
+def build_inverter_breakdown(system, start_date, end_date):
+    """Per-inverter generation rows for Check 3, plus the total (the manual cross-check
+    figure) across every active inverter on this Energy System."""
+    rows = []
+    total = ZERO
+    all_valid = True
+    for inverter in system.inverters.filter(is_active=True).order_by("name"):
+        delta = inverter_reading_period_delta(inverter, start_date, end_date)
+        latest = inverter.readings.order_by("-recorded_at").first()
+        if delta["valid"]:
+            total += delta["kwh"]
+        else:
+            all_valid = False
+        rows.append({
+            "inverter": inverter,
+            "kwh": delta["kwh"],
+            "valid": delta["valid"],
+            "reason": delta["reason"],
+            "latest_reading": latest,
+        })
+    return {
+        "rows": rows,
+        "total_kwh": total if (rows and all_valid) else None,
+        "has_inverters": bool(rows),
+    }
+
+
+def iesco_display_bill(system, start_date, end_date):
+    """Bill to show on screen even if it doesn't land exactly inside the selected range —
+    so the reading date/bill month are visible and the person can adjust the range to match,
+    instead of the screen just going blank. Financial totals still use the strict exact-period
+    match in build_energy_reconciliation; this is for display only."""
+    exact = _iesco_invoice_bill(system, start_date, end_date)
+    if exact:
+        return {"bill": exact, "is_exact_match": True}
+    latest = _iesco_invoice_bill(system)
+    return {"bill": latest, "is_exact_match": False}
 
 
 def _exact_bill(system, start_date, end_date):

@@ -15,6 +15,7 @@ from smart_meter.forms_reconciliation import (
     EnergySystemReassignmentForm,
     EnergySystemSetupForm,
     InverterPeriodStatementForm,
+    InverterReadingForm,
     UtilityBillCycleForm,
     UtilityBillPaymentForm,
     energy_system_output_meter_queryset,
@@ -23,6 +24,7 @@ from smart_meter.forms import MeterReadingProfileForm
 from smart_meter.models import (
     EnergySystem,
     EnergySystemMeterLink,
+    Inverter,
     InverterPeriodStatement,
     LiveReading,
     MeterReading,
@@ -36,10 +38,12 @@ from smart_meter.services.reconciliation import (
     _iesco_invoice_bill,
     build_check2_breakdown,
     build_energy_reconciliation,
+    build_inverter_breakdown,
     build_latest_linked_meter_snapshot,
     confirm_bill,
     finalize_bill,
     iesco_bill_history,
+    iesco_display_bill,
     log_audit,
     reopen_record,
 )
@@ -340,11 +344,39 @@ def energy_group_scoreboard(request, pk=None):
 
     period_start_at = _aware_midnight(start_date)
     period_end_at = _aware_midnight(end_date + timedelta(days=1))
-    output_readings = list(
+    all_output_readings = list(
         MeterReading.objects.filter(
             meter_id=group.check_meter_id, ts__gte=period_start_at, ts__lt=period_end_at
-        ).order_by("ts")[:60]
+        ).order_by("ts")
     )
+    output_readings = all_output_readings[:60]
+
+    daily_rollup = []
+    by_day = {}
+    for reading in all_output_readings:
+        day = timezone.localtime(reading.ts).date()
+        bucket = by_day.setdefault(day, [])
+        bucket.append(reading)
+    for day in sorted(by_day):
+        readings_for_day = by_day[day]
+        first_reading = readings_for_day[0]
+        last_reading = readings_for_day[-1]
+        kwh = (
+            last_reading.total_energy - first_reading.total_energy
+            if last_reading.total_energy is not None and first_reading.total_energy is not None
+            else None
+        )
+        daily_rollup.append({
+            "day": day,
+            "meter_number": group.check_meter.meter_number,
+            "begin": first_reading.total_energy,
+            "end": last_reading.total_energy,
+            "kwh": kwh,
+            "reading_count": len(readings_for_day),
+        })
+
+    inverter_breakdown = build_inverter_breakdown(system, start_date, end_date + timedelta(days=1))
+    iesco_display = iesco_display_bill(system, start_date, end_date + timedelta(days=1))
 
     inverter_statements = list(
         system.inverter_statements.order_by("-period_end", "-id")[:6]
@@ -357,8 +389,11 @@ def energy_group_scoreboard(request, pk=None):
         "check1": check1,
         "check2": check2,
         "bill_history": iesco_bill_history(system),
+        "iesco_display": iesco_display,
+        "inverter_breakdown": inverter_breakdown,
         "memberships": memberships,
         "output_readings": output_readings,
+        "daily_rollup": daily_rollup,
         "inverter_statements": inverter_statements,
         "start_date": start_date,
         "end_date": end_date,
@@ -368,6 +403,31 @@ def energy_group_scoreboard(request, pk=None):
         "grid_reverse_total": detail_context["grid_reverse_total"],
     }
     return render(request, "smart_meter/energy_group_scoreboard.html", context)
+
+
+@login_required
+@permission_required("smart_meter.add_inverterreading", raise_exception=True)
+def inverter_reading_add(request, system_id):
+    system = get_object_or_404(EnergySystem, pk=system_id)
+    if not system.inverters.filter(is_active=True).exists():
+        messages.info(
+            request,
+            "No inverters are set up for this Energy System yet — add them from the admin, "
+            "or ask for the seed command to run for this system.",
+        )
+        return redirect("smart_meter:energy_group_scoreboard", pk=system.output_group_id)
+    form = InverterReadingForm(request.POST or None, request.FILES or None, energy_system=system)
+    if request.method == "POST" and form.is_valid():
+        reading = form.save(commit=False)
+        reading.created_by = request.user
+        reading.save()
+        messages.success(request, "Inverter reading saved.")
+        return redirect("smart_meter:energy_group_scoreboard", pk=system.output_group_id)
+    return render(request, "smart_meter/reconciliation_form.html", {
+        "form": form,
+        "title": f"Add inverter reading — {system.name}",
+        "cancel_url": None,
+    })
 
 
 @login_required

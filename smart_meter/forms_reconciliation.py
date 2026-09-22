@@ -5,6 +5,7 @@ from smart_meter.models import (
     EnergySystemMeterAssignment,
     EnergySystemMeterLink,
     InverterPeriodStatement,
+    InverterReading,
     Meter,
     UtilityConnection,
     UtilityBillCycle,
@@ -214,6 +215,24 @@ class UtilityBillCycleForm(forms.ModelForm):
             if duplicate.exists():
                 self.add_error("bill_month", "A bill for this consumer and bill month already exists; review it before adding another.")
         return cleaned
+
+
+class InverterReadingForm(forms.ModelForm):
+    class Meta:
+        model = InverterReading
+        fields = ["inverter", "reading_kwh", "recorded_at", "screenshot", "notes"]
+        widgets = {
+            "inverter": forms.Select(attrs={"class": "form-select"}),
+            "reading_kwh": forms.NumberInput(attrs={"class": "form-control", "step": "0.001"}),
+            "recorded_at": forms.DateTimeInput(attrs={"class": "form-control", "type": "datetime-local"}, format="%Y-%m-%dT%H:%M"),
+            "notes": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+        }
+
+    def __init__(self, *args, energy_system=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["recorded_at"].input_formats = ["%Y-%m-%dT%H:%M"]
+        if energy_system is not None:
+            self.fields["inverter"].queryset = energy_system.inverters.filter(is_active=True).order_by("name")
 
 
 class InverterPeriodStatementForm(forms.ModelForm):

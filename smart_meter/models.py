@@ -1102,6 +1102,67 @@ class InverterPeriodStatement(models.Model):
         return f"{self.energy_system} / {self.period_start} to {self.period_end}"
 
 
+class Inverter(models.Model):
+    """One physical inverter under an Energy System. Photon/Tesla have 2 each, H9 has 3 —
+    each is tracked separately so per-inverter generation is visible, and the system's
+    total manual generation is the sum across its inverters."""
+    energy_system = models.ForeignKey(
+        EnergySystem,
+        on_delete=models.CASCADE,
+        related_name="inverters",
+    )
+    name = models.CharField(max_length=80, help_text="e.g. 'Photon Inverter 1'")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["energy_system_id", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["energy_system", "name"],
+                name="unique_inverter_name_per_system",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.energy_system.name})"
+
+
+class InverterReading(models.Model):
+    """A single cumulative PV-generation reading for one inverter, read off its display/app
+    at a point in time. Generation for any period = closest reading at/after the period end
+    minus closest reading at/after the period start — the same delta pattern used for the
+    smart meters, so entries don't need to line up with a billing cycle."""
+    inverter = models.ForeignKey(
+        Inverter,
+        on_delete=models.CASCADE,
+        related_name="readings",
+    )
+    reading_kwh = models.DecimalField(max_digits=12, decimal_places=3)
+    recorded_at = models.DateTimeField()
+    screenshot = models.ImageField(upload_to="inverter_readings/%Y/%m/", null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-recorded_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["inverter", "recorded_at"],
+                name="unique_inverter_reading_timestamp",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.inverter.name}: {self.reading_kwh} kWh @ {self.recorded_at:%Y-%m-%d %H:%M}"
+
+
 class EnergyReconciliationAuditEvent(models.Model):
     ACTION_CHOICES = [
         ("created", "Created"),

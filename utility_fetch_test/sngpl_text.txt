@@ -1,0 +1,170 @@
+SNGPL - Web Bill 81438226003
+AL-MANSHA PLAZA OPPOSITE HUMAK MOR, MAIN GT ROAD, RAWALPINDI.
+کسٹمر سروس سینٹر
+051-4917278
+کا پتہ فون نمبر
+Name:
+نام
+NAZMEEN ISSA
+Address:
+پتہ
+HOUSE # H9, STREET 7
+GOLDEN JUBILEE HOUSING SOCITY
+OPPOSIT SOS VILLAGE, GT ROAD, SOAN
+NEAR OPPOSITE KALLISTO MARQEE, NEXT TO DUM PHUKH RESTAURENT, NEA
+Consumer's CNIC#:420********83-4
+Security: 20000/               0
+Zone/Postal Code (Service Cycle)/ Book/Page No
+DLNR/ 002/ 43
+Tariff: DOML-G
+Issue Date: 04-09-2026
+81438226003
+Aug 2026
+260
+18-09-2026
+290
+MR00007354580
+Current
+Previous
+Difference
+Dates:
+28-08-2026
+28-07-2026
+Reading:
+00000056
+00000054
+00000002
+Pres./factor:
+0.00/1.0000
+Gas Consumed HM3
+0.000
+Temp./factor
+0/0
+*MMBTU
+0.000
+Super Compressibility
+0.0000
+GCV
+1045
+Wobbe Index:
+1326
+* MMBTU=(HM3*GCV/281.7385)
+SCAN TO PAY
+Gas Charges
+گیس کی  قیمت
+183.39
+Prov.Bill Adjustment
+بل میں عبوری تصحیح
+0
+Meter Rent
+میٹر کا کرایہ
+41.33
+Fixed Charges
+فکسڈ چارجز
+0.00
+GST
+جنرل سیلزٹیکس
+40.45
+Rebate / Adjustment
+چھوٹ / تصحیح
+0.00
+Security Deposit
+سیکیورٹی ڈپازٹ
+0.00
+Current Bill
+موجودہ بل
+265.17
+Arrears / Aging
+بقایا جات
+-3.94/0
+Late Payment Surcharge (Rs.)
+تاخیر سے ادائیگی پر سرچارج
+0.00
+Total Amount Due
+واجب الادارقم
+260
+Month
+HM3
+Current Bill
+Amount Due
+Payment
+Jul 2026
+0.000
+256.61
+570
+570
+Jun 2026
+0.000
+282.28
+280
+0
+May 2026
+0.000
+248.08
+540
+540
+Apr 2026
+0.000
+265.16
+260
+0
+Mar 2026
+0.000
+248.06
+1,980
+1,980
+Feb 2026
+0.000
+256.62
+1,710
+0
+Jan 2026
+0.000
+265.16
+1,420
+0
+Dec 2025
+0.000
+256.62
+1,130
+0
+Nov 2025
+0.000
+265.16
+850
+0
+Oct 2025
+0.000
+-4,522.97
+530
+0
+Sep 2025
+0.000
+5,053.31
+5,050
+0
+Mar 2025
+0.000
+23,000.00
+23,000
+23,000
+Minimum Bill
+DOML   Gas Rates w.e.f. 01-08-2026
+Slab
+Usage of Gas in Hm3
+Rs.Per MMBTU
+1
+For All Hm3
+5282.35
+03000814382260030082600000180926000000026000003003
+Account ID
+81438226003
+Billing Month
+Aug 2026
+Name
+NAZMEEN ISSA
+Account ID
+81438226003
+260
+290
+18-09-2026

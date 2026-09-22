@@ -30,6 +30,9 @@ app_name = 'smart_meter'
 
 urlpatterns = [
 
+    path("energy-groups/scoreboard/", views_reconciliation.energy_group_scoreboard, name="energy_group_scoreboard_default"),
+    path("energy-groups/scoreboard/<int:pk>/", views_reconciliation.energy_group_scoreboard, name="energy_group_scoreboard"),
+
     path("energy-systems/", views_reconciliation.energy_system_list, name="energy_system_list"),
     path("energy-systems/setup/<int:group_id>/", views_reconciliation.energy_system_setup, name="energy_system_setup"),
     path("energy-systems/<int:pk>/edit/", views_reconciliation.energy_system_edit, name="energy_system_edit"),

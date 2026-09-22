@@ -1,5 +1,6 @@
 import hashlib
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
@@ -31,15 +32,31 @@ from smart_meter.models import (
     UtilityConnection,
 )
 from smart_meter.services.reconciliation import (
+    _aware_midnight,
     _iesco_invoice_bill,
+    build_check2_breakdown,
     build_energy_reconciliation,
     build_latest_linked_meter_snapshot,
     confirm_bill,
     finalize_bill,
+    iesco_bill_history,
     log_audit,
     reopen_record,
 )
 from smart_meter.services.utility_bill_parser import UtilityBillParseError, parse_utility_bill
+
+
+def _tolerance_status(diff, base):
+    """ok / warn / bad badge for a Check card, from the diff as a % of the base figure.
+    Unknown (missing data) reads as 'warn' rather than a false 'ok'."""
+    if diff is None or base is None or base == 0:
+        return "warn"
+    pct = abs(diff) / abs(base) * 100
+    if pct <= 1:
+        return "ok"
+    if pct <= 3:
+        return "warn"
+    return "bad"
 
 
 def _parse_period(request):
@@ -227,6 +244,130 @@ def build_energy_system_detail_context(system, start, end):
             if system.grid_interface_meter_id else None
         ),
     }
+
+
+@login_required
+@permission_required("smart_meter.view_energysystem", raise_exception=True)
+def energy_group_scoreboard(request, pk=None):
+    """Check 1 / Check 2 / Check 3 side by side for one Energy Group, with a
+    per-meter breakdown backing each number instead of a single opaque figure."""
+    if pk is None:
+        default_group = (
+            MeterCheckGroup.objects.filter(energy_system__isnull=False, is_active=True)
+            .order_by("name", "pk")
+            .first()
+        )
+        if default_group is None:
+            messages.info(request, "No Energy Group has an Energy System configured yet.")
+            return redirect("smart_meter:meter_check_group_list")
+        return redirect("smart_meter:energy_group_scoreboard", pk=default_group.pk)
+
+    group = get_object_or_404(
+        MeterCheckGroup.objects.select_related("check_meter"), pk=pk
+    )
+    system = getattr(group, "energy_system", None)
+    if system is None:
+        messages.info(request, "This Energy Group has no Energy System configured yet.")
+        return redirect("smart_meter:meter_check_group_detail", pk=group.pk)
+
+    today = timezone.localdate()
+    start_date = today.replace(day=1)
+    end_date = today
+    quick_range = (request.GET.get("range") or "").strip().lower()
+    if quick_range == "this_month":
+        start_date = today.replace(day=1)
+    elif quick_range == "last_month":
+        end_date = today.replace(day=1) - timedelta(days=1)
+        start_date = end_date.replace(day=1)
+    else:
+        quick_range = ""
+        try:
+            if request.GET.get("start"):
+                start_date = date.fromisoformat(request.GET["start"])
+            if request.GET.get("end"):
+                end_date = date.fromisoformat(request.GET["end"])
+        except ValueError:
+            messages.warning(request, "Invalid date range; the current month is shown.")
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    detail_context = build_energy_system_detail_context(
+        system, start_date, end_date + timedelta(days=1)
+    )
+    report = detail_context["report"]
+    iesco_bill = report["iesco_bill"]
+
+    meter_import_kwh = report["grid_import_readings"]["kwh"]
+    meter_export_kwh = report["grid_export_readings"]["kwh"]
+    iesco_import_kwh = iesco_bill.import_units if iesco_bill else None
+    iesco_export_kwh = iesco_bill.export_units if iesco_bill else None
+    import_diff_kwh = (
+        abs(Decimal(iesco_import_kwh) - meter_import_kwh)
+        if iesco_import_kwh is not None and meter_import_kwh is not None
+        else None
+    )
+    export_diff_kwh = (
+        abs(Decimal(iesco_export_kwh) - meter_export_kwh)
+        if iesco_export_kwh is not None and meter_export_kwh is not None
+        else None
+    )
+    check1 = {
+        "iesco_bill": iesco_bill,
+        "iesco_import_kwh": iesco_import_kwh,
+        "iesco_export_kwh": iesco_export_kwh,
+        "meter_import_kwh": meter_import_kwh,
+        "meter_export_kwh": meter_export_kwh,
+        "import_diff_kwh": import_diff_kwh,
+        "export_diff_kwh": export_diff_kwh,
+        "import_status": _tolerance_status(import_diff_kwh, iesco_import_kwh),
+        "export_status": _tolerance_status(export_diff_kwh, iesco_export_kwh),
+    }
+
+    check2 = build_check2_breakdown(system, start_date, end_date + timedelta(days=1))
+    check2["status"] = _tolerance_status(check2["variance_kwh"], check2["output_total_kwh"])
+
+    other_groups = (
+        MeterCheckGroup.objects.filter(energy_system__isnull=False, is_active=True)
+        .select_related("check_meter")
+        .order_by("name", "pk")
+    )
+
+    memberships = list(
+        group.memberships.select_related(
+            "billing_meter", "billing_meter__unit"
+        ).order_by("-is_active", "billing_meter__meter_number")
+    )
+
+    period_start_at = _aware_midnight(start_date)
+    period_end_at = _aware_midnight(end_date + timedelta(days=1))
+    output_readings = list(
+        MeterReading.objects.filter(
+            meter_id=group.check_meter_id, ts__gte=period_start_at, ts__lt=period_end_at
+        ).order_by("ts")[:60]
+    )
+
+    inverter_statements = list(
+        system.inverter_statements.order_by("-period_end", "-id")[:6]
+    )
+
+    context = {
+        "group": group,
+        "system": system,
+        "report": report,
+        "check1": check1,
+        "check2": check2,
+        "bill_history": iesco_bill_history(system),
+        "memberships": memberships,
+        "output_readings": output_readings,
+        "inverter_statements": inverter_statements,
+        "start_date": start_date,
+        "end_date": end_date,
+        "quick_range": quick_range,
+        "other_groups": other_groups,
+        "grid_forward_total": detail_context["grid_forward_total"],
+        "grid_reverse_total": detail_context["grid_reverse_total"],
+    }
+    return render(request, "smart_meter/energy_group_scoreboard.html", context)
 
 
 @login_required

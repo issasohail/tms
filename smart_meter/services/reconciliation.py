@@ -394,6 +394,119 @@ def linked_meter_period_delta(system, side, start_date, end_date, *, field_name=
     }
 
 
+def build_check2_breakdown(system, start_date, end_date):
+    """Meter-by-meter rows backing Check 2 (Output Distribution): begin/end reading,
+    units, and billed amount for the output meter(s) and every billing meter, so the
+    on-screen variance can be traced back to its source readings instead of just a
+    single number."""
+    from invoices.models import InvoiceItem
+
+    output_meter_ids = list(
+        EnergySystemMeterLink.objects.filter(
+            energy_system=system, side=EnergySystemMeterLink.SIDE_OUTPUT
+        ).values_list("meter_id", flat=True)
+    )
+    output_meters = (
+        list(Meter.objects.filter(pk__in=output_meter_ids).order_by("meter_number"))
+        if output_meter_ids
+        else [system.output_group.check_meter]
+    )
+
+    output_rows = []
+    for meter in output_meters:
+        delta = meter_period_delta(meter, start_date, end_date)
+        output_rows.append({
+            "meter": meter,
+            "begin": delta["start"].value,
+            "end": delta["end"].value,
+            "kwh": delta["kwh"],
+            "valid": delta["valid"],
+            "reason": delta["reason"],
+        })
+    output_valid = bool(output_rows) and all(row["valid"] for row in output_rows)
+    output_total = (
+        sum((row["kwh"] for row in output_rows), ZERO) if output_valid else None
+    )
+
+    billing_rows = []
+    billing_total = ZERO
+    billing_valid = True
+    billing_amount_total = ZERO
+    for membership in system.output_group.memberships.filter(start_date__lt=end_date).filter(
+        Q(end_date__isnull=True) | Q(end_date__gt=start_date)
+    ).select_related("billing_meter", "billing_meter__unit", "billing_meter__unit__property"):
+        segment_start = max(start_date, membership.start_date)
+        segment_end = min(end_date, membership.end_date or end_date)
+        delta = meter_period_delta(membership.billing_meter, segment_start, segment_end)
+        amount = ZERO
+        if membership.billing_meter.unit_id:
+            amount = InvoiceItem.objects.filter(
+                invoice__issue_date__gte=segment_start,
+                invoice__issue_date__lt=segment_end,
+                invoice__lease__unit_id=membership.billing_meter.unit_id,
+            ).exclude(
+                invoice__lifecycle_status__in=("cancelled", "void")
+            ).filter(
+                Q(category__name__iexact="Electric")
+                | Q(category__name__iexact="Electricity")
+                | Q(description__icontains="electric")
+            ).aggregate(total=Sum("amount"))["total"] or ZERO
+        if delta["valid"]:
+            billing_total += delta["kwh"]
+        else:
+            billing_valid = False
+        billing_amount_total += amount
+        billing_rows.append({
+            "meter": membership.billing_meter,
+            "unit": membership.billing_meter.unit,
+            "begin": delta["start"].value,
+            "end": delta["end"].value,
+            "kwh": delta["kwh"],
+            "amount": amount,
+            "valid": delta["valid"],
+            "reason": delta["reason"],
+        })
+
+    variance = (
+        output_total - billing_total
+        if output_valid and billing_valid
+        else None
+    )
+
+    return {
+        "output_rows": output_rows,
+        "output_total_kwh": output_total,
+        "billing_rows": billing_rows,
+        "billing_total_kwh": billing_total if billing_valid else None,
+        "billing_total_amount": billing_amount_total,
+        "variance_kwh": variance,
+    }
+
+
+def iesco_bill_history(system, limit=6):
+    """Recent confirmed IESCO bills for this system's connection, read straight from the
+    invoices app's own record (the single source of truth) rather than re-fetched or
+    duplicated here."""
+    from invoices.models import IescoBillReading
+
+    try:
+        connection = system.utility_connection
+    except UtilityConnection.DoesNotExist:
+        return []
+    lookup = Q()
+    if connection.reference_no:
+        lookup |= Q(reference_no=connection.reference_no)
+    if connection.consumer_id:
+        lookup |= Q(consumer_id=connection.consumer_id)
+    if not lookup:
+        return []
+    return list(
+        IescoBillReading.objects.filter(
+            lookup, trust_status=IescoBillReading.TRUST_CONFIRMED, confirmed_at__isnull=False
+        ).order_by("-confirmed_at", "-received_at", "-pk")[:limit]
+    )
+
+
 def _exact_bill(system, start_date, end_date):
     try:
         connection = system.utility_connection

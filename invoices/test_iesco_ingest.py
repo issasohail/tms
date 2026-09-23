@@ -20,6 +20,9 @@ from tenants.models import Tenant
 @override_settings(IESCO_BILL_API_KEY="test-ingest-key")
 class IescoBillIngestTests(TestCase):
     def setUp(self):
+        # Data migrations may provide real historical bills; API tests must
+        # remain isolated from that reference data.
+        IescoBillReading.objects.all().delete()
         self.url = reverse("invoices:iesco_bill_ingest")
         self.headers = {"HTTP_X_API_KEY": "test-ingest-key"}
         self.payload = {
@@ -255,6 +258,8 @@ class IescoBillFetchParserTests(TestCase):
 
 class IescoBillReadingListTests(TestCase):
     def setUp(self):
+        IescoBillReading.objects.all().delete()
+        IescoStandaloneMeter.objects.all().delete()
         user = get_user_model().objects.create_superuser(
             username="iesco-list-admin",
             email="iesco-list-admin@example.com",
@@ -309,6 +314,8 @@ class IescoBillReadingListTests(TestCase):
 
 class IescoBillWorkflowTests(TestCase):
     def setUp(self):
+        IescoBillReading.objects.all().delete()
+        IescoStandaloneMeter.objects.all().delete()
         self.user = get_user_model().objects.create_superuser(
             username="iesco-workflow-admin",
             email="iesco-workflow-admin@example.com",

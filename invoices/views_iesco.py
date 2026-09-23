@@ -335,6 +335,7 @@ def _display_decimal(value, *, money=False):
 def _dashboard_totals(rows):
     total_units = Decimal("0")
     grand_total = Decimal("0")
+    current_bill_total = Decimal("0")
     for row in rows:
         reading = row.get("reading")
         if not reading:
@@ -344,11 +345,14 @@ def _dashboard_totals(rows):
             imported = _reading_amount_decimal(reading.units)
         total_units += imported or Decimal("0")
         grand_total += _reading_amount_decimal(reading.grand_total)
+        current_bill_total += reading.current_bill_amount or Decimal("0")
     return {
         "units": total_units,
         "units_display": _display_decimal(total_units),
         "grand_total": grand_total,
         "grand_total_display": _display_decimal(grand_total, money=True),
+        "current_bill_total": current_bill_total,
+        "current_bill_total_display": _display_decimal(current_bill_total, money=True),
     }
 
 

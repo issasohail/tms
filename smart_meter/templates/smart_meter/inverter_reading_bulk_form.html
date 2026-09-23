@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Add inverter readings{% endblock %}
+
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<div class="container-fluid py-2">
+  <div class="card mx-auto" style="max-width:960px;">
+    <div class="card-header fw-semibold">Add inverter readings — {{ system.name }}</div>
+    <div class="card-body">
+      {% if errors %}<div class="alert alert-danger py-2 mb-3">{% for error in errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
+      {% if inverters %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="row g-3 align-items-end mb-3">
+          <div class="col-12 col-md-4">
+            <label class="form-label" for="id_reading_date">Reading date</label>
+            <input class="form-control" id="id_reading_date" type="date" name="reading_date" value="{{ selected_date|date:'Y-m-d' }}" required>
+          </div>
+          <div class="col-12 col-md-8"><div class="form-text">Enter the current cumulative unit count for any or all inverters. Saving the same inverter and date updates that reading.</div></div>
+        </div>
+        <div class="row g-3">
+          {% for inverter in inverters %}
+          <div class="col-12 col-md-6">
+            <div class="border rounded p-3 h-100">
+              <label class="form-label fw-semibold" for="id_reading_{{ inverter.pk }}">{{ inverter.name }}</label>
+              <div class="input-group">
+                <input class="form-control" id="id_reading_{{ inverter.pk }}" type="number" min="0" step="0.001" name="reading_{{ inverter.pk }}" placeholder="Current unit count">
+                <span class="input-group-text">kWh</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="d-flex gap-2 mt-3">
+          <button class="btn btn-primary" type="submit">Save readings</button>
+          <a class="btn btn-secondary" href="{% url 'smart_meter:energy_group_scoreboard' system.output_group_id %}">Cancel</a>
+        </div>
+      </form>
+      {% else %}
+      <div class="alert alert-warning mb-0">No active inverters are configured for this energy system.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

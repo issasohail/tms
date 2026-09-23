@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load humanize %}
 
 {% block title %}{{ group.name }} — Solar Scoreboard{% endblock %}
 {% block main_container_class %}container-fluid ld-scoreboard-shell{% endblock %}
@@ -6,7 +7,11 @@
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
 <style>
-  .ld-scoreboard { max-width: 1600px; margin: 0 auto; }
+  /* Layout tuning: change these four values to resize the page and top cards. */
+  .ld-scoreboard { max-width: 1800px; margin: 0 auto; }
+  .top-checks .check1-col { --w: 450px; }
+  .top-checks .check2-col { --w: 620px; }
+  .top-checks .meter-detail-col { --w: 650px; }
   .ld-scoreboard .card { border-radius: .65rem; }
 
   /* fixed-width boxed cards that wrap to fewer columns when the row is narrower than
@@ -25,6 +30,20 @@
   .ld-mini-table tr.total-row td { font-weight: 700; border-top: 2px solid #dee2e6; }
   .ld-mini-table tr.variance-row td { font-weight: 700; background: #f8f9fb; }
   .ld-scroll-x { overflow-x: auto; }
+  .check2-table { table-layout: fixed; min-width: 578px; }
+  .check2-table th:nth-child(1) { width: 22px; }
+  .check2-table th:nth-child(2) { width: 145px; }
+  .check2-table th:nth-child(3) { width: 88px; }
+  .check2-table th:nth-child(4), .check2-table th:nth-child(5) { width: 57px; }
+  .check2-table th:nth-child(6) { width: 62px; }
+  .check2-table th:nth-child(7) { width: 58px; }
+  .check2-table th:nth-child(8) { width: 70px; }
+  .check2-section-title { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:8px; padding:5px 7px; background:#eef4ff; border-radius:.35rem; font-size:.74rem; font-weight:700; text-transform:uppercase; }
+  .meter-detail-card .ld-mini-table { table-layout: fixed; min-width: 640px; }
+  .meter-detail-card .ld-mini-table th, .meter-detail-card .ld-mini-table td { padding: 4px; }
+  .meter-detail-card .ld-mini-table th:nth-child(1) { width: 22px; }
+  .meter-detail-card .ld-mini-table th:nth-child(2) { width: 106px; }
+  .meter-detail-card .ld-mini-table th:nth-child(n+3) { width: 64px; }
 
   .ld-formula-note { font-size: .7rem; color: #6c757d; background: #f8f9fb; border-radius: .4rem; padding: 5px 8px; margin-top: 8px; }
   .ld-formula-note code { background: #eef1f5; border-radius: 3px; padding: 0 4px; }
@@ -47,6 +66,11 @@
   .ld-kv-row .k { color: #6c757d; }
   .ld-kv-row .v { font-weight: 600; }
   .ld-kv-row .v .unit { font-weight: 400; color: #6c757d; font-size: .68rem; }
+  .ld-positive { color: #198754; font-weight: 700; }
+  .ld-negative { color: #dc3545; font-weight: 700; }
+  @media (max-width: 767.98px) {
+    .ld-scoreboard .box-col { flex: 1 1 100%; width: 100%; min-width: 0; }
+  }
 </style>
 
 <div class="ld-scoreboard">
@@ -65,7 +89,8 @@
     </div>
   </div>
 
-  <form method="get" class="card mb-3">
+  <form method="get" class="card mb-3" id="scoreboardFilters">
+    <input type="hidden" name="range" id="scoreboardRange" value="{{ quick_range }}">
     <div class="card-body d-flex flex-wrap align-items-end gap-3">
       <div>
         <label class="form-label small text-muted mb-1">Energy Group</label>
@@ -78,35 +103,73 @@
         </select>
       </div>
       <div>
+        <label class="form-label small text-muted mb-1">Month</label>
+        <select name="month" id="scoreboardMonth" class="form-select form-select-sm" onchange="document.getElementById('scoreboardRange').value='selected_month'">
+          {% for number, label in month_choices %}<option value="{{ number }}" {% if number == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="form-label small text-muted mb-1">Year</label>
+        <select name="year" id="scoreboardYear" class="form-select form-select-sm" onchange="document.getElementById('scoreboardRange').value='selected_month'">
+          {% for choice in year_choices %}<option value="{{ choice }}" {% if choice == selected_year %}selected{% endif %}>{{ choice }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
         <label class="form-label small text-muted mb-1">Start</label>
-        <input type="date" name="start" class="form-control form-control-sm" value="{{ start_date|date:'Y-m-d' }}">
+        <input type="date" name="start" class="form-control form-control-sm" value="{{ start_date|date:'Y-m-d' }}" onchange="document.getElementById('scoreboardRange').value=''">
       </div>
       <div>
         <label class="form-label small text-muted mb-1">End</label>
-        <input type="date" name="end" class="form-control form-control-sm" value="{{ end_date|date:'Y-m-d' }}">
+        <input type="date" name="end" class="form-control form-control-sm" value="{{ end_date|date:'Y-m-d' }}" onchange="document.getElementById('scoreboardRange').value=''">
       </div>
       <div class="btn-group btn-group-sm" role="group">
         <button type="submit" name="range" value="this_month" class="btn btn-outline-secondary {% if quick_range == 'this_month' %}active{% endif %}">This month</button>
         <button type="submit" name="range" value="last_month" class="btn btn-outline-secondary {% if quick_range == 'last_month' %}active{% endif %}">Last month</button>
+        <button type="submit" name="range" value="selected_month" class="btn btn-outline-secondary {% if quick_range == 'selected_month' %}active{% endif %}">Apply month</button>
       </div>
       <button type="submit" class="btn btn-sm btn-primary">Apply</button>
     </div>
   </form>
 
   {% if report.withheld_reasons %}
-    <div class="alert alert-warning py-2 small">
-      Some figures could not be calculated for this period: {{ report.withheld_reasons|join:"; " }}
+    <div class="card border-warning mb-3" id="scoreboardDiagnostics">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2 bg-warning-subtle">
+        <strong class="small">Calculation notes ({{ report.withheld_reasons|length }})</strong>
+        <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="collapse" data-bs-target="#scoreboardDiagnosticBody" aria-expanded="true" aria-controls="scoreboardDiagnosticBody">Show / Hide</button>
+      </div>
+      <div class="collapse show" id="scoreboardDiagnosticBody">
+        <div class="card-body py-2 small"><ul class="mb-0 ps-3">{% for reason in report.withheld_reasons %}<li class="mb-1">{{ reason }}</li>{% endfor %}</ul></div>
+      </div>
     </div>
   {% endif %}
 
-  <h5 class="mb-2">Checks 1–3</h5>
-  <div class="box-row">
+  <h5 class="mb-2">Checks</h5>
+  <div class="box-row top-checks">
 
-    <!-- CHECK 1 -->
-    <div class="box-col" style="--w:380px;">
+    <!-- COMBINED CHECKS 1 AND 3 -->
+    <div class="box-col check1-col">
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <span>Check 1 — Grid Import / Export</span>
+          <span>Check 1 — IESCO, Audit, Billing, Solar &amp; Income</span>
+          <div class="d-flex gap-1">
+            {% if iesco_display.bill %}<a class="btn btn-sm btn-info" href="{% url 'invoices:iesco_bill_pitc' iesco_display.bill.reference_no %}" target="_blank" rel="noopener">Current bill</a>{% endif %}
+            <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:inverter_statement_add' system.pk %}">Add inverter readings</a>
+          </div>
+        </div>
+        <div class="card-body">
+          {% if iesco_display.bill %}
+          <div class="d-flex flex-wrap justify-content-between gap-2 mb-2 small">
+            <span><strong>IESCO Ref #:</strong> <a href="{% url 'invoices:iesco_bill_reading_list' %}?property=&unit=&reference_no={{ iesco_display.bill.reference_no|urlencode }}&period=this_month&bill_month=&payment_status=">{{ iesco_display.bill.reference_no }}</a></span>
+            <span><strong>Issue:</strong> {{ iesco_display.bill.issue_date|default:"—" }}</span>
+            <span><strong>Reading:</strong> {{ iesco_display.bill.reading_date|default:"—" }}</span>
+            <span><strong>Status:</strong> {{ iesco_display.bill.get_trust_status_display }}</span>
+          </div>
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 small">
+            <span><strong>IESCO period:</strong> {{ iesco_display.period_start|date:"d M Y"|default:"—" }} – {{ iesco_display.period_end|date:"d M Y"|default:"—" }}</span>
+            {% if iesco_display.period_start and iesco_display.period_end %}<a class="btn btn-sm btn-outline-primary" href="?start={{ iesco_display.period_start|date:'Y-m-d' }}&end={{ iesco_display.period_end|date:'Y-m-d' }}">Update Period</a>{% endif %}
+          </div>
+          {% endif %}
+          <div class="d-flex justify-content-end mb-1">
           {% if check1.import_status == 'ok' and check1.export_status == 'ok' %}
             <span class="ld-badge ld-badge-ok"><span class="ld-dot" style="background:#198754;"></span> OK</span>
           {% elif check1.import_status == 'bad' or check1.export_status == 'bad' %}
@@ -114,38 +177,66 @@
           {% else %}
             <span class="ld-badge ld-badge-warn"><span class="ld-dot" style="background:#b45309;"></span> Check</span>
           {% endif %}
-        </div>
-        <div class="card-body">
+          </div>
           <table class="ld-mini-table">
-            <thead><tr><th></th><th class="num">IESCO bill</th><th class="num">Grid meter</th><th class="num">Diff</th></tr></thead>
+            <thead><tr><th></th><th class="num">IESCO bill</th><th class="num"><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">Audit meter</a></th><th class="num">Bill meters</th></tr></thead>
             <tbody>
               <tr>
                 <td>Import</td>
                 <td class="num">{{ check1.iesco_import_kwh|default_if_none:"—"|floatformat:3 }}</td>
-                <td class="num">{{ check1.meter_import_kwh|default_if_none:"—"|floatformat:3 }}</td>
-                <td class="num">{{ check1.import_diff_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">{{ check1.audit_import_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">{{ check1.billing_import_kwh|default_if_none:"—"|floatformat:3 }}</td>
               </tr>
               <tr>
                 <td>Export</td>
                 <td class="num">{{ check1.iesco_export_kwh|default_if_none:"—"|floatformat:3 }}</td>
-                <td class="num">{{ check1.meter_export_kwh|default_if_none:"—"|floatformat:3 }}</td>
-                <td class="num">{{ check1.export_diff_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">{{ check1.audit_export_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">{{ check1.billing_export_kwh|default_if_none:"—"|floatformat:3 }}</td>
+              </tr>
+              <tr class="total-row">
+                <td>Net total</td>
+                <td class="num">{{ check1.iesco_net_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">{{ check1.audit_net_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">{{ check1.billing_net_kwh|default_if_none:"—"|floatformat:3 }}</td>
+              </tr>
+              <tr>
+                <td>Avg rate</td>
+                <td class="num">Rs {{ check1.iesco_average_rate|default_if_none:"—"|floatformat:2 }}</td>
+                <td class="num">Rs {{ check1.audit_average_rate|default_if_none:"—"|floatformat:2 }}</td>
+                <td class="num">Rs {{ check1.billing_average_rate|default_if_none:"—"|floatformat:2 }}</td>
               </tr>
             </tbody>
           </table>
-          <div class="ld-formula-note">Diff = <code>|IESCO − Meter|</code> per direction, computed for display only — nothing is stored yet.</div>
+          <div class="ld-formula-note">Net total = <code>Import − Export</code>. Audit is the group check meter; Bill meters are the combined Check 2 meters.</div>
           <div class="ld-formula-note">
-            {% if check1.iesco_bill %}IESCO is used for the financial totals in Check 3 (standing rule).{% else %}No confirmed IESCO bill for this exact period yet — grid meter figures are used instead.{% endif %}
+            {% if check1.iesco_bill %}{{ check1.iesco_bills|length }} IESCO bill{{ check1.iesco_bills|length|pluralize }} issued in this period; units and bill cost are combined.{% else %}No IESCO bill issue date falls inside this period; grid-meter figures are used instead.{% endif %}
           </div>
+          <div class="ld-headline mt-2">
+            <div class="eyebrow">Solar-supplied energy</div>
+            <div class="big">{{ report.net_non_grid_contribution_kwh|default_if_none:"—"|floatformat:3 }} <span style="font-size:1rem; font-weight:600;">kWh</span></div>
+            <div style="font-size:.72rem; opacity:.85;">Calculated = Output − Grid Import</div>
+            <div class="cross">Manual inverter total: <b>{{ inverter_breakdown.total_kwh|default_if_none:"incomplete"|floatformat:3 }}{% if inverter_breakdown.total_kwh %} kWh{% endif %}</b></div>
+          </div>
+          <div class="ld-block-label">Tenant</div>
+          <div class="ld-kv-row"><span class="k">Total units consumed</span><span class="v">{{ check2.billing_total_kwh|default_if_none:"—"|floatformat:3 }} <span class="unit">kWh</span></span></div>
+          <div class="ld-kv-row"><span class="k">Tenant electricity revenue</span><span class="v">Rs. {{ report.tenant_energy_revenue|default_if_none:"—"|floatformat:0|intcomma }}</span></div>
+          <div class="ld-formula-note">Tenant electricity revenue = valid Energy Dashboard meter usage × that meter's configured unit rate for this period. Invoice amounts are not used.</div>
+          <div class="ld-block-label">IESCO{% if check1.iesco_bills|length > 1 %} (combined {{ check1.iesco_bills|length }} bills){% endif %}</div>
+          <div class="ld-kv-row"><span class="k">Import</span><span class="v">{{ check1.iesco_import_kwh|default_if_none:"—"|floatformat:3 }} <span class="unit">kWh</span></span></div>
+          <div class="ld-kv-row"><span class="k">Export</span><span class="v">{{ check1.iesco_export_kwh|default_if_none:"—"|floatformat:3 }} <span class="unit">kWh</span></span></div>
+          <div class="ld-kv-row"><span class="k">Bill cost</span><span class="v">Rs. {{ report.current_cycle_utility_cost|default_if_none:"—"|floatformat:0|intcomma }}</span></div>
+          <div class="ld-income-total"><span>Solar Income</span><span>Rs. {{ report.operating_energy_margin|default_if_none:"—"|floatformat:0|intcomma }}</span></div>
         </div>
       </div>
     </div>
 
     <!-- CHECK 2 -->
-    <div class="box-col" style="--w:460px;">
+    <div class="box-col check2-col">
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <span>Check 2 — Output Distribution</span>
+          <span>Check 2 — Output Distribution <small class="text-muted">({{ start_date|date:"d M Y" }} – {{ end_date|date:"d M Y" }})</small></span>
+          <div class="d-flex align-items-center gap-1">
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:meter_check_group_edit' group.pk %}#billing-coverage">Add meters</a>
           {% if check2.status == 'ok' %}
             <span class="ld-badge ld-badge-ok"><span class="ld-dot" style="background:#198754;"></span> OK</span>
           {% elif check2.status == 'bad' %}
@@ -153,107 +244,70 @@
           {% else %}
             <span class="ld-badge ld-badge-warn"><span class="ld-dot" style="background:#b45309;"></span> Check</span>
           {% endif %}
+          </div>
         </div>
         <div class="card-body">
+          <div class="check2-section-title"><span>Audit Meter</span><span>Avg rate: Rs {{ check1.audit_average_rate|default_if_none:"—"|floatformat:2 }}</span></div>
           <div class="ld-scroll-x">
-            <table class="ld-mini-table">
-              <thead><tr><th>Unit</th><th>Meter (serial)</th><th class="num">Begin</th><th class="num">End</th><th class="num">Units</th><th class="num">Amount</th></tr></thead>
+            <table class="ld-mini-table check2-table">
+              <thead><tr><th>#</th><th>Unit / meter name</th><th>Serial</th><th class="num">Begin</th><th class="num">End</th><th class="num">Units</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead>
               <tbody>
                 <tr style="background:#eef4ff;">
-                  <td colspan="2"><b>Output total</b> <span class="text-muted" style="font-weight:400;">({{ check2.output_rows|length }} linked meter{{ check2.output_rows|length|pluralize }})</span></td>
-                  <td></td><td></td>
-                  <td class="num"><b>{{ check2.output_total_kwh|default_if_none:"—"|floatformat:3 }}</b></td>
+                  <td></td><td><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ group.check_meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}"><b>{{ group.check_meter.name|default:"Audit meter" }}</b></a></td><td><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ group.check_meter.meter_number }}</a></td>
+                  <td class="num">{{ audit_summary.begin|default_if_none:"—"|floatformat:3 }}</td><td class="num">{{ audit_summary.end|default_if_none:"—"|floatformat:3 }}</td>
+                  <td class="num"><b>{{ check1.audit_import_kwh|default_if_none:"—"|floatformat:3 }}</b></td>
+                  <td class="num">{{ check1.audit_average_rate|default_if_none:"—"|floatformat:2 }}</td>
                   <td class="num">—</td>
-                </tr>
-                {% for row in check2.billing_rows %}
-                <tr{% if not row.valid %} title="{{ row.reason }}"{% endif %}>
-                  <td>
-                    {% if row.unit %}<a href="{% url 'smart_meter:meter_dashboard' row.unit.pk %}">{{ row.unit.unit_number }}</a>{% else %}—{% endif %}
-                  </td>
-                  <td>{{ row.meter.meter_number }}</td>
-                  <td class="num">{{ row.begin|default_if_none:"—"|floatformat:3 }}</td>
-                  <td class="num">{{ row.end|default_if_none:"—"|floatformat:3 }}</td>
-                  <td class="num"{% if not row.valid %} style="color:#b45309;"{% endif %}>{{ row.kwh|default_if_none:"—"|floatformat:3 }}</td>
-                  <td class="num">Rs {{ row.amount|floatformat:0 }}</td>
-                </tr>
-                {% endfor %}
-                <tr class="total-row">
-                  <td colspan="2">Sum of billing meters — Grand Total</td><td></td><td></td>
-                  <td class="num">{{ check2.billing_total_kwh|default_if_none:"—"|floatformat:3 }}</td>
-                  <td class="num">Rs {{ check2.billing_total_amount|floatformat:0 }}</td>
-                </tr>
-                <tr class="variance-row">
-                  <td colspan="2">Variance</td><td></td><td></td>
-                  <td class="num">{{ check2.variance_kwh|default_if_none:"—"|floatformat:3 }}</td><td></td>
                 </tr>
               </tbody>
             </table>
           </div>
-          <div class="ld-formula-note">Variance = <code>Output units − Σ billing meter units</code> for the same period. Amount is each unit's actual billed Electric invoice total — not a flat rate. Hover a dash to see why a reading is missing (usually no meter reading close enough to a period boundary yet).</div>
+          <div class="check2-section-title"><span>Billing Meters</span><span>Avg rate: Rs {{ check1.billing_average_rate|default_if_none:"—"|floatformat:2 }}</span></div>
+          <div class="ld-scroll-x">
+            <table class="ld-mini-table check2-table">
+              <thead><tr><th>#</th><th>Unit / meter name</th><th>Serial</th><th class="num">Begin</th><th class="num">End</th><th class="num">Units</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead>
+              <tbody>
+                {% for unit_group in check2.unit_groups %}{% for row in unit_group.rows %}
+                <tr{% if not row.valid %} title="{{ row.reason }}"{% endif %}>
+                  <td>{{ row.sequence }}</td>
+                  <td>
+                    {% if row.unit %}<a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.unit.pk }}&meter={{ row.meter.pk }}&role=billing&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ row.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.display_name }}</a>{% else %}—{% endif %}
+                  </td>
+                  <td><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.unit.pk }}&meter={{ row.meter.pk }}&role=billing&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.meter.meter_number }}</a>{% if row.is_replacement %}<span class="d-block text-danger" style="font-size:.62rem;">not assigned</span>{% endif %}</td>
+                  <td class="num">{{ row.begin|default_if_none:"—"|floatformat:3 }}</td>
+                  <td class="num">{{ row.end|default_if_none:"—"|floatformat:3 }}</td>
+                  <td class="num"{% if not row.valid %} style="color:#b45309;"{% endif %}>{{ row.kwh|default_if_none:"—"|floatformat:3 }}</td>
+                  <td class="num">{{ row.unit_rate|floatformat:2 }}</td>
+                  <td class="num" title="Energy Dashboard usage × configured meter rate">Rs {{ row.amount|floatformat:0|intcomma }}{% if row.unit_rate == 0 %}<span class="d-block text-danger" style="font-size:.6rem;">rate Rs 0</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+                {% if unit_group.rows|length > 1 %}<tr class="total-row" style="background:#f8fafc;">
+                  <td></td><td colspan="2"><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ unit_group.unit.pk }}&role=billing&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ unit_group.unit.unit_number }} total</a></td><td></td><td></td>
+                  <td class="num">{{ unit_group.total_kwh|floatformat:3 }}</td><td class="num">{{ unit_group.average_rate|default_if_none:"—"|floatformat:2 }}</td><td class="num">Rs {{ unit_group.total_amount|floatformat:0|intcomma }}</td>
+                </tr>{% endif %}{% endfor %}
+                <tr class="total-row">
+                  <td></td><td colspan="2">Sum of billing meters — Grand Total</td><td></td><td></td>
+                  <td class="num">{{ check2.billing_total_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                  <td class="num">{{ check1.billing_average_rate|default_if_none:"—"|floatformat:2 }}</td>
+                  <td class="num">Rs {{ check2.billing_total_amount|floatformat:0|intcomma }}</td>
+                </tr>
+                <tr class="variance-row">
+                  <td></td><td colspan="2">Audit − billing variance</td><td></td><td></td>
+                  <td class="num {% if check2.variance_kwh > 0 %}ld-positive{% elif check2.variance_kwh < 0 %}ld-negative{% endif %}">{{ check2.variance_kwh|default_if_none:"—"|floatformat:3 }}</td><td></td><td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="ld-formula-note">Variance = <code>Audit meter units − Σ billing meter units</code> for the same period. Amount = valid Energy Dashboard usage × each meter's configured rate; invoices are not used.</div>
+          <div class="check2-section-title"><span>Inverter</span><a class="btn btn-sm btn-primary" href="{% url 'smart_meter:inverter_statement_add' system.pk %}">Add Reading</a></div>
+          <div class="ld-scroll-x"><table class="ld-mini-table"><thead><tr><th>Inverter</th><th class="num">Latest</th><th>As of</th><th class="num">Period</th></tr></thead><tbody>{% for row in inverter_breakdown.rows|slice:":3" %}<tr{% if not row.valid %} title="{{ row.reason }}"{% endif %}><td><a class="js-meter-dashboard" href="{% url 'smart_meter:inverter_statement_add' system.pk %}" data-detail-url="{{ request.path }}inverter/{{ row.inverter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.inverter.name }}</a></td><td class="num">{% if row.latest_reading %}{{ row.latest_reading.reading_kwh|floatformat:0|intcomma }}{% else %}—{% endif %}</td><td>{% if row.latest_reading %}{{ row.latest_reading.recorded_at|date:"d M y" }}{% else %}—{% endif %}</td><td class="num">{{ row.kwh|default_if_none:"—"|floatformat:3 }}</td></tr>{% empty %}<tr><td colspan="4" class="text-muted">No inverters configured.</td></tr>{% endfor %}</tbody><tfoot><tr class="total-row"><td colspan="3">Total</td><td class="num">{{ inverter_breakdown.total_kwh|default_if_none:"—"|floatformat:3 }}</td></tr></tfoot></table></div>
         </div>
       </div>
     </div>
 
-    <!-- CHECK 3 -->
-    <div class="box-col" style="--w:420px;">
-      <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <span>Check 3 — Solar Generation &amp; Income</span>
-          <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:inverter_reading_add' system.pk %}">Add reading</a>
-        </div>
-        <div class="card-body">
-          <div class="ld-headline">
-            <div class="eyebrow">Solar-supplied energy</div>
-            <div class="big">{{ report.net_non_grid_contribution_kwh|default_if_none:"—"|floatformat:3 }} <span style="font-size:1rem; font-weight:600;">kWh</span></div>
-            <div style="font-size:.72rem; opacity:.85;">Calculated = Output − Grid Import</div>
-            <div class="cross">
-              {% if inverter_breakdown.has_inverters %}
-                Manual entry (sum of {{ inverter_breakdown.rows|length }} inverters):
-                <b>{{ inverter_breakdown.total_kwh|default_if_none:"incomplete"|floatformat:3 }}{% if inverter_breakdown.total_kwh %} kWh{% endif %}</b>
-              {% else %}
-                Manual entry (inverter statement):
-                <b>{{ report.pv_generation_kwh|default_if_none:"not recorded"|floatformat:3 }}{% if report.pv_generation_kwh %} kWh{% endif %}</b>
-              {% endif %}
-            </div>
-          </div>
-
-          {% if inverter_breakdown.has_inverters %}
-          <div class="ld-scroll-x" style="margin-bottom:8px;">
-            <table class="ld-mini-table">
-              <thead><tr><th>Inverter</th><th class="num">Latest reading</th><th>As of</th><th class="num">This period</th></tr></thead>
-              <tbody>
-                {% for row in inverter_breakdown.rows %}
-                <tr{% if not row.valid %} title="{{ row.reason }}"{% endif %}>
-                  <td>{{ row.inverter.name }}</td>
-                  <td class="num">{% if row.latest_reading %}{{ row.latest_reading.reading_kwh|floatformat:0 }}{% else %}—{% endif %}</td>
-                  <td>{% if row.latest_reading %}{{ row.latest_reading.recorded_at|date:"M j" }}{% else %}—{% endif %}</td>
-                  <td class="num"{% if not row.valid %} style="color:#b45309;"{% endif %}>{{ row.kwh|default_if_none:"—"|floatformat:3 }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          {% endif %}
-
-          <div class="ld-block-label">Tenant</div>
-          <div class="ld-kv-row"><span class="k">Total units consumed</span><span class="v">{{ check2.billing_total_kwh|default_if_none:"—"|floatformat:3 }} <span class="unit">kWh</span></span></div>
-          <div class="ld-kv-row"><span class="k">Tenant electricity revenue</span><span class="v">Rs. {{ report.tenant_energy_revenue|default_if_none:"—"|floatformat:0 }}</span></div>
-
-          <div class="ld-block-label">IESCO</div>
-          <div class="ld-kv-row"><span class="k">Import</span><span class="v">{{ check1.iesco_import_kwh|default_if_none:"—"|floatformat:3 }} <span class="unit">kWh</span></span></div>
-          <div class="ld-kv-row"><span class="k">Export</span><span class="v">{{ check1.iesco_export_kwh|default_if_none:"—"|floatformat:3 }} <span class="unit">kWh</span></span></div>
-          <div class="ld-kv-row"><span class="k">Bill cost</span><span class="v">Rs. {{ report.current_cycle_utility_cost|default_if_none:"—"|floatformat:0 }}</span></div>
-          {% if iesco_display.bill %}
-          <div class="ld-formula-note">
-            {% if iesco_display.is_exact_match %}Bill matched exactly to this period —{% else %}⚠ No bill matches this exact period. Closest known bill —{% endif %}
-            reading date <b>{{ iesco_display.bill.reading_date }}</b>, bill month <b>{{ iesco_display.bill.bill_month }}</b>.
-            {% if not iesco_display.is_exact_match %}Adjust the date range above to match this bill for accurate figures.{% endif %}
-          </div>
-          {% endif %}
-
-          <div class="ld-income-total"><span>Solar Income</span><span>Rs. {{ report.operating_energy_margin|default_if_none:"—"|floatformat:0 }}</span></div>
-          <div class="ld-formula-note">Solar Income = Tenant revenue − IESCO bill cost. Solar-supplied kWh above is the calculated (meter-based) figure; the manual inverter reading is a cross-check only, not used in the money math.</div>
-        </div>
+    <div class="box-col meter-detail-col">
+      <div id="scoreboardMeterDetail" class="h-100 meter-detail-card" aria-live="polite">
+        <div class="card h-100"><div class="card-header">Meter Detail:</div><div class="card-body py-3 text-muted">Click a meter name in Check 2 to load its Energy Dashboard reconciliation here.</div></div>
       </div>
     </div>
 
@@ -262,63 +316,10 @@
   <h5 class="mb-2 mt-4">Detail</h5>
   <div class="box-row">
 
-    <div class="box-col" style="--w:420px;">
-      <div class="card">
-        <div class="card-header">Billing-meter memberships</div>
-        <div class="ld-scroll-x">
-          <table class="ld-mini-table">
-            <thead><tr><th>#</th><th>Meter</th><th>Unit</th><th>Start</th><th>Status</th></tr></thead>
-            <tbody>
-              {% for m in memberships %}
-              <tr>
-                <td>{{ forloop.counter }}</td>
-                <td>{{ m.billing_meter.meter_number }}</td>
-                <td>{{ m.billing_meter.unit|default:"—" }}</td>
-                <td>{{ m.start_date }}</td>
-                <td>{% if m.is_active and not m.end_date %}<span class="ld-badge ld-badge-ok">Active</span>{% else %}<span class="ld-badge ld-badge-warn">Ended {{ m.end_date }}</span>{% endif %}</td>
-              </tr>
-              {% empty %}<tr><td colspan="5" class="text-muted">No billing meters in this group.</td></tr>{% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div class="box-col" style="--w:400px;">
-      <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <span>Output-meter readings</span>
-          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="ldToggleReadings(this)" data-expanded="0">Expand all</button>
-        </div>
-        <div id="ldDailyRollup" class="ld-scroll-x">
-          <table class="ld-mini-table">
-            <thead><tr><th>#</th><th>Day</th><th>Unit/Meter #</th><th class="num">Total energy consumed</th></tr></thead>
-            <tbody>
-              {% for row in daily_rollup %}
-              <tr><td>{{ forloop.counter }}</td><td>{{ row.day }}</td><td>{{ row.meter_number }}</td><td class="num">{{ row.kwh|default_if_none:"—"|floatformat:3 }}</td></tr>
-              {% empty %}<tr><td colspan="4" class="text-muted">No readings in range.</td></tr>{% endfor %}
-            </tbody>
-          </table>
-        </div>
-        <div id="ldRawReadings" class="ld-scroll-x" style="display:none;">
-          <table class="ld-mini-table">
-            <thead><tr><th>#</th><th>Timestamp</th><th>Meter #</th><th class="num">Total energy</th></tr></thead>
-            <tbody>
-              {% for r in output_readings %}
-              <tr><td>{{ forloop.counter }}</td><td>{{ r.ts|date:"M j, H:i" }}</td><td>{{ group.check_meter.meter_number }}</td><td class="num">{{ r.total_energy|floatformat:3 }}</td></tr>
-              {% empty %}<tr><td colspan="4" class="text-muted">No readings in range.</td></tr>{% endfor %}
-            </tbody>
-          </table>
-        </div>
-        <div class="card-footer small text-muted">Collapsed = one row per day. Expanded shows up to 60 raw readings.</div>
-      </div>
-    </div>
-
-
     <div class="box-col" style="--w:380px;">
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <span>Inverter statements</span>
+          <span>Legacy inverter statements</span>
           <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:inverter_statement_add' system.pk %}">Add</a>
         </div>
         <div class="ld-scroll-x">
@@ -345,19 +346,22 @@
     <div class="card-header">IESCO bill source &amp; history <span class="text-muted small">— pulled from the Invoices app's own IESCO records, not re-fetched</span></div>
     <div class="ld-scroll-x">
       <table class="ld-mini-table" style="font-size:.8rem;">
-        <thead><tr><th>Reference</th><th>Bill month</th><th>Reading date</th><th class="num">Import</th><th class="num">Export</th><th class="num">Current bill</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>Reference</th><th>Bill month</th><th>Issue date</th><th>Reading date</th><th>Status</th><th class="num">Import</th><th class="num">Export</th><th class="num">Current bill</th><th></th></tr></thead>
         <tbody>
           {% for bill in bill_history %}
           <tr {% if forloop.first %}style="background:#eef4ff;"{% endif %}>
-            <td>{{ bill.reference_no }}</td>
+            <td>{{ forloop.counter }}</td>
+            <td><a href="{% url 'invoices:iesco_bill_reading_list' %}?property=&unit=&reference_no={{ bill.reference_no|urlencode }}&period=this_month&bill_month=&payment_status=">{{ bill.reference_no }}</a></td>
             <td>{{ bill.bill_month }}</td>
+            <td>{{ bill.issue_date|default:"—" }}</td>
             <td>{{ bill.reading_date }}</td>
+            <td>{{ bill.get_trust_status_display }}</td>
             <td class="num">{{ bill.import_units_display }} kWh</td>
             <td class="num">{{ bill.export_units_display }} kWh</td>
             <td class="num">{{ bill.current_bill_display }}</td>
-            <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'invoices:iesco_bill_reading_detail' bill.reference_no %}">Open</a></td>
+            <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'invoices:iesco_bill_reading_list' %}?property=&unit=&reference_no={{ bill.reference_no|urlencode }}&period=this_month&bill_month=&payment_status=">Open</a></td>
           </tr>
-          {% empty %}<tr><td colspan="7" class="text-muted">No confirmed IESCO bills found for this connection yet.</td></tr>{% endfor %}
+          {% empty %}<tr><td colspan="10" class="text-muted">No IESCO bills found for this connection yet.</td></tr>{% endfor %}
         </tbody>
       </table>
     </div>
@@ -373,5 +377,21 @@ function ldToggleReadings(btn) {
   btn.textContent = expanded ? 'Expand all' : 'Collapse all';
   btn.setAttribute('data-expanded', expanded ? '0' : '1');
 }
+document.getElementById('showInactiveMemberships')?.addEventListener('change', function () {
+  document.querySelectorAll('.membership-inactive').forEach(function (row) {
+    row.style.display = this.checked ? '' : 'none';
+  }, this);
+});
+document.querySelectorAll('.js-meter-dashboard').forEach(function (link) {
+  link.addEventListener('click', function (event) {
+    event.preventDefault();
+    var target = document.getElementById('scoreboardMeterDetail');
+    target.innerHTML = '<div class="card"><div class="card-body py-3 text-muted">Loading meter dashboard…</div></div>';
+    fetch(link.dataset.detailUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(function (response) { if (!response.ok) throw new Error('Unable to load meter details.'); return response.json(); })
+      .then(function (data) { target.innerHTML = data.html; })
+      .catch(function () { target.innerHTML = '<div class="alert alert-danger">Unable to load this meter. <a href="' + link.href + '">Open the full dashboard</a>.</div>'; });
+  });
+});
 </script>
 {% endblock %}

@@ -32,6 +32,8 @@ urlpatterns = [
 
     path("energy-groups/scoreboard/", views_reconciliation.energy_group_scoreboard, name="energy_group_scoreboard_default"),
     path("energy-groups/scoreboard/<int:pk>/", views_reconciliation.energy_group_scoreboard, name="energy_group_scoreboard"),
+    path("energy-groups/scoreboard/<int:pk>/meter/<int:meter_id>/", views_reconciliation.energy_group_meter_detail, name="energy_group_meter_detail"),
+    path("energy-groups/scoreboard/<int:pk>/inverter/<int:inverter_id>/", views_reconciliation.energy_group_inverter_detail, name="energy_group_inverter_detail"),
     path("energy-systems/<int:system_id>/inverter-readings/add/", views_reconciliation.inverter_reading_add, name="inverter_reading_add"),
 
     path("energy-systems/", views_reconciliation.energy_system_list, name="energy_system_list"),

@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from invoices.models import IescoBillReading, IescoStandaloneMeter, Invoice, InvoiceItem
+from invoices.views_iesco import _dashboard_totals
 from leases.models import Lease
 from properties.models import Property, Unit
 from tenants.models import Tenant
@@ -280,6 +281,30 @@ class IescoBillReadingListTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "17146151548911")
         self.assertContains(response, "No reading")
+
+    def test_dashboard_footer_totals_current_bill_without_arrears(self):
+        first = IescoBillReading.objects.create(
+            reference_no="17146151548911",
+            bill_month="AUG 26",
+            units="10",
+            current_bill="3,000",
+            arrears="680",
+            grand_total="3,680",
+        )
+        second = IescoBillReading.objects.create(
+            reference_no="17146151548912",
+            bill_month="AUG 26",
+            units="20",
+            current_bill="5,500",
+            arrears="500",
+            grand_total="6,000",
+        )
+
+        totals = _dashboard_totals([{"reading": first}, {"reading": second}])
+
+        self.assertEqual(totals["current_bill_total"], Decimal("8500"))
+        self.assertEqual(totals["grand_total"], Decimal("9680"))
+        self.assertEqual(totals["current_bill_total_display"], "Rs. 8,500")
 
 
 class IescoBillWorkflowTests(TestCase):

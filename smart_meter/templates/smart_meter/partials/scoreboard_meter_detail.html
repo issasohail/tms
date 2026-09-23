@@ -1,0 +1,40 @@
+{% load humanize %}
+<div class="card h-100">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div>
+      <strong>Meter Detail: {{ meter.name|default:meter.meter_number }}</strong>
+      {% if meter.name %}<span class="text-muted ms-1">({{ meter.meter_number }})</span>{% endif %}
+      <span class="text-muted ms-2">{{ meter.unit.unit_number|default:"Unassigned" }}</span>
+      <span class="text-muted ms-2">{{ tenant_names|join:", "|default:"Vacant" }}</span>
+      <span class="text-muted ms-2">{{ start_date|date:"d M Y" }} to {{ end_date|date:"d M Y" }}</span>
+    </div>
+    <a class="btn btn-sm btn-outline-primary" href="{{ full_dashboard_url }}">Open full dashboard</a>
+  </div>
+  <div class="px-2 pt-2 small text-muted">Audit meter: {{ audit_meter.name|default:audit_meter.meter_number }} ({{ audit_meter.meter_number }})</div>
+  <div class="ld-scroll-x">
+    <table class="ld-mini-table">
+      <thead><tr><th>#</th><th>Period date</th><th class="num">Begin</th><th class="num">End</th><th class="num">Forward</th><th class="num">Reverse</th><th class="num">Rate</th><th class="num">Charge</th><th class="num">Audit</th><th class="num">Diff</th></tr></thead>
+      <tbody>
+        {% for period in period_groups %}
+        <tr style="background:#eef4ff;"><td></td><td colspan="9"><strong>{{ period.start_date|date:"d M Y" }} to {{ period.end_date|date:"d M Y" }}</strong></td></tr>
+          {% for row in period.daily_rows %}
+          <tr{% if not row.valid %} title="{{ row.reason }}"{% endif %}>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ row.day|date:"d M Y" }}</td>
+            <td class="num">{{ row.begin|default_if_none:"—"|floatformat:3 }}</td>
+            <td class="num">{{ row.end|default_if_none:"—"|floatformat:3 }}</td>
+            <td class="num">{{ row.billing_kwh|default_if_none:"—"|floatformat:3 }}</td>
+            <td class="num">{{ row.billing_reverse_kwh|default_if_none:"—"|floatformat:3 }}</td>
+            <td class="num">{{ row.unit_rate|default_if_none:"—"|floatformat:2 }}</td>
+            <td class="num">Rs {{ row.usage_amount|default_if_none:"0"|floatformat:0|intcomma }}</td>
+            <td class="num">{{ row.audit_kwh|default_if_none:"—"|floatformat:3 }}</td>
+            <td class="num {% if row.difference_kwh > 0 %}ld-positive{% elif row.difference_kwh < 0 %}ld-negative{% endif %}">{{ row.difference_kwh|default_if_none:"—"|floatformat:3 }}</td>
+          </tr>
+          {% empty %}<tr><td></td><td colspan="9" class="text-muted">No daily readings in this group.</td></tr>{% endfor %}
+        <tr class="total-row"><td></td><td>Group total</td><td class="num">{{ period.begin|default_if_none:"—"|floatformat:3 }}</td><td class="num">{{ period.end|default_if_none:"—"|floatformat:3 }}</td><td class="num">{{ period.billing_kwh|floatformat:3 }}</td><td class="num">{{ period.billing_reverse_kwh|floatformat:3 }}</td><td></td><td class="num">Rs {{ period.usage_amount|floatformat:0|intcomma }}</td><td class="num">{{ period.audit_kwh|floatformat:3 }}</td><td class="num {% if period.difference_kwh > 0 %}ld-positive{% elif period.difference_kwh < 0 %}ld-negative{% endif %}">{{ period.difference_kwh|floatformat:3 }}</td></tr>
+        {% empty %}<tr><td colspan="10" class="text-muted text-center py-3">No dashboard readings for this meter and period.</td></tr>{% endfor %}
+      </tbody>
+      <tfoot><tr class="total-row"><td colspan="4">Total</td><td class="num">{{ grouped_billing_total|floatformat:3 }}</td><td class="num">{{ totals.total_reverse_kwh|floatformat:3 }}</td><td></td><td class="num">Rs {{ totals.usage_charges|floatformat:0|intcomma }}</td><td class="num">{{ grouped_audit_total|floatformat:3 }}</td><td class="num {% if grouped_difference_total > 0 %}ld-positive{% elif grouped_difference_total < 0 %}ld-negative{% endif %}">{{ grouped_difference_total|floatformat:3 }}</td></tr></tfoot>
+    </table>
+  </div>
+</div>

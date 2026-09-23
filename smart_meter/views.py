@@ -449,60 +449,10 @@ def view_bills(request, unit_id):
 def meter_dashboard(request, unit_id):
     unit = get_object_or_404(Unit, id=unit_id, is_smart_meter=True)
 
-    # Get latest reading
-    latest = MeterReading.objects.filter(unit=unit).order_by("-timestamp").first()
-
-    # Get balance
-    balance, _ = MeterBalance.objects.get_or_create(unit=unit)
-
-    # Get tenant phone number (via lease)
-    try:
-        lease = Lease.objects.filter(unit=unit).latest("start_date")
-        tenant = lease.tenant
-        phone = tenant.phone  # assumes your tenant model has this
-    except:
-        tenant = None
-        phone = None
-
-    # If balance is low, build WhatsApp alert URL
-    wa_url = None
-    if balance.balance <= 100 and phone:
-        message = f"⚠️ Dear {tenant.name}, your electricity meter balance is ₹{balance.balance}. Please recharge soon to avoid disconnection."
-        wa_url = build_whatsapp_url(phone, message)
-
-    # Last 7 days usage for chart
-    start_date = now() - timedelta(days=7)
-    readings = (
-        MeterReading.objects.filter(unit=unit, timestamp__gte=start_date)
-        .order_by("timestamp")
-        .values("timestamp", "total_energy")
-    )
-
-    labels = [r["timestamp"].strftime("%d %b %H:%M") for r in readings]
-    values = [float(r["total_energy"] or 0) for r in readings]
-
-    # Monthly total for billing
-    current_month = now().replace(day=1)
-    month_readings = MeterReading.objects.filter(
-        unit=unit, timestamp__gte=current_month
-    ).order_by("timestamp")
-
-    start_kwh = month_readings.first().total_energy if month_readings.exists() else 0
-    end_kwh = month_readings.last().total_energy if month_readings.exists() else 0
-    total_kwh = round((end_kwh or 0) - (start_kwh or 0), 2)
-
-    context = {
-        "unit": unit,
-        "latest": latest,
-        "labels": labels,
-        "values": values,
-        "total_kwh": total_kwh,
-        "peak": latest.peak_hour if latest else False,
-        "wa_url": wa_url,  # ✅ pass WhatsApp link to template
-        "balance": balance,
-    }
-
-    return render(request, "smart_meter/dashboard.html", context)
+    # This legacy unit URL now opens the maintained dashboard with the unit
+    # filter applied. The old inline report targeted removed MeterReading fields
+    # and its template expects the full modern dashboard context.
+    return redirect(f"{reverse('smart_meter:energy_dashboard')}?unit={unit.pk}")
 
 
 BILLING_RATE = Decimal("7.50")  # ₹7.50 per kWh

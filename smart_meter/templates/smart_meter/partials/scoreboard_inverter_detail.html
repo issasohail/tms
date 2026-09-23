@@ -1,0 +1,25 @@
+{% load humanize %}
+<div class="card h-100">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div>
+      <strong>Meter Detail: {{ inverter.name }}</strong>
+      <span class="text-muted ms-2">Inverter</span>
+      <span class="text-muted ms-2">{{ start_date|date:"d M Y" }} to {{ end_date|date:"d M Y" }}</span>
+    </div>
+  </div>
+  <div class="ld-scroll-x">
+    <table class="ld-mini-table">
+      <thead><tr><th>#</th><th>Reading date</th><th class="num">Begin</th><th class="num">End</th><th class="num">Generation</th></tr></thead>
+      <tbody>
+        {% for period in period_groups %}
+        <tr style="background:#eef4ff;"><td></td><td colspan="4"><strong>{{ period.start_date|date:"d M Y" }} to {{ period.end_date|date:"d M Y" }}</strong></td></tr>
+          {% for row in period.rows %}
+          <tr><td>{{ forloop.counter }}</td><td>{{ row.reading.recorded_at|date:"d M Y H:i" }}</td><td class="num">{{ row.begin|default_if_none:"—"|floatformat:3 }}</td><td class="num">{{ row.end|floatformat:3 }}</td><td class="num">{{ row.generation|default_if_none:"—"|floatformat:3 }}</td></tr>
+          {% empty %}<tr><td></td><td colspan="4" class="text-muted">No inverter readings in this group.</td></tr>{% endfor %}
+        <tr class="total-row"><td></td><td colspan="3">Group total</td><td class="num">{{ period.total_kwh|floatformat:3 }}</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr class="total-row"><td colspan="4">Total generation</td><td class="num">{{ total_kwh|floatformat:3 }}</td></tr></tfoot>
+    </table>
+  </div>
+</div>

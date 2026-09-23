@@ -20,6 +20,8 @@ from smart_meter.models import (
     EnergySystem,
     EnergySystemMeterAssignment,
     EnergySystemMeterLink,
+    Inverter,
+    InverterReading,
     InverterPeriodStatement,
     Meter,
     MeterCheckGroup,
@@ -33,6 +35,7 @@ from smart_meter.models import (
 from smart_meter.services.reconciliation import (
     PV_RESIDUAL_LABEL,
     build_energy_reconciliation,
+    build_check2_breakdown,
     calculate_check_group_period,
     confirm_bill,
     finalize_bill,
@@ -202,6 +205,345 @@ class EnergyReconciliationTests(TestCase):
         self.assertEqual(report["grid_export_kwh"], Decimal("10"))
         self.assertEqual(report["iesco_bill"].meter_number_display, "01322400009141")
 
+    def test_iesco_bills_match_issue_date_and_combine_units_and_cost(self):
+        for month, issue, reading, imported, exported, cost in (
+            ("AUG 26", "09 AUG 26", "08 AUG 26", "837", "578", "19173"),
+            ("SEP 26", "09 SEP 26", "08 SEP 26", "817", "533", "20461"),
+        ):
+            IescoBillReading.objects.create(
+                reference_no="17146151548928",
+                consumer_id=self.connection.consumer_id,
+                bill_month=month,
+                issue_date=issue,
+                reading_date=reading,
+                current_bill=cost,
+                meter_readings=[
+                    {"direction": "import", "period": "off_peak", "units": imported},
+                    {"direction": "export", "period": "off_peak", "units": exported},
+                ],
+            )
+
+        report = build_energy_reconciliation(
+            self.system, date(2026, 8, 1), date(2026, 10, 1)
+        )
+
+        self.assertEqual(len(report["iesco_bills"]), 2)
+        self.assertEqual(report["iesco_import_kwh"], Decimal("1654"))
+        self.assertEqual(report["iesco_export_kwh"], Decimal("1111"))
+        self.assertEqual(report["current_cycle_utility_cost"], Decimal("39634"))
+
+        updated_period = build_energy_reconciliation(
+            self.system, date(2026, 8, 8), date(2026, 9, 9)
+        )
+        self.assertEqual([bill.bill_month for bill in updated_period["iesco_bills"]], ["SEP 26"])
+        self.assertEqual(updated_period["iesco_import_kwh"], Decimal("817"))
+
+    def test_check2_uses_dashboard_units_times_meter_rate_not_invoice_amount(self):
+        self.billing_meter.unit_rate = Decimal("54")
+        self.billing_meter.save(update_fields=["unit_rate"])
+        MeterReading.objects.create(
+            meter=self.billing_meter,
+            ts=timezone.make_aware(datetime(2026, 8, 31, 23, 59)),
+            total_energy=Decimal("280"),
+        )
+        tenant = Tenant.objects.create(
+            first_name="Check", last_name="Two", cnic="3333333333333"
+        )
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=self.unit,
+            start_date=self.start,
+            end_date=date(2027, 7, 31),
+            monthly_rent=1000,
+        )
+        category = ItemCategory.objects.create(name="Electric Bill")
+        invoice = Invoice.objects.create(
+            lease=lease,
+            issue_date=date(2026, 8, 10),
+            due_date=date(2026, 8, 20),
+            amount=9999,
+        )
+        InvoiceItem.objects.create(
+            invoice=invoice, category=category, description="Meter billing", amount=9999
+        )
+
+        result = build_check2_breakdown(self.system, self.start, self.end)
+
+        self.assertEqual(result["billing_rows"][0]["kwh"], Decimal("80"))
+        self.assertEqual(result["billing_rows"][0]["amount"], Decimal("4320"))
+        self.assertEqual(result["billing_total_amount"], Decimal("4320"))
+        self.assertEqual(
+            result["billing_rows"][0]["display_name"],
+            f"{self.property.property_name[:8]} - {self.unit.unit_number}",
+        )
+
+    def test_check2_includes_same_unit_replacement_meter_readings(self):
+        replacement = Meter.objects.create(
+            meter_number="FIX-OLD-BILLING",
+            meter_role=Meter.METER_ROLE_BILLING,
+            meter_type=Meter.METER_TYPE_ELECTRIC,
+            unit=self.unit,
+            is_active=False,
+        )
+        MeterReading.objects.create(
+            meter=replacement, ts=self._at(self.start), total_energy=Decimal("10")
+        )
+        MeterReading.objects.create(
+            meter=replacement,
+            ts=timezone.make_aware(datetime(2026, 8, 31, 23, 59)),
+            total_energy=Decimal("25"),
+        )
+
+        result = build_check2_breakdown(self.system, self.start, self.end)
+        replacement_row = next(
+            row for row in result["billing_rows"] if row["meter"] == replacement
+        )
+
+        self.assertTrue(replacement_row["is_replacement"])
+        self.assertEqual(replacement_row["kwh"], Decimal("15"))
+        self.assertEqual(result["billing_total_kwh"], Decimal("15"))
+
+    def test_check2_same_unit_members_show_meter_names_not_replacement_labels(self):
+        self.billing_meter.name = "Inverter Main"
+        self.billing_meter.save(update_fields=["name"])
+        second = Meter.objects.create(
+            meter_number="FIX-BILLING-2",
+            name="Inverter Secondary",
+            meter_role=Meter.METER_ROLE_BILLING,
+            meter_type=Meter.METER_TYPE_ELECTRIC,
+            unit=self.unit,
+        )
+        MeterCheckGroupMembership.objects.create(
+            group=self.group, billing_meter=second, start_date=self.start
+        )
+        MeterReading.objects.create(
+            meter=second, ts=self._at(self.start), total_energy=Decimal("50")
+        )
+        MeterReading.objects.create(
+            meter=second,
+            ts=timezone.make_aware(datetime(2026, 8, 31, 23, 59)),
+            total_energy=Decimal("70"),
+        )
+
+        result = build_check2_breakdown(self.system, self.start, self.end)
+        rows = {row["meter"].pk: row for row in result["billing_rows"]}
+
+        self.assertFalse(rows[self.billing_meter.pk]["is_replacement"])
+        self.assertFalse(rows[second.pk]["is_replacement"])
+        self.assertEqual(rows[self.billing_meter.pk]["display_name"], "Inverter Main")
+        self.assertEqual(rows[second.pk]["display_name"], "Inverter Secondary")
+        self.assertEqual(len(result["unit_groups"]), 1)
+
+    def test_check2_hides_membership_without_period_readings(self):
+        empty_unit = Unit.objects.create(
+            property=self.property, unit_number="F35-FLAT# 02"
+        )
+        empty_meter = Meter.objects.create(
+            meter_number="250619510015",
+            meter_role=Meter.METER_ROLE_BILLING,
+            meter_type=Meter.METER_TYPE_ELECTRIC,
+            unit=empty_unit,
+            is_active=False,
+        )
+        MeterCheckGroupMembership.objects.create(
+            group=self.group,
+            billing_meter=empty_meter,
+            start_date=self.start,
+            end_date=self.end,
+            is_active=False,
+        )
+
+        result = build_check2_breakdown(self.system, self.start, self.end)
+
+        self.assertNotIn(
+            empty_meter.pk,
+            [row["meter"].pk for row in result["billing_rows"]],
+        )
+
+    def test_scoreboard_month_and_year_filter_sets_calendar_month(self):
+        response = self.client.get(
+            reverse("smart_meter:energy_group_scoreboard", args=[self.group.pk]),
+            {"range": "selected_month", "month": "8", "year": "2026"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["start_date"], date(2026, 8, 1))
+        self.assertEqual(response.context["end_date"], date(2026, 8, 31))
+        self.assertContains(response, 'name="month"')
+        self.assertContains(response, 'name="year"')
+        self.assertContains(response, "Audit − billing variance")
+        self.assertNotContains(response, "Billing-meter memberships")
+        self.assertContains(
+            response,
+            f"meter={self.output_meter.pk}&role=check&report_type=daily",
+        )
+        self.assertContains(
+            response,
+            f"unit={self.unit.pk}&meter={self.billing_meter.pk}"
+            "&role=billing&report_type=daily"
+            "&start=2026-08-01&end=2026-08-31",
+        )
+        self.assertContains(
+            response,
+            f"/smart-meter/energy-groups/scoreboard/{self.group.pk}/meter/"
+            f"{self.billing_meter.pk}/?start=2026-08-01&end=2026-08-31",
+        )
+
+    def test_tenant_revenue_uses_dashboard_charge_not_manual_invoice_amount(self):
+        self.billing_meter.unit_rate = Decimal("6.25")
+        self.billing_meter.save(update_fields=["unit_rate"])
+        MeterReading.objects.create(
+            meter=self.billing_meter,
+            ts=timezone.make_aware(datetime(2026, 8, 31, 23, 59)),
+            total_energy=Decimal("280"),
+        )
+        tenant = Tenant.objects.create(
+            first_name="Revenue", last_name="Check", cnic="4444444444444"
+        )
+        lease = Lease.objects.create(
+            tenant=tenant,
+            unit=self.unit,
+            start_date=self.start,
+            end_date=date(2027, 7, 31),
+            monthly_rent=1000,
+        )
+        electric = ItemCategory.objects.create(name="Electric Bill")
+        repair = ItemCategory.objects.create(name="Repair")
+        invoice = Invoice.objects.create(
+            lease=lease,
+            issue_date=date(2026, 8, 10),
+            due_date=date(2026, 8, 20),
+            amount=11600,
+        )
+        InvoiceItem.objects.create(
+            invoice=invoice, category=electric, description="Meter billing", amount=500
+        )
+        InvoiceItem.objects.create(
+            invoice=invoice, category=repair, description="Electric Repair", amount=11100
+        )
+
+        report = build_energy_reconciliation(self.system, self.start, self.end)
+
+        self.assertEqual(report["tenant_energy_revenue"], Decimal("500"))
+
+    def test_scoreboard_meter_detail_returns_dashboard_table_fragment(self):
+        IescoBillReading.objects.create(
+            reference_no="17140000000001",
+            consumer_id=self.connection.consumer_id,
+            bill_month="AUG 26",
+            issue_date="09 AUG 26",
+            reading_date="08 AUG 26",
+            current_bill="500",
+            grand_total="500",
+        )
+        url = reverse(
+            "smart_meter:energy_group_meter_detail",
+            args=[self.group.pk, self.billing_meter.pk],
+        )
+
+        response = self.client.get(url, {
+            "start": self.start.isoformat(),
+            "end": (self.end - timedelta(days=1)).isoformat(),
+        })
+
+        self.assertEqual(response.status_code, 200)
+        html = response.json()["html"]
+        self.assertIn("Meter Detail:", html)
+        self.assertIn("Period date", html)
+        self.assertIn("Group total", html)
+        self.assertIn("Audit", html)
+        self.assertIn("Diff", html)
+        self.assertIn("01 Aug 2026 to 08 Aug 2026", html)
+        self.assertIn("09 Aug 2026 to 31 Aug 2026", html)
+        self.assertIn("Open full dashboard", html)
+        self.assertIn(f"meter={self.billing_meter.pk}", html)
+
+        audit_response = self.client.get(
+            reverse(
+                "smart_meter:energy_group_meter_detail",
+                args=[self.group.pk, self.output_meter.pk],
+            ),
+            {"start": self.start.isoformat(), "end": "2026-08-31"},
+        )
+        self.assertEqual(audit_response.status_code, 200)
+        audit_html = audit_response.json()["html"]
+        self.assertIn(self.output_meter.meter_number, audit_html)
+        self.assertIn("role=check", audit_html)
+
+    def test_scoreboard_inverter_detail_groups_saved_readings(self):
+        IescoBillReading.objects.create(
+            reference_no="17140000000002",
+            consumer_id=self.connection.consumer_id,
+            bill_month="AUG 26",
+            issue_date="09 AUG 26",
+            reading_date="08 AUG 26",
+            current_bill="500",
+            grand_total="500",
+        )
+        inverter = Inverter.objects.create(
+            energy_system=self.system, name="Fixture Inverter"
+        )
+        InverterReading.objects.create(
+            inverter=inverter,
+            recorded_at=self._at(date(2026, 8, 1)),
+            reading_kwh=Decimal("100"),
+        )
+        InverterReading.objects.create(
+            inverter=inverter,
+            recorded_at=self._at(date(2026, 8, 20)),
+            reading_kwh=Decimal("150"),
+        )
+        response = self.client.get(
+            reverse(
+                "smart_meter:energy_group_inverter_detail",
+                args=[self.group.pk, inverter.pk],
+            ),
+            {"start": "2026-08-01", "end": "2026-08-31"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        html = response.json()["html"]
+        self.assertIn("Meter Detail: Fixture Inverter", html)
+        self.assertIn("01 Aug 2026 to 08 Aug 2026", html)
+        self.assertIn("09 Aug 2026 to 31 Aug 2026", html)
+        self.assertIn("150.000", html)
+
+    def test_bulk_inverter_entry_uses_one_date_and_all_inverters(self):
+        inverter_1 = Inverter.objects.create(energy_system=self.system, name="Inverter 1")
+        inverter_2 = Inverter.objects.create(energy_system=self.system, name="Inverter 2")
+        url = reverse("smart_meter:inverter_statement_add", args=[self.system.pk])
+
+        page = self.client.get(url)
+        self.assertContains(page, "Inverter 1")
+        self.assertContains(page, "Inverter 2")
+        self.assertContains(page, timezone.localdate().isoformat())
+
+        response = self.client.post(url, {
+            "reading_date": "2026-09-23",
+            f"reading_{inverter_1.pk}": "1234.5",
+            f"reading_{inverter_2.pk}": "2345.5",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(InverterReading.objects.count(), 2)
+        self.assertEqual(
+            set(InverterReading.objects.values_list("reading_kwh", flat=True)),
+            {Decimal("1234.500"), Decimal("2345.500")},
+        )
+
+    def test_legacy_unit_dashboard_uses_meter_relationship_and_ts(self):
+        self.unit.is_smart_meter = True
+        self.unit.save(update_fields=["is_smart_meter"])
+
+        response = self.client.get(
+            reverse("smart_meter:meter_dashboard", args=[self.unit.pk])
+        )
+
+        self.assertRedirects(
+            response,
+            f"{reverse('smart_meter:energy_dashboard')}?unit={self.unit.pk}",
+            fetch_redirect_response=False,
+        )
+
     def test_register_decrease_is_a_discontinuity_not_zero_clamped(self):
         grid_readings = list(self.grid_meter.readings.order_by("ts", "id"))
         grid_readings[0].reverse_active_energy_kwh = Decimal("10")
@@ -221,7 +563,14 @@ class EnergyReconciliationTests(TestCase):
         self.assertIsNone(report["net_grid_energy_kwh"])
         self.assertTrue(any("decreased" in reason for reason in report["withheld_reasons"]))
 
-    def test_financials_use_invoice_items_explicit_payment_allocation_and_utility_payments(self):
+    def test_financials_use_dashboard_charge_payment_allocation_and_utility_payments(self):
+        self.billing_meter.unit_rate = Decimal("6.25")
+        self.billing_meter.save(update_fields=["unit_rate"])
+        MeterReading.objects.create(
+            meter=self.billing_meter,
+            ts=timezone.make_aware(datetime(2026, 8, 31, 23, 59)),
+            total_energy=Decimal("280"),
+        )
         tenant = Tenant.objects.create(
             first_name="Energy", last_name="Tenant", cnic="2222222222222"
         )

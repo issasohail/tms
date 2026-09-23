@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from decimal import Decimal
+import re
 from typing import Any
 
 from django.core.exceptions import ValidationError
@@ -32,6 +33,14 @@ UNCONFIRMED_EXPORT_REASON = "Output meter's export path is not confirmed"
 NO_EXACT_BILL_REASON = "No confirmed utility bill exactly matches this period; export is not prorated"
 PV_RESIDUAL_LABEL = "PV/Storage Residual — battery movement unavailable"
 PROVISIONAL_SYNC_TOLERANCE = timedelta(minutes=15)
+
+
+def _natural_text_key(value):
+    return tuple(
+        (0, int(part)) if part.isdigit() else (1, part.lower())
+        for part in re.split(r"(\d+)", value or "")
+        if part
+    )
 
 
 def _latest_reading_for_meter(meter):
@@ -398,11 +407,9 @@ def linked_meter_period_delta(system, side, start_date, end_date, *, field_name=
 
 def build_check2_breakdown(system, start_date, end_date):
     """Meter-by-meter rows backing Check 2 (Output Distribution): begin/end reading,
-    units, and billed amount for the output meter(s) and every billing meter, so the
+    units, and dashboard usage charge for the output meter(s) and every billing meter, so the
     on-screen variance can be traced back to its source readings instead of just a
     single number."""
-    from invoices.models import InvoiceItem
-
     output_meter_ids = list(
         EnergySystemMeterLink.objects.filter(
             energy_system=system, side=EnergySystemMeterLink.SIDE_OUTPUT
@@ -414,60 +421,188 @@ def build_check2_breakdown(system, start_date, end_date):
         else [system.output_group.check_meter]
     )
 
+    def dashboard_summary(meter, segment_start, segment_end):
+        """Use the same chained readings shown by the main dashboard.
+
+        The reconciliation report remains strict about 24-hour boundary readings,
+        but Check 2 is an operational list and should mirror the dashboard figures
+        the user can already inspect for each billing meter.
+        """
+        from smart_meter.views_dashboard import _per_meter_series
+
+        period_start_at = _aware_midnight(segment_start)
+        period_end_at = _aware_midnight(segment_end)
+        has_period_readings = MeterReading.objects.filter(
+            meter=meter,
+            ts__gte=period_start_at,
+            ts__lt=period_end_at,
+        ).exists()
+        inclusive_end = max(segment_start, segment_end - timedelta(days=1))
+        _labels, _datasets, rows, totals = _per_meter_series(
+            Meter.objects.filter(pk=meter.pk), segment_start, inclusive_end, "daily"
+        )
+        valid_rows = [row for row in rows if row.get("usage_valid", True)]
+        if not valid_rows:
+            return {
+                "begin": None,
+                "end": None,
+                "kwh": None,
+                "valid": False,
+                "reason": "No dashboard readings are available for this period",
+                "has_period_readings": has_period_readings,
+                "amount": ZERO,
+                "reverse_kwh": ZERO,
+            }
+        first = valid_rows[0]
+        last = valid_rows[-1]
+        return {
+            "begin": first.get("display_start_kwh", first.get("start_kwh")),
+            "end": last.get("display_end_kwh", last.get("end_kwh")),
+            "kwh": Decimal(str(totals["total_kwh"])),
+            "valid": len(valid_rows) == len(rows),
+            "has_period_readings": has_period_readings,
+            "amount": Decimal(str(totals["usage_charges"])),
+            "reverse_kwh": Decimal(str(totals["total_reverse_kwh"])),
+            "reason": "; ".join(
+                dict.fromkeys(
+                    row.get("continuity_reason", "")
+                    for row in rows
+                    if not row.get("usage_valid", True) and row.get("continuity_reason")
+                )
+            ),
+        }
+
     output_rows = []
     for meter in output_meters:
-        delta = meter_period_delta(meter, start_date, end_date)
+        delta = dashboard_summary(meter, start_date, end_date)
         output_rows.append({
             "meter": meter,
-            "begin": delta["start"].value,
-            "end": delta["end"].value,
+            "begin": delta["begin"],
+            "end": delta["end"],
             "kwh": delta["kwh"],
+            "reverse_kwh": delta["reverse_kwh"],
             "valid": delta["valid"],
             "reason": delta["reason"],
         })
     output_valid = bool(output_rows) and all(row["valid"] for row in output_rows)
-    output_total = (
-        sum((row["kwh"] for row in output_rows), ZERO) if output_valid else None
-    )
+    output_total = sum(
+        (row["kwh"] for row in output_rows if row["kwh"] is not None), ZERO
+    ) if output_rows else None
 
     billing_rows = []
     billing_total = ZERO
+    billing_reverse_total = ZERO
     billing_valid = True
     billing_amount_total = ZERO
-    for membership in system.output_group.memberships.filter(start_date__lt=end_date).filter(
-        Q(end_date__isnull=True) | Q(end_date__gt=start_date)
-    ).select_related("billing_meter", "billing_meter__unit", "billing_meter__unit__property"):
+    processed_meter_ids = set()
+    memberships = list(
+        system.output_group.memberships.filter(start_date__lt=end_date).filter(
+            Q(end_date__isnull=True) | Q(end_date__gt=start_date)
+        ).select_related(
+            "billing_meter", "billing_meter__unit", "billing_meter__unit__property"
+        ).order_by(
+            "billing_meter__unit__unit_number", "-is_active", "-start_date", "pk"
+        )
+    )
+    membership_meter_ids = {membership.billing_meter_id for membership in memberships}
+    membership_by_meter_id = {
+        membership.billing_meter_id: membership for membership in memberships
+    }
+    for membership in memberships:
         segment_start = max(start_date, membership.start_date)
         segment_end = min(end_date, membership.end_date or end_date)
-        delta = meter_period_delta(membership.billing_meter, segment_start, segment_end)
-        amount = ZERO
-        if membership.billing_meter.unit_id:
-            amount = InvoiceItem.objects.filter(
-                invoice__issue_date__gte=segment_start,
-                invoice__issue_date__lt=segment_end,
-                invoice__lease__unit_id=membership.billing_meter.unit_id,
-            ).exclude(
-                invoice__lifecycle_status__in=("cancelled", "void")
-            ).filter(
-                Q(category__name__iexact="Electric")
-                | Q(category__name__iexact="Electricity")
-                | Q(description__icontains="electric")
-            ).aggregate(total=Sum("amount"))["total"] or ZERO
-        if delta["valid"]:
-            billing_total += delta["kwh"]
+        unit_id = membership.billing_meter.unit_id
+        candidate_ids = [membership.billing_meter_id]
+        if unit_id:
+            reading_meter_ids = MeterReading.objects.filter(
+                meter__unit_id=unit_id,
+                meter__meter_role=Meter.METER_ROLE_BILLING,
+                meter__meter_type=Meter.METER_TYPE_ELECTRIC,
+                ts__gte=_aware_midnight(segment_start),
+                ts__lt=_aware_midnight(segment_end),
+            ).values_list("meter_id", flat=True).distinct()
+            candidate_ids.extend(reading_meter_ids)
+        candidates = list(
+            Meter.objects.filter(pk__in=dict.fromkeys(candidate_ids))
+            .select_related("unit", "unit__property")
+            .order_by("is_active", "meter_number")
+        )
+        for meter in candidates:
+            if meter.pk in processed_meter_ids:
+                continue
+            delta = dashboard_summary(meter, segment_start, segment_end)
+            meter_amount = delta["amount"]
+            if (
+                delta["kwh"] is None
+                and not delta["has_period_readings"]
+                and not meter_amount
+            ):
+                continue
+            processed_meter_ids.add(meter.pk)
+            if delta["kwh"] is not None:
+                billing_total += delta["kwh"]
+            billing_reverse_total += delta["reverse_kwh"]
+            billing_amount_total += meter_amount
+            if not delta["valid"]:
+                billing_valid = False
+            billing_rows.append({
+                "meter": meter,
+                "unit": meter.unit or membership.billing_meter.unit,
+                "begin": delta["begin"],
+                "end": delta["end"],
+                "kwh": delta["kwh"],
+                "reverse_kwh": delta["reverse_kwh"],
+                "amount": meter_amount,
+                "unit_rate": Decimal(str(meter.effective_unit_rate or ZERO)),
+                "valid": delta["valid"],
+                "reason": delta["reason"],
+                "is_replacement": meter.pk not in membership_meter_ids,
+                "membership": membership_by_meter_id.get(meter.pk),
+            })
+
+    billing_rows.sort(key=lambda row: (
+        _natural_text_key(getattr(row["unit"], "unit_number", "") or ""),
+        row["meter"].meter_number,
+    ))
+    unit_counts = {}
+    for row in billing_rows:
+        unit_id = getattr(row["unit"], "pk", None)
+        unit_counts[unit_id] = unit_counts.get(unit_id, 0) + 1
+    unit_groups_by_id = {}
+    for sequence, row in enumerate(billing_rows, start=1):
+        row["sequence"] = sequence
+        unit_id = getattr(row["unit"], "pk", None)
+        multiple = unit_counts.get(unit_id, 0) > 1
+        if multiple:
+            row["display_name"] = row["meter"].name or row["meter"].meter_number
         else:
-            billing_valid = False
-        billing_amount_total += amount
-        billing_rows.append({
-            "meter": membership.billing_meter,
-            "unit": membership.billing_meter.unit,
-            "begin": delta["start"].value,
-            "end": delta["end"].value,
-            "kwh": delta["kwh"],
-            "amount": amount,
-            "valid": delta["valid"],
-            "reason": delta["reason"],
+            property_name = getattr(
+                getattr(row["unit"], "property", None), "property_name", ""
+            )
+            property_name = property_name[:8]
+            unit_name = getattr(row["unit"], "unit_number", "")
+            row["display_name"] = " - ".join(
+                part for part in (property_name, unit_name) if part
+            )
+        group = unit_groups_by_id.setdefault(unit_id, {
+            "unit": row["unit"],
+            "rows": [],
+            "total_kwh": ZERO,
+            "total_reverse_kwh": ZERO,
+            "total_amount": ZERO,
         })
+        group["rows"].append(row)
+        group["total_kwh"] += row["kwh"] or ZERO
+        group["total_reverse_kwh"] += row["reverse_kwh"] or ZERO
+        group["total_amount"] += row["amount"] or ZERO
+    unit_groups = list(unit_groups_by_id.values())
+    for unit_group in unit_groups:
+        unit_group["average_rate"] = (
+            (unit_group["total_amount"] / unit_group["total_kwh"]).quantize(
+                Decimal("0.01")
+            )
+            if unit_group["total_kwh"] else None
+        )
 
     variance = (
         output_total - billing_total
@@ -479,34 +614,28 @@ def build_check2_breakdown(system, start_date, end_date):
         "output_rows": output_rows,
         "output_total_kwh": output_total,
         "billing_rows": billing_rows,
-        "billing_total_kwh": billing_total if billing_valid else None,
+        "unit_groups": unit_groups,
+        "billing_total_kwh": billing_total,
+        "billing_total_reverse_kwh": billing_reverse_total,
         "billing_total_amount": billing_amount_total,
+        "billing_incomplete": not billing_valid,
         "variance_kwh": variance,
     }
 
 
 def iesco_bill_history(system, limit=6):
-    """Recent confirmed IESCO bills for this system's connection, read straight from the
-    invoices app's own record (the single source of truth) rather than re-fetched or
-    duplicated here."""
-    from invoices.models import IescoBillReading
-
-    try:
-        connection = system.utility_connection
-    except UtilityConnection.DoesNotExist:
-        return []
-    lookup = Q()
-    if connection.reference_no:
-        lookup |= Q(reference_no=connection.reference_no)
-    if connection.consumer_id:
-        lookup |= Q(consumer_id=connection.consumer_id)
-    if not lookup:
-        return []
-    return list(
-        IescoBillReading.objects.filter(
-            lookup, trust_status=IescoBillReading.TRUST_CONFIRMED, confirmed_at__isnull=False
-        ).order_by("-confirmed_at", "-received_at", "-pk")[:limit]
+    """Recent saved IESCO bills for this system's connection, from the Invoices app."""
+    bills = list(_iesco_invoice_queryset(system))
+    bills.sort(
+        key=lambda bill: (
+            _parse_iesco_date(bill.issue_date)
+            or _parse_iesco_date(bill.reading_date)
+            or datetime.min.date(),
+            bill.pk,
+        ),
+        reverse=True,
     )
+    return bills[:limit]
 
 
 def inverter_reading_period_delta(inverter, start_date, end_date):
@@ -573,15 +702,45 @@ def build_inverter_breakdown(system, start_date, end_date):
 
 
 def iesco_display_bill(system, start_date, end_date):
-    """Bill to show on screen even if it doesn't land exactly inside the selected range —
-    so the reading date/bill month are visible and the person can adjust the range to match,
-    instead of the screen just going blank. Financial totals still use the strict exact-period
-    match in build_energy_reconciliation; this is for display only."""
-    exact = _iesco_invoice_bill(system, start_date, end_date)
-    if exact:
-        return {"bill": exact, "is_exact_match": True}
-    latest = _iesco_invoice_bill(system)
-    return {"bill": latest, "is_exact_match": False}
+    """Bill details, aggregate values, and reading interval for scoreboard display."""
+    selected = _iesco_invoice_bills(system, start_date, end_date)
+    all_bills = list(_iesco_invoice_queryset(system))
+    all_bills.sort(key=lambda bill: (
+        _parse_iesco_date(bill.reading_date) or datetime.min.date(), bill.pk
+    ))
+    shown = selected or (all_bills[-1:] if all_bills else [])
+    if not shown:
+        return {"bill": None, "bills": [], "is_exact_match": False}
+
+    shown_ids = {bill.pk for bill in shown}
+    first_index = next(
+        (index for index, bill in enumerate(all_bills) if bill.pk in shown_ids), 0
+    )
+    reading_dates = [
+        parsed for parsed in (_parse_iesco_date(bill.reading_date) for bill in shown)
+        if parsed is not None
+    ]
+    period_start = (
+        _parse_iesco_date(all_bills[first_index - 1].reading_date)
+        if first_index > 0 else (min(reading_dates) if reading_dates else None)
+    )
+    period_end = max(reading_dates) if reading_dates else None
+    return {
+        "bill": shown[-1],
+        "bills": shown,
+        "is_exact_match": bool(selected),
+        "period_start": period_start,
+        "period_end": period_end,
+        "import_kwh": sum(
+            (Decimal(bill.import_units) for bill in shown if bill.import_units is not None), ZERO
+        ),
+        "export_kwh": sum(
+            (Decimal(bill.export_units) for bill in shown if bill.export_units is not None), ZERO
+        ),
+        "bill_cost": sum(
+            (bill.current_bill_amount for bill in shown if bill.current_bill_amount is not None), ZERO
+        ),
+    }
 
 
 def _exact_bill(system, start_date, end_date):
@@ -600,43 +759,84 @@ def _exact_bill(system, start_date, end_date):
     )
 
 
-def _iesco_invoice_bill(system, start_date=None, end_date=None):
-    """Read the IESCO source record directly; never duplicate it in smart_meter."""
+def _parse_iesco_date(value):
+    value = (value or "").strip()
+    for date_format in ("%d %b %y", "%d %B %y", "%Y-%m-%d", "%d-%b-%Y"):
+        try:
+            return datetime.strptime(value, date_format).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _iesco_invoice_queryset(system):
+    """All saved IESCO records for the linked connection, regardless of review state."""
     from invoices.models import IescoBillReading
 
     try:
         connection = system.utility_connection
     except UtilityConnection.DoesNotExist:
-        return None
+        return IescoBillReading.objects.none()
     lookup = Q()
     if connection.reference_no:
         lookup |= Q(reference_no=connection.reference_no)
     if connection.consumer_id:
         lookup |= Q(consumer_id=connection.consumer_id)
     if not lookup:
-        return None
-    bills = IescoBillReading.objects.filter(
-        lookup, trust_status=IescoBillReading.TRUST_CONFIRMED, confirmed_at__isnull=False
-    ).order_by("-confirmed_at", "-received_at", "-pk")
+        return IescoBillReading.objects.none()
+    return IescoBillReading.objects.filter(lookup).order_by("received_at", "pk")
+
+
+def _iesco_invoice_bills(system, start_date, end_date):
+    """Return saved bills whose issue date falls inside the requested period."""
+    source_bills = list(_iesco_invoice_queryset(system))
+    source_bills.sort(key=lambda bill: (
+        _parse_iesco_date(bill.reading_date) or datetime.min.date(), bill.pk
+    ))
+
+    # "Update Period" changes the screen to the meter-reading interval. Prefer
+    # the bill whose previous/current reading dates exactly define that interval,
+    # even when an older bill's issue date also happens to sit inside it.
+    exact_period = []
+    selected_end = end_date - timedelta(days=1)
+    for index, bill in enumerate(source_bills):
+        current_reading = _parse_iesco_date(bill.reading_date)
+        previous_reading = (
+            _parse_iesco_date(source_bills[index - 1].reading_date)
+            if index > 0 else current_reading
+        )
+        if previous_reading == start_date and current_reading == selected_end:
+            exact_period.append(bill)
+    if exact_period:
+        return exact_period
+
+    bills = []
+    for bill in source_bills:
+        # Older imported records may predate issue-date extraction; keep their
+        # established reading-date behavior as a compatibility fallback.
+        issue_date = _parse_iesco_date(bill.issue_date) or _parse_iesco_date(bill.reading_date)
+        if issue_date is not None and start_date <= issue_date < end_date:
+            bills.append(bill)
+    bills.sort(key=lambda bill: (_parse_iesco_date(bill.issue_date), bill.pk))
+    return bills
+
+
+def _iesco_invoice_bill(system, start_date=None, end_date=None):
+    """Latest saved bill, or the latest bill issued inside a selected period."""
+    bills = list(_iesco_invoice_queryset(system))
     if start_date is None or end_date is None:
-        return bills.first()
-    for bill in bills[:24]:
-        reading_date = None
-        for date_format in ("%d %b %y", "%d %B %y", "%Y-%m-%d"):
-            try:
-                reading_date = datetime.strptime(
-                    (bill.reading_date or "").strip(), date_format
-                ).date()
-                break
-            except ValueError:
-                continue
-        if reading_date is not None and start_date <= reading_date < end_date:
-            return bill
-    return None
+        bills.sort(key=lambda bill: (
+            _parse_iesco_date(bill.issue_date)
+            or _parse_iesco_date(bill.reading_date)
+            or datetime.min.date(),
+            bill.pk,
+        ))
+        return bills[-1] if bills else None
+    selected = _iesco_invoice_bills(system, start_date, end_date)
+    return selected[-1] if selected else None
 
 
 def _tenant_financials(system, start_date, end_date):
-    from invoices.models import InvoiceItem
     from payments.models import PaymentDetail
 
     meter_ids = list(
@@ -645,23 +845,9 @@ def _tenant_financials(system, start_date, end_date):
         .values_list("billing_meter_id", flat=True)
         .distinct()
     )
-    unit_ids = list(
-        Meter.objects.filter(pk__in=meter_ids, unit_id__isnull=False)
-        .values_list("unit_id", flat=True)
-        .distinct()
-    )
-    energy_items = InvoiceItem.objects.filter(
-        invoice__issue_date__gte=start_date,
-        invoice__issue_date__lt=end_date,
-        invoice__lease__unit_id__in=unit_ids,
-    ).exclude(
-        invoice__lifecycle_status__in=("cancelled", "void")
-    ).filter(
-        Q(category__name__iexact="Electric")
-        | Q(category__name__iexact="Electricity")
-        | Q(description__icontains="electric")
-    )
-    revenue = energy_items.aggregate(total=Sum("amount"))["total"] or ZERO
+    # Revenue is the Energy Dashboard usage charge (valid metered units x the
+    # meter's configured rate), never a manually editable invoice amount.
+    revenue = build_check2_breakdown(system, start_date, end_date)["billing_total_amount"]
     collections = (
         PaymentDetail.objects.filter(
             payment__payment_date__gte=start_date,
@@ -729,21 +915,36 @@ def build_energy_reconciliation(system, start_date, end_date):
         else {"kwh": None, "valid": False, "reason": "No grid-interface meter is assigned"}
     )
     bill = _exact_bill(system, start_date, end_date)
-    iesco_bill = _iesco_invoice_bill(system, start_date, end_date)
+    iesco_bills = _iesco_invoice_bills(system, start_date, end_date)
+    iesco_bill = iesco_bills[-1] if iesco_bills else None
+    iesco_import_kwh = (
+        sum(
+            (Decimal(item.import_units) for item in iesco_bills if item.import_units is not None),
+            ZERO,
+        )
+        if iesco_bills else None
+    )
+    iesco_export_kwh = (
+        sum(
+            (Decimal(item.export_units) for item in iesco_bills if item.export_units is not None),
+            ZERO,
+        )
+        if iesco_bills else None
+    )
     export_kwh = (
-        Decimal(iesco_bill.export_units)
-        if iesco_bill and iesco_bill.export_units is not None
+        iesco_export_kwh
+        if iesco_export_kwh is not None
         else Decimal(bill.export_kwh) if bill else None
     )
     output_kwh = output["kwh"]
     import_kwh = (
-        Decimal(iesco_bill.import_units)
-        if iesco_bill and iesco_bill.import_units is not None
+        iesco_import_kwh
+        if iesco_import_kwh is not None
         else grid_import["kwh"]
     )
     grid_export_kwh = (
-        Decimal(iesco_bill.export_units)
-        if iesco_bill and iesco_bill.export_units is not None
+        iesco_export_kwh
+        if iesco_export_kwh is not None
         else grid_export["kwh"]
     )
     net_grid_kwh = (
@@ -805,8 +1006,11 @@ def build_energy_reconciliation(system, start_date, end_date):
 
     tenant_revenue, tenant_collections = _tenant_financials(system, start_date, end_date)
     utility_cost = (
-        iesco_bill.current_bill_amount
-        if iesco_bill
+        sum(
+            (item.current_bill_amount for item in iesco_bills if item.current_bill_amount is not None),
+            ZERO,
+        )
+        if iesco_bills
         else Decimal(bill.current_cycle_utility_cost) if bill else None
     )
     operating_margin = tenant_revenue - utility_cost if utility_cost is not None else None
@@ -840,7 +1044,10 @@ def build_energy_reconciliation(system, start_date, end_date):
         "export_kwh": export_kwh,
         "exact_bill": bill,
         "iesco_bill": iesco_bill,
-        "grid_source": "IESCO confirmed bill" if iesco_bill else "Smart meter",
+        "iesco_bills": iesco_bills,
+        "iesco_import_kwh": iesco_import_kwh,
+        "iesco_export_kwh": iesco_export_kwh,
+        "grid_source": "IESCO invoice" if iesco_bill else "Smart meter",
         "building_consumption_kwh": building_consumption,
         "distribution_variance_kwh": distribution_variance,
         "raw_output_to_billing_difference_kwh": raw_difference,

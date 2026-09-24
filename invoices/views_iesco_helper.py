@@ -17,8 +17,18 @@ from django.views.decorators.http import require_GET, require_POST
 
 from accounts.access import restrict_queryset_to_properties
 from properties.models import Unit
-from .models import IescoHelperDevice, IescoHelperFetchRun, IescoHelperPairing, IescoStandaloneMeter
+from .models import (
+    IescoBillReading,
+    IescoHelperDevice,
+    IescoHelperFetchRun,
+    IescoHelperPairing,
+    IescoStandaloneMeter,
+)
 from .services_iesco import save_bill_payload
+
+
+CURRENT_HELPER_VERSION = "2.2"
+MAX_BILL_PDF_BYTES = 10 * 1024 * 1024
 
 
 def _digest(token):
@@ -142,7 +152,7 @@ def exchange_pairing(request):
         pairing.device, pairing.used_at, pairing.status = device, timezone.now(), "paired"
         pairing.save(update_fields=["device", "used_at", "status"])
         run = None
-        if version == "2.1":
+        if version == CURRENT_HELPER_VERSION:
             run = IescoHelperFetchRun.objects.create(device=device, requested_by=pairing.requested_by, pairing=pairing)
     response = JsonResponse({"device_token": credential, "device_id": str(device_id),
                              "run_id": str(run.pk) if run else None})
@@ -180,6 +190,53 @@ def ingest(request):
     return JsonResponse({"status": "ok", "id": reading.pk}, status=201)
 
 
+@csrf_exempt
+@require_POST
+def upload_pdf(request):
+    """Archive the actual PITC page printed by the paired Windows helper."""
+    device = _device(request)
+    if not device:
+        return JsonResponse({"error": "device revoked or unauthorized"}, status=401)
+    try:
+        content_length = int(request.META.get("CONTENT_LENGTH") or 0)
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "invalid request size"}, status=400)
+    if content_length > MAX_BILL_PDF_BYTES + 64 * 1024:
+        return JsonResponse({"error": "PDF files cannot exceed 10 MB"}, status=413)
+    try:
+        reading_id = int(request.POST["reading_id"])
+    except (KeyError, TypeError, ValueError):
+        return JsonResponse({"error": "invalid reading"}, status=400)
+    upload = request.FILES.get("bill_pdf")
+    if upload is None:
+        return JsonResponse({"error": "PDF file is required"}, status=400)
+    if upload.size > MAX_BILL_PDF_BYTES:
+        return JsonResponse({"error": "PDF files cannot exceed 10 MB"}, status=413)
+    header = upload.read(5)
+    upload.seek(0)
+    if header != b"%PDF-":
+        return JsonResponse({"error": "invalid PDF"}, status=400)
+
+    with transaction.atomic():
+        reading = IescoBillReading.objects.select_for_update().filter(pk=reading_id).first()
+        if reading is None:
+            return JsonResponse({"error": "bill reading not found"}, status=404)
+        if reading.reference_no not in _refs_for(device.paired_by):
+            return JsonResponse({"error": "reference is not active"}, status=403)
+        if reading.bill_pdf:
+            return JsonResponse(
+                {"status": "exists", "id": reading.pk, "path": reading.bill_pdf.name}
+            )
+        filename = f"IESCO-{reading.reference_no}-{reading.bill_month}.pdf"
+        reading.bill_pdf.save(filename, upload, save=False)
+        reading.pdf_uploaded_at = timezone.now()
+        reading.save(update_fields=["bill_pdf", "pdf_uploaded_at", "updated_at"])
+    return JsonResponse(
+        {"status": "archived", "id": reading.pk, "path": reading.bill_pdf.name},
+        status=201,
+    )
+
+
 def _run_data(run):
     return {"id": str(run.pk), "status": run.status, "total": run.total,
             "completed": run.completed, "succeeded": run.succeeded,
@@ -205,7 +262,7 @@ def start_fetch_run(request):
         pk=pairing_id, requested_by=request.user, status="paired", device__is_active=True).first()
     if not pairing:
         return JsonResponse({"error": "Connect this computer again."}, status=400)
-    if pairing.device.helper_version != "2.1":
+    if pairing.device.helper_version != CURRENT_HELPER_VERSION:
         return JsonResponse({"error": "Install the latest helper and connect this computer again to show fetch progress."}, status=400)
     reference = request.POST.get("reference_no", "").strip()
     if reference and reference not in _refs_for(request.user):
@@ -227,8 +284,16 @@ def fetch_run_status(request, pk):
     run = IescoHelperFetchRun.objects.filter(pk=pk, requested_by=request.user, device__is_active=True).first()
     if not run:
         return JsonResponse({"error": "Fetch not found."}, status=404)
-    if run.status in ("queued", "running") and run.updated_at < timezone.now() - timedelta(minutes=10):
-        run.status, run.message = "failed", "The helper stopped reporting progress. Try again."
+    queued_timeout = run.status == "queued" and run.updated_at < timezone.now() - timedelta(seconds=30)
+    running_timeout = run.status == "running" and run.updated_at < timezone.now() - timedelta(minutes=10)
+    if queued_timeout or running_timeout:
+        run.status = "failed"
+        run.message = (
+            "The local IESCO Helper did not start. Allow the browser prompt if it appears; "
+            "otherwise open Helper, run the installer, and connect this computer again."
+            if queued_timeout else
+            "The helper stopped reporting progress. Try again."
+        )
         run.save(update_fields=["status", "message", "updated_at"])
     return JsonResponse(_run_data(run))
 

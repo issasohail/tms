@@ -327,7 +327,7 @@
         <p id="iescoHelperStatus" role="status" aria-live="polite">{% if request.is_secure %}Helper not installed or not connected.{% else %}Open TMS over HTTPS to connect this computer.{% endif %}</p>
         <form id="iescoPairForm" method="post" action="{% url 'invoices:iesco_helper_pair' %}">{% csrf_token %}
           <div class="d-grid gap-2">
-            <div><div class="small fw-semibold mb-1">Step 1: Download and install</div><a id="iescoHelperDownload" class="btn btn-primary" href="{% url 'invoices:iesco_helper_download' %}"><i class="fas fa-download me-1"></i>Download IESCO Helper Setup</a><div class="form-text">Install once. The same helper runs every later Fetch or Fetch All; you may delete the downloaded setup afterward.</div></div>
+            <div><div class="small fw-semibold mb-1">Step 1: Download and install</div><a id="iescoHelperDownload" class="btn btn-primary" href="{% url 'invoices:iesco_helper_download' %}"><i class="fas fa-download me-1"></i>Download IESCO Helper Setup</a><div class="form-text">Install once. It starts only when you click Fetch or Fetch All, archives the actual PITC bill PDF, then exits; it does not run at Windows startup.</div></div>
             <div><div class="small fw-semibold mb-1">Step 2: Connect and fetch all</div><button id="iescoHelperConnect" class="btn btn-success" type="submit">Connect This Computer &amp; Fetch All</button>{% if not request.is_secure %}<div class="form-text">Open TMS over HTTPS to connect. This HTTP page is for local development.</div>{% endif %}</div>
           </div>
         </form>
@@ -1498,7 +1498,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!response.ok) throw new Error('Could not check helper status (HTTP ' + response.status + ').');
       const data = await response.json();
       if (data.status === 'paired') {
-        if (data.helper_version !== '2.1') {
+        if (data.helper_version !== '2.2') {
           paired = false;
           needsUpdate = true;
           setStatus('This computer has the old IESCO helper. Download and run the latest setup in Step 1, then click Step 2 again.', false, true);
@@ -1507,7 +1507,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         paired = true;
         needsUpdate = false;
-        setStatus('Connected: ' + data.device, true);
+        setStatus('Ready: ' + data.device + ' (starts only when Fetch is clicked)', true);
         clearInterval(timer);
         if (data.run_id && (waitingForPair || data.run_status === 'queued' || data.run_status === 'running')) {
           watchRun(data.run_id);

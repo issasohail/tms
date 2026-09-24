@@ -206,6 +206,9 @@ class EnergyReconciliationTests(TestCase):
         self.assertEqual(report["iesco_bill"].meter_number_display, "01322400009141")
 
     def test_iesco_bills_match_issue_date_and_combine_units_and_cost(self):
+        # Production seed migrations contain this real reference/month. Keep the
+        # test fixture isolated so it can exercise its own two-bill period.
+        IescoBillReading.objects.filter(reference_no="17146151548928").delete()
         for month, issue, reading, imported, exported, cost in (
             ("AUG 26", "09 AUG 26", "08 AUG 26", "837", "578", "19173"),
             ("SEP 26", "09 SEP 26", "08 SEP 26", "817", "533", "20461"),

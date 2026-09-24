@@ -1,4 +1,5 @@
 import json
+import tempfile
 from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -8,9 +9,12 @@ from bs4 import BeautifulSoup
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+
+from properties.models import Unit
 
 from .models import IescoBillReading, IescoHelperDevice, IescoHelperFetchRun, IescoHelperPairing, IescoStandaloneMeter, Invoice
 
@@ -24,6 +28,10 @@ class IescoHelperTests(TestCase):
         self.exchange_url = reverse("invoices:iesco_helper_exchange")
         self.refs_url = reverse("invoices:iesco_device_references")
         self.ingest_url = reverse("invoices:iesco_device_ingest")
+        self.pdf_url = reverse("invoices:iesco_device_pdf")
+        IescoBillReading.objects.all().delete()
+        Unit.objects.update(iesco_bill_active=False)
+        IescoStandaloneMeter.objects.all().delete()
         IescoStandaloneMeter.objects.create(reference_no="17146151548911", description="Active meter", is_active=True)
         IescoStandaloneMeter.objects.create(reference_no="17146151548912", description="Inactive meter", is_active=False)
 
@@ -129,7 +137,7 @@ class IescoHelperTests(TestCase):
     def test_connect_creates_fetch_all_run_and_reports_progress(self):
         created = self.create_request()
         pairing_token = parse_qs(urlsplit(created["url"]).query)["token"][0]
-        exchanged = self.exchange(pairing_token, version="2.1")
+        exchanged = self.exchange(pairing_token, version="2.2")
         self.assertEqual(exchanged.status_code, 200)
         data = exchanged.json()
         run_id = data["run_id"]
@@ -151,7 +159,7 @@ class IescoHelperTests(TestCase):
     def test_manual_fetch_run_requires_current_pairing_and_active_reference(self):
         created = self.create_request()
         pairing_token = parse_qs(urlsplit(created["url"]).query)["token"][0]
-        data = self.exchange(pairing_token, version="2.1").json()
+        data = self.exchange(pairing_token, version="2.2").json()
         auto = IescoHelperFetchRun.objects.get(pk=data["run_id"])
         auto.status = "completed"
         auto.save(update_fields=["status"])
@@ -161,6 +169,98 @@ class IescoHelperTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("tms-iesco://fetch?run=", response.json()["url"])
         self.assertEqual(self.client.post(start_url, {"pairing_id": created["id"]}).status_code, 409)
+
+    def test_queued_run_fails_quickly_when_local_helper_does_not_start(self):
+        created = self.create_request()
+        pairing_token = parse_qs(urlsplit(created["url"]).query)["token"][0]
+        data = self.exchange(pairing_token, version="2.2").json()
+        run = IescoHelperFetchRun.objects.get(pk=data["run_id"])
+        IescoHelperFetchRun.objects.filter(pk=run.pk).update(
+            updated_at=timezone.now() - timedelta(seconds=31)
+        )
+
+        response = self.client.get(reverse("invoices:iesco_helper_run_status", args=[run.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "failed")
+        self.assertIn("did not start", response.json()["message"])
+
+    def test_paired_helper_archives_actual_pdf_once(self):
+        token = self.paired_token()
+        headers = {"HTTP_AUTHORIZATION": "Bearer " + token}
+        reading = IescoBillReading.objects.create(
+            reference_no="17146151548911",
+            bill_month="SEP 26",
+            grand_total="100",
+        )
+        self.assertEqual(
+            self.client.post(
+                self.pdf_url,
+                {
+                    "reading_id": reading.pk,
+                    "bill_pdf": SimpleUploadedFile("bill.pdf", b"%PDF-1.4\nPITC"),
+                },
+            ).status_code,
+            401,
+        )
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            uploaded = self.client.post(
+                self.pdf_url,
+                {
+                    "reading_id": reading.pk,
+                    "bill_pdf": SimpleUploadedFile(
+                        "bill.pdf",
+                        b"%PDF-1.4\nPITC",
+                        content_type="application/pdf",
+                    ),
+                },
+                **headers,
+            )
+            self.assertEqual(uploaded.status_code, 201)
+            self.assertEqual(uploaded.json()["status"], "archived")
+            reading.refresh_from_db()
+            self.assertEqual(
+                reading.bill_pdf.name,
+                "invoices/iesco_bill_pdfs/17146151548911/SEP-26.pdf",
+            )
+            with reading.bill_pdf.open("rb") as stored:
+                self.assertEqual(stored.read(), b"%PDF-1.4\nPITC")
+
+            duplicate = self.client.post(
+                self.pdf_url,
+                {
+                    "reading_id": reading.pk,
+                    "bill_pdf": SimpleUploadedFile(
+                        "replacement.pdf",
+                        b"%PDF-1.4\nREPLACEMENT",
+                        content_type="application/pdf",
+                    ),
+                },
+                **headers,
+            )
+            self.assertEqual(duplicate.status_code, 200)
+            self.assertEqual(duplicate.json()["status"], "exists")
+            with reading.bill_pdf.open("rb") as stored:
+                self.assertEqual(stored.read(), b"%PDF-1.4\nPITC")
+
+    def test_paired_helper_rejects_invalid_pdf(self):
+        token = self.paired_token()
+        reading = IescoBillReading.objects.create(
+            reference_no="17146151548911", bill_month="OCT 26"
+        )
+        response = self.client.post(
+            self.pdf_url,
+            {
+                "reading_id": reading.pk,
+                "bill_pdf": SimpleUploadedFile(
+                    "bill.pdf", b"not a pdf", content_type="application/pdf"
+                ),
+            },
+            HTTP_AUTHORIZATION="Bearer " + token,
+        )
+        self.assertEqual(response.status_code, 400)
+        reading.refresh_from_db()
+        self.assertFalse(reading.bill_pdf)
 
     @patch("invoices.services_iesco.get_bill")
     def test_django_server_does_not_fetch_pitc(self, pitc):

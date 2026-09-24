@@ -163,6 +163,7 @@ urlpatterns = [
     path("api/iesco-helper/pair/", views_iesco_helper.exchange_pairing, name="iesco_helper_exchange"),
     path("api/iesco-helper/references/", views_iesco_helper.active_references, name="iesco_device_references"),
     path("api/iesco-helper/ingest/", views_iesco_helper.ingest, name="iesco_device_ingest"),
+    path("api/iesco-helper/pdf/", views_iesco_helper.upload_pdf, name="iesco_device_pdf"),
     path("api/iesco-helper/runs/<uuid:pk>/progress/", views_iesco_helper.update_fetch_run, name="iesco_device_run_progress"),
 
 

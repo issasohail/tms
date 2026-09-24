@@ -127,6 +127,7 @@ EXEMPT_URL_NAMES = {
     "iesco_helper_exchange",
     "iesco_device_references",
     "iesco_device_ingest",
+    "iesco_device_pdf",
     "iesco_device_run_progress",
 }
 

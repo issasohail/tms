@@ -9,7 +9,7 @@
 5. Review, verify, and confirm fetched readings in TMS as usual. Fetching does not create invoices.
 
 If the browser does not open the helper, run the downloaded setup EXE again and retry pairing. Pairing requests expire after 10 minutes. A revoked device must be paired again by an authorised staff user.
-Staff who installed helper 2.0 or 2.1 must download and run the new setup, then reconnect once to enable automatic original-PITC PDF archiving and live progress. A server-side pairing record alone cannot prove the Windows program is still installed; if the browser cannot open it, reinstall and reconnect.
+Staff who installed helper 2.0, 2.1, or 2.2 must download and run the new setup, then reconnect once to enable automatic original-PITC PDF archiving and live progress. Helper 2.3 skips Edge rendering when a PDF is already archived and reports bill-fetch failures separately from PDF archival issues. A server-side pairing record alone cannot prove the Windows program is still installed; if the browser cannot open it, reinstall and reconnect.
 
 ## Developer build on Windows
 

@@ -137,7 +137,7 @@ class IescoHelperTests(TestCase):
     def test_connect_creates_fetch_all_run_and_reports_progress(self):
         created = self.create_request()
         pairing_token = parse_qs(urlsplit(created["url"]).query)["token"][0]
-        exchanged = self.exchange(pairing_token, version="2.2")
+        exchanged = self.exchange(pairing_token, version="2.3")
         self.assertEqual(exchanged.status_code, 200)
         data = exchanged.json()
         run_id = data["run_id"]
@@ -159,7 +159,7 @@ class IescoHelperTests(TestCase):
     def test_manual_fetch_run_requires_current_pairing_and_active_reference(self):
         created = self.create_request()
         pairing_token = parse_qs(urlsplit(created["url"]).query)["token"][0]
-        data = self.exchange(pairing_token, version="2.2").json()
+        data = self.exchange(pairing_token, version="2.3").json()
         auto = IescoHelperFetchRun.objects.get(pk=data["run_id"])
         auto.status = "completed"
         auto.save(update_fields=["status"])
@@ -173,7 +173,7 @@ class IescoHelperTests(TestCase):
     def test_queued_run_fails_quickly_when_local_helper_does_not_start(self):
         created = self.create_request()
         pairing_token = parse_qs(urlsplit(created["url"]).query)["token"][0]
-        data = self.exchange(pairing_token, version="2.2").json()
+        data = self.exchange(pairing_token, version="2.3").json()
         run = IescoHelperFetchRun.objects.get(pk=data["run_id"])
         IescoHelperFetchRun.objects.filter(pk=run.pk).update(
             updated_at=timezone.now() - timedelta(seconds=31)
@@ -193,6 +193,7 @@ class IescoHelperTests(TestCase):
             bill_month="SEP 26",
             grand_total="100",
         )
+        self.client.logout()
         self.assertEqual(
             self.client.post(
                 self.pdf_url,
@@ -225,6 +226,21 @@ class IescoHelperTests(TestCase):
             )
             with reading.bill_pdf.open("rb") as stored:
                 self.assertEqual(stored.read(), b"%PDF-1.4\nPITC")
+
+            refreshed = self.client.post(
+                self.ingest_url,
+                json.dumps(
+                    {
+                        "reference_no": reading.reference_no,
+                        "bill_month": reading.bill_month,
+                        "grand_total": "100",
+                    }
+                ),
+                content_type="application/json",
+                **headers,
+            )
+            self.assertEqual(refreshed.status_code, 201)
+            self.assertTrue(refreshed.json()["pdf_exists"])
 
             duplicate = self.client.post(
                 self.pdf_url,

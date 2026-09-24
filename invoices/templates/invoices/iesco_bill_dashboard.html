@@ -1498,7 +1498,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!response.ok) throw new Error('Could not check helper status (HTTP ' + response.status + ').');
       const data = await response.json();
       if (data.status === 'paired') {
-        if (data.helper_version !== '2.2') {
+        if (data.helper_version !== '2.3') {
           paired = false;
           needsUpdate = true;
           setStatus('This computer has the old IESCO helper. Download and run the latest setup in Step 1, then click Step 2 again.', false, true);

@@ -27,7 +27,7 @@ from .models import (
 from .services_iesco import save_bill_payload
 
 
-CURRENT_HELPER_VERSION = "2.2"
+CURRENT_HELPER_VERSION = "2.3"
 MAX_BILL_PDF_BYTES = 10 * 1024 * 1024
 
 
@@ -187,7 +187,14 @@ def ingest(request):
         reading, _ = save_bill_payload(payload)
     except ValidationError as exc:
         return JsonResponse({"error": "; ".join(exc.messages)}, status=400)
-    return JsonResponse({"status": "ok", "id": reading.pk}, status=201)
+    return JsonResponse(
+        {
+            "status": "ok",
+            "id": reading.pk,
+            "pdf_exists": bool(reading.bill_pdf),
+        },
+        status=201,
+    )
 
 
 @csrf_exempt

@@ -26,13 +26,14 @@ from invoices.iesco_bill_fetch import (
     parse_bill,
 )
 
-VERSION = "2.2"
+VERSION = "2.3"
 APP_DIR = Path(os.environ.get("APPDATA", Path.home())) / "TMS" / "IESCO Helper"
 DEVICE_FILE = APP_DIR / "device.json"
 INSTALLED_EXE = APP_DIR / "TMS IESCO Fetch Helper.exe"
 BUILD_FILE = Path(getattr(sys, "_MEIPASS", Path(__file__).parent)) / "iesco_helper_build.json"
 PITC_BASE_URL = "https://bill.pitc.com.pk/"
 MAX_PDF_BYTES = 10 * 1024 * 1024
+PDF_PROFILE_DIR = APP_DIR / "edge-pdf-profile"
 
 
 def record(event):
@@ -84,7 +85,15 @@ def api(path):
 
 def call(method, path, token=None, **kwargs):
     headers = {"Authorization": "Bearer " + token} if token else {}
-    return requests.request(method, api(path), headers=headers, timeout=25, **kwargs)
+    kwargs.setdefault("allow_redirects", False)
+    response = requests.request(
+        method, api(path), headers=headers, timeout=25, **kwargs
+    )
+    if 300 <= response.status_code < 400:
+        raise requests.HTTPError(
+            "TMS API redirected unexpectedly", response=response
+        )
+    return response
 
 
 def config():
@@ -139,7 +148,7 @@ def capture_pitc_pdf(html):
         folder = Path(folder)
         html_path = folder / "bill.html"
         pdf_path = folder / "bill.pdf"
-        profile_path = folder / "edge-profile"
+        PDF_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
         html_path.write_text(printable_pitc_html(html), encoding="utf-8")
         command = [
             str(edge),
@@ -149,8 +158,8 @@ def capture_pitc_pdf(html):
             "--no-first-run",
             "--no-pdf-header-footer",
             "--run-all-compositor-stages-before-draw",
-            "--virtual-time-budget=5000",
-            f"--user-data-dir={profile_path}",
+            "--virtual-time-budget=1000",
+            f"--user-data-dir={PDF_PROFILE_DIR}",
             f"--print-to-pdf={pdf_path}",
             html_path.as_uri(),
         ]
@@ -158,7 +167,7 @@ def capture_pitc_pdf(html):
             command,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            timeout=45,
+            timeout=25,
             check=False,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
@@ -259,6 +268,7 @@ def fetch(host, query):
     except requests.RequestException:
         return show("TMS could not start the fetch progress. Try again.", True)
     failed = 0
+    pdf_failed = 0
     archived = 0
     already_archived = 0
     for index, ref in enumerate(targets):
@@ -280,28 +290,44 @@ def fetch(host, query):
             if result.status_code in (401, 403):
                 return stop("Device revoked or IESCO access removed. Reconnect this computer.")
             result.raise_for_status()
-            reading_id = result.json()["id"]
-            pdf = capture_pitc_pdf(raw_html)
-            pdf_result = call(
-                "POST",
-                "pdf/",
-                token,
-                data={"reading_id": str(reading_id)},
-                files={
-                    "bill_pdf": (
-                        f"IESCO-{ref}-{bill.bill_month}.pdf",
-                        pdf,
-                        "application/pdf",
-                    )
-                },
-            )
-            if pdf_result.status_code in (401, 403):
-                return stop("Device revoked or IESCO access removed. Reconnect this computer.")
-            pdf_result.raise_for_status()
-            if pdf_result.json().get("status") == "exists":
+            ingest_data = result.json()
+            reading_id = ingest_data["id"]
+            if ingest_data.get("pdf_exists"):
                 already_archived += 1
             else:
-                archived += 1
+                try:
+                    pdf = capture_pitc_pdf(raw_html)
+                    pdf_result = call(
+                        "POST",
+                        "pdf/",
+                        token,
+                        data={"reading_id": str(reading_id)},
+                        files={
+                            "bill_pdf": (
+                                f"IESCO-{ref}-{bill.bill_month}.pdf",
+                                pdf,
+                                "application/pdf",
+                            )
+                        },
+                    )
+                    if pdf_result.status_code in (401, 403):
+                        return stop(
+                            "Device revoked or IESCO access removed. Reconnect this computer."
+                        )
+                    pdf_result.raise_for_status()
+                    if pdf_result.json().get("status") == "exists":
+                        already_archived += 1
+                    else:
+                        archived += 1
+                except (
+                    KeyError,
+                    OSError,
+                    subprocess.TimeoutExpired,
+                    requests.RequestException,
+                    ValueError,
+                ):
+                    pdf_failed += 1
+                    record("pdf_archive_failed")
         except VpnDetectedError:
             record("vpn_detected")
             return stop("VPN detected. Disconnect the VPN before fetching IESCO bills.")
@@ -314,7 +340,8 @@ def fetch(host, query):
                 index + 1,
                 index + 1 - failed,
                 failed,
-                f"Processed {index + 1} of {total}; archived {archived} PDF(s)",
+                f"Processed {index + 1} of {total}; archived {archived} PDF(s); "
+                f"{pdf_failed} PDF issue(s)",
             )
         except requests.RequestException:
             return show("TMS could not update fetch progress. Check the connection and retry.", True)
@@ -326,11 +353,12 @@ def fetch(host, query):
             total - failed,
             failed,
             f"Updated {total - failed} bill(s); archived {archived} PDF(s); "
-            f"{already_archived} already stored; {failed} failed.",
+            f"{already_archived} already stored; {pdf_failed} PDF issue(s); "
+            f"{failed} bill fetch(es) failed.",
         )
     except requests.RequestException:
         return show("Bills were sent, but TMS could not finalize progress. Refresh the bill list.", True)
-    if failed:
+    if failed or pdf_failed:
         record("fetch_failed")
         return 1
     record("fetch_complete")

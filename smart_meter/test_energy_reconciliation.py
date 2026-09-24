@@ -391,6 +391,8 @@ class EnergyReconciliationTests(TestCase):
             f"/smart-meter/energy-groups/scoreboard/{self.group.pk}/meter/"
             f"{self.billing_meter.pk}/?start=2026-08-01&end=2026-08-31",
         )
+        self.assertContains(response, "direction=import")
+        self.assertContains(response, "direction=export")
 
     def test_tenant_revenue_uses_dashboard_charge_not_manual_invoice_amount(self):
         self.billing_meter.unit_rate = Decimal("6.25")
@@ -472,6 +474,32 @@ class EnergyReconciliationTests(TestCase):
         audit_html = audit_response.json()["html"]
         self.assertIn(self.output_meter.meter_number, audit_html)
         self.assertIn("role=check", audit_html)
+        self.assertIn("— Import", audit_html)
+        self.assertIn("<th class=\"num\">Units</th>", audit_html)
+
+        audit_readings = list(self.output_meter.readings.order_by("ts", "id"))
+        audit_readings[0].reverse_active_energy_kwh = Decimal("10")
+        audit_readings[0].save(update_fields=["reverse_active_energy_kwh"])
+        audit_readings[1].ts = self._at(date(2026, 8, 31))
+        audit_readings[1].reverse_active_energy_kwh = Decimal("25")
+        audit_readings[1].save(update_fields=["ts", "reverse_active_energy_kwh"])
+        export_response = self.client.get(
+            reverse(
+                "smart_meter:energy_group_meter_detail",
+                args=[self.group.pk, self.output_meter.pk],
+            ),
+            {
+                "start": self.start.isoformat(),
+                "end": "2026-08-31",
+                "direction": "export",
+            },
+        )
+        self.assertEqual(export_response.status_code, 200)
+        export_html = export_response.json()["html"]
+        self.assertIn("— Export", export_html)
+        self.assertIn("10.000", export_html)
+        self.assertIn("25.000", export_html)
+        self.assertIn("Total Export", export_html)
 
     def test_scoreboard_inverter_detail_groups_saved_readings(self):
         IescoBillReading.objects.create(

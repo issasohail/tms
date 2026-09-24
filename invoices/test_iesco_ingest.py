@@ -2,6 +2,7 @@ import json
 import tempfile
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
@@ -9,6 +10,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from reportlab.pdfgen import canvas
 
 from invoices.models import IescoBillReading, IescoStandaloneMeter, Invoice, InvoiceItem
 from invoices.views_iesco import _dashboard_totals
@@ -397,11 +399,40 @@ class IescoBillWorkflowTests(TestCase):
         payload.update(overrides)
         return payload
 
+    def _past_bill_pdf(self, *, reference_no="01146151548911", bill_month="MAY 26"):
+        output = BytesIO()
+        document = canvas.Canvas(output)
+        lines = [
+            "ISLAMABAD ELECTRIC SUPPLY COMPANY",
+            "ELECTRICITY CONSUMER BILL",
+            "REFERENCE NO",
+            reference_no,
+            "CONSUMER ID",
+            "1143090754",
+            "BILL MONTH READING DATE ISSUE DATE DUE DATE",
+            f"{bill_month} 08 MAY 26 09 MAY 26 20 MAY 26",
+            "UNITS CONSUMED 74",
+            "CURRENT BILL 3983",
+            "ARREARS 20928/1",
+            "GRAND TOTAL 24910",
+        ]
+        y = 800
+        for line in lines:
+            document.drawString(72, y, line)
+            y -= 20
+        document.save()
+        return SimpleUploadedFile(
+            "past-iesco-bill.pdf",
+            output.getvalue(),
+            content_type="application/pdf",
+        )
+
     def test_list_has_serial_property_filter_and_standalone_description(self):
         response = self.client.get(reverse("invoices:iesco_bill_reading_list"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Office common meter")
         self.assertContains(response, "Fetch All")
+        self.assertContains(response, "Past PDFs")
         self.assertContains(response, "PITC bill fetching should be run from the local Pakistan TMS")
         self.assertContains(response, "<th>#</th>", html=True)
 
@@ -442,7 +473,7 @@ class IescoBillWorkflowTests(TestCase):
         self.assertContains(listing, "<th>Total</th>", html=True)
         self.assertContains(listing, "iesco-mobile-card")
         self.assertContains(listing, "iesco-tablet-view")
-        self.assertContains(listing, "View Bill")
+        self.assertContains(listing, "Online Bill")
         self.assertContains(listing, "Off<br>Peak", html=True)
         self.assertContains(listing, "Imp OP 4310")
         self.assertContains(listing, "Exp OP 2489")
@@ -450,7 +481,7 @@ class IescoBillWorkflowTests(TestCase):
         self.assertContains(listing, "<th>Current</th>", html=True)
         self.assertContains(listing, "Reading Date")
         self.assertNotContains(listing, "iesco-mobile-actions-label")
-        self.assertContains(listing, ">Bill</a>")
+        self.assertContains(listing, ">Online Bill</a>")
         self.assertContains(
             listing,
             reverse("invoices:iesco_bill_reading_detail", args=[reading.reference_no]),
@@ -1185,3 +1216,91 @@ class IescoBillWorkflowTests(TestCase):
             self.assertTrue(reading.bill_pdf.name.endswith("AUG-26.pdf"))
             listing = self.client.get(reverse("invoices:iesco_bill_reading_list"))
             self.assertContains(listing, reading.bill_pdf.url)
+
+    def test_past_pdf_import_creates_missing_month_and_archives_original(self):
+        with tempfile.TemporaryDirectory() as media_root, self.settings(
+            MEDIA_ROOT=media_root
+        ):
+            response = self.client.post(
+                reverse("invoices:iesco_bill_pdf_import"),
+                {"bill_pdf": self._past_bill_pdf()},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            result = response.json()
+            self.assertTrue(result["created"])
+            self.assertEqual(result["pdf_status"], "archived")
+            reading = IescoBillReading.objects.get(
+                reference_no=self.active_unit.electric_meter_num,
+                bill_month="MAY 26",
+            )
+            self.assertEqual(reading.reading_date, "08 MAY 26")
+            self.assertEqual(reading.issue_date, "09 MAY 26")
+            self.assertEqual(reading.due_date, "20 MAY 26")
+            self.assertEqual(reading.units, "74")
+            self.assertEqual(reading.current_bill, "3983")
+            self.assertEqual(reading.arrears, "20928")
+            self.assertEqual(reading.grand_total, "24910")
+            self.assertEqual(
+                reading.bill_pdf.name,
+                "invoices/iesco_bill_pdfs/17146151548911/MAY-26.pdf",
+            )
+
+    def test_past_pdf_import_does_not_overwrite_existing_data_or_pdf(self):
+        reading = IescoBillReading.objects.create(
+            reference_no=self.active_unit.electric_meter_num,
+            bill_month="MAY 26",
+            current_bill="111",
+            grand_total="222",
+        )
+        with tempfile.TemporaryDirectory() as media_root, self.settings(
+            MEDIA_ROOT=media_root
+        ):
+            reading.bill_pdf.save(
+                "original.pdf",
+                SimpleUploadedFile("original.pdf", b"%PDF-original"),
+            )
+            original_name = reading.bill_pdf.name
+            response = self.client.post(
+                reverse("invoices:iesco_bill_pdf_import"),
+                {"bill_pdf": self._past_bill_pdf()},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["pdf_status"], "already_stored")
+            reading.refresh_from_db()
+            self.assertEqual(reading.current_bill, "111")
+            self.assertEqual(reading.grand_total, "222")
+            self.assertEqual(reading.bill_pdf.name, original_name)
+
+    def test_past_pdf_import_fills_only_blank_fields_on_existing_month(self):
+        reading = IescoBillReading.objects.create(
+            reference_no=self.active_unit.electric_meter_num,
+            bill_month="MAY 26",
+            current_bill="111",
+        )
+        with tempfile.TemporaryDirectory() as media_root, self.settings(
+            MEDIA_ROOT=media_root
+        ):
+            response = self.client.post(
+                reverse("invoices:iesco_bill_pdf_import"),
+                {"bill_pdf": self._past_bill_pdf()},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.json()["data_updated"])
+            reading.refresh_from_db()
+            self.assertEqual(reading.current_bill, "111")
+            self.assertEqual(reading.units, "74")
+            self.assertEqual(reading.grand_total, "24910")
+            self.assertTrue(reading.bill_pdf)
+
+    def test_past_pdf_import_rejects_unassigned_reference(self):
+        response = self.client.post(
+            reverse("invoices:iesco_bill_pdf_import"),
+            {"bill_pdf": self._past_bill_pdf(reference_no="01146151549999")},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Assign the meter first", response.json()["error"])
+        self.assertFalse(IescoBillReading.objects.exists())

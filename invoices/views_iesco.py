@@ -45,6 +45,7 @@ from .services_iesco import (
     save_bill_payload,
     validate_reference_no,
 )
+from .services_iesco_pdf import extract_iesco_pdf_payload
 from .services_iesco_reminders import (
     build_iesco_reminder_message,
     reading_requires_payment,
@@ -59,6 +60,7 @@ EXPORT_SESSION_KEY = "iesco_bill_last_export_ids"
 IMPORT_PROGRESS_SESSION_KEY = "iesco_bill_import_progress_rows"
 MAX_IMPORT_BYTES = 2 * 1024 * 1024
 MAX_IMPORT_ROWS = 500
+MAX_IESCO_PDF_BYTES = 10 * 1024 * 1024
 IESCO_BULK_FETCH_WAIT_DAYS = 20
 IESCO_BULK_RETRY_DAYS = 3
 
@@ -2242,6 +2244,118 @@ def upload_bill_pdf(request, pk):
             messages.success(request, "IESCO bill PDF uploaded.")
     return redirect(
         reverse("invoices:iesco_bill_reading_detail", args=[reading.reference_no])
+    )
+
+
+@login_required
+@require_POST
+def import_bill_pdf(request):
+    """Archive one original PITC PDF and create its monthly record if absent."""
+    _require_change_permission(request.user)
+    upload = request.FILES.get("bill_pdf")
+    if upload is None:
+        return JsonResponse({"ok": False, "error": "Choose a PDF bill to upload."}, status=400)
+    if upload.size > MAX_IESCO_PDF_BYTES:
+        return JsonResponse(
+            {"ok": False, "error": "IESCO PDF files cannot exceed 10 MB."},
+            status=400,
+        )
+    header = upload.read(5)
+    upload.seek(0)
+    if header != b"%PDF-":
+        return JsonResponse(
+            {"ok": False, "error": "The selected file is not a valid PDF."},
+            status=400,
+        )
+
+    known_references = set(
+        _valid_unit_meters(request.user).values_list("electric_meter_num", flat=True)
+    )
+    known_references.update(
+        _visible_standalone_meters(request.user).values_list("reference_no", flat=True)
+    )
+    try:
+        payload = extract_iesco_pdf_payload(upload, known_references)
+        _ensure_reference_access(request.user, payload["reference_no"])
+        with transaction.atomic():
+            reading = IescoBillReading.objects.select_for_update().filter(
+                reference_no=payload["reference_no"],
+                bill_month=payload["bill_month"],
+            ).first()
+            created = reading is None
+            data_updated = False
+            if created:
+                reading = IescoBillReading.objects.create(
+                    reference_no=payload["reference_no"],
+                    bill_month=payload["bill_month"],
+                    fetched_at=timezone.now(),
+                    trust_status=IescoBillReading.TRUST_PARSED,
+                    consumer_id=payload.get("consumer_id"),
+                    meter_type=payload.get("meter_type"),
+                    meter_readings=payload.get("meter_readings") or [],
+                    units=payload.get("units"),
+                    reading_date=payload.get("reading_date"),
+                    issue_date=payload.get("issue_date"),
+                    due_date=payload.get("due_date"),
+                    current_bill=payload.get("current_bill"),
+                    arrears=payload.get("arrears"),
+                    grand_total=payload.get("grand_total"),
+                )
+                data_updated = True
+            else:
+                updated_fields = []
+                for field in (
+                    "consumer_id",
+                    "meter_type",
+                    "units",
+                    "reading_date",
+                    "issue_date",
+                    "due_date",
+                    "current_bill",
+                    "arrears",
+                    "grand_total",
+                ):
+                    if not getattr(reading, field) and payload.get(field) not in (None, ""):
+                        setattr(reading, field, payload[field])
+                        updated_fields.append(field)
+                if not reading.meter_readings and payload.get("meter_readings"):
+                    reading.meter_readings = payload["meter_readings"]
+                    updated_fields.append("meter_readings")
+                if updated_fields:
+                    reading.save(update_fields=[*updated_fields, "updated_at"])
+                    data_updated = True
+            if reading.bill_pdf:
+                pdf_status = "already_stored"
+            else:
+                upload.seek(0)
+                reading.bill_pdf.save(
+                    f"IESCO-{reading.reference_no}-{reading.bill_month}.pdf",
+                    upload,
+                    save=False,
+                )
+                reading.pdf_uploaded_at = timezone.now()
+                reading.save(
+                    update_fields=["bill_pdf", "pdf_uploaded_at", "updated_at"]
+                )
+                pdf_status = "archived"
+    except ValidationError as exc:
+        return JsonResponse(
+            {"ok": False, "error": _validation_message(exc)},
+            status=400,
+        )
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "created": created,
+            "data_updated": data_updated,
+            "pdf_status": pdf_status,
+            "reference_no": reading.reference_no,
+            "bill_month": reading.bill_month,
+            "units": reading.units or "",
+            "current_bill": reading.current_bill or "",
+            "grand_total": reading.grand_total or "",
+        }
     )
 
 

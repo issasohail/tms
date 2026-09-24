@@ -309,7 +309,7 @@
     <div>
       <div class="d-flex flex-wrap justify-content-end gap-1 iesco-top-actions">
         <div class="dropdown"><button class="btn btn-sm btn-success dropdown-toggle" type="button" data-bs-toggle="dropdown"><i class="fas fa-download me-1"></i>Export</button><ul class="dropdown-menu"><li><a class="dropdown-item" href="{% url 'invoices:iesco_bill_export' %}?{{ request.GET.urlencode }}">CSV</a></li><li><a class="dropdown-item" href="{% url 'invoices:iesco_bill_export_formatted' 'xlsx' %}?{{ request.GET.urlencode }}">Excel</a></li><li><a class="dropdown-item" href="{% url 'invoices:iesco_bill_export_formatted' 'pdf' %}?{{ request.GET.urlencode }}">PDF</a></li><li><a class="dropdown-item" href="{% url 'invoices:iesco_bill_export_formatted' 'jpg' %}?{{ request.GET.urlencode }}">JPG</a></li></ul></div>
-        {% if can_manage %}<form id="iescoCsvUploadForm" method="post" enctype="multipart/form-data" action="{% url 'invoices:iesco_bill_import' %}">{% csrf_token %}<input id="id_iesco_import" class="visually-hidden" type="file" name="file" accept=".csv,text/csv" required><label class="btn btn-sm btn-outline-primary" for="id_iesco_import"><i class="fas fa-upload me-1"></i>Upload</label></form><a id="iescoFetchAllButton" class="btn btn-primary btn-sm" href="tms-iesco://fetch-all"><i class="fas fa-cloud-download-alt me-1"></i>Fetch All</a><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#iescoHelperModal"><i class="fas fa-download me-1"></i>Helper</button><a href="{% url 'invoices:iesco_reference_export' %}?property={{ request.GET.property }}" class="btn btn-sm btn-outline-success"><i class="fas fa-list me-1"></i>Refs</a>{% endif %}
+        {% if can_manage %}<form id="iescoCsvUploadForm" method="post" enctype="multipart/form-data" action="{% url 'invoices:iesco_bill_import' %}">{% csrf_token %}<input id="id_iesco_import" class="visually-hidden" type="file" name="file" accept=".csv,text/csv" required><label class="btn btn-sm btn-outline-primary" for="id_iesco_import"><i class="fas fa-upload me-1"></i>Upload</label></form><form id="iescoPdfUploadForm" method="post" enctype="multipart/form-data" action="{% url 'invoices:iesco_bill_pdf_import' %}">{% csrf_token %}<input id="id_iesco_pdf_import" class="visually-hidden" type="file" name="bill_pdf" accept=".pdf,application/pdf" multiple required><label class="btn btn-sm btn-outline-danger" for="id_iesco_pdf_import"><i class="fas fa-file-pdf me-1"></i>Past PDFs</label></form><a id="iescoFetchAllButton" class="btn btn-primary btn-sm" href="tms-iesco://fetch-all"><i class="fas fa-cloud-download-alt me-1"></i>Fetch All</a><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#iescoHelperModal"><i class="fas fa-download me-1"></i>Helper</button><a href="{% url 'invoices:iesco_reference_export' %}?property={{ request.GET.property }}" class="btn btn-sm btn-outline-success"><i class="fas fa-list me-1"></i>Refs</a>{% endif %}
         {% if can_post %}<form method="post" action="{% url 'invoices:iesco_bill_make_invoices_bulk' %}">{% csrf_token %}{% for row in meter_rows %}{% if row.reading and row.unit %}<input type="hidden" name="reading_id" value="{{ row.reading.pk }}">{% endif %}{% endfor %}<button class="btn btn-sm btn-warning" type="submit"><i class="fas fa-file-invoice-dollar me-1"></i>Make Inv</button></form>{% endif %}
         {% if can_remind %}<label class="d-inline-flex align-items-center gap-1 me-2 mb-0 small" for="iescoWhatsAppAuto"><input class="form-check-input mt-0" id="iescoWhatsAppAuto" type="checkbox" autocomplete="off">WhatsApp Auto</label>{% if request.GET.reminder_review == "1" %}<form method="post" action="{% url 'invoices:iesco_bill_reminders_send' %}">{% csrf_token %}<input type="hidden" name="confirm" value="1">{% for row in meter_rows %}{% if row.requires_payment %}<input type="hidden" name="reading_id" value="{{ row.reading.pk }}">{% endif %}{% endfor %}<button class="btn btn-sm btn-success" type="submit"><i class="fab fa-whatsapp me-1"></i>Remind</button></form>{% else %}<a class="btn btn-sm btn-outline-success" href="?property={{ request.GET.property|urlencode }}&unit={{ request.GET.unit|urlencode }}&reference_no={{ request.GET.reference_no|urlencode }}&bill_month={{ request.GET.bill_month|urlencode }}&period={{ selected_period|urlencode }}&period_explicit={% if period_explicit %}1{% endif %}&payment_status=unpaid&reminder_review=1"><i class="fab fa-whatsapp me-1"></i>Remind</a>{% endif %}{% endif %}
         {% if can_add_standalone %}<button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#standaloneMeterForm"><i class="fas fa-plus me-1"></i>+ Meter</button>{% endif %}
@@ -453,7 +453,7 @@
     <tbody>{% for row in meter_rows %}{% with reading=row.reading %}<tr>
       <td data-label="#" class="text-muted">{{ page_obj.start_index|default:1|add:forloop.counter0 }}</td>
       <td data-label="Property / Unit" class="iesco-property-col">{% if row.unit %}<strong class="iesco-property-line">{{ row.property.property_name }} / {{ row.unit.unit_number }}</strong><small class="iesco-property-subline">{{ row.reference_no }}</small><button type="button" class="iesco-property-subline text-muted iesco-history-toggle" data-history-ref="{{ row.reference_no }}" aria-expanded="false">Show history</button>{% else %}<strong class="iesco-property-line">{{ row.description }}</strong><small class="iesco-property-subline">Standalone meter</small><button type="button" class="iesco-property-subline text-muted iesco-history-toggle" data-history-ref="{{ row.reference_no }}" aria-expanded="false">Show history</button>{% endif %}</td>
-      <td data-label="Bill Month / Issue / Active" class="text-nowrap"><span class="iesco-paired-line">{{ reading.bill_month|default:"—" }}</span><small class="iesco-paired-line text-muted">Issued {{ reading.issue_date|default:"—" }}</small><span class="iesco-paired-line">{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</span></td>
+      <td data-label="Bill Month / Active" class="text-nowrap"><span class="iesco-paired-line">{{ reading.bill_month|default:"—" }}</span><small class="iesco-paired-line text-muted">{{ reading.issue_date|default:"—" }}</small><span class="iesco-paired-line">{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</span></td>
       <td data-label="Reference / Meter" class="text-nowrap"><a class="iesco-paired-line" href="{% url 'invoices:iesco_bill_reading_detail' row.reference_no %}" title="Open saved meter history"><strong>{{ row.reference_no }}</strong></a><span class="iesco-paired-line">{% if reading %}{{ reading.meter_number_display }}{% else %}—{% endif %}</span></td>
       <td data-label="Consumer">{% if reading %}{{ reading.consumer_name|default:reading.consumer_id|default:"—" }}{% if row.tenant_name %}<a class="iesco-tenant-name" href="{% url 'leases:lease_detail' row.lease.pk %}">{{ row.tenant_name }}</a>{% endif %}{% else %}—{% endif %}</td>
       <td data-label="Previous / Current"><div class="iesco-reading-lines">{% if reading.register_display_rows %}{% if reading.has_export_registers %}<details class="iesco-register-popover"><summary>{% for register in reading.register_display_rows %}<span class="iesco-register-current-line">{{ register.short_label }} {{ register.present|default:"—" }}</span>{% endfor %}</summary><div class="iesco-register-popover-grid iesco-reading-popover-grid"><table class="table table-bordered mb-0"><thead><tr><th>Register</th><th>Previous</th><th>Current</th><th>Net</th></tr></thead><tbody>{% for register in reading.register_display_rows %}<tr><th>{{ register.short_label }}</th><td>{{ register.previous|default:"—" }}</td><td>{{ register.present|default:"—" }}</td>{% if register.short_label == "Imp OP" %}<td rowspan="2" class="align-middle fw-bold">{{ reading.import_units_display }}</td>{% elif register.short_label == "Exp OP" %}<td rowspan="2" class="align-middle fw-bold">{{ reading.export_units_display }}</td>{% endif %}</tr>{% endfor %}</tbody></table></div></details>{% else %}<span class="iesco-paired-line"><span class="text-muted">Prev </span>{{ reading.register_display_rows.0.previous|default:"—" }}</span><span class="iesco-paired-line"><span class="text-muted">Curr </span>{{ reading.register_display_rows.0.present|default:"—" }}</span>{% endif %}{% else %}—{% endif %}</div></td>
@@ -553,7 +553,7 @@
         <span class="text-end"><strong>{{ row.reference_no }}</strong><br>{% if row.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}<br><button type="button" class="small text-muted iesco-history-toggle" data-history-ref="{{ row.reference_no }}" aria-expanded="false">Show history</button></span>
       </div>
       <div class="iesco-tablet-row iesco-tablet-row--8">
-        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Bill Month</span><span class="iesco-tablet-value">{{ reading.bill_month|default:"—" }}</span><small class="text-muted">Issued {{ reading.issue_date|default:"—" }}</small></div>
+        <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Bill Month</span><span class="iesco-tablet-value">{{ reading.bill_month|default:"—" }}</span><small class="text-muted">{{ reading.issue_date|default:"—" }}</small></div>
         <div class="iesco-tablet-cell text-center"><span class="iesco-tablet-label">Units</span><span class="iesco-tablet-value fw-bold">{% if reading.has_export_registers %}<details class="iesco-register-popover"><summary>E:{{ reading.export_units_display }} · I:{{ reading.import_units_display }} · N:{{ reading.net_units_display }}</summary><div class="iesco-register-popover-grid"><table class="table table-bordered mb-0 iesco-register-summary"><thead><tr><th></th><th>Off<br>Peak</th><th>Peak</th><th>Total</th></tr></thead><tbody><tr><th>Export</th><td>{{ reading.export_off_peak_display }}</td><td>{{ reading.export_peak_display }}</td><td>{{ reading.export_units_display }}</td></tr><tr><th>Import</th><td>{{ reading.import_off_peak_display }}</td><td>{{ reading.import_peak_display }}</td><td>{{ reading.import_units_display }}</td></tr><tr><th>Net</th><td>{{ reading.net_off_peak_display }}</td><td>{{ reading.net_peak_display }}</td><td>{{ reading.net_units_display }}</td></tr></tbody></table></div></details>{% elif reading %}{{ reading.units_display }}{% else %}—{% endif %}</span></div>
         <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Unit Rate</span><span class="iesco-tablet-value fw-bold">{% if reading %}{{ reading.per_unit_rate_display }}{% else %}—{% endif %}</span></div>
         <div class="iesco-tablet-cell"><span class="iesco-tablet-label">Current Bill</span><span class="iesco-tablet-value fw-bold">{% if reading %}{{ reading.current_bill_display }}{% else %}—{% endif %}</span></div>
@@ -673,7 +673,7 @@
       </div>
 
       <div class="iesco-mobile-facts">
-        <div class="iesco-mobile-fact iesco-mobile-fact--emphasis"><span class="iesco-mobile-label">Bill Month / Issue</span><span class="iesco-mobile-value">{{ reading.bill_month|default:"—" }}<small class="d-block text-muted">Issued {{ reading.issue_date|default:"—" }}</small></span></div>
+        <div class="iesco-mobile-fact iesco-mobile-fact--emphasis"><span class="iesco-mobile-label">Bill Month</span><span class="iesco-mobile-value">{{ reading.bill_month|default:"—" }}<small class="d-block text-muted">{{ reading.issue_date|default:"—" }}</small></span></div>
         <div class="iesco-mobile-fact iesco-mobile-fact--emphasis"><span class="iesco-mobile-label">Units</span><span class="iesco-mobile-value fw-bold">{% if reading and reading.has_export_registers %}<details class="iesco-register-popover"><summary>E:{{ reading.export_units_display }} · I:{{ reading.import_units_display }} · N:{{ reading.net_units_display }}</summary><div class="iesco-register-popover-grid"><table class="table table-bordered mb-0 iesco-register-summary"><thead><tr><th></th><th>Off<br>Peak</th><th>Peak</th><th>Total</th></tr></thead><tbody><tr><th>Export</th><td>{{ reading.export_off_peak_display }}</td><td>{{ reading.export_peak_display }}</td><td>{{ reading.export_units_display }}</td></tr><tr><th>Import</th><td>{{ reading.import_off_peak_display }}</td><td>{{ reading.import_peak_display }}</td><td>{{ reading.import_units_display }}</td></tr><tr><th>Net</th><td>{{ reading.net_off_peak_display }}</td><td>{{ reading.net_peak_display }}</td><td>{{ reading.net_units_display }}</td></tr></tbody></table></div></details>{% elif reading %}{{ reading.units_display }}{% else %}—{% endif %}</span></div>
         <div class="iesco-mobile-fact iesco-mobile-fact--emphasis"><span class="iesco-mobile-label">Unit Rate</span><span class="iesco-mobile-value fw-bold">{% if reading %}{{ reading.per_unit_rate_display }}{% else %}—{% endif %}</span></div>
         <div class="iesco-mobile-fact iesco-mobile-fact--emphasis"><span class="iesco-mobile-label">Current Bill</span><span class="iesco-mobile-value fw-bold">{% if reading %}{{ reading.current_bill_display }}{% else %}—{% endif %}</span></div>
@@ -899,8 +899,11 @@
 
     const csvUpload = document.getElementById('id_iesco_import');
     const csvUploadForm = document.getElementById('iescoCsvUploadForm');
+    const pdfUpload = document.getElementById('id_iesco_pdf_import');
+    const pdfUploadForm = document.getElementById('iescoPdfUploadForm');
     const uploadModalElement = document.getElementById('iescoUploadProgressModal');
     const uploadModal = uploadModalElement && window.bootstrap ? new bootstrap.Modal(uploadModalElement) : null;
+    const uploadTitle = document.getElementById('iescoUploadProgressTitle');
     const uploadTotal = document.getElementById('iescoUploadTotal');
     const uploadCompleted = document.getElementById('iescoUploadCompleted');
     const uploadSucceeded = document.getElementById('iescoUploadSucceeded');
@@ -914,8 +917,8 @@
     const uploadCloseButton = document.getElementById('iescoUploadCloseButton');
     const uploadRefreshButton = document.getElementById('iescoUploadRefreshButton');
 
-    function uploadPost(data) {
-      return fetch(csvUploadForm.action, {
+    function uploadPost(data, actionUrl) {
+      return fetch(actionUrl || csvUploadForm.action, {
         method: 'POST',
         body: data,
         credentials: 'same-origin',
@@ -985,6 +988,7 @@
       uploadCloseButton.disabled = true;
       uploadRefreshButton.classList.add('d-none');
       uploadProgressBar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+      uploadTitle.innerHTML = '<i class="fas fa-upload me-2 text-primary"></i>Upload IESCO Bills CSV';
       uploadTotal.textContent = '0';
       uploadCompleted.textContent = '0';
       uploadSucceeded.textContent = '0';
@@ -1080,6 +1084,94 @@
     }
 
     csvUpload?.addEventListener('change', runBillsCsvUpload);
+
+    async function runPastPdfUpload() {
+      if (!pdfUpload?.files.length || !pdfUploadForm || !window.fetch || !window.FormData) return;
+      if (!uploadModal) {
+        pdfUploadForm.submit();
+        return;
+      }
+
+      const files = Array.from(pdfUpload.files);
+      const total = files.length;
+      uploadResults.innerHTML = '';
+      uploadFileErrors.classList.add('d-none');
+      uploadFileErrors.innerHTML = '';
+      uploadFinalMessage.className = 'alert mt-3 mb-0 d-none';
+      uploadFinalMessage.textContent = '';
+      uploadCloseButton.disabled = true;
+      uploadRefreshButton.classList.add('d-none');
+      uploadProgressBar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+      uploadTitle.innerHTML = '<i class="fas fa-file-pdf me-2 text-danger"></i>Archive Past IESCO PDFs';
+      uploadTotal.textContent = String(total);
+      uploadCompleted.textContent = '0';
+      uploadSucceeded.textContent = '0';
+      uploadFailed.textContent = '0';
+      setUploadProgress(0, total);
+      uploadSubtitle.textContent = total + ' PDF' + (total === 1 ? '' : 's') + ' will be read and archived one at a time.';
+      uploadCurrentStep.textContent = 'Preparing the selected PDF bills…';
+      uploadModal.show();
+
+      const rows = files.map(function (file, index) {
+        return createUploadRow({reference_no: file.name, bill_month: 'Waiting for bill details'}, index);
+      });
+      let completed = 0;
+      let succeeded = 0;
+      let failed = 0;
+
+      for (let index = 0; index < total; index += 1) {
+        const file = files[index];
+        const row = rows[index];
+        uploadCurrentStep.textContent = 'Reading PDF ' + (index + 1) + ' of ' + total + ': ' + file.name;
+        updateUploadRow(row, 'running', 'Reading the reference and bill month, then saving the original PDF…');
+        const data = new FormData();
+        data.append('csrfmiddlewaretoken', pdfUploadForm.querySelector('[name="csrfmiddlewaretoken"]').value);
+        data.append('bill_pdf', file, file.name);
+
+        try {
+          const result = await uploadPost(data, pdfUploadForm.action);
+          succeeded += 1;
+          const action = result.pdf_status === 'already_stored'
+            ? (result.data_updated ? 'Missing bill data saved; existing PDF kept' : 'PDF already stored; no file was replaced')
+            : (result.created ? 'Bill data and PDF saved' : (result.data_updated ? 'PDF and missing bill data saved' : 'PDF attached to existing bill'));
+          row.querySelector('.iesco-reference-result-ref').textContent = result.reference_no || file.name;
+          row.querySelector('.iesco-reference-result-desc').textContent = result.bill_month || '—';
+          updateUploadRow(
+            row,
+            'success',
+            '<strong>' + escapeHtml(action) + '</strong>' +
+            ' · Units: ' + escapeHtml(result.units || '—') +
+            ' · Current bill: ' + escapeHtml(result.current_bill || '—') +
+            ' · Grand total: ' + escapeHtml(result.grand_total || '—')
+          );
+        } catch (error) {
+          failed += 1;
+          updateUploadRow(row, 'error', '<strong>Could not archive this PDF.</strong><br>' + escapeHtml(error.message || 'Unknown error.'));
+        }
+
+        completed += 1;
+        uploadCompleted.textContent = String(completed);
+        uploadSucceeded.textContent = String(succeeded);
+        uploadFailed.textContent = String(failed);
+        setUploadProgress(completed, total);
+      }
+
+      uploadProgressBar.classList.remove('progress-bar-animated');
+      uploadCurrentStep.textContent = 'Finished processing all ' + total + ' PDF' + (total === 1 ? '' : 's') + '.';
+      uploadFinalMessage.classList.remove('d-none');
+      if (failed) {
+        uploadFinalMessage.classList.add('alert-warning');
+        uploadFinalMessage.innerHTML = '<strong>Completed with issues.</strong> ' + succeeded + ' PDF(s) archived and ' + failed + ' failed. The failed files above show the reason.';
+      } else {
+        uploadFinalMessage.classList.add('alert-success');
+        uploadFinalMessage.innerHTML = '<strong>Done.</strong> All ' + succeeded + ' PDF(s) were processed successfully.';
+      }
+      uploadCloseButton.disabled = false;
+      uploadRefreshButton.classList.remove('d-none');
+      pdfUpload.value = '';
+    }
+
+    pdfUpload?.addEventListener('change', runPastPdfUpload);
     uploadRefreshButton?.addEventListener('click', function () { window.location.reload(); });
 
     const referenceUpload = document.getElementById('id_iesco_reference_import');

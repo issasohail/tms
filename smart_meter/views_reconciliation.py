@@ -540,6 +540,14 @@ def energy_group_scoreboard(request, pk=None):
             valid_output_rows[-1].get("display_end_kwh")
             if valid_output_rows else None
         ),
+        "reverse_begin": (
+            valid_output_rows[0].get("display_start_reverse_kwh")
+            if valid_output_rows else None
+        ),
+        "reverse_end": (
+            valid_output_rows[-1].get("display_end_reverse_kwh")
+            if valid_output_rows else None
+        ),
         "rate": check1["audit_average_rate"],
     }
 
@@ -614,6 +622,11 @@ def energy_group_meter_detail(request, pk, meter_id):
         return JsonResponse({"error": "Invalid date range."}, status=400)
     if end_date < start_date:
         start_date, end_date = end_date, start_date
+    detail_direction = (
+        "export"
+        if is_audit_detail and request.GET.get("direction") == "export"
+        else "import"
+    )
 
     from smart_meter.views_dashboard import _per_meter_series
     _labels, _datasets, rows, totals = _per_meter_series(
@@ -642,6 +655,58 @@ def energy_group_meter_detail(request, pk, meter_id):
         period_end_exclusive = boundaries[index + 1]
         billing_period_rows = rows_for_period(rows, period_start, period_end_exclusive)
         audit_period_rows = rows_for_period(audit_rows, period_start, period_end_exclusive)
+        if is_audit_detail:
+            usage_key = "reverse_usage" if detail_direction == "export" else "usage"
+            valid_key = (
+                "reverse_usage_valid"
+                if detail_direction == "export"
+                else "usage_valid"
+            )
+            begin_key = (
+                "display_start_reverse_kwh"
+                if detail_direction == "export"
+                else "display_start_kwh"
+            )
+            end_key = (
+                "display_end_reverse_kwh"
+                if detail_direction == "export"
+                else "display_end_kwh"
+            )
+            valid_detail_rows = [
+                row
+                for row in billing_period_rows
+                if row.get(valid_key, True) and row.get(usage_key) is not None
+            ]
+            daily_rows = [
+                {
+                    "day": row["period_key"],
+                    "begin": row.get(begin_key),
+                    "end": row.get(end_key),
+                    "detail_kwh": (
+                        row.get(usage_key) if row.get(valid_key, True) else None
+                    ),
+                    "valid": row.get(valid_key, True),
+                    "reason": row.get("continuity_reason", ""),
+                }
+                for row in billing_period_rows
+            ]
+            period_groups.append({
+                "start_date": period_start,
+                "end_date": period_end_exclusive - timedelta(days=1),
+                "detail_begin": (
+                    valid_detail_rows[0].get(begin_key)
+                    if valid_detail_rows else None
+                ),
+                "detail_end": (
+                    valid_detail_rows[-1].get(end_key)
+                    if valid_detail_rows else None
+                ),
+                "detail_kwh": sum(
+                    (row[usage_key] for row in valid_detail_rows), Decimal("0")
+                ),
+                "daily_rows": daily_rows,
+            })
+            continue
         valid_billing_rows = [row for row in billing_period_rows if row.get("usage_valid", True)]
         valid_audit_rows = [row for row in audit_period_rows if row.get("usage_valid", True)]
         audit_by_day = {row["period_key"]: row for row in valid_audit_rows}
@@ -690,8 +755,18 @@ def energy_group_meter_detail(request, pk, meter_id):
             "usage_amount": usage_amount,
             "daily_rows": daily_rows,
         })
-    grouped_billing_total = sum((row["billing_kwh"] for row in period_groups), Decimal("0"))
-    grouped_audit_total = sum((row["audit_kwh"] for row in period_groups), Decimal("0"))
+    grouped_detail_total = sum(
+        (row.get("detail_kwh", Decimal("0")) for row in period_groups),
+        Decimal("0"),
+    )
+    grouped_billing_total = sum(
+        (row.get("billing_kwh", Decimal("0")) for row in period_groups),
+        Decimal("0"),
+    )
+    grouped_audit_total = sum(
+        (row.get("audit_kwh", Decimal("0")) for row in period_groups),
+        Decimal("0"),
+    )
     tenant_names = list(dict.fromkeys(
         row["tenant_name"] for row in rows if row.get("tenant_name")
     ))
@@ -713,6 +788,8 @@ def energy_group_meter_detail(request, pk, meter_id):
         "grouped_billing_total": grouped_billing_total,
         "grouped_audit_total": grouped_audit_total,
         "grouped_difference_total": grouped_audit_total - grouped_billing_total,
+        "grouped_detail_total": grouped_detail_total,
+        "detail_direction": detail_direction,
         "tenant_names": tenant_names,
         "start_date": start_date,
         "end_date": end_date,

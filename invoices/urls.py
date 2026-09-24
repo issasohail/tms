@@ -66,6 +66,7 @@ urlpatterns = [
     path('iesco-bills/fetch/<str:reference_no>/', views_iesco.fetch_one, name='iesco_bill_fetch_one'),
     path('iesco-bills/fetch-all/', views_iesco.fetch_all_active, name='iesco_bill_fetch_all'),
     path('iesco-bills/import/', views_iesco.import_csv, name='iesco_bill_import'),
+    path('iesco-bills/pdfs/import/', views_iesco.import_bill_pdf, name='iesco_bill_pdf_import'),
     path('iesco-bills/references/export/', views_iesco.export_active_references, name='iesco_reference_export'),
     path('iesco-bills/references/fetch/', views_iesco.fetch_reference_csv, name='iesco_reference_fetch'),
     path('iesco-bills/preview/', views_iesco.preview, name='iesco_bill_preview'),

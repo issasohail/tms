@@ -179,53 +179,51 @@
           {% endif %}
           </div>
           <table class="ld-mini-table">
-            <thead><tr><th></th><th class="num">IESCO bill</th><th class="num"><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">Audit meter</a></th><th class="num">Bill meters</th></tr></thead>
+            <thead><tr><th></th><th class="num">IESCO bill</th><th class="num">{% if input_meter_rows %}<a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ input_meter_rows.0.meter.unit_id|default:'' }}&meter={{ input_meter_rows.0.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">Input meter</a>{% else %}Input meter{% endif %}</th><th class="num">{% if has_separate_audit_meter %}<a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">Audit meter</a>{% else %}Audit meter{% endif %}</th><th class="num">Bill meters</th><th class="num">Solar</th></tr></thead>
             <tbody>
               <tr>
                 <td>Import</td>
                 <td class="num">{{ check1.iesco_import_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">{% if input_meter_rows %}<a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ input_meter_rows.0.meter.unit_id|default:'' }}&meter={{ input_meter_rows.0.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ input_meter_rows.0.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=import">{{ check1.input_import_kwh|default_if_none:"—"|floatformat:3 }}</a>{% else %}—{% endif %}</td>
                 <td class="num">{{ check1.audit_import_kwh|default_if_none:"—"|floatformat:3 }}</td>
                 <td class="num">{{ check1.billing_import_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">—</td>
               </tr>
               <tr>
                 <td>Export</td>
                 <td class="num">{{ check1.iesco_export_kwh|default_if_none:"—"|floatformat:3 }}</td>
-                <td class="num">{{ check1.audit_export_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">{% if input_meter_rows %}<a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ input_meter_rows.0.meter.unit_id|default:'' }}&meter={{ input_meter_rows.0.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ input_meter_rows.0.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=export">{{ check1.input_export_kwh|default_if_none:"—"|floatformat:3 }}</a>{% else %}—{% endif %}</td>
+                <td class="num">—</td>
                 <td class="num">{{ check1.billing_export_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">—</td>
               </tr>
               <tr class="total-row">
                 <td>Net total</td>
                 <td class="num">{{ check1.iesco_net_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">{{ check1.input_net_kwh|default_if_none:"—"|floatformat:3 }}</td>
                 <td class="num">{{ check1.audit_net_kwh|default_if_none:"—"|floatformat:3 }}</td>
                 <td class="num">{{ check1.billing_net_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num"><b>{{ check1.solar_units_kwh|default_if_none:"—"|floatformat:3 }}</b></td>
               </tr>
               <tr>
                 <td>Avg rate</td>
                 <td class="num">Rs {{ check1.iesco_average_rate|default_if_none:"—"|floatformat:2 }}</td>
+                <td class="num">Rs {{ check1.input_average_rate|default_if_none:"—"|floatformat:2 }}</td>
                 <td class="num">Rs {{ check1.audit_average_rate|default_if_none:"—"|floatformat:2 }}</td>
                 <td class="num">Rs {{ check1.billing_average_rate|default_if_none:"—"|floatformat:2 }}</td>
+                <td class="num">—</td>
+              </tr>
+              <tr class="total-row">
+                <td>Amount</td>
+                <td class="num">Rs {{ check1.iesco_amount|default_if_none:"—"|floatformat:0|intcomma }}</td>
+                <td class="num">—</td>
+                <td class="num">—</td>
+                <td class="num">Rs {{ check1.billing_amount|default_if_none:"—"|floatformat:0|intcomma }}</td>
+                <td class="num"><b>Rs {{ check1.solar_income|default_if_none:"—"|floatformat:0|intcomma }}</b></td>
               </tr>
             </tbody>
           </table>
-          <div class="ld-formula-note">Net total = <code>Import − Export</code>. Audit is the group check meter; Bill meters are the combined Check 2 meters.</div>
-          <div class="ld-formula-note">
-            {% if check1.iesco_bill %}{{ check1.iesco_bills|length }} IESCO bill{{ check1.iesco_bills|length|pluralize }} issued in this period; units and bill cost are combined.{% else %}No IESCO bill issue date falls inside this period; grid-meter figures are used instead.{% endif %}
-          </div>
-          <div class="ld-headline mt-2">
-            <div class="eyebrow">Solar-supplied energy</div>
-            <div class="big">{{ report.net_non_grid_contribution_kwh|default_if_none:"—"|floatformat:3 }} <span style="font-size:1rem; font-weight:600;">kWh</span></div>
-            <div style="font-size:.72rem; opacity:.85;">Calculated = Output − Grid Import</div>
-            <div class="cross">Manual inverter total: <b>{{ inverter_breakdown.total_kwh|default_if_none:"incomplete"|floatformat:3 }}{% if inverter_breakdown.total_kwh %} kWh{% endif %}</b></div>
-          </div>
-          <div class="ld-block-label">Tenant</div>
-          <div class="ld-kv-row"><span class="k">Total units consumed</span><span class="v">{{ check2.billing_total_kwh|default_if_none:"—"|floatformat:3 }} <span class="unit">kWh</span></span></div>
-          <div class="ld-kv-row"><span class="k">Tenant electricity revenue</span><span class="v">Rs. {{ report.tenant_energy_revenue|default_if_none:"—"|floatformat:0|intcomma }}</span></div>
-          <div class="ld-formula-note">Tenant electricity revenue = valid Energy Dashboard meter usage × that meter's configured unit rate for this period. Invoice amounts are not used.</div>
-          <div class="ld-block-label">IESCO{% if check1.iesco_bills|length > 1 %} (combined {{ check1.iesco_bills|length }} bills){% endif %}</div>
-          <div class="ld-kv-row"><span class="k">Import</span><span class="v">{{ check1.iesco_import_kwh|default_if_none:"—"|floatformat:3 }} <span class="unit">kWh</span></span></div>
-          <div class="ld-kv-row"><span class="k">Export</span><span class="v">{{ check1.iesco_export_kwh|default_if_none:"—"|floatformat:3 }} <span class="unit">kWh</span></span></div>
-          <div class="ld-kv-row"><span class="k">Bill cost</span><span class="v">Rs. {{ report.current_cycle_utility_cost|default_if_none:"—"|floatformat:0|intcomma }}</span></div>
-          <div class="ld-income-total"><span>Solar Income</span><span>Rs. {{ report.operating_energy_margin|default_if_none:"—"|floatformat:0|intcomma }}</span></div>
+          <div class="ld-formula-note">Input net = <code>Import − Export</code>. Solar units = <code>{% if system.output_meter_includes_grid_export %}Audit output − Input import{% else %}Audit output + Input export − Input import{% endif %}</code>. Amount shows the IESCO bill, tenant electricity revenue, and resulting Solar Income.{% if not has_separate_audit_meter %} No separate audit meter is assigned, so Solar units cannot be calculated for this group.{% endif %}</div>
         </div>
       </div>
     </div>
@@ -247,6 +245,25 @@
           </div>
         </div>
         <div class="card-body">
+          <div class="check2-section-title"><span>Input Meter</span><span>Avg rate: Rs {{ check1.input_average_rate|default_if_none:"—"|floatformat:2 }}</span></div>
+          <div class="ld-scroll-x">
+            <table class="ld-mini-table check2-table">
+              <thead><tr><th>#</th><th>Meter / direction</th><th>Serial</th><th class="num">Begin</th><th class="num">End</th><th class="num">Units</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead>
+              <tbody>
+                {% for row in input_meter_rows %}
+                <tr style="background:#eefaf4;">
+                  <td>{{ forloop.counter }}.1</td><td><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ row.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=import"><b>Import — {{ row.meter.name|default:"Input meter" }}</b></a></td><td><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.meter.meter_number }}</a></td>
+                  <td class="num">{{ row.begin|default_if_none:"—"|floatformat:3 }}</td><td class="num">{{ row.end|default_if_none:"—"|floatformat:3 }}</td><td class="num"><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ row.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=import"><b>{{ row.import_kwh|default_if_none:"—"|floatformat:3 }}</b></a></td><td class="num">{{ check1.input_average_rate|default_if_none:"—"|floatformat:2 }}</td><td class="num">—</td>
+                </tr>
+                <tr style="background:#f6fcf9;">
+                  <td>{{ forloop.counter }}.2</td><td><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ row.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=export"><b>Export — {{ row.meter.name|default:"Input meter" }}</b></a></td><td><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.meter.meter_number }}</a></td>
+                  <td class="num">{{ row.reverse_begin|default_if_none:"—"|floatformat:3 }}</td><td class="num">{{ row.reverse_end|default_if_none:"—"|floatformat:3 }}</td><td class="num"><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ row.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=export"><b>{{ row.export_kwh|default_if_none:"—"|floatformat:3 }}</b></a></td><td class="num">—</td><td class="num">—</td>
+                </tr>
+                {% empty %}<tr><td colspan="8" class="text-muted text-center">No input meter is assigned.</td></tr>{% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% if has_separate_audit_meter %}
           <div class="check2-section-title"><span>Audit Meter</span><span>Avg rate: Rs {{ check1.audit_average_rate|default_if_none:"—"|floatformat:2 }}</span></div>
           <div class="ld-scroll-x">
             <table class="ld-mini-table check2-table">
@@ -259,15 +276,12 @@
                   <td class="num">{{ check1.audit_average_rate|default_if_none:"—"|floatformat:2 }}</td>
                   <td class="num">—</td>
                 </tr>
-                <tr style="background:#f8fbff;">
-                  <td>2</td><td><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ group.check_meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&direction=export"><b>Export — {{ group.check_meter.name|default:"Audit meter" }}</b></a></td><td><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ group.check_meter.meter_number }}</a></td>
-                  <td class="num">{{ audit_summary.reverse_begin|default_if_none:"—"|floatformat:3 }}</td><td class="num">{{ audit_summary.reverse_end|default_if_none:"—"|floatformat:3 }}</td>
-                  <td class="num"><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ group.check_meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&direction=export"><b>{{ check1.audit_export_kwh|default_if_none:"—"|floatformat:3 }}</b></a></td>
-                  <td class="num">—</td><td class="num">—</td>
-                </tr>
               </tbody>
             </table>
           </div>
+          {% else %}
+          <div class="ld-formula-note mt-2">No separate audit meter is assigned; the input meter is shown only once.</div>
+          {% endif %}
           <div class="check2-section-title"><span>Billing Meters</span><span>Avg rate: Rs {{ check1.billing_average_rate|default_if_none:"—"|floatformat:2 }}</span></div>
           <div class="ld-scroll-x">
             <table class="ld-mini-table check2-table">
@@ -313,7 +327,7 @@
 
     <div class="box-col meter-detail-col">
       <div id="scoreboardMeterDetail" class="h-100 meter-detail-card" aria-live="polite">
-        <div class="card h-100"><div class="card-header">Meter Detail:</div><div class="card-body py-3 text-muted">Click a meter name in Check 2 to load its Energy Dashboard reconciliation here.</div></div>
+        <div class="card h-100"><div class="card-header">Meter Detail:</div><div class="card-body py-3 text-muted">Click an input, audit, or billing-meter reading to load its Energy Dashboard reconciliation here.</div></div>
       </div>
     </div>
 

@@ -394,6 +394,71 @@ class EnergyReconciliationTests(TestCase):
         self.assertContains(response, "direction=import")
         self.assertContains(response, "direction=export")
 
+    def test_scoreboard_shows_bidirectional_input_meter_and_hides_audit_export(self):
+        output_readings = list(self.output_meter.readings.order_by("ts", "id"))
+        output_readings[1].ts = timezone.make_aware(datetime(2026, 8, 31, 23, 59))
+        output_readings[1].save(update_fields=["ts"])
+        grid_readings = list(self.grid_meter.readings.order_by("ts", "id"))
+        grid_readings[0].reverse_active_energy_kwh = Decimal("10")
+        grid_readings[0].save(update_fields=["reverse_active_energy_kwh"])
+        grid_readings[1].ts = timezone.make_aware(datetime(2026, 8, 31, 23, 59))
+        grid_readings[1].reverse_active_energy_kwh = Decimal("25")
+        grid_readings[1].save(update_fields=["ts", "reverse_active_energy_kwh"])
+
+        response = self.client.get(
+            reverse("smart_meter:energy_group_scoreboard", args=[self.group.pk]),
+            {"range": "selected_month", "month": "8", "year": "2026"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["check1"]["input_import_kwh"], Decimal("30"))
+        self.assertEqual(response.context["check1"]["input_export_kwh"], Decimal("15"))
+        self.assertEqual(response.context["check1"]["solar_units_kwh"], Decimal("85"))
+        self.assertContains(response, "Input Meter")
+        self.assertContains(response, "Solar Income")
+        self.assertContains(response, "Amount")
+        self.assertContains(response, "source=input&direction=import")
+        self.assertContains(response, "source=input&direction=export")
+        self.assertNotContains(response, "Export — FIX-OUTPUT")
+
+        detail_response = self.client.get(
+            reverse(
+                "smart_meter:energy_group_meter_detail",
+                args=[self.group.pk, self.grid_meter.pk],
+            ),
+            {
+                "start": self.start.isoformat(),
+                "end": "2026-08-31",
+                "source": "input",
+                "direction": "export",
+            },
+        )
+        self.assertEqual(detail_response.status_code, 200)
+        detail_html = detail_response.json()["html"]
+        self.assertIn("Input meter", detail_html)
+        self.assertIn("Total Export", detail_html)
+        self.assertIn("15.000", detail_html)
+
+    def test_scoreboard_does_not_repeat_input_meter_as_audit_meter(self):
+        EnergySystemMeterLink.objects.create(
+            energy_system=self.system,
+            meter=self.output_meter,
+            side=EnergySystemMeterLink.SIDE_INPUT,
+        )
+
+        response = self.client.get(
+            reverse("smart_meter:energy_group_scoreboard", args=[self.group.pk]),
+            {"range": "selected_month", "month": "8", "year": "2026"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["has_separate_audit_meter"])
+        self.assertIsNone(response.context["check1"]["audit_import_kwh"])
+        self.assertContains(
+            response,
+            "No separate audit meter is assigned; the input meter is shown only once.",
+        )
+
     def test_tenant_revenue_uses_dashboard_charge_not_manual_invoice_amount(self):
         self.billing_meter.unit_rate = Decimal("6.25")
         self.billing_meter.save(update_fields=["unit_rate"])

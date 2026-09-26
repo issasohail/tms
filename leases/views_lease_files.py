@@ -7,6 +7,7 @@ from urllib.parse import quote as urlquote
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.files.storage import default_storage
+from django.db import transaction
 from django.http import FileResponse, HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -68,16 +69,58 @@ def _validation_code(exc):
 
 @login_required
 @require_POST
+@transaction.atomic
 def lease_file_upload(request, lease_id):
     lease = get_object_or_404(
         Lease.objects.select_related("unit__property"), pk=lease_id
     )
-    category = request.POST.get("category") or "other"
-    if not LeaseDocumentCategory.objects.filter(code=category, is_active=True).exists():
+    workflow = None
+    workflow_id = request.POST.get("punjab_workflow_id")
+    if workflow_id:
+        if not (
+            request.user.is_superuser or request.user.has_perm("leases.change_lease")
+        ):
+            return JsonResponse({"ok": False, "error": "Permission denied."}, status=403)
+        from punjab_estamp.models import LeaseEStampWorkflow
+
+        workflow = get_object_or_404(
+            LeaseEStampWorkflow.objects.select_for_update(),
+            pk=workflow_id,
+            lease=lease,
+        )
+        if workflow.status == workflow.STATUS_UPLOADED and workflow.lease_document_id:
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "uploaded": 0,
+                    "document_id": workflow.lease_document_id,
+                    "idempotent": True,
+                }
+            )
+        if workflow.status != workflow.STATUS_STAMP_ISSUED:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "error": "Punjab must confirm the exact issued Stamp before its PDF is uploaded.",
+                },
+                status=409,
+            )
+    category = ESTAMP_CATEGORY if workflow else (request.POST.get("category") or "other")
+    category_exists = LeaseDocumentCategory.objects.filter(
+        code=category, is_active=True
+    ).exists()
+    if workflow and not category_exists:
+        return JsonResponse(
+            {"ok": False, "error": "The E-Stamp Paper document category is inactive."},
+            status=422,
+        )
+    if not category_exists:
         category = "other"
     description = (request.POST.get("description") or "").strip()
 
     files = request.FILES.getlist("files") or request.FILES.getlist("file")
+    if workflow:
+        files = files[:1]
     if not files:
         if _is_ajax(request):
             return JsonResponse(
@@ -124,7 +167,7 @@ def lease_file_upload(request, lease_id):
             upload.name = _estamp_filename(lease)
         doc = LeaseDocument(
             lease=lease,
-            lease_history=None,
+            lease_history=workflow.lease_history if workflow else None,
             category=category,
             description=description,
             original_filename=upload.name[:255],
@@ -133,13 +176,29 @@ def lease_file_upload(request, lease_id):
         )
         doc.file = upload
         doc.save()
+        if workflow:
+            from punjab_estamp.services.workflow import mark_uploaded
+
+            workflow, _changed = mark_uploaded(workflow, doc, request.user)
         uploaded += 1
 
     if uploaded:
         messages.success(request, f"Uploaded {uploaded} lease file(s).")
     if _is_ajax(request):
         if uploaded:
-            return JsonResponse({"ok": True, "uploaded": uploaded})
+            payload = {"ok": True, "uploaded": uploaded}
+            if workflow:
+                payload.update(
+                    {
+                        "document_id": workflow.lease_document_id,
+                        "workflow_status": workflow.status,
+                        "view_url": reverse(
+                            "leases:lease_file_view",
+                            kwargs={"document_id": workflow.lease_document_id},
+                        ),
+                    }
+                )
+            return JsonResponse(payload)
         return JsonResponse(
             {"ok": False, "error": "No files were uploaded."}, status=400
         )

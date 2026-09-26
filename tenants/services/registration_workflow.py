@@ -7,6 +7,7 @@ from django.utils import timezone
 from tenants.models import Tenant, PendingRegistrationPerson, normalize_cnic
 from leases.models import LeaseFamilyMember, LeaseRelationshipType, LeaseVehicle, PendingLeaseVehicleSubmission
 from core.utils.identity import validate_cnic
+from punjab_estamp.models import PunjabEStampRelation
 from tenants.services.cnic_ocr import portrait_content_file_from_cnic_front
 
 PERSON_FIELDS = ("first_name", "last_name", "phone", "date_of_birth", "address")
@@ -35,6 +36,23 @@ APPLICANT_FIELDS = (
     "number_of_family_member", "family_member_adults", "family_member_children",
     "nadra_family_no", "notes",
 )
+
+
+def resolve_punjab_relation(value):
+    """Resolve new relation PKs and historical relation strings safely."""
+    if isinstance(value, PunjabEStampRelation):
+        return value
+    if value in (None, ""):
+        return None
+    if str(value).isdigit():
+        relation = PunjabEStampRelation.objects.filter(pk=int(value)).first()
+        if relation:
+            return relation
+    normalized = " ".join(str(value).upper().replace(".", "").split())
+    for relation in PunjabEStampRelation.objects.all():
+        if " ".join(relation.name.upper().replace(".", "").split()) == normalized:
+            return relation
+    return None
 
 
 def family_member_can_have_blank_cnic(person):
@@ -279,6 +297,11 @@ def apply_registration_applicant(submission, *, collision_action="", missing_fil
         value = submission.submitted_data[field]
         if field == "date_of_birth" and value:
             value = parse_date(value)
+        elif field == "relation":
+            submitted_relation = value
+            value = resolve_punjab_relation(submitted_relation)
+            if submitted_relation and not value:
+                tenant.relation_legacy = str(submitted_relation)[:40]
         setattr(tenant, field, value)
     deferred_missing_files = {}
     for field in FILE_FIELDS:
@@ -353,7 +376,7 @@ def resolve_pending_person(person, missing_files=None):
         tenant_values = {
             "first_name": person.first_name or "Unknown",
             "last_name": person.last_name or "Person",
-            "relation": "S/O.",
+            "relation": resolve_punjab_relation("S/O"),
             "cnic": person.cnic,
             "phone": person.phone,
             "date_of_birth": person.date_of_birth,

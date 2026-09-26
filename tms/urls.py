@@ -84,6 +84,11 @@ app_patterns = [
 
     path('leases/', include('leases.urls')),
 
+    path('punjab-estamp/', include(
+        ('punjab_estamp.urls', 'punjab_estamp'),
+        namespace='punjab_estamp'
+    )),
+
     path('invoices/', include(
         ('invoices.urls', 'invoices'),
         namespace='invoices'
@@ -158,6 +163,7 @@ root_app_patterns = [
     path('properties/', plain_include('properties.urls')),
     path('accounts/', plain_include('accounts.urls')),
     path('leases/', plain_include('leases.urls')),
+    path('punjab-estamp/', plain_include('punjab_estamp.urls')),
     path('invoices/', plain_include('invoices.urls')),
     path('maintenance/', plain_include('maintenance.urls')),
     path('handyman/', plain_include('handyman.urls')),

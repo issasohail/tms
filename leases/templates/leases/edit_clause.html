@@ -190,6 +190,14 @@
 .quick-tenant-files { grid-column:1 / -1; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.65rem; }
 @media (max-width: 767.98px) { .quick-tenant-grid { grid-template-columns:1fr; } }
 @media (max-width: 767.98px) { .quick-tenant-files { grid-template-columns:1fr; } }
+.punjab-estamp-card { border-color:#badbcc; box-shadow:0 2px 7px rgba(25,135,84,.08); }
+.punjab-estamp-card .card-header { position:static; background:#edf8f2; }
+.punjab-estamp-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.35rem .8rem; }
+.punjab-estamp-item { min-width:0; }
+.punjab-estamp-label { display:block; color:#667085; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
+.punjab-estamp-value { display:block; overflow-wrap:anywhere; font-size:12px; font-weight:600; color:#172033; }
+@media (max-width: 991.98px) { .punjab-estamp-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width: 575.98px) { .punjab-estamp-grid { grid-template-columns:1fr; } }
 
 </style>
 {% endblock %}
@@ -323,6 +331,81 @@
         </div>
     </form>
 
+    <div class="card punjab-estamp-card mb-2" id="punjabEstampCard" data-workflow-state="{{ punjab_estamp.state }}" data-launch-url="{% url 'punjab_estamp:launch' master_lease.pk history.pk %}">
+      <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <strong><i class="fas fa-stamp me-1"></i>Punjab e-Stamp</strong>
+          <span class="badge {% if punjab_estamp.state == 'uploaded' %}bg-success{% elif punjab_estamp.state == 'invalid' or punjab_estamp.state == 'failed' %}bg-danger{% elif punjab_estamp.state == 'paid' or punjab_estamp.state == 'stamp_issued' %}bg-primary{% elif punjab_estamp.state == 'challan_generated' %}bg-warning text-dark{% else %}bg-secondary{% endif %} ms-1">{{ punjab_estamp.status_label }}</span>
+          <span class="small text-muted ms-1">{{ history.history_label }}</span>
+        </div>
+        <div class="d-flex flex-wrap gap-1">
+          {% if punjab_estamp.state == 'ready' %}
+            {% if punjab_estamp.missing %}
+              <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#punjabEstampMissingModal"><i class="fas fa-plus-circle"></i> Create Stamp Paper</button>
+            {% else %}
+              <button class="btn btn-success btn-sm punjab-estamp-launch" type="button"><i class="fas fa-plus-circle"></i> Create Stamp Paper</button>
+            {% endif %}
+          {% elif punjab_estamp.state == 'challan_generated' %}
+            <button type="button" class="btn btn-outline-primary btn-sm punjab-estamp-launch">Check / Continue</button>
+            {% if punjab_estamp.whatsapp_url %}<a class="btn btn-success btn-sm" href="{{ punjab_estamp.whatsapp_url }}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> WhatsApp Payment</a>{% else %}<button class="btn btn-success btn-sm" type="button" disabled>WhatsApp Payment</button>{% endif %}
+          {% elif punjab_estamp.state == 'paid' %}
+            <button type="button" class="btn btn-primary btn-sm punjab-estamp-launch">Continue Stamp Process</button>
+          {% elif punjab_estamp.state == 'stamp_issued' %}
+            <button type="button" class="btn btn-primary btn-sm punjab-estamp-launch">Download / Continue</button>
+          {% elif punjab_estamp.state == 'uploaded' %}
+            {% if punjab_estamp.workflow.lease_document_id %}<a class="btn btn-primary btn-sm" href="{% url 'leases:lease_file_view' punjab_estamp.workflow.lease_document_id %}" target="_blank" rel="noopener">View E-Stamp</a>{% else %}<button class="btn btn-primary btn-sm" type="button" disabled>View E-Stamp</button>{% endif %}
+          {% elif punjab_estamp.state == 'invalid' %}
+            <form method="post" action="{% url 'punjab_estamp:replacement' master_lease.pk history.pk %}" class="d-inline">
+              {% csrf_token %}<button class="btn btn-danger btn-sm" type="submit"><i class="fas fa-redo"></i> Create Replacement Challan</button>
+            </form>
+          {% else %}
+            <button type="button" class="btn btn-outline-danger btn-sm" disabled>Check / Continue</button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-body py-2">
+        <div class="punjab-estamp-grid">
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Property</span><span class="punjab-estamp-value">{{ punjab_estamp.property.property_name|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Unit</span><span class="punjab-estamp-value">{{ punjab_estamp.property.unit_number|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Tenant</span><span class="punjab-estamp-value">{{ master_lease.tenant.get_full_name|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Applicant</span><span class="punjab-estamp-value">{{ punjab_estamp.applicant.source_label|default:"-" }}{% if punjab_estamp.applicant.name %} - {{ punjab_estamp.applicant.name }}{% endif %}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Zila / District</span><span class="punjab-estamp-value">{{ punjab_estamp.property.district_name|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Tehsil</span><span class="punjab-estamp-value">{{ punjab_estamp.property.tehsil_name|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Purpose</span><span class="punjab-estamp-value">{{ punjab_estamp.portal.purpose_name|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Challan</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.challan_number|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">PSID</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.psid|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Stamp #</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.stamp_number|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Status</span><span class="punjab-estamp-value">{{ punjab_estamp.status_label }}</span></div>
+        </div>
+        <div class="small text-muted mt-2">Punjab submission stays in dry-run mode: review the populated form, solve CAPTCHA, and click the portal's final action yourself. <a href="{% static 'punjab_estamp/punjab_portal_helper.user.js' %}" target="_blank" rel="noopener">Install/update browser helper</a>.</div>
+      </div>
+    </div>
+
+    {% if punjab_estamp.missing %}
+    <div class="modal fade" id="punjabEstampMissingModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Punjab e-Stamp Configuration Required</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <p class="mb-2">Complete the following before creating a Punjab Stamp Paper:</p>
+          <ul class="mb-0">{% for item in punjab_estamp.missing %}<li>{{ item }}</li>{% endfor %}</ul>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button><a class="btn btn-primary" href="{% url 'properties:property_update' master_lease.unit.property_id %}">Edit Property</a></div>
+      </div></div>
+    </div>
+    {% endif %}
+
+    <div class="modal fade" id="punjabEstampConnectionModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Punjab e-Stamp Connection</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <p>Punjab e-Stamp portal could not be reached or did not respond.</p>
+          <p class="mb-0">If you are using a VPN or proxy, disconnect it and try again. Also check your internet connection and confirm that the Punjab e-Stamp website opens directly in your browser.</p>
+          <div class="small text-muted mt-2">Also confirm that the TMS Punjab e-Stamp browser helper is installed and enabled.</div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-primary" id="punjabEstampTryAgain">Try Again</button><a class="btn btn-outline-primary" href="https://es.punjab-zameen.gov.pk/eStampCitizenPortal/ChallanFormView/HomePage" target="_blank" rel="noopener">Open Punjab e-Stamp</a><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button></div>
+      </div></div>
+    </div>
+
     <form id="agreementPartyForm" method="post" action="{% url 'leases:edit_clauses' master_lease.pk %}?history={{ history.pk }}" class="card party-summary-card mb-2">
       {% csrf_token %}<input type="hidden" name="party_update" value="1">
       <div class="row g-2">
@@ -363,7 +446,7 @@
           <div><label class="form-label small">CNIC Back</label><input type="file" name="cnic_back" class="form-control" accept="image/*,.heic,.heif"></div>
           <div><label class="form-label small">Prefix</label><select name="prefix" class="form-select"><option>Mr.</option><option>Mrs.</option><option>Ms.</option><option>Dr.</option></select></div>
           <div><label class="form-label small">First Name *</label><input name="first_name" class="form-control" required></div>
-          <div><label class="form-label small">Relation</label><select name="relation" class="form-select"><option>S/O.</option><option>D/O.</option><option>W/O.</option></select></div>
+          <div><label class="form-label small">Relation</label><select name="relation" class="form-select">{% for relation in punjab_estamp_relations %}<option value="{{ relation.pk }}">{{ relation.name }}</option>{% endfor %}</select></div>
           <div><label class="form-label small">Father/Husband Name *</label><input name="last_name" class="form-control" required></div>
           <div><label class="form-label small">Phone</label><input name="phone" class="form-control" maxlength="20"></div>
           <div><label class="form-label small">DOB</label><input type="date" name="date_of_birth" class="form-control"></div>
@@ -1344,6 +1427,168 @@
         });
     });
     });
+</script>
+
+<script>
+(() => {
+  const card = document.getElementById('punjabEstampCard');
+  if (!card) return;
+  const PUNJAB_ORIGIN = 'https://es.punjab-zameen.gov.pk';
+  const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+  const connectionModalElement = document.getElementById('punjabEstampConnectionModal');
+  let active = null;
+  let lastLaunchButton = null;
+
+  function channelId() {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    return String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+  }
+
+  function showConnectionHelp() {
+    if (connectionModalElement) bootstrap.Modal.getOrCreateInstance(connectionModalElement).show();
+  }
+
+  function helperResponse(source, origin, requestId, ok, payload, error) {
+    source.postMessage({
+      type: 'TMS_ESTAMP_RESPONSE',
+      requestId: requestId,
+      ok: ok,
+      payload: payload || {},
+      error: error || ''
+    }, origin);
+  }
+
+  async function jsonResponse(response) {
+    let payload = {};
+    try { payload = await response.json(); } catch (_error) { /* handled below */ }
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || 'TMS could not continue the Punjab e-Stamp workflow.');
+    }
+    return payload;
+  }
+
+  async function launchPunjab(button) {
+    lastLaunchButton = button;
+    const popup = window.open('about:blank', '_blank');
+    if (!popup) {
+      alert('Allow pop-ups for TMS, then try again.');
+      return;
+    }
+    try {
+      popup.document.title = 'Opening Punjab e-Stamp';
+      popup.document.body.innerHTML = '<p style="font:16px Arial;padding:24px">Preparing the Punjab e-Stamp workflow...</p>';
+    } catch (_error) { /* navigation still proceeds */ }
+    button.disabled = true;
+    try {
+      const response = await fetch(card.dataset.launchUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+      const payload = await jsonResponse(response);
+      active = {
+        popup: popup,
+        channel: channelId(),
+        flow: payload.flow,
+        initialized: false,
+        timer: null
+      };
+      active.timer = window.setTimeout(() => {
+        if (active && !active.initialized) showConnectionHelp();
+      }, 15000);
+      popup.location.replace(payload.portal_url);
+    } catch (error) {
+      popup.close();
+      alert(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function relayPortalEvent(message, source, origin) {
+    const response = await fetch(active.flow.eventUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify(message.payload || {})
+    });
+    const payload = await jsonResponse(response);
+    if (payload.workflow) {
+      active.flow.challan = payload.workflow.challan_number || active.flow.challan;
+      active.flow.psid = payload.workflow.psid || active.flow.psid;
+      active.flow.stampNumber = payload.workflow.stamp_number || active.flow.stampNumber;
+    }
+    helperResponse(source, origin, message.requestId, true, payload);
+  }
+
+  async function uploadCapturedPdf(message, source, origin) {
+    const incoming = message.payload || {};
+    const pin = String(incoming.otp || '');
+    const buffer = incoming.buffer;
+    if (!/^\d{6}$/.test(pin) || !(buffer instanceof ArrayBuffer)) {
+      throw new Error('The captured PDF or temporary OTP/PIN is invalid.');
+    }
+    const blob = new Blob([buffer], { type: incoming.mimeType || 'application/pdf' });
+    const formData = new FormData();
+    formData.set('category', 'estamp_paper');
+    formData.set('redirect_to', 'clauses');
+    formData.set('history', String(active.flow.historyId));
+    formData.set('punjab_workflow_id', String(active.flow.workflowId));
+    formData.set('estamp_password', pin);
+    formData.set('file', blob, incoming.filename || 'Punjab-eStamp.pdf');
+    const response = await fetch(active.flow.uploadUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: formData
+    });
+    formData.delete('estamp_password');
+    const payload = await jsonResponse(response);
+    helperResponse(source, origin, message.requestId, true, payload);
+    window.setTimeout(() => window.location.reload(), 800);
+  }
+
+  window.addEventListener('message', async (event) => {
+    const message = event.data || {};
+    if (event.origin !== PUNJAB_ORIGIN || !active || event.source !== active.popup) return;
+    if (message.type === 'TMS_ESTAMP_HELPER_READY') {
+      active.initialized = true;
+      if (active.timer) window.clearTimeout(active.timer);
+      event.source.postMessage({
+        type: 'TMS_ESTAMP_INIT',
+        channel: active.channel,
+        flow: active.flow
+      }, PUNJAB_ORIGIN);
+      return;
+    }
+    if (message.type !== 'TMS_ESTAMP_REQUEST' || message.channel !== active.channel) return;
+    try {
+      if (message.kind === 'event') await relayPortalEvent(message, event.source, event.origin);
+      else if (message.kind === 'pdf') await uploadCapturedPdf(message, event.source, event.origin);
+      else throw new Error('Unknown browser-helper request.');
+    } catch (error) {
+      helperResponse(event.source, event.origin, message.requestId, false, {}, error.message);
+    }
+  });
+
+  document.querySelectorAll('.punjab-estamp-launch').forEach((button) => {
+    button.addEventListener('click', () => launchPunjab(button));
+  });
+  document.getElementById('punjabEstampTryAgain')?.addEventListener('click', () => {
+    bootstrap.Modal.getOrCreateInstance(connectionModalElement).hide();
+    if (lastLaunchButton) launchPunjab(lastLaunchButton);
+  });
+})();
 </script>
 
 <script>

@@ -534,6 +534,11 @@ class AgreementPartyAjaxTests(TestCase):
     def setUp(self):
         from django.contrib.auth import get_user_model
         from django.contrib.auth.models import Permission
+        from punjab_estamp.models import PunjabEStampRelation
+
+        PunjabEStampRelation.objects.get_or_create(
+            portal_value="33", defaults={"name": "S/O", "sort_order": 1}
+        )
 
         self.user = get_user_model().objects.create_user(
             username="party-editor", password="x"

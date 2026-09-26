@@ -167,8 +167,20 @@ class Tenant(models.Model):
     prefix = models.CharField(
         max_length=10, null=True, blank=True, default="Mr.")
     first_name = models.CharField(max_length=50)
-    relation = models.CharField(
-        max_length=10, null=True, blank=True, default="S/O.")
+    relation_legacy = models.CharField(
+        max_length=40,
+        blank=True,
+        default="",
+        editable=False,
+        help_text="Original textual relation retained for migration audit.",
+    )
+    relation = models.ForeignKey(
+        "punjab_estamp.PunjabEStampRelation",
+        on_delete=models.PROTECT,
+        related_name="tenants",
+        null=True,
+        blank=True,
+    )
     last_name = models.CharField(max_length=50)
     email = models.EmailField(null=True, blank=True)
     phone = NormalizedPhoneField(max_length=32, null=True, blank=True)
@@ -262,7 +274,10 @@ class Tenant(models.Model):
         return f"{self.first_name} {self.last_name}"
 
     def get_full_name_agreement(self):
-        return f"{self.first_name} {self.relation} {self.last_name}"
+        relation = self.relation.name if self.relation_id else self.relation_legacy
+        return " ".join(
+            part for part in (self.first_name, relation, self.last_name) if part
+        )
 
     @property
     def age(self):

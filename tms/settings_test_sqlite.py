@@ -18,6 +18,7 @@ MIGRATION_MODULES = {
     for app_label in (
         "accounts",
         "properties",
+        "punjab_estamp",
         "core",
         "tenants",
         "expenses",

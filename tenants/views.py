@@ -86,6 +86,7 @@ from leases.services.vehicle_submissions import (
 )
 from leases.whatsapp import build_whatsapp_url
 from payments.models import Payment
+from punjab_estamp.models import PunjabEStampRelation
 from properties.models import Property, Unit
 from tenants.models import Tenant
 from whatsapp.models import TrustedDeviceRegistry, WhatsAppExternalLinkToken
@@ -1257,12 +1258,33 @@ def _registration_submission_comparison(submission):
             except Exception:
                 continue
             existing = getattr(tenant, field_name, None)
-            existing_compare = "" if existing is None else str(existing)
-            submitted_compare = "" if submitted is None else str(submitted)
-            changed = existing_compare != submitted_compare
-            label = str(model_field.verbose_name).title()
-            existing_display = existing_compare or "-"
-            submitted_display = submitted_compare or "-"
+            if field_name == "relation":
+                from tenants.services.registration_workflow import (
+                    resolve_punjab_relation,
+                )
+
+                submitted_relation = resolve_punjab_relation(submitted)
+                existing_compare = str(tenant.relation_id or "")
+                submitted_compare = str(
+                    submitted_relation.pk if submitted_relation else ""
+                )
+                changed = existing_compare != submitted_compare
+                label = str(model_field.verbose_name).title()
+                existing_display = str(existing) if existing else (
+                    tenant.relation_legacy or "-"
+                )
+                submitted_display = (
+                    str(submitted_relation)
+                    if submitted_relation
+                    else (str(submitted) or "-")
+                )
+            else:
+                existing_compare = "" if existing is None else str(existing)
+                submitted_compare = "" if submitted is None else str(submitted)
+                changed = existing_compare != submitted_compare
+                label = str(model_field.verbose_name).title()
+                existing_display = existing_compare or "-"
+                submitted_display = submitted_compare or "-"
             if field_name in phone_fields:
                 existing_display = format_phone(existing) or "-"
                 submitted_display = format_phone(submitted) or "-"
@@ -1289,6 +1311,11 @@ def _registration_submission_comparison(submission):
                 "is_phone": field_name in phone_fields,
                 "can_update_submitted": field_name != "interested_in",
                 "input_type": "date" if field_name == "date_of_birth" else "text",
+                "relation_options": PunjabEStampRelation.objects.filter(
+                    active=True
+                ).order_by("sort_order", "name")
+                if field_name == "relation"
+                else None,
             }
         )
 
@@ -1469,7 +1496,7 @@ def tenant_public_registration_update(request, token):
     initial = {
         "prefix": tenant.prefix,
         "first_name": tenant.first_name,
-        "relation": tenant.relation,
+        "relation": tenant.relation_id,
         "last_name": tenant.last_name,
         "email": tenant.email,
         "phone": tenant.phone,
@@ -1586,6 +1613,9 @@ def tenant_public_registration_update(request, token):
                 )
 
             submitted_data = form.cleaned_data.copy()
+            submitted_data["relation"] = (
+                submitted_data["relation"].pk if submitted_data.get("relation") else None
+            )
             submitted_data["interested_in"] = [
                 item.pk for item in submitted_data.get("interested_in", [])
             ]
@@ -2227,6 +2257,8 @@ def tenant_registration_submission_review(request, pk):
             return redirect("tenants:registration_submission_detail", pk=submission.pk)
         for field_name in updated_values:
             value = candidate_form.cleaned_data[field_name]
+            if field_name == "relation":
+                value = value.pk if value else None
             if hasattr(value, "isoformat"):
                 value = value.isoformat()
             candidate_data[field_name] = value

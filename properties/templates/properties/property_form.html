@@ -167,6 +167,7 @@
             <div class="col-12 col-md-3 col-xl-2">{{ form.police_division|as_crispy_field }}</div>
             <div class="col-12 col-md-3 col-xl-2">{{ form.police_circle|as_crispy_field }}</div>
             <div class="col-12 col-md-3 col-xl-2">{{ form.zila|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.tehsil|as_crispy_field }}</div>
           </div>
         </div>
 
@@ -176,6 +177,13 @@
             Owner
           </div>
           <div class="row g-2">
+            <div class="col-12 col-lg-6">{{ form.owner_tenant|as_crispy_field }}</div>
+            <div class="col-12 col-lg-6">
+              <div class="border rounded bg-light p-2 small h-100" data-tenant-identity-panel="owner">
+                <span class="text-muted">Select the Tenant record to use its verified owner identity.</span>
+              </div>
+            </div>
+            <div class="col-12"><div class="small text-muted">Legacy fallback fields are retained for compatibility and are filled from the selected Tenant when saved.</div></div>
             <div class="col-4 col-md-2 col-xl-1">{{ form.owner_prefix|as_crispy_field }}</div>
             <div class="col-8 col-md-4 col-xl-3">{{ form.owner_name|as_crispy_field }}</div>
             <div class="col-8 col-md-4 col-xl-3">{{ form.owner_father_name|as_crispy_field }}</div>
@@ -195,6 +203,13 @@
             Caretaker
           </div>
           <div class="row g-2">
+            <div class="col-12 col-lg-6">{{ form.caretaker_tenant|as_crispy_field }}</div>
+            <div class="col-12 col-lg-6">
+              <div class="border rounded bg-light p-2 small h-100" data-tenant-identity-panel="caretaker">
+                <span class="text-muted">Caretaker is optional. Select a Tenant to use that identity.</span>
+              </div>
+            </div>
+            <div class="col-12"><div class="small text-muted">Legacy caretaker fields remain available as a fallback.</div></div>
             <div class="col-4 col-md-2 col-xl-1">{{ form.caretaker_prefix|as_crispy_field }}</div>
             <div class="col-8 col-md-4 col-xl-3">{{ form.caretaker_name|as_crispy_field }}</div>
             <div class="col-8 col-md-4 col-xl-3">{{ form.caretaker_father_name|as_crispy_field }}</div>
@@ -217,4 +232,101 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const districtSelect = document.querySelector("[data-punjab-district]");
+  const tehsilSelect = document.querySelector("[data-punjab-tehsil]");
+  if (districtSelect && tehsilSelect) {
+    const tehsilUrl = "{% url 'properties:property_tehsils' %}";
+    districtSelect.addEventListener("change", async () => {
+    const districtId = districtSelect.value;
+    tehsilSelect.disabled = true;
+    tehsilSelect.replaceChildren(new Option(
+      districtId ? "Loading Tehsils..." : "Select Zila / District first",
+      ""
+    ));
+    if (!districtId) {
+      tehsilSelect.disabled = false;
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${tehsilUrl}?district=${encodeURIComponent(districtId)}`,
+        {headers: {"X-Requested-With": "XMLHttpRequest"}}
+      );
+      if (!response.ok) throw new Error("Tehsil request failed");
+      const payload = await response.json();
+      tehsilSelect.replaceChildren(new Option("Select Tehsil", ""));
+      payload.tehsils.forEach((tehsil) => {
+        tehsilSelect.add(new Option(tehsil.name, tehsil.id));
+      });
+    } catch (error) {
+      tehsilSelect.replaceChildren(new Option("Unable to load Tehsils", ""));
+    } finally {
+      tehsilSelect.disabled = false;
+    }
+    });
+  }
+
+  const identityUrlTemplate = "{% url 'properties:property_tenant_identity' 0 %}";
+  const legacyFields = {
+    owner: {
+      prefix: "id_owner_prefix", name: "id_owner_name",
+      father_husband_name: "id_owner_father_name", relation: "id_relation",
+      cnic: "id_owner_cnic", phone: "id_owner_phone", address: "id_owner_address"
+    },
+    caretaker: {
+      prefix: "id_caretaker_prefix", name: "id_caretaker_name",
+      father_husband_name: "id_caretaker_father_name", relation: "id_caretaker_relation",
+      cnic: "id_caretaker_cnic", phone: "id_caretaker_phone", address: "id_caretaker_address"
+    }
+  };
+  const escapeHtml = (value) => String(value || "").replace(/[&<>'"]/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+  })[character]);
+
+  async function showTenantIdentity(select) {
+    const role = select.dataset.tenantRole;
+    const panel = document.querySelector(`[data-tenant-identity-panel="${role}"]`);
+    if (!panel || !select.value) {
+      if (panel) panel.innerHTML = `<span class="text-muted">${role === "owner" ? "Select the Tenant record to use its verified owner identity." : "Caretaker is optional. Select a Tenant to use that identity."}</span>`;
+      return;
+    }
+    panel.innerHTML = '<span class="text-muted">Loading Tenant identity...</span>';
+    try {
+      const response = await fetch(
+        identityUrlTemplate.replace("/0/", `/${encodeURIComponent(select.value)}/`),
+        {headers: {"X-Requested-With": "XMLHttpRequest"}}
+      );
+      if (!response.ok) throw new Error("Tenant identity request failed");
+      const tenant = await response.json();
+      Object.entries(legacyFields[role]).forEach(([key, fieldId]) => {
+        const field = document.getElementById(fieldId);
+        if (field) field.value = tenant[key] || "";
+      });
+      panel.innerHTML = `
+        <div><strong>${escapeHtml(tenant.full_name) || "-"}</strong> ${tenant.relation ? `(${escapeHtml(tenant.relation)})` : ""}</div>
+        <div>CNIC: ${escapeHtml(tenant.cnic) || "-"} &middot; Phone: ${escapeHtml(tenant.phone) || "-"}</div>
+        <div>Email: ${escapeHtml(tenant.email) || "-"}</div>
+        <div>Address: ${escapeHtml(tenant.address) || "-"}</div>`;
+    } catch (error) {
+      panel.innerHTML = '<span class="text-danger">Unable to load Tenant identity.</span>';
+    }
+  }
+
+  document.querySelectorAll(".tenant-identity-select").forEach((select) => {
+    if (window.jQuery && jQuery.fn.select2) {
+      jQuery(select).select2({theme: "bootstrap-5", width: "100%", allowClear: true});
+      jQuery(select).on("change", () => showTenantIdentity(select));
+    } else {
+      select.addEventListener("change", () => showTenantIdentity(select));
+    }
+    if (select.value) showTenantIdentity(select);
+  });
+});
+</script>
 {% endblock %}

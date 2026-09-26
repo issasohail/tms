@@ -94,6 +94,7 @@ INSTALLED_APPS = [
     "dashboard",
     "accounts.apps.AccountsConfig",
     "properties.apps.PropertiesConfig",
+    "punjab_estamp.apps.PunjabEStampConfig",
     "django.contrib.admin",
     "django.contrib.auth",
     "core.apps.CoreConfig",

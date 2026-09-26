@@ -45,6 +45,13 @@ class Property(models.Model):
     property_name = models.CharField(
         max_length=100, verbose_name="Property Name", db_column="name"
     )
+    owner_tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.SET_NULL,
+        related_name="owned_properties",
+        null=True,
+        blank=True,
+    )
     owner_prefix = models.CharField(max_length=5, null=True, blank=True, default="Mr.")
     owner_name = models.CharField(max_length=100)
     owner_father_name = models.CharField(max_length=100, blank=True, null=True)
@@ -61,6 +68,13 @@ class Property(models.Model):
         max_length=5, null=True, blank=True, default="Mr."
     )
     caretaker_name = models.CharField(max_length=100, blank=True, null=True)
+    caretaker_tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.SET_NULL,
+        related_name="caretaken_properties",
+        null=True,
+        blank=True,
+    )
     caretaker_father_name = models.CharField(max_length=100, blank=True, null=True)
     caretaker_relation = models.CharField(
         max_length=10, null=True, blank=True, default="S/O"
@@ -81,7 +95,28 @@ class Property(models.Model):
     police_station = models.CharField(max_length=120, blank=True, default="")
     police_division = models.CharField(max_length=120, blank=True, default="")
     police_circle = models.CharField(max_length=120, blank=True, default="")
-    zila = models.CharField(max_length=120, blank=True, default="")
+    zila_legacy = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        editable=False,
+        help_text="Original textual Zila value retained for migration audit.",
+    )
+    zila = models.ForeignKey(
+        "punjab_estamp.PunjabEStampDistrict",
+        on_delete=models.PROTECT,
+        related_name="properties",
+        null=True,
+        blank=True,
+        verbose_name="Zila / District",
+    )
+    tehsil = models.ForeignKey(
+        "punjab_estamp.PunjabEStampTehsil",
+        on_delete=models.PROTECT,
+        related_name="properties",
+        null=True,
+        blank=True,
+    )
     bank_account_details = models.TextField(
         blank=True,
         null=True,
@@ -132,6 +167,15 @@ class Property(models.Model):
 
         return ", ".join(parts)
 
+    def clean(self):
+        super().clean()
+        if self.zila_id and self.tehsil_id and self.tehsil.district_id != self.zila_id:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError(
+                {"tehsil": "The selected Tehsil does not belong to the selected Zila / District."}
+            )
+
     def save(self, *args, **kwargs):
         normalize_title_fields(
             self,
@@ -148,7 +192,7 @@ class Property(models.Model):
                 "police_station",
                 "police_division",
                 "police_circle",
-                "zila",
+                "zila_legacy",
                 "property_city",
                 "property_state",
             ),

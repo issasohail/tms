@@ -24,6 +24,7 @@ from core.utils.identity import (
     validate_date_of_birth,
 )
 from core.models import GlobalSettings
+from punjab_estamp.models import PunjabEStampRelation
 from tenants.services.cnic_uploads import cnic_pdf_first_page_to_jpeg
 
 
@@ -152,6 +153,15 @@ class TenantForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        relation_queryset = PunjabEStampRelation.objects.filter(active=True)
+        if self.instance and self.instance.pk and self.instance.relation_id:
+            relation_queryset = PunjabEStampRelation.objects.filter(
+                Q(active=True) | Q(pk=self.instance.relation_id)
+            )
+        self.fields["relation"].queryset = relation_queryset.order_by(
+            "sort_order", "name"
+        )
+        self.fields["relation"].empty_label = "Select relation"
         occupation_options, income_options = _tenant_registration_options()
         occupation_value = (
             self.data.get(self.add_prefix("occupation"))
@@ -227,7 +237,12 @@ class LeaseForm(forms.ModelForm):
 class TenantPublicRegistrationForm(forms.Form):
     prefix = forms.CharField(required=False, widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     first_name = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
-    relation = forms.ChoiceField(required=False, choices=[("S/O.", "S/O."), ("D/O.", "D/O."), ("W/O.", "W/O."), ("H/O.", "H/O."), ("C/O.", "C/O."), ("", "Other / None")], widget=forms.Select(attrs={"class": "form-select form-select-sm"}))
+    relation = forms.ModelChoiceField(
+        required=False,
+        queryset=PunjabEStampRelation.objects.none(),
+        empty_label="Select relation",
+        widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
     last_name = forms.CharField(widget=forms.TextInput(attrs={"class": "form-control form-control-sm"}))
     email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={"class": "form-control form-control-sm"}))
     phone = forms.CharField(required=True, widget=forms.TextInput(attrs={"class": "form-control form-control-sm", "required": True, "aria-required": "true"}))
@@ -315,6 +330,14 @@ class TenantPublicRegistrationForm(forms.Form):
         self.role_data = kwargs.pop("role_data", None)
         self.registration_tenant = kwargs.pop("registration_tenant", None)
         super().__init__(*args, **kwargs)
+        relation_queryset = PunjabEStampRelation.objects.filter(active=True)
+        if self.registration_tenant and self.registration_tenant.relation_id:
+            relation_queryset = PunjabEStampRelation.objects.filter(
+                Q(active=True) | Q(pk=self.registration_tenant.relation_id)
+            )
+        self.fields["relation"].queryset = relation_queryset.order_by(
+            "sort_order", "name"
+        )
         occupation_options, income_options = _tenant_registration_options()
         occupation_value = (
             self.data.get("occupation")

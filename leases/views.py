@@ -6477,6 +6477,7 @@ def create_agreement_party_ajax(request):
     """Create a minimal Tenant record for proposer/seconder/witness Select2."""
     from django.core.exceptions import ValidationError
     from tenants.models import Tenant, normalize_cnic
+    from tenants.services.registration_workflow import resolve_punjab_relation
 
     if not (request.user.has_perm("tenants.add_tenant") or request.user.is_superuser):
         return JsonResponse(
@@ -6490,6 +6491,11 @@ def create_agreement_party_ajax(request):
     phone = (request.POST.get("phone") or "").strip()
     prefix = (request.POST.get("prefix") or "Mr.").strip() or "Mr."
     relation = (request.POST.get("relation") or "S/O.").strip() or "S/O."
+    relation_obj = resolve_punjab_relation(relation)
+    if not relation_obj:
+        return JsonResponse(
+            {"ok": False, "message": "Select a valid Punjab relation."}, status=400
+        )
     date_of_birth = (request.POST.get("date_of_birth") or "").strip()
     cnic_issue_date = (request.POST.get("cnic_issue_date") or "").strip()
     cnic_expiry_date = (request.POST.get("cnic_expiry_date") or "").strip()
@@ -6592,7 +6598,7 @@ def create_agreement_party_ajax(request):
         })
 
     tenant = Tenant(
-        prefix=prefix[:10], first_name=first_name[:50], relation=relation[:10],
+        prefix=prefix[:10], first_name=first_name[:50], relation=relation_obj,
         last_name=last_name[:50], cnic=cnic_digits, phone=normalize_phone(phone), is_active=True,
         date_of_birth=parsed_dob, cnic_issue_date=parsed_issue,
         cnic_expiry_date=parsed_expiry, gender=gender, country=country or "Pakistan",
@@ -6671,6 +6677,7 @@ def edit_clauses(request, pk):
     from copy import copy
     from tenants.models import Tenant
     from leases.models import LeaseRelationshipType
+    from punjab_estamp.models import PunjabEStampRelation
 
     from leases.services.lease_history import (
         copy_previous_history_clauses,
@@ -6683,6 +6690,10 @@ def edit_clauses(request, pk):
             "tenant",
             "unit",
             "unit__property",
+            "unit__property__zila",
+            "unit__property__tehsil",
+            "unit__property__owner_tenant__relation",
+            "unit__property__caretaker_tenant__relation",
             "proposer",
             "seconder",
             "proposer_relationship",
@@ -6971,6 +6982,9 @@ def edit_clauses(request, pk):
     current_estamp_status = estamp_status(
         lease, request.user, config=signature_config
     )
+    from punjab_estamp.services.workflow import workflow_card_context
+
+    punjab_estamp = workflow_card_context(lease, history)
     eligible_photos = []
     for photo in eligible_agreement_photos(lease, history):
         thumbnail_url = photo.display_thumbnail_url
@@ -7030,7 +7044,9 @@ def edit_clauses(request, pk):
             "agreement_signature_settings": signature_config,
             "role_tenants": role_tenants,
             "relationship_types": LeaseRelationshipType.objects.filter(is_active=True).order_by("sort_order", "name"),
+            "punjab_estamp_relations": PunjabEStampRelation.objects.filter(active=True).order_by("sort_order", "name"),
             "estamp_status": current_estamp_status,
+            "punjab_estamp": punjab_estamp,
             "agreement_photo_settings": {
                 "include_photos": history.include_lease_photos,
                 "layout": photo_layout,

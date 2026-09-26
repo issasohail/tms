@@ -3,10 +3,19 @@
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Div, Layout
 from django import forms
+from django.db.models import Q
 
 from core.utils.text import add_auto_titlecase_class
+from punjab_estamp.models import PunjabEStampDistrict, PunjabEStampTehsil
+from tenants.models import Tenant
 
 from .models import BuildingType, Property, PropertyBankAccount, Unit
+
+
+class TenantIdentityChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, tenant):
+        cnic = tenant.cnic or "No CNIC"
+        return f"{tenant.get_full_name()} — {cnic}"
 
 
 def default_building_type_for_property(property_obj):
@@ -30,6 +39,13 @@ def default_building_type_for_property(property_obj):
 
 
 class PropertyForm(forms.ModelForm):
+    owner_tenant = TenantIdentityChoiceField(
+        queryset=Tenant.objects.none(), required=False, label="Owner Tenant"
+    )
+    caretaker_tenant = TenantIdentityChoiceField(
+        queryset=Tenant.objects.none(), required=False, label="Caretaker Tenant"
+    )
+
     class Meta:
         model = Property
         fields = "__all__"
@@ -41,6 +57,89 @@ class PropertyForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        tenant_queryset = Tenant.objects.filter(is_active=True)
+        selected_tenant_ids = {
+            tenant_id
+            for tenant_id in (
+                getattr(self.instance, "owner_tenant_id", None),
+                getattr(self.instance, "caretaker_tenant_id", None),
+            )
+            if tenant_id
+        }
+        if selected_tenant_ids:
+            tenant_queryset = Tenant.objects.filter(
+                Q(is_active=True) | Q(pk__in=selected_tenant_ids)
+            )
+        tenant_queryset = tenant_queryset.order_by("first_name", "last_name", "pk")
+        for field_name in ("owner_tenant", "caretaker_tenant"):
+            self.fields[field_name].queryset = tenant_queryset
+            self.fields[field_name].empty_label = "Search and select Tenant"
+            self.fields[field_name].widget.attrs.update(
+                {
+                    "class": "form-select form-select-sm tenant-identity-select",
+                    "data-tenant-role": field_name.removesuffix("_tenant"),
+                }
+            )
+        self.fields["owner_name"].required = False
+        self.fields["owner_cnic"].required = False
+        selected_district_id = None
+        if self.is_bound:
+            selected_district_id = self.data.get(self.add_prefix("zila"))
+        elif self.instance and self.instance.pk:
+            selected_district_id = self.instance.zila_id
+        else:
+            selected_district_id = self.initial.get("zila")
+
+        district_queryset = PunjabEStampDistrict.objects.filter(active=True)
+        if self.instance and self.instance.pk and self.instance.zila_id:
+            district_queryset = PunjabEStampDistrict.objects.filter(
+                Q(active=True) | Q(pk=self.instance.zila_id)
+            )
+        self.fields["zila"].queryset = district_queryset.order_by("sort_order", "name")
+        self.fields["zila"].label = "Zila / District"
+        self.fields["zila"].required = True
+        self.fields["zila"].empty_label = "Select Zila / District"
+        self.fields["zila"].widget.attrs.update(
+            {"class": "form-select form-select-sm", "data-punjab-district": "1"}
+        )
+
+        if (
+            not self.is_bound
+            and not (self.instance and self.instance.pk)
+            and not selected_district_id
+        ):
+            rawalpindi = district_queryset.filter(
+                portal_value="18", active=True
+            ).first()
+            if rawalpindi:
+                selected_district_id = rawalpindi.pk
+                self.initial.setdefault("zila", rawalpindi.pk)
+
+        tehsil_queryset = PunjabEStampTehsil.objects.none()
+        if selected_district_id:
+            try:
+                tehsil_queryset = PunjabEStampTehsil.objects.filter(
+                    district_id=int(selected_district_id), active=True
+                )
+            except (TypeError, ValueError):
+                pass
+        if self.instance and self.instance.pk and self.instance.tehsil_id:
+            tehsil_queryset = PunjabEStampTehsil.objects.filter(
+                Q(active=True, district_id=selected_district_id)
+                | Q(pk=self.instance.tehsil_id)
+            )
+        self.fields["tehsil"].queryset = tehsil_queryset.order_by("sort_order", "name")
+        self.fields["tehsil"].required = True
+        self.fields["tehsil"].empty_label = "Select Tehsil"
+        self.fields["tehsil"].widget.attrs.update(
+            {"class": "form-select form-select-sm", "data-punjab-tehsil": "1"}
+        )
+
+        if not self.is_bound and not (self.instance and self.instance.pk):
+            rawalpindi_tehsil = tehsil_queryset.filter(portal_value="72").first()
+            if rawalpindi_tehsil:
+                self.initial.setdefault("tehsil", rawalpindi_tehsil.pk)
+
         self.fields["bank_account_details"].label = "Legacy Bank Account Fallback"
         self.fields[
             "bank_account_details"
@@ -70,6 +169,34 @@ class PropertyForm(forms.ModelForm):
                 "property_state",
             },
         )
+
+    def clean(self):
+        cleaned = super().clean()
+        for role in ("owner", "caretaker"):
+            tenant = cleaned.get(f"{role}_tenant")
+            if not tenant:
+                continue
+            relation = tenant.relation.name if tenant.relation_id else tenant.relation_legacy
+            cleaned[f"{role}_prefix"] = tenant.prefix
+            cleaned[f"{role}_name"] = tenant.first_name
+            cleaned[f"{role}_father_name"] = tenant.last_name
+            cleaned[f"{role}_cnic"] = tenant.cnic
+            cleaned[f"{role}_phone"] = tenant.phone
+            cleaned[f"{role}_address"] = tenant.permanent_address or tenant.address
+            cleaned["relation" if role == "owner" else "caretaker_relation"] = relation
+        if not cleaned.get("owner_tenant"):
+            if not cleaned.get("owner_name"):
+                self.add_error("owner_name", "Select an Owner Tenant or enter the legacy owner name.")
+            if not cleaned.get("owner_cnic"):
+                self.add_error("owner_cnic", "Select an Owner Tenant or enter the legacy owner CNIC.")
+        district = cleaned.get("zila")
+        tehsil = cleaned.get("tehsil")
+        if district and tehsil and tehsil.district_id != district.pk:
+            self.add_error(
+                "tehsil",
+                "The selected Tehsil does not belong to the selected Zila / District.",
+            )
+        return cleaned
 
 
 # forms.py

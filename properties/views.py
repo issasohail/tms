@@ -32,7 +32,7 @@ from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import CreateView, DeleteView, DetailView, UpdateView
 from django_filters.views import FilterView
 from django_tables2 import SingleTableView
@@ -60,6 +60,7 @@ from leases.models_parking_inventory import (
 )
 from leases.whatsapp import build_whatsapp_url, render_unit_whatsapp_template
 from payments.models import Payment
+from punjab_estamp.models import PunjabEStampTehsil
 from tenants.models import Tenant, TenantInterestType
 from utils.pdf_export import handle_export
 
@@ -317,6 +318,53 @@ class PropertyUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
     def form_valid(self, form):
         messages.success(self.request, "Property updated successfully.")
         return super().form_valid(form)
+
+
+@login_required
+@require_GET
+def property_tehsils(request):
+    district_id = request.GET.get("district")
+    if not district_id:
+        return JsonResponse({"tehsils": []})
+    try:
+        district_id = int(district_id)
+    except (TypeError, ValueError):
+        return JsonResponse({"tehsils": [], "error": "Invalid District."}, status=400)
+
+    tehsils = list(
+        PunjabEStampTehsil.objects.filter(
+            district_id=district_id,
+            district__active=True,
+            active=True,
+        )
+        .order_by("sort_order", "name")
+        .values("id", "name", "portal_value")
+    )
+    return JsonResponse({"tehsils": tehsils})
+
+
+@login_required
+@require_GET
+def property_tenant_identity(request, pk):
+    tenant = get_object_or_404(
+        Tenant.objects.select_related("relation"),
+        pk=pk,
+    )
+    relation = tenant.relation.name if tenant.relation_id else tenant.relation_legacy
+    return JsonResponse(
+        {
+            "id": tenant.pk,
+            "prefix": tenant.prefix or "",
+            "name": tenant.first_name or "",
+            "full_name": tenant.get_full_name(),
+            "father_husband_name": tenant.last_name or "",
+            "relation": relation or "",
+            "cnic": tenant.cnic or "",
+            "phone": tenant.phone or "",
+            "email": tenant.email or "",
+            "address": tenant.permanent_address or tenant.address or "",
+        }
+    )
 
 
 class PropertyDeleteView(LoginRequiredMixin, DeleteView):

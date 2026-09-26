@@ -102,7 +102,14 @@
                           {% if row.can_update_submitted %}<option value="update_submitted">Update submitted value</option>{% endif %}
                         </select>
                         {% if row.can_update_submitted %}
-                          <input type="{{ row.input_type }}" class="form-control form-control-sm mt-1 submitted-update-input" id="updated_{{ row.field }}" name="updated_{{ row.field }}" value="{{ row.submitted_raw }}" aria-label="Updated {{ row.label }}" hidden disabled>
+                          {% if row.relation_options %}
+                            <select class="form-select form-select-sm mt-1 submitted-update-input" id="updated_{{ row.field }}" name="updated_{{ row.field }}" aria-label="Updated {{ row.label }}" hidden disabled>
+                              <option value="">Select relation</option>
+                              {% for relation in row.relation_options %}<option value="{{ relation.pk }}" {% if row.submitted_raw == relation.pk|stringformat:"s" %}selected{% endif %}>{{ relation.name }}</option>{% endfor %}
+                            </select>
+                          {% else %}
+                            <input type="{{ row.input_type }}" class="form-control form-control-sm mt-1 submitted-update-input" id="updated_{{ row.field }}" name="updated_{{ row.field }}" value="{{ row.submitted_raw }}" aria-label="Updated {{ row.label }}" hidden disabled>
+                          {% endif %}
                         {% endif %}
                       {% elif row.changed %}<span class="badge bg-warning text-dark">Changed</span>
                       {% elif row.can_update_submitted and can_apply_submission %}
@@ -110,7 +117,14 @@
                           <option value="keep_existing" selected>{% if row.submitted_is_blank %}Leave blank{% else %}Keep same value{% endif %}</option>
                           <option value="update_submitted">Enter staff value</option>
                         </select>
-                        <input type="{{ row.input_type }}" class="form-control form-control-sm mt-1 submitted-update-input" id="updated_{{ row.field }}" name="updated_{{ row.field }}" value="{{ row.submitted_raw }}" aria-label="Staff value for {{ row.label }}" hidden disabled>
+                        {% if row.relation_options %}
+                          <select class="form-select form-select-sm mt-1 submitted-update-input" id="updated_{{ row.field }}" name="updated_{{ row.field }}" aria-label="Staff value for {{ row.label }}" hidden disabled>
+                            <option value="">Select relation</option>
+                            {% for relation in row.relation_options %}<option value="{{ relation.pk }}" {% if row.submitted_raw == relation.pk|stringformat:"s" %}selected{% endif %}>{{ relation.name }}</option>{% endfor %}
+                          </select>
+                        {% else %}
+                          <input type="{{ row.input_type }}" class="form-control form-control-sm mt-1 submitted-update-input" id="updated_{{ row.field }}" name="updated_{{ row.field }}" value="{{ row.submitted_raw }}" aria-label="Staff value for {{ row.label }}" hidden disabled>
+                        {% endif %}
                       {% else %}<span class="badge bg-light text-secondary border">Unchanged</span>{% endif %}
                     </td>
                   </tr>

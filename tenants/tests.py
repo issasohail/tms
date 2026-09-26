@@ -767,6 +767,7 @@ class RegistrationOnboardingTests(TestCase):
     def test_tenant_only_approval_processes_required_people_without_lease(self):
         from django.urls import reverse
 
+        from punjab_estamp.models import PunjabEStampRelation
         from tenants.models import TenantRegistrationSubmission
         from tenants.views import _registration_submission_comparison
 
@@ -789,7 +790,10 @@ class RegistrationOnboardingTests(TestCase):
         data["decision_occupation"] = "update_submitted"
         data["updated_occupation"] = "Engineer"
         data["decision_relation"] = "update_submitted"
-        data["updated_relation"] = "D/O."
+        daughter_of, _ = PunjabEStampRelation.objects.get_or_create(
+            portal_value="34", defaults={"name": "D/O", "sort_order": 1}
+        )
+        data["updated_relation"] = str(daughter_of.pk)
 
         self.client.force_login(self.user)
         response = self.client.post(
@@ -802,7 +806,7 @@ class RegistrationOnboardingTests(TestCase):
         self.assertIsNone(submission.created_lease_id)
         submission.tenant.refresh_from_db()
         self.assertEqual(submission.tenant.occupation, "Engineer")
-        self.assertEqual(submission.tenant.relation, "D/O.")
+        self.assertEqual(submission.tenant.relation, daughter_of)
         self.assertEqual(
             submission.pending_people.filter(processed_tenant__isnull=False).count(),
             2,

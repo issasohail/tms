@@ -11,6 +11,9 @@ app_name = 'properties'
 urlpatterns = [
     path('', PropertyListView.as_view(), name='property_list'),
     path('create/', views.PropertyCreateView.as_view(), name='property_create'),
+    path('ajax/tehsils/', views.property_tehsils, name='property_tehsils'),
+    path('ajax/tenant-identity/<int:pk>/', views.property_tenant_identity,
+         name='property_tenant_identity'),
     path('<int:pk>/', views.PropertyDetailView.as_view(), name='property_detail'),
     path('<int:property_pk>/bank-accounts/add/', views.property_bank_account_save,
          name='property_bank_account_add'),

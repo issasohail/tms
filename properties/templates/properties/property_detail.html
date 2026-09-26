@@ -149,6 +149,9 @@
             <div class="col-12 col-md-6">
                 <div class="border rounded p-2 h-100" id="owner-information">
                     <div class="fw-bold mb-1">Owner Information</div>
+                    {% if property.owner_tenant %}
+                    <div class="mb-1"><span class="badge bg-success">Linked Tenant #{{ property.owner_tenant_id }}</span> {{ property.owner_tenant.get_full_name_agreement }}</div>
+                    {% endif %}
                     {% if property.owner_photo %}
                         <a href="{{ property.owner_photo.url }}" target="_blank" class="d-inline-block mb-2">
                             <img src="{{ property.owner_photo.url }}" alt="Owner photo" class="rounded border" style="width:80px;height:80px;object-fit:cover;">
@@ -163,6 +166,19 @@
             </div>
             <div class="col-12 col-md-6">
                 <div class="border rounded p-2 h-100">
+                    <div class="fw-bold mb-1">Caretaker Information</div>
+                    {% if property.caretaker_tenant %}
+                    <div class="mb-1"><span class="badge bg-success">Linked Tenant #{{ property.caretaker_tenant_id }}</span> {{ property.caretaker_tenant.get_full_name_agreement }}</div>
+                    {% endif %}
+                    <div><strong>Name:</strong> {{ property.caretaker_name|default:"-" }}</div>
+                    <div><strong>Father Name:</strong> {{ property.caretaker_father_name|default:"-" }}</div>
+                    <div><strong>CNIC:</strong> {{ property.caretaker_cnic|format_cnic|default:"-" }}</div>
+                    <div><strong>Phone:</strong> {{ property.caretaker_phone|format_phone|default:"-" }}</div>
+                    <div><strong>Address:</strong> {{ property.caretaker_address|default:"-" }}</div>
+                </div>
+            </div>
+            <div class="col-12 col-md-6">
+                <div class="border rounded p-2 h-100">
                     <div class="fw-bold mb-1">Police Verification Address</div>
                     <div><strong>House #:</strong> {{ property.house_no|default:"-" }}</div>
                     <div><strong>Street #:</strong> {{ property.street_no|default:"-" }}</div>
@@ -172,7 +188,8 @@
                     <div><strong>Police Station:</strong> {{ property.police_station|default:"-" }}</div>
                     <div><strong>Division:</strong> {{ property.police_division|default:"-" }}</div>
                     <div><strong>Circle:</strong> {{ property.police_circle|default:"-" }}</div>
-                    <div><strong>Zila:</strong> {{ property.zila|default:"-" }}</div>
+                    <div><strong>Zila / District:</strong> {{ property.zila|default:"-" }}</div>
+                    <div><strong>Tehsil:</strong> {{ property.tehsil|default:"-" }}</div>
                 </div>
             </div>
         </div>

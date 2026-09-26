@@ -1,4 +1,6 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+
+from punjab_estamp.services.sync import PunjabEStampSyncError, sync_district_tehsils
 
 from .models import (
     LeaseEStampWorkflow,
@@ -12,9 +14,34 @@ from .models import (
 @admin.register(PunjabEStampDistrict)
 class PunjabEStampDistrictAdmin(admin.ModelAdmin):
     list_display = ("name", "portal_value", "active", "sort_order", "last_synced_at")
+    actions = ("sync_selected_tehsils",)
     list_editable = ("active", "sort_order")
     search_fields = ("name", "portal_value")
     ordering = ("sort_order", "name")
+
+    @admin.action(description="Sync Tehsils from Punjab for selected Districts")
+    def sync_selected_tehsils(self, request, queryset):
+        succeeded = 0
+        failed = []
+        for district in queryset.filter(active=True).order_by("sort_order", "name"):
+            try:
+                sync_district_tehsils(district)
+            except PunjabEStampSyncError as exc:
+                failed.append(f"{district.name}: {exc}")
+            else:
+                succeeded += 1
+        if succeeded:
+            self.message_user(
+                request,
+                f"Synchronized Tehsils for {succeeded} District(s).",
+                level=messages.SUCCESS,
+            )
+        if failed:
+            self.message_user(
+                request,
+                "Some Districts could not be synchronized: " + " | ".join(failed),
+                level=messages.WARNING,
+            )
 
 
 @admin.register(PunjabEStampTehsil)

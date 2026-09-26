@@ -167,7 +167,7 @@
             <div class="col-12 col-md-3 col-xl-2">{{ form.police_division|as_crispy_field }}</div>
             <div class="col-12 col-md-3 col-xl-2">{{ form.police_circle|as_crispy_field }}</div>
             <div class="col-12 col-md-3 col-xl-2">{{ form.zila|as_crispy_field }}</div>
-            <div class="col-12 col-md-3 col-xl-2">{{ form.tehsil|as_crispy_field }}</div>
+            <div class="col-12 col-md-3 col-xl-2">{{ form.tehsil|as_crispy_field }}<div id="punjab-tehsil-status" class="small text-warning mt-1" aria-live="polite"></div></div>
           </div>
         </div>
 
@@ -241,8 +241,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const tehsilSelect = document.querySelector("[data-punjab-tehsil]");
   if (districtSelect && tehsilSelect) {
     const tehsilUrl = "{% url 'properties:property_tehsils' %}";
+    const tehsilStatus = document.getElementById("punjab-tehsil-status");
     districtSelect.addEventListener("change", async () => {
     const districtId = districtSelect.value;
+    if (tehsilStatus) tehsilStatus.textContent = "";
     tehsilSelect.disabled = true;
     tehsilSelect.replaceChildren(new Option(
       districtId ? "Loading Tehsils..." : "Select Zila / District first",
@@ -258,14 +260,19 @@ document.addEventListener("DOMContentLoaded", () => {
         `${tehsilUrl}?district=${encodeURIComponent(districtId)}`,
         {headers: {"X-Requested-With": "XMLHttpRequest"}}
       );
-      if (!response.ok) throw new Error("Tehsil request failed");
       const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Tehsil request failed");
       tehsilSelect.replaceChildren(new Option("Select Tehsil", ""));
       payload.tehsils.forEach((tehsil) => {
         tehsilSelect.add(new Option(tehsil.name, tehsil.id));
       });
+      if (tehsilStatus && payload.warning) tehsilStatus.textContent = payload.warning;
+      if (!payload.tehsils.length && !payload.warning) {
+        if (tehsilStatus) tehsilStatus.textContent = "No Tehsils are configured for this District.";
+      }
     } catch (error) {
       tehsilSelect.replaceChildren(new Option("Unable to load Tehsils", ""));
+      if (tehsilStatus) tehsilStatus.textContent = error.message || "Unable to load Tehsils.";
     } finally {
       tehsilSelect.disabled = false;
     }

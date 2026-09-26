@@ -60,7 +60,12 @@ from leases.models_parking_inventory import (
 )
 from leases.whatsapp import build_whatsapp_url, render_unit_whatsapp_template
 from payments.models import Payment
-from punjab_estamp.models import PunjabEStampTehsil
+from punjab_estamp.models import PunjabEStampDistrict, PunjabEStampTehsil
+from punjab_estamp.services.sync import (
+    PunjabEStampSyncError,
+    district_cache_is_stale,
+    sync_district_tehsils,
+)
 from tenants.models import Tenant, TenantInterestType
 from utils.pdf_export import handle_export
 
@@ -331,16 +336,49 @@ def property_tehsils(request):
     except (TypeError, ValueError):
         return JsonResponse({"tehsils": [], "error": "Invalid District."}, status=400)
 
-    tehsils = list(
-        PunjabEStampTehsil.objects.filter(
-            district_id=district_id,
-            district__active=True,
-            active=True,
+    district = PunjabEStampDistrict.objects.filter(pk=district_id, active=True).first()
+    if not district:
+        return JsonResponse({"tehsils": [], "error": "Invalid District."}, status=400)
+
+    def cached_rows():
+        return list(
+            PunjabEStampTehsil.objects.filter(district=district, active=True)
+            .order_by("sort_order", "name")
+            .values("id", "name", "portal_value")
         )
-        .order_by("sort_order", "name")
-        .values("id", "name", "portal_value")
+
+    tehsils = cached_rows()
+    warning = ""
+    sync_attempted = False
+    force_refresh = request.GET.get("refresh") == "1"
+    should_sync = force_refresh or not tehsils or district_cache_is_stale(district)
+    if should_sync:
+        sync_attempted = True
+        try:
+            sync_district_tehsils(district)
+        except PunjabEStampSyncError:
+            if tehsils:
+                warning = (
+                    "Punjab e-Stamp could not be refreshed. Showing the cached Tehsil list. "
+                    "If you are using a VPN or proxy, disconnect it and try again."
+                )
+            else:
+                warning = (
+                    "Tehsil list could not be loaded from Punjab e-Stamp. If you are using a VPN "
+                    "or proxy, disconnect it and try again. Also check that the Punjab e-Stamp "
+                    "website opens directly in your browser."
+                )
+        else:
+            tehsils = cached_rows()
+
+    return JsonResponse(
+        {
+            "tehsils": tehsils,
+            "warning": warning,
+            "sync_attempted": sync_attempted,
+            "last_synced_at": district.last_synced_at.isoformat() if district.last_synced_at else None,
+        }
     )
-    return JsonResponse({"tehsils": tehsils})
 
 
 @login_required

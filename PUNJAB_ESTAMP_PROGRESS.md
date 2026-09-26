@@ -867,3 +867,96 @@ No `.env`, secret, model, migration, deployment, nginx, systemd, permission, or 
 The helper covers the requested fetch/XHR/blob/PDF-link capture paths. A browser-native file download produced entirely outside those page-visible paths cannot be proven interceptable without a controlled live dry-run on the current Punjab portal. The user must install/enable the userscript and keep the originating TMS Agreement tab open. The first real portal validation must remain dry-run: verify every populated field, confirm the helper stops before NEXT, and only then decide whether to click Punjab's action manually.
 
 Stop here. Phase 7 all-Punjab Tehsil synchronization must not begin until the user approves this Phase 6 checkpoint.
+
+## 2026-09-26 - Phase 7: All-Punjab Tehsil Synchronization
+
+### Work completed
+
+Implemented the all-Punjab Tehsil synchronization layer on top of the Phase 1-6 Punjab e-Stamp implementation.
+
+- Added `punjab_estamp.services.sync` as the single public-option synchronization service.
+- The sync fetches only public Punjab e-Stamp configuration data; it does not interact with CAPTCHA, OTP, Challan submission, or Stamp issuance.
+- It opens the official Punjab White Paper Challan page, discovers same-origin Tehsil-related AJAX endpoints from the current page/scripts where possible, and parses common Kendo/JSON/HTML option shapes.
+- No Tehsil portal ID is fabricated. A Tehsil is written only when the portal response provides both a label and portal value.
+- Existing Tehsils are upserted by `(District, portal_value)`. Existing rows absent from a live response remain active by default; an explicit `--mark-missing-inactive` option is required to deactivate them.
+- Successful live synchronization updates `PunjabEStampDistrict.last_synced_at`.
+- Added a safe JSON import fallback for verified option exports when the Punjab portal cannot be queried reliably.
+
+### Property Create / Update behavior
+
+Updated the existing authenticated `properties:property_tehsils` endpoint:
+
+- Cached active Tehsils are returned immediately when available and not explicitly stale.
+- A District with no cached Tehsils triggers an on-demand synchronization attempt.
+- A District with a prior live sync older than 30 days is refreshed on selection.
+- Verified seeded data whose `last_synced_at` is still null remains usable without forcing a network request; this keeps seeded Rawalpindi available offline.
+- `?refresh=1` explicitly forces a refresh.
+- If refresh fails but cached Tehsils exist, TMS returns the cache with a non-blocking warning.
+- If no cache exists and Punjab cannot be reached, TMS returns a friendly VPN/proxy/internet message without claiming that a VPN was detected.
+- The Property form now surfaces that warning under the Tehsil control while preserving the existing District-filtered dropdown behavior.
+
+### Admin and management controls
+
+Added:
+
+- Django admin action on Punjab e-Stamp Districts: `Sync Tehsils from Punjab for selected Districts`.
+- Management command:
+  - `python manage.py sync_punjab_estamp_options --district <id|portal_value|name> [--dry-run]`
+  - `python manage.py sync_punjab_estamp_options --all [--dry-run]`
+  - optional `--mark-missing-inactive`
+  - optional `--timeout`
+- Offline/import fallback:
+  - `python manage.py import_punjab_estamp_options <json-file> [--dry-run]`
+
+The sync is non-destructive by default. It does not delete Tehsils and does not mark missing rows inactive unless explicitly requested.
+
+### Files changed in Phase 7
+
+Existing files modified:
+
+- `punjab_estamp/admin.py`
+- `properties/views.py`
+- `properties/templates/properties/property_form.html`
+- `properties/test_punjab_location.py`
+- `PUNJAB_ESTAMP_PROGRESS.md`
+
+New files:
+
+- `punjab_estamp/services/sync.py`
+- `punjab_estamp/management/__init__.py`
+- `punjab_estamp/management/commands/__init__.py`
+- `punjab_estamp/management/commands/sync_punjab_estamp_options.py`
+- `punjab_estamp/management/commands/import_punjab_estamp_options.py`
+- `punjab_estamp/tests/test_sync.py`
+
+No model or migration was added or changed in Phase 7; the existing `PunjabEStampDistrict.last_synced_at` field is reused.
+
+### Tests/checks added
+
+Added focused coverage for:
+
+- parsing common Kendo/JSON Tehsil response shapes
+- live-option upsert behavior
+- dry-run behavior
+- non-destructive default handling of missing cached Tehsils
+- explicit missing-row deactivation
+- on-demand sync when a selected District has no cache
+- stale-cache refresh fallback
+- no-cache friendly connectivity/VPN warning
+- seeded Rawalpindi cache remaining usable without a network call
+
+### Validation performed in this patch environment
+
+- Python syntax compilation (`py_compile`) passed for all Phase 7 Python files.
+- Full Django checks/tests could not run in this exported `DATA_NOVENV` snapshot because Django is not installed in the patch-generation container.
+- A live Punjab portal synchronization could not be validated from this environment because DNS/network access to `es.punjab-zameen.gov.pk` is unavailable here. The implementation therefore remains deliberately defensive and includes the verified JSON-import fallback.
+
+After applying locally, run the Phase 7 focused tests and then perform `--all --dry-run` before any all-District live synchronization.
+
+### Backups and scope
+
+Timestamped backups of every pre-existing file changed in Phase 7 are under:
+
+- `backups/punjab_estamp_phase7_20260926_165641/`
+
+No `.env`, secret, model, migration, Django settings, deployment, nginx, systemd, permission, or production-server configuration was changed.

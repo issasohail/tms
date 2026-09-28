@@ -234,8 +234,11 @@
               </td>
 
               <td class="col-rate">
-                <span class="rate-value">{{ m.display_electricity_rate.rate|floatformat:2 }}</span>
-                <small class="rate-source text-muted" title="{{ m.display_electricity_rate.source }}">{{ m.display_electricity_rate.source }}</small>
+                <span class="meter-rate-editor" data-meter-rate-cell data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-is-prepaid="{% if m.is_prepaid %}1{% else %}0{% endif %}" data-update-url="{% url 'smart_meter:meter_unit_rate_update' m.id %}">
+                  <button type="button" class="meter-rate-display" data-meter-rate-display title="{{ m.display_electricity_rate.source }} rate; click to edit">{{ m.display_electricity_rate.rate|floatformat:4 }}</button>
+                  <span class="meter-rate-input-wrap d-none"><input type="number" min="0" step="0.0001" value="{{ m.unit_rate|default_if_none:'' }}" aria-label="Unit rate for meter {{ m.meter_number }}"><button type="button" class="btn btn-sm btn-success" data-meter-rate-save aria-label="Save unit rate">✓</button><button type="button" class="btn btn-sm btn-light" data-meter-rate-cancel aria-label="Cancel rate change">×</button></span>
+                  <small class="rate-source text-muted" title="{{ m.display_electricity_rate.source }}">{{ m.display_electricity_rate.source }}</small>
+                </span>
               </td>
               <td class="col-setting-narrow">{{ m.min_balance_alert|floatformat:0 }}</td>
               <td class="col-setting-narrow">{{ m.min_balance_cutoff|floatformat:0 }}</td>
@@ -324,7 +327,11 @@
               <button type="button" class="btn btn-sm btn-outline-success relay-action" data-action="on" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-url="{% url 'smart_meter:smart_meter_restore' m.id %}" {% if m.confirmed_relay_state == 'on' %}disabled{% endif %}>ON</button>
               <button type="button" class="btn btn-sm btn-outline-danger relay-action" data-action="off" data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-url="{% url 'smart_meter:smart_meter_cutoff' m.id %}" {% if m.confirmed_relay_state == 'off' %}disabled{% endif %}>OFF</button>
             </div>
-            <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="meter-mobile-mode mode-toggle-form" data-tariff-verified="{% if m.tariff_is_verified %}1{% else %}0{% endif %}" data-current-rate="{{ m.display_electricity_rate.rate|floatformat:4 }}" data-meter-number="{{ m.meter_number }}">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="btn btn-sm {% if m.is_prepaid %}btn-info{% else %}btn-outline-secondary{% endif %}" name="action" value="{% if m.is_prepaid %}disable_meter{% else %}enable_meter{% endif %}" title="Click to set {% if m.is_prepaid %}postpaid{% else %}prepaid{% endif %}">{{ m.get_billing_mode_display }}</button> / {{ m.display_electricity_rate.rate|floatformat:2 }} ({{ m.display_electricity_rate.source }})</form>
+            <div class="meter-mobile-mode">
+              <form method="post" action="{% url 'smart_meter:prepaid_controls' %}" class="d-inline mode-toggle-form" data-tariff-verified="{% if m.tariff_is_verified %}1{% else %}0{% endif %}" data-current-rate="{{ m.display_electricity_rate.rate|floatformat:4 }}" data-meter-number="{{ m.meter_number }}">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ m.id }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="btn btn-sm {% if m.is_prepaid %}btn-info{% else %}btn-outline-secondary{% endif %}" name="action" value="{% if m.is_prepaid %}disable_meter{% else %}enable_meter{% endif %}" title="Click to set {% if m.is_prepaid %}postpaid{% else %}prepaid{% endif %}">{{ m.get_billing_mode_display }}</button></form>
+              <span> / </span>
+              <span class="meter-rate-editor" data-meter-rate-cell data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-is-prepaid="{% if m.is_prepaid %}1{% else %}0{% endif %}" data-update-url="{% url 'smart_meter:meter_unit_rate_update' m.id %}"><button type="button" class="meter-rate-display" data-meter-rate-display title="{{ m.display_electricity_rate.source }} rate; click to edit">{{ m.display_electricity_rate.rate|floatformat:4 }}</button><span class="meter-rate-input-wrap d-none"><input type="number" min="0" step="0.0001" value="{{ m.unit_rate|default_if_none:'' }}" aria-label="Unit rate for meter {{ m.meter_number }}"><button type="button" class="btn btn-sm btn-success" data-meter-rate-save aria-label="Save unit rate">✓</button><button type="button" class="btn btn-sm btn-light" data-meter-rate-cancel aria-label="Cancel rate change">×</button></span><small class="rate-source text-muted">{{ m.display_electricity_rate.source }}</small></span>
+            </div>
             <div class="btn-group btn-group-sm meter-mobile-actions">
               <a class="btn btn-outline-primary" href="{% url 'smart_meter:meter_detail' m.id %}" title="View"><i class="fas fa-eye"></i></a>
               <a class="btn btn-outline-secondary" href="{% url 'smart_meter:meter_edit' m.id %}" title="Edit"><i class="fas fa-pen"></i></a>
@@ -625,6 +632,12 @@ body.meter-exporting #meterListExportArea {
 .ld-role-display { border: 0; background: transparent; padding: .15rem .25rem; color: var(--bs-body-color); font-size: .76rem; font-weight: 600; cursor: pointer; }
 .ld-role-display:hover { color: var(--bs-primary); text-decoration: underline; }
 .ld-role-display.is-updated { color: #0d6efd; background: #e7f1ff; }
+.meter-rate-editor { display: inline-flex; align-items: center; justify-content: center; gap: .18rem; flex-wrap: wrap; }
+.meter-rate-display { border: 0; background: transparent; padding: 0; color: inherit; font: inherit; text-decoration: underline dotted; cursor: pointer; }
+.meter-rate-input-wrap { display: inline-flex; align-items: center; gap: .15rem; }
+.meter-rate-input-wrap input { width: 74px; padding: .1rem .2rem; font-size: .72rem; }
+.meter-rate-input-wrap .btn { padding: .1rem .28rem; font-size: .65rem; line-height: 1.2; }
+.meter-mobile-mode .meter-rate-editor { display: inline-flex; }
 .ld-role-badge-billing {
   color: #0f5132;
   background: #d1e7dd;
@@ -711,6 +724,144 @@ body.meter-exporting #meterListExportArea {
     const select = editor?.querySelector('[data-meter-role]');
     select?.classList.remove('d-none');
     select?.focus();
+  });
+
+  let rateProgressInterval = null;
+  let rateProgressStartedAt = null;
+
+  function rateSubmissionKey() {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
+      const value = Math.random() * 16 | 0;
+      return (character === 'x' ? value : (value & 3 | 8)).toString(16);
+    });
+  }
+
+  function updateRateProgress(isPrepaid) {
+    if (!rateProgressStartedAt) return;
+    const elapsed = Math.floor((Date.now() - rateProgressStartedAt) / 1000);
+    const timer = document.getElementById('meterListRateTimer');
+    const phase = document.getElementById('meterListRatePhase');
+    const bar = document.getElementById('meterListRateProgressBar');
+    if (timer) timer.textContent = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
+    if (phase) {
+      if (!isPrepaid) phase.textContent = 'Saving the TMS billing rate…';
+      else if (elapsed < 10) phase.textContent = 'Reading the current physical meter tariff…';
+      else if (elapsed < 22) phase.textContent = 'Writing the new tariff once…';
+      else phase.textContent = 'Reading back and verifying the physical meter…';
+    }
+    if (bar) {
+      const width = isPrepaid ? Math.min(92, 8 + elapsed * 2.2) : 70;
+      bar.style.width = `${width}%`;
+      bar.setAttribute('aria-valuenow', String(Math.round(width)));
+    }
+  }
+
+  function startRateProgress(cell, rate) {
+    const isPrepaid = cell.dataset.isPrepaid === '1';
+    document.getElementById('meterListRateTitle').textContent = isPrepaid ? 'Updating prepaid tariff' : 'Updating unit rate';
+    document.getElementById('meterListRateSummary').textContent = `Meter ${cell.dataset.meterNumber || '—'} → Rs. ${rate || '0.0000'} / kWh`;
+    document.getElementById('meterListRateError').classList.add('d-none');
+    document.getElementById('meterListRateError').textContent = '';
+    document.getElementById('meterListRateClose').classList.add('d-none');
+    const bar = document.getElementById('meterListRateProgressBar');
+    bar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-primary';
+    bar.style.width = '8%';
+    bar.setAttribute('aria-valuenow', '8');
+    rateProgressStartedAt = Date.now();
+    updateRateProgress(isPrepaid);
+    clearInterval(rateProgressInterval);
+    rateProgressInterval = setInterval(() => updateRateProgress(isPrepaid), 250);
+    const modalElement = document.getElementById('meterListRateProgressModal');
+    if (modalElement && window.bootstrap?.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalElement, {backdrop: 'static', keyboard: false}).show();
+    }
+  }
+
+  function finishRateProgress(success, message) {
+    clearInterval(rateProgressInterval);
+    rateProgressInterval = null;
+    const bar = document.getElementById('meterListRateProgressBar');
+    const phase = document.getElementById('meterListRatePhase');
+    const error = document.getElementById('meterListRateError');
+    bar.classList.remove('progress-bar-animated', 'bg-primary');
+    bar.classList.add(success ? 'bg-success' : 'bg-danger');
+    if (success) {
+      bar.style.width = '100%';
+      bar.setAttribute('aria-valuenow', '100');
+      phase.textContent = message || 'Tariff verified and TMS rate updated.';
+    } else {
+      phase.textContent = 'The previous rate was kept.';
+      error.textContent = message || 'The tariff could not be verified.';
+      error.classList.remove('d-none');
+    }
+    document.getElementById('meterListRateClose').classList.remove('d-none');
+  }
+
+  function closeRateEditor(cell) {
+    cell?.querySelector('.meter-rate-input-wrap')?.classList.add('d-none');
+    cell?.querySelector('[data-meter-rate-display]')?.classList.remove('d-none');
+  }
+
+  document.addEventListener('click', async event => {
+    const display = event.target.closest('[data-meter-rate-display]');
+    if (display) {
+      const cell = display.closest('[data-meter-rate-cell]');
+      display.classList.add('d-none');
+      cell.querySelector('.meter-rate-input-wrap').classList.remove('d-none');
+      cell.querySelector('input').focus();
+      return;
+    }
+    const cancel = event.target.closest('[data-meter-rate-cancel]');
+    if (cancel) {
+      closeRateEditor(cancel.closest('[data-meter-rate-cell]'));
+      return;
+    }
+    const save = event.target.closest('[data-meter-rate-save]');
+    if (!save) return;
+    const cell = save.closest('[data-meter-rate-cell]');
+    const input = cell.querySelector('input');
+    save.disabled = true;
+    startRateProgress(cell, input.value);
+    try {
+      const response = await fetch(cell.dataset.updateUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': getCookie('csrftoken') || '',
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+        },
+        body: new URLSearchParams({unit_rate: input.value, submission_key: rateSubmissionKey()})
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || 'Unit rate could not be saved.');
+      document.querySelectorAll(`[data-meter-rate-cell][data-meter-id="${cell.dataset.meterId}"]`).forEach(target => {
+        target.querySelector('[data-meter-rate-display]').textContent = result.unit_rate;
+        target.querySelector('[data-meter-rate-display]').title = `${result.source} rate; click to edit`;
+        target.querySelector('input').value = result.meter_unit_rate;
+        const source = target.querySelector('.rate-source');
+        if (source) { source.textContent = result.source; source.title = result.source; }
+        closeRateEditor(target);
+      });
+      finishRateProgress(
+        true,
+        result.tariff_status === 'no_change'
+          ? 'The physical meter already had this tariff; TMS is synchronized.'
+          : (result.tariff_status === 'verified' ? 'Physical meter read-back verified; TMS rate updated.' : 'TMS unit rate updated.')
+      );
+    } catch (error) {
+      finishRateProgress(false, error.message);
+    } finally {
+      save.disabled = false;
+    }
+  });
+
+  document.addEventListener('keydown', event => {
+    const editor = event.target.closest('.meter-rate-input-wrap');
+    if (!editor) return;
+    if (event.key === 'Escape') { event.preventDefault(); closeRateEditor(editor.closest('[data-meter-rate-cell]')); }
+    if (event.key === 'Enter') { event.preventDefault(); editor.querySelector('[data-meter-rate-save]')?.click(); }
   });
 
   const checkAll = document.getElementById('checkAll');
@@ -960,5 +1111,20 @@ body.meter-exporting #meterListExportArea {
 
 {% include "smart_meter/partials/prepaid_money_modal.html" %}
 {% include "smart_meter/partials/prepaid_activation_modal.html" %}
+
+<div class="modal fade" id="meterListRateProgressModal" tabindex="-1" aria-labelledby="meterListRateTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header"><h3 class="modal-title h5" id="meterListRateTitle">Updating unit rate</h3></div>
+      <div class="modal-body">
+        <div id="meterListRateSummary" class="fw-semibold mb-3"></div>
+        <div class="progress mb-2" style="height:1.25rem" role="progressbar" aria-label="Tariff update progress"><div id="meterListRateProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" style="width:8%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8"></div></div>
+        <div class="d-flex justify-content-between gap-3 small"><span id="meterListRatePhase">Starting…</span><span id="meterListRateTimer" class="font-monospace fw-semibold">00:00</span></div>
+        <div id="meterListRateError" class="alert alert-danger mt-3 mb-0 d-none"></div>
+      </div>
+      <div class="modal-footer"><button type="button" id="meterListRateClose" class="btn btn-secondary d-none" data-bs-dismiss="modal">Close</button></div>
+    </div>
+  </div>
+</div>
 
 {% endblock %}

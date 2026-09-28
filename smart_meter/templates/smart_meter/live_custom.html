@@ -1048,6 +1048,78 @@
     cell.querySelector('.unit-rate-display')?.classList.remove('d-none');
   }
 
+  let rateProgressInterval = null;
+  let rateProgressStartedAt = null;
+
+  function rateSubmissionKey() {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
+      const value = Math.random() * 16 | 0;
+      return (character === 'x' ? value : (value & 3 | 8)).toString(16);
+    });
+  }
+
+  function updateRateProgress(isPrepaid) {
+    if (!rateProgressStartedAt) return;
+    const elapsed = Math.floor((Date.now() - rateProgressStartedAt) / 1000);
+    const timer = document.getElementById('rateUpdateTimer');
+    const phase = document.getElementById('rateUpdatePhase');
+    const bar = document.getElementById('rateUpdateProgressBar');
+    if (timer) timer.textContent = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
+    if (phase) {
+      if (!isPrepaid) phase.textContent = 'Saving the TMS billing rate…';
+      else if (elapsed < 10) phase.textContent = 'Reading the current physical meter tariff…';
+      else if (elapsed < 22) phase.textContent = 'Writing the new tariff once…';
+      else phase.textContent = 'Reading back and verifying the physical meter…';
+    }
+    if (bar) {
+      const width = isPrepaid ? Math.min(92, 8 + elapsed * 2.2) : 70;
+      bar.style.width = `${width}%`;
+      bar.setAttribute('aria-valuenow', String(Math.round(width)));
+    }
+  }
+
+  function startRateProgress(meterNumber, rate, isPrepaid) {
+    const modalElement = document.getElementById('rateUpdateProgressModal');
+    document.getElementById('rateUpdateTitle').textContent = isPrepaid ? 'Updating prepaid tariff' : 'Updating unit rate';
+    document.getElementById('rateUpdateSummary').textContent = `Meter ${meterNumber || '—'} → Rs. ${rate || '0.0000'} / kWh`;
+    document.getElementById('rateUpdateError').classList.add('d-none');
+    document.getElementById('rateUpdateError').textContent = '';
+    document.getElementById('rateUpdateClose').classList.add('d-none');
+    const bar = document.getElementById('rateUpdateProgressBar');
+    bar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-primary';
+    bar.style.width = '8%';
+    bar.setAttribute('aria-valuenow', '8');
+    rateProgressStartedAt = Date.now();
+    updateRateProgress(isPrepaid);
+    clearInterval(rateProgressInterval);
+    rateProgressInterval = setInterval(() => updateRateProgress(isPrepaid), 250);
+    if (modalElement && window.bootstrap?.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalElement, {backdrop: 'static', keyboard: false}).show();
+    }
+  }
+
+  function finishRateProgress(success, message) {
+    clearInterval(rateProgressInterval);
+    rateProgressInterval = null;
+    const bar = document.getElementById('rateUpdateProgressBar');
+    const phase = document.getElementById('rateUpdatePhase');
+    const error = document.getElementById('rateUpdateError');
+    const close = document.getElementById('rateUpdateClose');
+    bar.classList.remove('progress-bar-animated', 'bg-primary');
+    bar.classList.add(success ? 'bg-success' : 'bg-danger');
+    if (success) {
+      bar.style.width = '100%';
+      bar.setAttribute('aria-valuenow', '100');
+      phase.textContent = message || 'Tariff verified and TMS rate updated.';
+    } else {
+      phase.textContent = 'The previous rate was kept.';
+      error.textContent = message || 'The tariff could not be verified.';
+      error.classList.remove('d-none');
+    }
+    close.classList.remove('d-none');
+  }
+
   document.addEventListener('focusout', event => {
     const editor = event.target.closest('.unit-rate-editor');
     if (!editor) return;
@@ -1082,16 +1154,26 @@
     if (!save) return;
     const cell = save.closest('[data-unit-rate-cell]');
     const input = cell.querySelector('input');
+    const row = cell.closest('[data-meter-row]');
+    const isPrepaid = [...(row?.querySelectorAll('.billing-mode-badge') || [])]
+      .some(badge => badge.textContent.trim() === 'Prepaid');
+    const meterNumber = row?.querySelector('.col-meter a')?.textContent.trim() || '';
     save.disabled = true;
+    startRateProgress(meterNumber, input.value, isPrepaid);
     try {
-      const body = new URLSearchParams({unit_rate: input.value});
+      const body = new URLSearchParams({
+        unit_rate: input.value,
+        submission_key: rateSubmissionKey(),
+      });
       const response = await fetch(cell.dataset.updateUrl, {
         method: 'POST',
         headers: {'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'Content-Type': 'application/x-www-form-urlencoded'},
         body: body.toString(),
       });
       const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || 'Unit rate could not be saved.');
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Unit rate could not be saved.');
+      }
       document.querySelectorAll(`[data-unit-rate-cell][data-meter-id="${cell.dataset.meterId}"]`).forEach(target => {
         target.querySelector('.unit-rate-display').textContent = `${result.unit_rate}/kWh`;
         target.querySelector('.unit-rate-display').title = `${result.source} rate; click to edit`;
@@ -1099,8 +1181,16 @@
         target.querySelector('.unit-rate-editor').classList.add('d-none');
         target.querySelector('.unit-rate-display').classList.remove('d-none');
       });
+      finishRateProgress(
+        true,
+        result.tariff_status === 'no_change'
+          ? 'The physical meter already had this tariff; TMS is synchronized.'
+          : (result.tariff_status === 'verified'
+            ? 'Physical meter read-back verified; TMS rate updated.'
+            : 'TMS unit rate updated.')
+      );
     } catch (error) {
-      alert(error.message);
+      finishRateProgress(false, error.message);
     } finally {
       save.disabled = false;
     }
@@ -1245,6 +1335,18 @@
     }
   }
 
+  function setRowTenant(tr, tenantName, tenantId) {
+    const name = tenantName || 'Vacant';
+    const selectors = ['.mobile-full-tenant', '.mobile-tenant', 'td.col-tenant'];
+    selectors.forEach(selector => {
+      const target = tr.querySelector(selector);
+      if (!target || (target.textContent || '').trim() === name) return;
+      target.textContent = name;
+      target.title = name;
+      if (typeof flashCell === 'function') flashCell(target);
+    });
+  }
+
 
   document.addEventListener("click", async function (event) {
     const button = event.target.closest(".btn-instant-reading");
@@ -1305,6 +1407,7 @@
         setRowPowerState(tr, r.power_status);
         setRowBillingMode(tr, r.is_prepaid, r.unit_rate, r.unit_rate_source);
         setRowMeterRole(tr, r.meter_role_display);
+        setRowTenant(tr, r.tenant_name, r.tenant_id);
         setRelayWorkflowState(tr, r);
 
         setCell(tr, "source_ip", r.source_ip);
@@ -2100,8 +2203,8 @@
                 <div class="mobile-ip" title="Source IP">IP: {{ r.source_ip|default:"—" }}</div>
               </div>
               <div class="mobile-explicit-actions">
-                <button type="button" class="btn btn-sm btn-success" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up" aria-label="Top up"><i class="fas fa-plus" aria-hidden="true"></i></button>
-                <button type="button" class="btn btn-sm btn-warning" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund" aria-label="Refund"><i class="fas fa-minus" aria-hidden="true"></i></button>
+                <a href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge" class="btn btn-sm btn-success" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up" aria-label="Top up"><i class="fas fa-plus" aria-hidden="true"></i></a>
+                <a href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund" class="btn btn-sm btn-warning" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund" aria-label="Refund"><i class="fas fa-minus" aria-hidden="true"></i></a>
                 <button type="button" class="btn btn-sm btn-outline-success relay-action" data-action="on"
                   data-meter-id="{{ m.id }}" data-unit-number="{{ m.display_location_name }}"
                   data-url="{% url 'smart_meter:smart_meter_restore' m.id %}"
@@ -2119,8 +2222,8 @@
 
             <td class="sticky-left col-recharge text-center">
               <div class="money-actions">
-                <button type="button" class="btn btn-success money-icon-action" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up this meter" aria-label="Top up this meter"><i class="fas fa-plus" aria-hidden="true"></i></button>
-                <button type="button" class="btn btn-warning money-icon-action" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund this meter" aria-label="Refund this meter"><i class="fas fa-minus" aria-hidden="true"></i></button>
+                <a href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=recharge" class="btn btn-success money-icon-action" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Top up this meter" aria-label="Top up this meter"><i class="fas fa-plus" aria-hidden="true"></i></a>
+                <a href="{% url 'smart_meter:prepaid_meter_ledger' m.id %}?action=refund" class="btn btn-warning money-icon-action" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' m.id %}" data-meter-number="{{ m.meter_number }}" data-location="{{ m.display_location_name }}" title="Refund this meter" aria-label="Refund this meter"><i class="fas fa-minus" aria-hidden="true"></i></a>
               </div>
             </td>
 
@@ -3098,5 +3201,29 @@
 
 {% include "smart_meter/partials/prepaid_money_modal.html" %}
 {% include "smart_meter/partials/prepaid_activation_modal.html" %}
+
+<div class="modal fade" id="rateUpdateProgressModal" tabindex="-1" aria-labelledby="rateUpdateTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title h5" id="rateUpdateTitle">Updating unit rate</h3>
+      </div>
+      <div class="modal-body">
+        <div id="rateUpdateSummary" class="fw-semibold mb-3"></div>
+        <div class="progress mb-2" style="height:1.25rem" role="progressbar" aria-label="Tariff update progress">
+          <div id="rateUpdateProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" style="width:8%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8"></div>
+        </div>
+        <div class="d-flex justify-content-between gap-3 small">
+          <span id="rateUpdatePhase">Starting…</span>
+          <span id="rateUpdateTimer" class="font-monospace fw-semibold">00:00</span>
+        </div>
+        <div id="rateUpdateError" class="alert alert-danger mt-3 mb-0 d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="rateUpdateClose" class="btn btn-secondary d-none" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 {% endblock %}

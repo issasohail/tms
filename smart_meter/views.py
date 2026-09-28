@@ -5,6 +5,7 @@ import calendar
 import csv
 import inspect
 import logging
+import uuid
 from collections import OrderedDict, defaultdict
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -515,18 +516,27 @@ def _prepaid_return(request):
 
 
 def _attach_tariff_verification(meters):
-    """Expose tariff readiness to mode-toggle templates without per-row queries."""
+    """Expose prepaid tariff readiness without accepting a stale flat price."""
     from smart_meter.models import MeterTariffConfiguration
+    from smart_meter.rates import resolve_electricity_rate
 
     meters = list(meters)
-    verified_ids = set(
-        MeterTariffConfiguration.objects.filter(
+    configurations = {
+        configuration.meter_id: configuration
+        for configuration in MeterTariffConfiguration.objects.filter(
             meter_id__in=[meter.pk for meter in meters],
             last_verified_at__isnull=False,
-        ).values_list("meter_id", flat=True)
-    )
+        )
+    }
     for meter in meters:
-        meter.tariff_is_verified = meter.pk in verified_ids
+        configuration = configurations.get(meter.pk)
+        rate_matches = True
+        if configuration and configuration.mode == "flat":
+            rate_matches = (
+                configuration.rate_1_price
+                == resolve_electricity_rate(meter=meter).rate
+            )
+        meter.tariff_is_verified = bool(configuration and rate_matches)
     return meters
 
 
@@ -550,11 +560,20 @@ def prepaid_controls(request):
             meter = get_object_or_404(Meter, pk=request.POST.get("meter_id"))
             from smart_meter.models import MeterPrepaidPilot, MeterTariffConfiguration
 
-            tariff_was_configured = MeterTariffConfiguration.objects.filter(
-                meter=meter,
-                last_verified_at__isnull=False,
-            ).exists()
-            if action == "enable_meter" and not tariff_was_configured:
+            tariff_configuration = MeterTariffConfiguration.objects.filter(
+                meter=meter, last_verified_at__isnull=False
+            ).first()
+            tariff_was_configured = tariff_configuration is not None
+            tariff_matches_billing_rate = bool(tariff_configuration)
+            if tariff_configuration and tariff_configuration.mode == "flat":
+                from smart_meter.rates import resolve_electricity_rate
+
+                tariff_matches_billing_rate = (
+                    tariff_configuration.rate_1_price
+                    == resolve_electricity_rate(meter=meter).rate
+                )
+            tariff_is_ready = tariff_was_configured and tariff_matches_billing_rate
+            if action == "enable_meter" and not tariff_is_ready:
                 if not request.user.has_perm("smart_meter.write_meter_tariff"):
                     messages.error(
                         request,
@@ -610,7 +629,7 @@ def prepaid_controls(request):
                         f"Meter {meter.meter_number} enabled for prepaid operations and monthly invoicing. "
                         + (
                             "Tariff was sent to the meter and verified before prepaid was saved."
-                            if not tariff_was_configured
+                            if not tariff_is_ready
                             else "The existing verified meter tariff was retained."
                         )
                     )
@@ -1722,9 +1741,63 @@ def meter_unit_rate_update(request, pk):
         )
     if unit_rate is not None:
         unit_rate = unit_rate.quantize(Decimal("0.0001"))
+
+    if meter.billing_mode == "prepaid_pilot":
+        if unit_rate is None or unit_rate <= 0:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "A prepaid meter tariff must be greater than zero.",
+                },
+                status=400,
+            )
+        if not request.user.has_perm("smart_meter.write_meter_tariff"):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "You do not have permission to write meter tariffs.",
+                },
+                status=403,
+            )
+
+        from smart_meter.services.tariff_configuration import configure_prices
+
+        try:
+            audit = configure_prices(
+                meter=meter,
+                user=request.user,
+                mode="flat",
+                prices=[unit_rate],
+                active_rate_count=1,
+                submission_key=request.POST.get("submission_key") or uuid.uuid4(),
+            )
+        except Exception as exc:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": f"Tariff configuration could not start: {exc}",
+                },
+                status=409,
+            )
+        if audit.status not in {"verified", "no_change"}:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": audit.error or audit.get_status_display(),
+                    "tariff_status": audit.status,
+                    "audit_id": audit.pk,
+                },
+                status=409,
+            )
+        # configure_prices saves the meter override only after a successful
+        # live read-back (or confirmed no-change result).
+        meter.refresh_from_db(fields=["unit_rate"])
+        unit_rate = meter.unit_rate
+
     meter.unit_rate = unit_rate
-    meter.full_clean(exclude=None)
-    meter.save(update_fields=["unit_rate"])
+    if meter.billing_mode != "prepaid_pilot":
+        meter.full_clean(exclude=None)
+        meter.save(update_fields=["unit_rate"])
 
     from smart_meter.rates import resolve_electricity_rate
 
@@ -1734,6 +1807,9 @@ def meter_unit_rate_update(request, pk):
         "unit_rate": f"{resolved.rate:.4f}",
         "meter_unit_rate": f"{unit_rate:.4f}" if unit_rate is not None else "",
         "source": resolved.source,
+        "tariff_status": (
+            audit.status if meter.billing_mode == "prepaid_pilot" else "not_required"
+        ),
     })
 
 

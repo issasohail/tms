@@ -9,7 +9,13 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from smart_meter.models import Meter, MeterTimingEvent
-from smart_meter.services.timing_schedule import copy_timing_schedule, next_schedule_event, schedule_allows_power
+from smart_meter.services.timing_schedule import (
+    copy_timing_schedule,
+    enforce_meter_timing_schedule,
+    next_schedule_event,
+    schedule_allows_power,
+    schedule_decision,
+)
 
 DAYS=[(0,'Mon'),(1,'Tue'),(2,'Wed'),(3,'Thu'),(4,'Fri'),(5,'Sat'),(6,'Sun')]
 
@@ -68,7 +74,23 @@ def meter_schedule_update(request,meter_id):
     meter=get_object_or_404(Meter,pk=meter_id)
     try: count=_save_json(meter,request.POST.get('events_json'))
     except ValueError as e: messages.error(request,str(e)); return redirect(request.POST.get('next') or 'smart_meter:meter_schedule_list')
-    messages.success(request,f'Saved {count} schedule event(s) for meter {meter.meter_number}.')
+    decision = schedule_decision(meter)
+    command = enforce_meter_timing_schedule(meter)
+    if command:
+        result = f" {decision.desired_state.upper()} command #{command.pk} was queued immediately."
+    elif not decision.has_schedule:
+        result = " The schedule is now empty; no automatic command was queued."
+    elif meter.power_status == decision.desired_state:
+        result = f" Meter power already matches the effective {decision.desired_state.upper()} event."
+    else:
+        result = (
+            f" Current effective state is {decision.desired_state.upper()}, but safety "
+            "rules did not permit an immediate command; the scheduler will keep checking."
+        )
+    messages.success(
+        request,
+        f'Saved {count} schedule event(s) for meter {meter.meter_number}.{result}',
+    )
     return redirect(request.POST.get('next') or 'smart_meter:meter_schedule_list')
 
 @login_required

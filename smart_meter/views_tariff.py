@@ -57,10 +57,17 @@ def _tariff_return(request, meter):
     return redirect("smart_meter:tariff_configure", meter_id=meter.pk)
 
 
+def _latest_live_tariff_audit(meter):
+    """Return the newest successful live tariff evidence, including write read-back."""
+    return meter.tariff_audits.filter(
+        status__in=("read", "verified", "no_change")
+    ).first()
+
+
 def meter_tariff_tab_context(request, meter):
     """Build the existing protected tariff form for the meter-detail tab."""
     configuration, _ = MeterTariffConfiguration.objects.get_or_create(meter=meter)
-    latest_read = meter.tariff_audits.filter(status="read").first()
+    latest_read = _latest_live_tariff_audit(meter)
     initial = {}
     if latest_read:
         live_prices = latest_read.values_after.get("prices", [])
@@ -89,7 +96,7 @@ def meter_tariff_tab_context(request, meter):
 def tariff_configure(request, meter_id):
     meter = get_object_or_404(_allowed_meters(request), pk=meter_id)
     configuration, _ = MeterTariffConfiguration.objects.get_or_create(meter=meter)
-    latest_read = meter.tariff_audits.filter(status="read").first()
+    latest_read = _latest_live_tariff_audit(meter)
     initial = {}
     if latest_read:
         live_prices = latest_read.values_after.get("prices", [])

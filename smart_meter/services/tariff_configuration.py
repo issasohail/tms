@@ -170,6 +170,14 @@ def _save_verified(configuration, *, mode, labels, values, audit):
     configuration.last_verified_at = audit.completed_at
     configuration.last_status = "verified"
     configuration.save()
+    # A verified flat tariff is the authoritative meter billing rate. Keep the
+    # TMS meter override in step only after a successful live
+    # read-back (or a live no-change result), never after an attempted write.
+    if mode == "flat" and values.get("prices"):
+        verified_rate = Decimal(str(values["prices"][0])).quantize(Decimal("0.0001"))
+        if configuration.meter.unit_rate != verified_rate:
+            configuration.meter.unit_rate = verified_rate
+            configuration.meter.save(update_fields=["unit_rate"])
 
 
 def configure_prices(

@@ -34,7 +34,7 @@
       <div class="col-6 col-md-2">{{ form.operation.label_tag }}{{ form.operation }}</div>
       <div class="col-6 col-md-2">{{ form.amount.label_tag }}{{ form.amount }}</div>
       <div class="col-12 col-md-3">{{ form.reason.label_tag }}{{ form.reason }}</div>
-      <div class="col-12 col-md-3">{{ form.confirm_meter_number.label_tag }}{{ form.confirm_meter_number }}</div>
+      <div class="col-12 col-md-3">{{ form.confirm_amount.label_tag }}{{ form.confirm_amount }}</div>
       <div class="col-12 col-md-2"><button class="btn btn-warning w-100">Queue once</button></div>
       {% if form.non_field_errors %}<div class="col-12 text-danger">{{ form.non_field_errors }}</div>{% endif %}
       {% for field in form %}{% for error in field.errors %}<div class="col-12 text-danger small">{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}

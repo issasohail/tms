@@ -82,6 +82,7 @@ urlpatterns = [
     path('meters/<int:pk>/raw-readings/export/xlsx/', views.meter_raw_frame_history_xlsx, name='meter_raw_frame_history_xlsx'),
     path('meters/<int:pk>/raw-readings/', views.meter_raw_frame_history, name='meter_raw_frame_history'),
     path('meters/<int:meter_id>/prepaid-ledger/', views.prepaid_meter_ledger, name='prepaid_meter_ledger'),
+    path('prepaid-command/<int:command_id>/status/', views.prepaid_money_command_status, name='prepaid_money_command_status'),
     path('meters/<int:meter_id>/ledger/export/<str:format>/', views_ledger_export.meter_ledger_export, name='meter_ledger_export'),
     path('meters/<int:pk>/', views.meter_detail, name='meter_detail'),
     path('meters/<int:pk>/credit-control/', views_credit_control.credit_control, name='credit_control'),

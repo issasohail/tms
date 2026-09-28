@@ -1,6 +1,11 @@
 from datetime import datetime, time
+import json
+from types import SimpleNamespace
 from unittest.mock import patch
+
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 from smart_meter.models import Meter, MeterCommand, MeterTimingEvent
 from smart_meter.services.command_lifecycle import revalidate_command
@@ -33,3 +38,45 @@ class MeterTimingScheduleTests(TestCase):
     def test_copy_replaces_target_schedule(self):
         target=Meter.objects.create(meter_number='260821000002'); MeterTimingEvent.objects.create(meter=self.meter,weekday=1,event_time=time(9),command='on'); MeterTimingEvent.objects.create(meter=target,weekday=2,event_time=time(1),command='off')
         self.assertEqual(copy_timing_schedule(self.meter,target),1); row=target.timing_events.get(); self.assertEqual((row.weekday,row.event_time,row.command),(1,time(9),'on'))
+
+
+class MeterTimingScheduleViewTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="schedule-tester",
+            password="test-password",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_login(self.user)
+        self.meter = Meter.objects.create(meter_number="260821000010")
+
+    @patch("smart_meter.views_schedule.enforce_meter_timing_schedule")
+    def test_save_replaces_schedule_and_enforces_it_immediately(self, enforce):
+        enforce.return_value = SimpleNamespace(pk=91)
+        MeterTimingEvent.objects.create(
+            meter=self.meter,
+            weekday=2,
+            event_time=time(1),
+            command="off",
+        )
+        events = [
+            {"time": "08:00", "command": "on", "days": [0, 1]},
+            {"time": "23:00", "command": "off", "days": [0, 1]},
+        ]
+
+        response = self.client.post(
+            reverse("smart_meter:meter_schedule_update", args=[self.meter.pk]),
+            {"events_json": json.dumps(events)},
+        )
+
+        self.assertRedirects(response, reverse("smart_meter:meter_schedule_list"))
+        self.assertEqual(self.meter.timing_events.count(), 4)
+        self.assertFalse(self.meter.timing_events.filter(weekday=2).exists())
+        enforce.assert_called_once_with(self.meter)
+
+    def test_schedule_list_places_save_button_inside_editor(self):
+        response = self.client.get(reverse("smart_meter:meter_schedule_list"))
+
+        self.assertContains(response, "Save Schedule")
+        self.assertContains(response, "Saving applies the current effective event immediately.")

@@ -4387,6 +4387,17 @@ class LeaseDetailView(LoginRequiredMixin, DetailView):
         rollback_end_dates = [
             renewal.end_date for renewal in renewals if renewal.end_date > lease.end_date
         ]
+        renewal_marker = re.compile(
+            rf"^END_LEASE_RENEWAL_END:{lease.end_date:%Y-%m-%d}:"
+            r"(\d{4}-\d{2}-\d{2})$",
+            re.MULTILINE,
+        )
+        for renewal in renewals:
+            rollback_end_dates.extend(
+                parsed_date
+                for value in renewal_marker.findall(renewal.notes or "")
+                if (parsed_date := parse_date(value)) is not None
+            )
         ctx["rollback_default_end_date"] = (
             max(rollback_end_dates)
             if rollback_end_dates

@@ -14,6 +14,10 @@
     max-width: 1900px;
   }
 
+  .meter-detail-wrap.schedule-active {
+    max-width: 1800px;
+  }
+
   .meter-detail-title {
     font-size: clamp(1.35rem, 2vw, 1.85rem);
     font-weight: 800;
@@ -250,7 +254,7 @@
   }
 </style>
 
-<div class="container-fluid meter-detail-wrap {% if active_tab == 'raw-readings' %}raw-readings-active{% endif %} mt-3 mb-4">
+<div class="container-fluid meter-detail-wrap {% if active_tab == 'raw-readings' %}raw-readings-active{% elif active_tab == 'schedule' %}schedule-active{% endif %} mt-3 mb-4">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
       <h2 class="meter-detail-title mb-0">Meter Details: {{ meter.meter_number }}</h2>

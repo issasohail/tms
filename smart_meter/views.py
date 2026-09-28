@@ -5,6 +5,7 @@ import calendar
 import csv
 import inspect
 import logging
+import uuid
 from collections import OrderedDict, defaultdict
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -515,18 +516,27 @@ def _prepaid_return(request):
 
 
 def _attach_tariff_verification(meters):
-    """Expose tariff readiness to mode-toggle templates without per-row queries."""
+    """Expose prepaid tariff readiness without accepting a stale flat price."""
     from smart_meter.models import MeterTariffConfiguration
+    from smart_meter.rates import resolve_electricity_rate
 
     meters = list(meters)
-    verified_ids = set(
-        MeterTariffConfiguration.objects.filter(
+    configurations = {
+        configuration.meter_id: configuration
+        for configuration in MeterTariffConfiguration.objects.filter(
             meter_id__in=[meter.pk for meter in meters],
             last_verified_at__isnull=False,
-        ).values_list("meter_id", flat=True)
-    )
+        )
+    }
     for meter in meters:
-        meter.tariff_is_verified = meter.pk in verified_ids
+        configuration = configurations.get(meter.pk)
+        rate_matches = True
+        if configuration and configuration.mode == "flat":
+            rate_matches = (
+                configuration.rate_1_price
+                == resolve_electricity_rate(meter=meter).rate
+            )
+        meter.tariff_is_verified = bool(configuration and rate_matches)
     return meters
 
 
@@ -550,11 +560,20 @@ def prepaid_controls(request):
             meter = get_object_or_404(Meter, pk=request.POST.get("meter_id"))
             from smart_meter.models import MeterPrepaidPilot, MeterTariffConfiguration
 
-            tariff_was_configured = MeterTariffConfiguration.objects.filter(
-                meter=meter,
-                last_verified_at__isnull=False,
-            ).exists()
-            if action == "enable_meter" and not tariff_was_configured:
+            tariff_configuration = MeterTariffConfiguration.objects.filter(
+                meter=meter, last_verified_at__isnull=False
+            ).first()
+            tariff_was_configured = tariff_configuration is not None
+            tariff_matches_billing_rate = bool(tariff_configuration)
+            if tariff_configuration and tariff_configuration.mode == "flat":
+                from smart_meter.rates import resolve_electricity_rate
+
+                tariff_matches_billing_rate = (
+                    tariff_configuration.rate_1_price
+                    == resolve_electricity_rate(meter=meter).rate
+                )
+            tariff_is_ready = tariff_was_configured and tariff_matches_billing_rate
+            if action == "enable_meter" and not tariff_is_ready:
                 if not request.user.has_perm("smart_meter.write_meter_tariff"):
                     messages.error(
                         request,
@@ -610,7 +629,7 @@ def prepaid_controls(request):
                         f"Meter {meter.meter_number} enabled for prepaid operations and monthly invoicing. "
                         + (
                             "Tariff was sent to the meter and verified before prepaid was saved."
-                            if not tariff_was_configured
+                            if not tariff_is_ready
                             else "The existing verified meter tariff was retained."
                         )
                     )
@@ -677,6 +696,7 @@ def prepaid_meter_ledger(request, meter_id):
         request.POST or None,
         initial={"operation": requested_operation},
     )
+    wants_json = request.headers.get("x-requested-with") == "XMLHttpRequest"
     if request.method == "POST" and form.is_valid():
         operation = form.cleaned_data["operation"]
         permission = (
@@ -686,37 +706,61 @@ def prepaid_meter_ledger(request, meter_id):
         )
         if not request.user.has_perm(permission):
             raise PermissionDenied(f"You do not have permission: {permission}")
-        if form.cleaned_data["confirm_meter_number"] != meter.meter_number:
-            form.add_error("confirm_meter_number", "Meter number does not match.")
-        else:
-            from smart_meter.services.prepaid_money import queue_prepaid_money_transaction
+        from smart_meter.services.prepaid_money import queue_prepaid_money_transaction
 
-            try:
-                recharge, command = queue_prepaid_money_transaction(
-                    meter=meter,
-                    operation=operation,
-                    amount=form.cleaned_data["amount"],
-                    initiated_by=request.user.get_username(),
-                    reason=form.cleaned_data["reason"],
+        try:
+            recharge, command = queue_prepaid_money_transaction(
+                meter=meter,
+                operation=operation,
+                amount=form.cleaned_data["amount"],
+                initiated_by=request.user.get_username(),
+                reason=form.cleaned_data["reason"],
+            )
+        except ValueError as exc:
+            form.add_error(None, str(exc))
+        else:
+            recharge.created_by = request.user
+            recharge.save(update_fields=["created_by", "updated_at"])
+            if wants_json:
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "command_id": command.pk,
+                        "status_url": reverse(
+                            "smart_meter:prepaid_money_command_status",
+                            args=[command.pk],
+                        ),
+                        "message": (
+                            f"{operation.title()} command queued once; waiting for "
+                            "meter acknowledgement and balance verification."
+                        ),
+                    }
                 )
-            except ValueError as exc:
-                form.add_error(None, str(exc))
-            else:
-                recharge.created_by = request.user
-                recharge.save(update_fields=["created_by", "updated_at"])
-                messages.warning(
-                    request,
-                    f"{operation.title()} command #{command.pk} queued once. "
-                    "Wait for acknowledgement and balance reconciliation before another money command.",
-                )
-                target = request.POST.get("next")
-                if target and url_has_allowed_host_and_scheme(
-                    target,
-                    allowed_hosts={request.get_host()},
-                    require_https=request.is_secure(),
-                ):
-                    return redirect(target)
-                return redirect("smart_meter:prepaid_meter_ledger", meter_id=meter.pk)
+            messages.warning(
+                request,
+                f"{operation.title()} command #{command.pk} queued once. "
+                "Wait for acknowledgement and balance reconciliation before another money command.",
+            )
+            target = request.POST.get("next")
+            if target and url_has_allowed_host_and_scheme(
+                target,
+                allowed_hosts={request.get_host()},
+                require_https=request.is_secure(),
+            ):
+                return redirect(target)
+            return redirect("smart_meter:prepaid_meter_ledger", meter_id=meter.pk)
+
+    if request.method == "POST" and wants_json:
+        errors = []
+        for field_errors in form.errors.values():
+            errors.extend(str(error) for error in field_errors)
+        return JsonResponse(
+            {
+                "success": False,
+                "error": " ".join(errors) or "The money command could not be queued.",
+            },
+            status=400,
+        )
 
     from smart_meter.ledger_display import build_ledger_data
     ledger_data = build_ledger_data(request, meter)
@@ -734,6 +778,75 @@ def prepaid_meter_ledger(request, meter_id):
             meter=meter
         ).first(),
     })
+
+
+@login_required
+@permission_required("smart_meter.view_meter", raise_exception=True)
+def prepaid_money_command_status(request, command_id):
+    """Return money-command acknowledgement, reconciliation, and fresh balance."""
+    meters = restrict_queryset_to_properties(
+        Meter.objects.all(), request.user, "unit__property"
+    )
+    command = get_object_or_404(
+        MeterCommand.objects.select_related("meter"),
+        pk=command_id,
+        meter_id__in=meters.values("pk"),
+        command_type__in=("prepaid_recharge", "prepaid_refund"),
+    )
+    transaction_id = ""
+    if (command.idempotency_key or "").startswith("prepaid-order:"):
+        transaction_id = command.idempotency_key[len("prepaid-order:"):]
+    money_transaction = MeterPrepaidRecharge.objects.filter(
+        transaction_id=transaction_id
+    ).first()
+    live = LiveReading.objects.filter(meter=command.meter).first()
+    transaction_status = (
+        money_transaction.status if money_transaction is not None else "pending"
+    )
+    terminal_failure = command.status in {
+        "failed", "cancelled", "expired", "error", "timeout"
+    } or transaction_status in {"failed", "uncertain"}
+    verified = command.status == "verified" and transaction_status == "verified"
+    acknowledged = command.status in {"acknowledged", "verified"} or bool(
+        command.raw_ack_hex
+    )
+    if verified:
+        message = "Meter balance was written and verified from a fresh reading."
+    elif transaction_status == "uncertain":
+        message = money_transaction.reconciliation_note or (
+            "The result is uncertain. Do not send the command again; verify the meter balance."
+        )
+    elif terminal_failure:
+        message = command.error or (
+            money_transaction.reconciliation_note if money_transaction else "Command failed."
+        )
+    elif acknowledged:
+        message = "Meter acknowledged the write; reading back the updated balance…"
+    elif command.status == "waiting_online":
+        message = "Waiting for the meter to reconnect…"
+    else:
+        message = "Writing to the meter; waiting for acknowledgement…"
+
+    return JsonResponse(
+        {
+            "success": not terminal_failure,
+            "pending": not verified and not terminal_failure,
+            "acknowledged": acknowledged,
+            "verified": verified,
+            "terminal": verified or terminal_failure,
+            "command_id": command.pk,
+            "command_status": command.status,
+            "transaction_status": transaction_status,
+            "message": message,
+            "error": message if terminal_failure else "",
+            "balance": (
+                f"{money_transaction.after_balance:.2f}"
+                if verified and money_transaction and money_transaction.after_balance is not None
+                else (f"{live.balance:.2f}" if live and live.balance is not None else "")
+            ),
+            "reading_at": _ts_iso(live.ts) if live else "",
+        }
+    )
 
 
 # views.py
@@ -1722,9 +1835,63 @@ def meter_unit_rate_update(request, pk):
         )
     if unit_rate is not None:
         unit_rate = unit_rate.quantize(Decimal("0.0001"))
+
+    if meter.billing_mode == "prepaid_pilot":
+        if unit_rate is None or unit_rate <= 0:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "A prepaid meter tariff must be greater than zero.",
+                },
+                status=400,
+            )
+        if not request.user.has_perm("smart_meter.write_meter_tariff"):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "You do not have permission to write meter tariffs.",
+                },
+                status=403,
+            )
+
+        from smart_meter.services.tariff_configuration import configure_prices
+
+        try:
+            audit = configure_prices(
+                meter=meter,
+                user=request.user,
+                mode="flat",
+                prices=[unit_rate],
+                active_rate_count=1,
+                submission_key=request.POST.get("submission_key") or uuid.uuid4(),
+            )
+        except Exception as exc:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": f"Tariff configuration could not start: {exc}",
+                },
+                status=409,
+            )
+        if audit.status not in {"verified", "no_change"}:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": audit.error or audit.get_status_display(),
+                    "tariff_status": audit.status,
+                    "audit_id": audit.pk,
+                },
+                status=409,
+            )
+        # configure_prices saves the meter override only after a successful
+        # live read-back (or confirmed no-change result).
+        meter.refresh_from_db(fields=["unit_rate"])
+        unit_rate = meter.unit_rate
+
     meter.unit_rate = unit_rate
-    meter.full_clean(exclude=None)
-    meter.save(update_fields=["unit_rate"])
+    if meter.billing_mode != "prepaid_pilot":
+        meter.full_clean(exclude=None)
+        meter.save(update_fields=["unit_rate"])
 
     from smart_meter.rates import resolve_electricity_rate
 
@@ -1734,6 +1901,9 @@ def meter_unit_rate_update(request, pk):
         "unit_rate": f"{resolved.rate:.4f}",
         "meter_unit_rate": f"{unit_rate:.4f}" if unit_rate is not None else "",
         "source": resolved.source,
+        "tariff_status": (
+            audit.status if meter.billing_mode == "prepaid_pilot" else "not_required"
+        ),
     })
 
 

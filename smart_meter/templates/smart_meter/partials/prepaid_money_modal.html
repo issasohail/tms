@@ -7,32 +7,46 @@
         <input type="hidden" name="operation" id="prepaidMoneyOperation">
         <div class="modal-header">
           <h3 class="modal-title" id="prepaidMoneyModalLabel">Top up meter</h3>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          <button type="button" class="btn-close" id="prepaidMoneyHeaderClose" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body prepaid-money-modal-body">
-          <div class="alert alert-light border fs-5 mb-3">
-            Meter <strong id="prepaidMoneyMeterNumber"></strong>
-            <span class="text-muted" id="prepaidMoneyLocation"></span>
+          <div class="alert alert-light border mb-3">
+            <div><span class="text-muted">Meter #:</span> <strong id="prepaidMoneyMeterNumber"></strong></div>
+            <div><span class="text-muted">Unit #:</span> <strong id="prepaidMoneyUnit"></strong></div>
+            <div><span class="text-muted">Current tenant:</span> <strong id="prepaidMoneyTenant"></strong></div>
+            <div><span class="text-muted">Current balance:</span> <strong id="prepaidMoneyCurrentBalance"></strong></div>
           </div>
-          <div class="row g-3">
-            <div class="col-md-5">
+          <div id="prepaidMoneyFields" class="row g-3">
+            <div class="col-md-6">
               <label for="prepaidMoneyAmount" class="form-label fs-5">Amount</label>
               <input type="number" min="0.01" step="0.01" class="form-control form-control-lg" id="prepaidMoneyAmount" name="amount" required autofocus>
             </div>
-            <div class="col-md-7">
+            <div class="col-md-6">
+              <label for="prepaidMoneyConfirmation" class="form-label fs-5">Re-enter amount</label>
+              <input type="number" min="0.01" step="0.01" class="form-control form-control-lg" id="prepaidMoneyConfirmation" name="confirm_amount" autocomplete="off" required>
+              <div class="invalid-feedback">The two amounts must match.</div>
+            </div>
+            <div class="col-12">
               <label for="prepaidMoneyReason" class="form-label fs-5">Reason</label>
               <input type="text" class="form-control form-control-lg" id="prepaidMoneyReason" name="reason" maxlength="255" required>
             </div>
-            <div class="col-12">
-              <label for="prepaidMoneyConfirmation" class="form-label fs-5">Confirm meter number</label>
-              <input type="text" class="form-control form-control-lg" id="prepaidMoneyConfirmation" name="confirm_meter_number" autocomplete="off" required>
-            </div>
           </div>
-          <p class="text-muted mt-3 mb-0">The command is sent once. Wait for acknowledgement and balance reconciliation before sending another money command.</p>
+          <div id="prepaidMoneyProgress" class="d-none" aria-live="polite">
+            <div class="progress mb-2" style="height:1.25rem" role="progressbar" aria-label="Money command progress">
+              <div id="prepaidMoneyProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" style="width:8%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8"></div>
+            </div>
+            <div class="d-flex justify-content-between gap-3 small">
+              <span id="prepaidMoneyPhase">Queueing the command…</span>
+              <span id="prepaidMoneyTimer" class="font-monospace fw-semibold">00:00</span>
+            </div>
+            <div id="prepaidMoneyResult" class="alert mt-3 mb-0 d-none"></div>
+          </div>
+          <p class="text-muted mt-3 mb-0">The command is sent once. This window waits for acknowledgement, reads the meter again, and shows the verified updated balance.</p>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-lg btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-lg btn-outline-secondary" id="prepaidMoneyCancel" data-bs-dismiss="modal">Cancel</button>
           <button type="submit" class="btn btn-lg btn-warning px-5" id="prepaidMoneySubmit">Submit</button>
+          <button type="button" class="btn btn-lg btn-secondary d-none" id="prepaidMoneyDone" data-bs-dismiss="modal">Close</button>
         </div>
       </form>
     </div>
@@ -41,51 +55,142 @@
 
 <script>
   (function () {
+  let moneyTimer = null;
+  let moneyPoll = null;
+  let moneyStartedAt = null;
+
+  function moneyElapsed() {
+    if (!moneyStartedAt) return;
+    const elapsed = Math.floor((Date.now() - moneyStartedAt) / 1000);
+    document.getElementById('prepaidMoneyTimer').textContent = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
+    const bar = document.getElementById('prepaidMoneyProgressBar');
+    const width = Math.min(92, 8 + elapsed * 2.2);
+    bar.style.width = `${width}%`;
+    bar.setAttribute('aria-valuenow', String(Math.round(width)));
+  }
+
+  function stopMoneyTracking() {
+    clearInterval(moneyTimer);
+    clearTimeout(moneyPoll);
+    moneyTimer = null;
+    moneyPoll = null;
+  }
+
+  function finishMoneyTracking(success, message, balance, readingAt, meterId) {
+    stopMoneyTracking();
+    const bar = document.getElementById('prepaidMoneyProgressBar');
+    bar.classList.remove('progress-bar-animated', 'bg-primary');
+    bar.classList.add(success ? 'bg-success' : 'bg-danger');
+    if (success) {
+      bar.style.width = '100%';
+      bar.setAttribute('aria-valuenow', '100');
+    }
+    const result = document.getElementById('prepaidMoneyResult');
+    result.className = `alert mt-3 mb-0 ${success ? 'alert-success' : 'alert-danger'}`;
+    result.textContent = success && balance
+      ? `${message} Updated meter balance: ${balance}${readingAt ? ` (reading ${new Date(readingAt).toLocaleString()})` : ''}`
+      : message;
+    document.getElementById('prepaidMoneyPhase').textContent = success ? 'Completed and verified.' : 'Command not verified.';
+    document.getElementById('prepaidMoneyDone').classList.remove('d-none');
+    document.getElementById('prepaidMoneyHeaderClose').classList.remove('d-none');
+    if (success && balance && meterId) {
+      const row = document.querySelector(`[data-meter-row][data-meter-id="${meterId}"]`);
+      if (row && typeof setBalanceCell === 'function') setBalanceCell(row, balance, true);
+    }
+  }
+
+  async function pollMoneyStatus(statusUrl, meterId) {
+    try {
+      const response = await fetch(statusUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Unable to read command status.');
+      document.getElementById('prepaidMoneyPhase').textContent = data.message || 'Waiting for the meter…';
+      if (data.terminal) {
+        finishMoneyTracking(!!data.verified, data.error || data.message, data.balance, data.reading_at, meterId);
+        return;
+      }
+    } catch (error) {
+      document.getElementById('prepaidMoneyPhase').textContent = `${error.message} Retrying status check…`;
+    }
+    moneyPoll = setTimeout(() => pollMoneyStatus(statusUrl, meterId), 1000);
+  }
+
   function bindPrepaidMoneyModal() {
     if (window.prepaidMoneyModalBound) return;
     window.prepaidMoneyModalBound = true;
-    document.addEventListener('click', function (event) {
-    const trigger = event.target instanceof Element
-      ? event.target.closest('[data-prepaid-money]')
-      : null;
-    if (!trigger) return;
-    event.preventDefault();
-    const operation = trigger.dataset.operation === 'refund' ? 'refund' : 'recharge';
-    const meterNumber = trigger.dataset.meterNumber || '';
     const modalElement = document.getElementById('prepaidMoneyModal');
-    if (!modalElement) {
-      window.location.href = `${trigger.dataset.actionUrl}?action=${operation}`;
-      return;
-    }
-    if (modalElement.parentElement !== document.body) document.body.appendChild(modalElement);
-    if (!modalElement.dataset.resetBound) {
-      modalElement.dataset.resetBound = 'true';
-      modalElement.addEventListener('hidden.bs.modal', () => document.getElementById('prepaidMoneyForm')?.reset());
-    }
     const form = document.getElementById('prepaidMoneyForm');
-    form.action = trigger.dataset.actionUrl;
-    document.getElementById('prepaidMoneyOperation').value = operation;
-    document.getElementById('prepaidMoneyMeterNumber').textContent = meterNumber;
-    document.getElementById('prepaidMoneyLocation').textContent = trigger.dataset.location ? ` · ${trigger.dataset.location}` : '';
-    document.getElementById('prepaidMoneyModalLabel').textContent = operation === 'refund' ? 'Refund meter balance' : 'Top up meter balance';
-    document.getElementById('prepaidMoneySubmit').textContent = operation === 'refund' ? 'Submit refund' : 'Submit top up';
-    document.getElementById('prepaidMoneyAmount').value = '';
-    document.getElementById('prepaidMoneyReason').value = '';
-    document.getElementById('prepaidMoneyConfirmation').value = '';
-    if (!window.bootstrap?.Modal) {
-      window.location.href = `${trigger.dataset.actionUrl}?action=${operation}`;
-      return;
-    }
-    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
-    modal.show();
-    modalElement.addEventListener('shown.bs.modal', () => document.getElementById('prepaidMoneyAmount')?.focus(), {once: true});
+
+    document.addEventListener('click', function (event) {
+      const trigger = event.target instanceof Element ? event.target.closest('[data-prepaid-money]') : null;
+      if (!trigger) return;
+      event.preventDefault();
+      stopMoneyTracking();
+      const operation = trigger.dataset.operation === 'refund' ? 'refund' : 'recharge';
+      const row = trigger.closest('[data-meter-row]');
+      const currentTenant = row?.querySelector('td.col-tenant, .mobile-full-tenant')?.textContent.trim();
+      const currentBalance = row?.querySelector('td[data-col="balance"], .mobile-balance')?.textContent.trim();
+      form.reset();
+      form.action = trigger.dataset.actionUrl;
+      form.dataset.meterId = trigger.dataset.meterId || '';
+      document.getElementById('prepaidMoneyOperation').value = operation;
+      document.getElementById('prepaidMoneyMeterNumber').textContent = trigger.dataset.meterNumber || '—';
+      document.getElementById('prepaidMoneyUnit').textContent = trigger.dataset.unit || '—';
+      document.getElementById('prepaidMoneyTenant').textContent = currentTenant || trigger.dataset.tenant || 'Vacant';
+      document.getElementById('prepaidMoneyCurrentBalance').textContent = currentBalance || trigger.dataset.balance || '—';
+      document.getElementById('prepaidMoneyModalLabel').textContent = operation === 'refund' ? 'Refund meter balance' : 'Top up meter balance';
+      document.getElementById('prepaidMoneySubmit').textContent = operation === 'refund' ? 'Submit refund' : 'Submit top up';
+      document.getElementById('prepaidMoneyFields').classList.remove('d-none');
+      document.getElementById('prepaidMoneyProgress').classList.add('d-none');
+      document.getElementById('prepaidMoneyResult').classList.add('d-none');
+      document.getElementById('prepaidMoneyCancel').classList.remove('d-none');
+      document.getElementById('prepaidMoneySubmit').classList.remove('d-none');
+      document.getElementById('prepaidMoneyDone').classList.add('d-none');
+      document.getElementById('prepaidMoneyHeaderClose').classList.remove('d-none');
+      if (!window.bootstrap?.Modal) {
+        window.location.href = `${trigger.dataset.actionUrl}?action=${operation}`;
+        return;
+      }
+      bootstrap.Modal.getOrCreateInstance(modalElement, {backdrop: 'static', keyboard: false}).show();
+      modalElement.addEventListener('shown.bs.modal', () => document.getElementById('prepaidMoneyAmount')?.focus(), {once: true});
     });
+
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      const amount = document.getElementById('prepaidMoneyAmount');
+      const confirmation = document.getElementById('prepaidMoneyConfirmation');
+      confirmation.setCustomValidity(amount.value === confirmation.value ? '' : 'The two amounts do not match.');
+      if (!form.reportValidity()) return;
+      document.getElementById('prepaidMoneyFields').classList.add('d-none');
+      document.getElementById('prepaidMoneyProgress').classList.remove('d-none');
+      document.getElementById('prepaidMoneyCancel').classList.add('d-none');
+      document.getElementById('prepaidMoneySubmit').classList.add('d-none');
+      document.getElementById('prepaidMoneyHeaderClose').classList.add('d-none');
+      const bar = document.getElementById('prepaidMoneyProgressBar');
+      bar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-primary';
+      bar.style.width = '8%';
+      moneyStartedAt = Date.now();
+      moneyElapsed();
+      moneyTimer = setInterval(moneyElapsed, 250);
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          headers: {'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value, 'X-Requested-With': 'XMLHttpRequest'},
+          body: new FormData(form),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'The command could not be queued.');
+        document.getElementById('prepaidMoneyPhase').textContent = data.message;
+        pollMoneyStatus(data.status_url, form.dataset.meterId);
+      } catch (error) {
+        finishMoneyTracking(false, error.message || 'The command could not be queued.', '', '', form.dataset.meterId);
+      }
+    });
+
+    modalElement.addEventListener('hidden.bs.modal', stopMoneyTracking);
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bindPrepaidMoneyModal, {once: true});
-  } else {
-    bindPrepaidMoneyModal();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindPrepaidMoneyModal, {once: true});
+  else bindPrepaidMoneyModal();
   })();
 </script>

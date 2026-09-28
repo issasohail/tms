@@ -696,6 +696,7 @@ def prepaid_meter_ledger(request, meter_id):
         request.POST or None,
         initial={"operation": requested_operation},
     )
+    wants_json = request.headers.get("x-requested-with") == "XMLHttpRequest"
     if request.method == "POST" and form.is_valid():
         operation = form.cleaned_data["operation"]
         permission = (
@@ -705,37 +706,61 @@ def prepaid_meter_ledger(request, meter_id):
         )
         if not request.user.has_perm(permission):
             raise PermissionDenied(f"You do not have permission: {permission}")
-        if form.cleaned_data["confirm_meter_number"] != meter.meter_number:
-            form.add_error("confirm_meter_number", "Meter number does not match.")
-        else:
-            from smart_meter.services.prepaid_money import queue_prepaid_money_transaction
+        from smart_meter.services.prepaid_money import queue_prepaid_money_transaction
 
-            try:
-                recharge, command = queue_prepaid_money_transaction(
-                    meter=meter,
-                    operation=operation,
-                    amount=form.cleaned_data["amount"],
-                    initiated_by=request.user.get_username(),
-                    reason=form.cleaned_data["reason"],
+        try:
+            recharge, command = queue_prepaid_money_transaction(
+                meter=meter,
+                operation=operation,
+                amount=form.cleaned_data["amount"],
+                initiated_by=request.user.get_username(),
+                reason=form.cleaned_data["reason"],
+            )
+        except ValueError as exc:
+            form.add_error(None, str(exc))
+        else:
+            recharge.created_by = request.user
+            recharge.save(update_fields=["created_by", "updated_at"])
+            if wants_json:
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "command_id": command.pk,
+                        "status_url": reverse(
+                            "smart_meter:prepaid_money_command_status",
+                            args=[command.pk],
+                        ),
+                        "message": (
+                            f"{operation.title()} command queued once; waiting for "
+                            "meter acknowledgement and balance verification."
+                        ),
+                    }
                 )
-            except ValueError as exc:
-                form.add_error(None, str(exc))
-            else:
-                recharge.created_by = request.user
-                recharge.save(update_fields=["created_by", "updated_at"])
-                messages.warning(
-                    request,
-                    f"{operation.title()} command #{command.pk} queued once. "
-                    "Wait for acknowledgement and balance reconciliation before another money command.",
-                )
-                target = request.POST.get("next")
-                if target and url_has_allowed_host_and_scheme(
-                    target,
-                    allowed_hosts={request.get_host()},
-                    require_https=request.is_secure(),
-                ):
-                    return redirect(target)
-                return redirect("smart_meter:prepaid_meter_ledger", meter_id=meter.pk)
+            messages.warning(
+                request,
+                f"{operation.title()} command #{command.pk} queued once. "
+                "Wait for acknowledgement and balance reconciliation before another money command.",
+            )
+            target = request.POST.get("next")
+            if target and url_has_allowed_host_and_scheme(
+                target,
+                allowed_hosts={request.get_host()},
+                require_https=request.is_secure(),
+            ):
+                return redirect(target)
+            return redirect("smart_meter:prepaid_meter_ledger", meter_id=meter.pk)
+
+    if request.method == "POST" and wants_json:
+        errors = []
+        for field_errors in form.errors.values():
+            errors.extend(str(error) for error in field_errors)
+        return JsonResponse(
+            {
+                "success": False,
+                "error": " ".join(errors) or "The money command could not be queued.",
+            },
+            status=400,
+        )
 
     from smart_meter.ledger_display import build_ledger_data
     ledger_data = build_ledger_data(request, meter)
@@ -753,6 +778,75 @@ def prepaid_meter_ledger(request, meter_id):
             meter=meter
         ).first(),
     })
+
+
+@login_required
+@permission_required("smart_meter.view_meter", raise_exception=True)
+def prepaid_money_command_status(request, command_id):
+    """Return money-command acknowledgement, reconciliation, and fresh balance."""
+    meters = restrict_queryset_to_properties(
+        Meter.objects.all(), request.user, "unit__property"
+    )
+    command = get_object_or_404(
+        MeterCommand.objects.select_related("meter"),
+        pk=command_id,
+        meter_id__in=meters.values("pk"),
+        command_type__in=("prepaid_recharge", "prepaid_refund"),
+    )
+    transaction_id = ""
+    if (command.idempotency_key or "").startswith("prepaid-order:"):
+        transaction_id = command.idempotency_key[len("prepaid-order:"):]
+    money_transaction = MeterPrepaidRecharge.objects.filter(
+        transaction_id=transaction_id
+    ).first()
+    live = LiveReading.objects.filter(meter=command.meter).first()
+    transaction_status = (
+        money_transaction.status if money_transaction is not None else "pending"
+    )
+    terminal_failure = command.status in {
+        "failed", "cancelled", "expired", "error", "timeout"
+    } or transaction_status in {"failed", "uncertain"}
+    verified = command.status == "verified" and transaction_status == "verified"
+    acknowledged = command.status in {"acknowledged", "verified"} or bool(
+        command.raw_ack_hex
+    )
+    if verified:
+        message = "Meter balance was written and verified from a fresh reading."
+    elif transaction_status == "uncertain":
+        message = money_transaction.reconciliation_note or (
+            "The result is uncertain. Do not send the command again; verify the meter balance."
+        )
+    elif terminal_failure:
+        message = command.error or (
+            money_transaction.reconciliation_note if money_transaction else "Command failed."
+        )
+    elif acknowledged:
+        message = "Meter acknowledged the write; reading back the updated balance…"
+    elif command.status == "waiting_online":
+        message = "Waiting for the meter to reconnect…"
+    else:
+        message = "Writing to the meter; waiting for acknowledgement…"
+
+    return JsonResponse(
+        {
+            "success": not terminal_failure,
+            "pending": not verified and not terminal_failure,
+            "acknowledged": acknowledged,
+            "verified": verified,
+            "terminal": verified or terminal_failure,
+            "command_id": command.pk,
+            "command_status": command.status,
+            "transaction_status": transaction_status,
+            "message": message,
+            "error": message if terminal_failure else "",
+            "balance": (
+                f"{money_transaction.after_balance:.2f}"
+                if verified and money_transaction and money_transaction.after_balance is not None
+                else (f"{live.balance:.2f}" if live and live.balance is not None else "")
+            ),
+            "reading_at": _ts_iso(live.ts) if live else "",
+        }
+    )
 
 
 # views.py

@@ -102,6 +102,15 @@ class LiveVacancyRefreshRegressionTests(TestCase):
         self.assertIn('id="rateUpdateProgressModal"', source)
         self.assertIn('id="rateUpdateTimer"', source)
         self.assertIn("Reading back and verifying the physical meter", source)
+        modal_source = (
+            Path(settings.BASE_DIR)
+            / "smart_meter/templates/smart_meter/partials/prepaid_money_modal.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Current tenant:", modal_source)
+        self.assertIn('name="confirm_amount"', modal_source)
+        self.assertNotIn('name="confirm_meter_number"', modal_source)
+        self.assertIn('id="prepaidMoneyTimer"', modal_source)
+        self.assertIn("pollMoneyStatus", modal_source)
 
     def test_meter_list_has_the_same_guarded_rate_editor_and_progress_timer(self):
         source = (

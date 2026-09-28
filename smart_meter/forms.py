@@ -115,11 +115,23 @@ class PrepaidMoneyForm(forms.Form):
         max_length=256,
         widget=forms.TextInput(attrs={"class": "form-control"}),
     )
-    confirm_meter_number = forms.CharField(
-        max_length=20,
-        label="Confirm meter number",
-        widget=forms.TextInput(attrs={"class": "form-control", "autocomplete": "off"}),
+    confirm_amount = forms.DecimalField(
+        min_value=Decimal("0.01"),
+        max_digits=14,
+        decimal_places=2,
+        label="Re-enter amount",
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "step": "0.01", "autocomplete": "off"}
+        ),
     )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        amount = cleaned_data.get("amount")
+        confirm_amount = cleaned_data.get("confirm_amount")
+        if amount is not None and confirm_amount is not None and amount != confirm_amount:
+            self.add_error("confirm_amount", "The two amounts do not match.")
+        return cleaned_data
 
 
 class MeterForm(forms.ModelForm):

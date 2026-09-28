@@ -98,8 +98,8 @@ class PrepaidLedgerUITests(TestCase):
             {
                 "operation": "recharge",
                 "amount": "5.00",
+                "confirm_amount": "5.00",
                 "reason": "UI ledger test",
-                "confirm_meter_number": self.meter.meter_number,
             },
         )
 
@@ -111,6 +111,62 @@ class PrepaidLedgerUITests(TestCase):
         command = MeterCommand.objects.get(command_type="prepaid_recharge")
         self.assertEqual(command.max_attempts, 1)
         self.assertEqual(command.expect_di, "070102FF")
+
+    def test_live_ajax_topup_requires_matching_amount_and_returns_status_url(self):
+        url = reverse("smart_meter:prepaid_meter_ledger", args=[self.meter.pk])
+        mismatch = self.client.post(
+            url,
+            {
+                "operation": "recharge",
+                "amount": "5.00",
+                "confirm_amount": "6.00",
+                "reason": "Mismatch test",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(mismatch.status_code, 400)
+        self.assertIn("do not match", mismatch.json()["error"])
+        self.assertFalse(MeterCommand.objects.filter(command_type="prepaid_recharge").exists())
+
+        response = self.client.post(
+            url,
+            {
+                "operation": "recharge",
+                "amount": "5.00",
+                "confirm_amount": "5.00",
+                "reason": "Live modal test",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        self.assertIn("status_url", response.json())
+
+    def test_money_status_returns_verified_updated_balance_reading(self):
+        response = self.client.post(
+            reverse("smart_meter:prepaid_meter_ledger", args=[self.meter.pk]),
+            {
+                "operation": "recharge",
+                "amount": "5.00",
+                "confirm_amount": "5.00",
+                "reason": "Status test",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        command = MeterCommand.objects.get(pk=response.json()["command_id"])
+        transaction = MeterPrepaidRecharge.objects.get()
+        command.status = "verified"
+        command.save(update_fields=["status"])
+        transaction.status = "verified"
+        transaction.after_balance = Decimal("100.00")
+        transaction.save(update_fields=["status", "after_balance", "updated_at"])
+
+        status = self.client.get(response.json()["status_url"])
+
+        self.assertEqual(status.status_code, 200)
+        self.assertTrue(status.json()["terminal"])
+        self.assertTrue(status.json()["verified"])
+        self.assertEqual(status.json()["balance"], "100.00")
 
     def test_meter_and_live_lists_link_balance_to_ledger(self):
         ledger_url = f'{reverse("smart_meter:meter_detail", args=[self.meter.pk])}?tab=ledger'

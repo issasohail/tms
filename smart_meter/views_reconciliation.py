@@ -52,6 +52,7 @@ from smart_meter.services.reconciliation import (
     log_audit,
     reopen_record,
 )
+from smart_meter.services.meter_availability import build_meter_availability_timeline
 from smart_meter.services.utility_bill_parser import UtilityBillParseError, parse_utility_bill
 
 
@@ -348,6 +349,20 @@ def energy_group_scoreboard(request, pk=None):
     if end_date < start_date:
         start_date, end_date = end_date, start_date
 
+    timeline_window = (request.GET.get("timeline") or "24").strip().lower()
+    if timeline_window not in {"24", "48", "168", "period"}:
+        timeline_window = "24"
+    timeline_now = timezone.now()
+    if timeline_window == "period":
+        timeline_start_at = _aware_midnight(start_date)
+        timeline_end_at = _aware_midnight(end_date + timedelta(days=1))
+        if timeline_start_at <= timeline_now < timeline_end_at:
+            timeline_end_at = timeline_now
+    else:
+        timeline_hours = int(timeline_window)
+        timeline_end_at = timeline_now
+        timeline_start_at = timeline_end_at - timedelta(hours=timeline_hours)
+
     detail_context = build_energy_system_detail_context(
         system, start_date, end_date + timedelta(days=1)
     )
@@ -560,8 +575,8 @@ def energy_group_scoreboard(request, pk=None):
         "iesco_amount": report.get("current_cycle_utility_cost"),
         "billing_amount": report.get("tenant_energy_revenue"),
         "solar_income": report.get("operating_energy_margin"),
-        "audit_import_kwh": output_period_total if has_separate_audit_meter else None,
-        "audit_net_kwh": output_period_total if has_separate_audit_meter else None,
+        "audit_import_kwh": output_period_total,
+        "audit_net_kwh": output_period_total,
         "billing_import_kwh": check2["billing_total_kwh"],
         "billing_export_kwh": check2["billing_total_reverse_kwh"],
         "billing_net_kwh": (
@@ -586,7 +601,7 @@ def energy_group_scoreboard(request, pk=None):
         ),
         "audit_average_rate": _average_rate(
             check2["billing_total_amount"], output_period_total
-        ) if has_separate_audit_meter else None,
+        ),
         "input_average_rate": _average_rate(
             report.get("current_cycle_utility_cost"), input_import_kwh
         ),
@@ -618,6 +633,34 @@ def energy_group_scoreboard(request, pk=None):
         system.inverter_statements.order_by("-period_end", "-id")[:6]
     )
 
+    # Availability is intentionally calculated per meter. H9 can therefore show
+    # the grid-fed three-phase meter dropping first, high-load circuits next, and
+    # battery-backed meters later without assuming one synchronized site outage.
+    timeline_meters = []
+    timeline_roles = {}
+
+    def add_timeline_meter(meter, role_label):
+        if meter is None:
+            return
+        timeline_meters.append(meter)
+        labels = timeline_roles.setdefault(meter.pk, [])
+        if role_label not in labels:
+            labels.append(role_label)
+
+    for row in input_meter_rows:
+        add_timeline_meter(row["meter"], "Input")
+    add_timeline_meter(group.check_meter, "Audit")
+    for unit_group in check2.get("unit_groups", []):
+        for row in unit_group.get("rows", []):
+            add_timeline_meter(row.get("meter"), "Billing")
+
+    meter_availability = build_meter_availability_timeline(
+        timeline_meters,
+        timeline_start_at,
+        timeline_end_at,
+        role_labels=timeline_roles,
+    )
+
     context = {
         "group": group,
         "system": system,
@@ -636,6 +679,8 @@ def energy_group_scoreboard(request, pk=None):
         "output_period_total": output_period_total,
         "output_billing_difference": output_billing_difference,
         "inverter_statements": inverter_statements,
+        "meter_availability": meter_availability,
+        "timeline_window": timeline_window,
         "start_date": start_date,
         "end_date": end_date,
         "quick_range": quick_range,

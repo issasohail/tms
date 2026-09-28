@@ -68,8 +68,34 @@
   .ld-kv-row .v .unit { font-weight: 400; color: #6c757d; font-size: .68rem; }
   .ld-positive { color: #198754; font-weight: 700; }
   .ld-negative { color: #dc3545; font-weight: 700; }
+
+  .availability-card { border: 2px solid #1f2937; border-radius: .65rem; overflow: hidden; }
+  .availability-card .card-header { border-bottom: 2px solid #1f2937; background: #f8f9fb; }
+  .availability-row { display: grid; grid-template-columns: minmax(210px, 290px) 1fr 108px; gap: 10px; align-items: center; padding: 8px 10px; border-bottom: 1px solid #e9ecef; }
+  .availability-row:last-child { border-bottom: 0; }
+  .availability-meter { min-width: 0; }
+  .availability-meter .meter-name { font-weight: 700; font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .availability-meter .meter-meta { color: #6c757d; font-size: .66rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .availability-track-wrap { min-width: 420px; }
+  .availability-track { position: relative; height: 22px; border: 1px solid #adb5bd; border-radius: 5px; background: #dff3e5; overflow: hidden; }
+  .availability-track.unknown { background: #e9ecef; }
+  .availability-offline { position: absolute; top: 0; bottom: 0; background: #dc3545; min-width: 3px; border-left: 1px solid rgba(0,0,0,.15); border-right: 1px solid rgba(0,0,0,.15); }
+  .availability-offline.ongoing { background: #8b1e2d; }
+  .availability-axis { display: flex; justify-content: space-between; gap: 5px; color: #6c757d; font-size: .58rem; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .availability-state { text-align: right; font-size: .68rem; }
+  .availability-state .latest { display: block; margin-top: 2px; color: #6c757d; font-size: .6rem; white-space: nowrap; }
+  .availability-events { grid-column: 2 / 4; font-size: .64rem; color: #495057; display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: -3px; }
+  .availability-event { background: #fff3f4; border: 1px solid #f1c7cc; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
+  .availability-legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: .66rem; color: #6c757d; }
+  .availability-legend .swatch { display: inline-block; width: 18px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: 1px; }
+  .availability-legend .online { background: #dff3e5; border: 1px solid #8ac79c; }
+  .availability-legend .offline { background: #dc3545; }
+  .availability-legend .unknown { background: #e9ecef; border: 1px solid #adb5bd; }
+
   @media (max-width: 767.98px) {
     .ld-scoreboard .box-col { flex: 1 1 100%; width: 100%; min-width: 0; }
+    .availability-row { grid-template-columns: 170px minmax(420px, 1fr) 96px; }
+    .availability-scroll { overflow-x: auto; }
   }
 </style>
 
@@ -263,7 +289,6 @@
               </tbody>
             </table>
           </div>
-          {% if has_separate_audit_meter %}
           <div class="check2-section-title"><span>Audit Meter</span><span>Avg rate: Rs {{ check1.audit_average_rate|default_if_none:"—"|floatformat:2 }}</span></div>
           <div class="ld-scroll-x">
             <table class="ld-mini-table check2-table">
@@ -279,8 +304,8 @@
               </tbody>
             </table>
           </div>
-          {% else %}
-          <div class="ld-formula-note mt-2">No separate audit meter is assigned; the input meter is shown only once.</div>
+          {% if not has_separate_audit_meter %}
+          <div class="ld-formula-note mt-1">This Audit Meter is also assigned on the input side. It remains visible here so Input, Audit, Billing and Inverter are always shown separately.</div>
           {% endif %}
           <div class="check2-section-title"><span>Billing Meters</span><span>Avg rate: Rs {{ check1.billing_average_rate|default_if_none:"—"|floatformat:2 }}</span></div>
           <div class="ld-scroll-x">
@@ -331,6 +356,94 @@
       </div>
     </div>
 
+  </div>
+
+  <div class="card availability-card mb-3">
+    <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <strong>Meter Online / Offline Timeline</strong>
+        <span class="text-muted small">— each meter is evaluated independently from its reading history</span>
+      </div>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Timeline range">
+        <a class="btn btn-outline-secondary {% if timeline_window == '24' %}active{% endif %}" href="?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&timeline=24">24h</a>
+        <a class="btn btn-outline-secondary {% if timeline_window == '48' %}active{% endif %}" href="?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&timeline=48">48h</a>
+        <a class="btn btn-outline-secondary {% if timeline_window == '168' %}active{% endif %}" href="?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&timeline=168">7d</a>
+        <a class="btn btn-outline-secondary {% if timeline_window == 'period' %}active{% endif %}" href="?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&timeline=period">Selected period</a>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="px-3 py-2 d-flex flex-wrap justify-content-between gap-2 border-bottom">
+        <div class="availability-legend">
+          <span><span class="swatch online"></span>Reporting / no detected gap</span>
+          <span><span class="swatch offline"></span>Offline / missing readings</span>
+          <span><span class="swatch unknown"></span>No readings</span>
+        </div>
+        <div class="small text-muted">
+          {{ meter_availability.start_at|date:"d M Y H:i" }} → {{ meter_availability.end_at|date:"d M Y H:i" }}
+        </div>
+      </div>
+      <div class="availability-scroll">
+        {% for row in meter_availability.rows %}
+        <div class="availability-row">
+          <div class="availability-meter">
+            <div class="meter-name">
+              <a class="js-meter-dashboard"
+                 href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role={{ row.dashboard_role }}&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}"
+                 data-detail-url="{{ request.path }}meter/{{ row.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}{% if row.detail_source %}&source={{ row.detail_source }}{% endif %}">
+                {{ row.display_name }}
+              </a>
+            </div>
+            <div class="meter-meta">
+              {% if row.property_name %}{{ row.property_name }} · {% endif %}
+              <a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role={{ row.dashboard_role }}&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.meter.meter_number }}</a>
+              {% if row.roles %} · {{ row.roles|join:" / " }}{% endif %}
+            </div>
+          </div>
+          <div class="availability-track-wrap">
+            <div class="availability-track {% if row.state == 'unknown' %}unknown{% endif %}">
+              {% for segment in row.segments %}
+              <span class="availability-offline{% if segment.ongoing %} ongoing{% endif %}"
+                    style="left:{{ segment.left }}%;width:{{ segment.width }}%;"
+                    title="{{ segment.title }}"></span>
+              {% endfor %}
+            </div>
+            <div class="availability-axis">
+              {% for mark in meter_availability.axis_labels %}<span>{{ mark|date:"d M H:i" }}</span>{% endfor %}
+            </div>
+          </div>
+          <div class="availability-state">
+            {% if row.state == 'online' %}
+              <span class="ld-badge ld-badge-ok">Online</span>
+            {% elif row.state == 'offline' %}
+              <span class="ld-badge ld-badge-bad">Offline</span>
+            {% else %}
+              <span class="ld-badge ld-badge-warn">No readings</span>
+            {% endif %}
+            <span class="latest">
+              {% if row.latest_reading != None %}{{ row.latest_reading|floatformat:3 }} kWh · {% endif %}
+              {% if row.latest_contact %}{{ row.latest_contact|date:"d M H:i:s" }}{% else %}never{% endif %}
+            </span>
+          </div>
+          {% if row.events %}
+          <div class="availability-events">
+            {% for event in row.events %}
+            <span class="availability-event">
+              Offline approx {{ event.offline_from|date:"d M H:i" }}
+              {% if event.online_at %}→ {{ event.online_at|date:"d M H:i" }}{% else %}→ now{% endif %}
+              · {{ event.duration_label }}
+            </span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% empty %}
+        <div class="p-3 text-muted">No meters are assigned to this Energy Group.</div>
+        {% endfor %}
+      </div>
+      <div class="ld-formula-note m-2">
+        Offline history is inferred per meter from missing readings. Meter history is normally saved about every {{ meter_availability.cadence_minutes }} minutes; a gap of {{ meter_availability.offline_gap_minutes }} minutes or more is shown as offline. This lets H9 show the grid-fed meter, high-load meters and battery-backed meters going offline at different times. It identifies when each meter stopped/started reporting; it does not claim why the meter lost power.
+      </div>
+    </div>
   </div>
 
   <h5 class="mb-2 mt-4">Detail</h5>

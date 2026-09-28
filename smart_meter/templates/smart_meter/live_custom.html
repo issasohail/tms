@@ -1312,6 +1312,9 @@
       target.textContent = next;
       if (flash) flashCell(mobileBalance);
     }
+    tr.querySelectorAll('[data-prepaid-money]').forEach(button => {
+      button.dataset.balance = next;
+    });
   }
   function setMobileVaCell(tr, voltage, current, flash = false) {
     const mobileVa = tr.querySelector('.mobile-va');
@@ -1344,6 +1347,9 @@
       target.textContent = name;
       target.title = name;
       if (typeof flashCell === 'function') flashCell(target);
+    });
+    tr.querySelectorAll('[data-prepaid-money]').forEach(button => {
+      button.dataset.tenant = name;
     });
   }
 

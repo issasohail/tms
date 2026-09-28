@@ -115,27 +115,50 @@
     moneyPoll = setTimeout(() => pollMoneyStatus(statusUrl, meterId), 1000);
   }
 
+  function textFrom(row, selectors) {
+    if (!row) return '';
+    for (const selector of selectors) {
+      const element = row.querySelector(selector);
+      const value = (element?.textContent || '').replace(/\s+/g, ' ').trim();
+      if (value) return value;
+    }
+    return '';
+  }
+
   function bindPrepaidMoneyModal() {
     if (window.prepaidMoneyModalBound) return;
     window.prepaidMoneyModalBound = true;
-    const modalElement = document.getElementById('prepaidMoneyModal');
-    const form = document.getElementById('prepaidMoneyForm');
 
+    // Delegated handlers survive Live Reading's AJAX replacement of #captureArea.
+    // Always resolve the current modal/form instead of keeping references to old DOM.
     document.addEventListener('click', function (event) {
       const trigger = event.target instanceof Element ? event.target.closest('[data-prepaid-money]') : null;
       if (!trigger) return;
       event.preventDefault();
       stopMoneyTracking();
+
+      const modalElement = document.getElementById('prepaidMoneyModal');
+      const form = document.getElementById('prepaidMoneyForm');
+      if (!modalElement || !form) return;
+
       const operation = trigger.dataset.operation === 'refund' ? 'refund' : 'recharge';
       const row = trigger.closest('[data-meter-row]');
-      const currentTenant = row?.querySelector('td.col-tenant, .mobile-full-tenant')?.textContent.trim();
-      const currentBalance = row?.querySelector('td[data-col="balance"], .mobile-balance')?.textContent.trim();
+      const currentUnit = textFrom(row, [
+        'td.col-unit', '.mobile-unit-name', '.meter-mobile-location span:nth-child(2)', '.mobile-unit'
+      ]);
+      const currentTenant = textFrom(row, [
+        'td.col-tenant', '.mobile-full-tenant', '.meter-mobile-tenant', '.mobile-tenant'
+      ]);
+      const currentBalance = textFrom(row, [
+        'td[data-col="balance"]', 'td.col-balance', '.mobile-balance', '.meter-mobile-metrics > div:nth-child(4) strong'
+      ]);
+
       form.reset();
       form.action = trigger.dataset.actionUrl;
-      form.dataset.meterId = trigger.dataset.meterId || '';
+      form.dataset.meterId = trigger.dataset.meterId || row?.dataset.meterId || row?.getAttribute('data-meter-row') || '';
       document.getElementById('prepaidMoneyOperation').value = operation;
       document.getElementById('prepaidMoneyMeterNumber').textContent = trigger.dataset.meterNumber || '—';
-      document.getElementById('prepaidMoneyUnit').textContent = trigger.dataset.unit || '—';
+      document.getElementById('prepaidMoneyUnit').textContent = currentUnit || trigger.dataset.unit || trigger.dataset.location || '—';
       document.getElementById('prepaidMoneyTenant').textContent = currentTenant || trigger.dataset.tenant || 'Vacant';
       document.getElementById('prepaidMoneyCurrentBalance').textContent = currentBalance || trigger.dataset.balance || '—';
       document.getElementById('prepaidMoneyModalLabel').textContent = operation === 'refund' ? 'Refund meter balance' : 'Top up meter balance';
@@ -147,6 +170,8 @@
       document.getElementById('prepaidMoneySubmit').classList.remove('d-none');
       document.getElementById('prepaidMoneyDone').classList.add('d-none');
       document.getElementById('prepaidMoneyHeaderClose').classList.remove('d-none');
+      document.getElementById('prepaidMoneyPhase').textContent = 'Queueing the command…';
+      document.getElementById('prepaidMoneyTimer').textContent = '00:00';
       if (!window.bootstrap?.Modal) {
         window.location.href = `${trigger.dataset.actionUrl}?action=${operation}`;
         return;
@@ -155,10 +180,13 @@
       modalElement.addEventListener('shown.bs.modal', () => document.getElementById('prepaidMoneyAmount')?.focus(), {once: true});
     });
 
-    form.addEventListener('submit', async function (event) {
+    document.addEventListener('submit', async function (event) {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement) || form.id !== 'prepaidMoneyForm') return;
       event.preventDefault();
       const amount = document.getElementById('prepaidMoneyAmount');
       const confirmation = document.getElementById('prepaidMoneyConfirmation');
+      if (!amount || !confirmation) return;
       confirmation.setCustomValidity(amount.value === confirmation.value ? '' : 'The two amounts do not match.');
       if (!form.reportValidity()) return;
       document.getElementById('prepaidMoneyFields').classList.add('d-none');
@@ -187,7 +215,9 @@
       }
     });
 
-    modalElement.addEventListener('hidden.bs.modal', stopMoneyTracking);
+    document.addEventListener('hidden.bs.modal', function (event) {
+      if (event.target?.id === 'prepaidMoneyModal') stopMoneyTracking();
+    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindPrepaidMoneyModal, {once: true});

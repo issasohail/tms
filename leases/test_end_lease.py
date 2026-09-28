@@ -14,7 +14,7 @@ from invoices.services import security_deposit_totals
 from payments.forms import PaymentDetailForm
 from payments.models import Payment
 from payments.services.payment_detail import rebuild_payment_detail
-from leases.models import Lease, LeaseUnitOccupancy
+from leases.models import Lease, LeaseRenewal, LeaseUnitOccupancy
 from leases.utils.end_lease import (
     ZERO,
     _billable_days,
@@ -546,6 +546,104 @@ class EndLeaseRefundAndReviewTests(TestCase):
             security_deposit=security_deposit,
             status="active",
         )
+
+    def test_pre_start_cancellation_can_end_on_agreement_date(self):
+        agreement_date = self.today - timedelta(days=20)
+        move_in_date = self.today + timedelta(days=2)
+        lease = Lease.objects.create(
+            tenant=self.tenant,
+            unit=self.unit,
+            agreement_date=agreement_date,
+            start_date=self.today + timedelta(days=5),
+            end_date=self.today + timedelta(days=365),
+            monthly_rent=ZERO,
+            society_maintenance=ZERO,
+            water_charges=ZERO,
+            internet_charges=ZERO,
+            bill_water_charges=False,
+            status="active",
+        )
+        occupancy = LeaseUnitOccupancy.objects.create(
+            lease=lease,
+            unit=self.unit,
+            move_in_date=move_in_date,
+        )
+        original_renewal_end = self.today + timedelta(days=365)
+        renewal = LeaseRenewal.objects.create(
+            lease=lease,
+            renewal_number=1,
+            is_original=True,
+            agreement_date=agreement_date,
+            start_date=lease.start_date,
+            end_date=original_renewal_end,
+            monthly_rent=ZERO,
+        )
+
+        preview = build_end_lease_preview(
+            lease,
+            end_date=agreement_date,
+            inspection_complete=True,
+            keys_returned=True,
+        )
+
+        self.assertTrue(preview["cancellation_before_start"])
+        self.assertEqual(preview["occupied_days"], 0)
+        self.assertEqual(preview["billable_days"], 0)
+        self.assertEqual(preview["gross_balance"], ZERO)
+
+        result = end_lease(
+            lease,
+            end_date=agreement_date,
+            inspection_complete=True,
+            keys_returned=True,
+        )
+
+        lease.refresh_from_db()
+        occupancy.refresh_from_db()
+        renewal.refresh_from_db()
+        self.assertEqual(lease.status, "ended")
+        self.assertEqual(lease.end_date, agreement_date)
+        self.assertEqual(renewal.end_date, agreement_date)
+        self.assertIn(
+            f"END_LEASE_RENEWAL_END:{agreement_date:%Y-%m-%d}:"
+            f"{original_renewal_end:%Y-%m-%d}",
+            renewal.notes,
+        )
+        self.assertEqual(occupancy.move_out_date, move_in_date)
+        self.assertIsNone(occupancy.active_lease_key)
+        self.assertEqual(result["amount_payable"], ZERO)
+        detail = self.client.get(reverse("leases:lease_detail", args=[lease.pk]))
+        self.assertEqual(
+            detail.context["rollback_default_end_date"],
+            original_renewal_end,
+        )
+
+        rollback_end_lease(
+            lease,
+            restored_end_date=original_renewal_end,
+        )
+        occupancy.refresh_from_db()
+        renewal.refresh_from_db()
+        self.assertIsNone(occupancy.move_out_date)
+        self.assertEqual(occupancy.active_lease_key, lease.pk)
+        self.assertEqual(renewal.end_date, original_renewal_end)
+
+    def test_end_date_before_agreement_date_is_rejected(self):
+        lease = self.make_lease()
+        lease.agreement_date = self.month_first
+        lease.start_date = self.month_first + timedelta(days=10)
+        lease.save(update_fields=["agreement_date", "start_date"])
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            f"Lease end date cannot be before the agreement date ({self.month_first:%Y-%m-%d}).",
+        ):
+            build_end_lease_preview(
+                lease,
+                end_date=self.month_first - timedelta(days=1),
+                inspection_complete=True,
+                keys_returned=True,
+            )
 
     def test_transfers_security_to_ledger_with_existing_lease_credit(self):
         lease = self.make_lease(security_deposit=Decimal("5000.00"))

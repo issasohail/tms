@@ -459,8 +459,13 @@ def build_end_lease_preview(
 ) -> dict:
     if lease.status != "active":
         raise ValidationError("Only an active lease can be ended with this action.")
-    if end_date < lease.start_date:
-        raise ValidationError("Lease end date cannot be before the start date.")
+    earliest_end_date = lease.agreement_date or lease.start_date
+    earliest_end_label = "agreement date" if lease.agreement_date else "start date"
+    if end_date < earliest_end_date:
+        raise ValidationError(
+            f"Lease end date cannot be before the {earliest_end_label} "
+            f"({earliest_end_date:%Y-%m-%d})."
+        )
     if end_date > date.today():
         raise ValidationError("Lease end date cannot be in the future.")
     if future_invoice_action not in {"cancel", "keep"}:
@@ -478,7 +483,20 @@ def build_end_lease_preview(
     interval_days = lease.effective_proration_interval_days
     billable_days = _billable_days(occupied_days, days_in_month, interval_days)
     manual_electric = final_electric_amount not in (None, "")
-    settlement_preview = build_move_out_settlement_preview(lease, end_date=end_date)
+    cancellation_before_start = end_date < lease.start_date
+    settlement_preview = (
+        {
+            "applicable": False,
+            "blocked": False,
+            "block_reason": "",
+            "latest_reading_date": None,
+            "installations": [],
+            "electric_preview": None,
+            "end_date": end_date,
+        }
+        if cancellation_before_start
+        else build_move_out_settlement_preview(lease, end_date=end_date)
+    )
     if manual_electric:
         electric_amount = _rounded(final_electric_amount)
         if electric_amount < ZERO:
@@ -644,6 +662,7 @@ def build_end_lease_preview(
         "invoice": invoice,
         "final_period_invoice": final_period_invoice,
         "end_date": end_date,
+        "cancellation_before_start": cancellation_before_start,
         "billing_month_start": billing_month_start,
         "occupied_days": occupied_days,
         "billable_days": billable_days,
@@ -993,10 +1012,32 @@ def end_lease(lease, *, user=None, notes="", **preview_kwargs) -> dict:
     lease.status = "ended"
     lease.notes = "\n".join(filter(None, [lease.notes, f"Lease ended: {notes.strip()}" if notes else ""]))
     lease.save(update_fields=["end_date", "status", "notes", "updated_at"])
-    lease.unit_occupancies.filter(move_out_date__isnull=True).update(
-        move_out_date=end_date,
-        active_lease_key=None,
+    latest_renewal = (
+        lease.renewals.select_for_update()
+        .order_by("-renewal_number", "-id")
+        .first()
     )
+    if latest_renewal and latest_renewal.end_date != end_date:
+        renewal_marker = (
+            f"END_LEASE_RENEWAL_END:{end_date:%Y-%m-%d}:"
+            f"{latest_renewal.end_date:%Y-%m-%d}"
+        )
+        latest_renewal.end_date = end_date
+        latest_renewal.notes = "\n".join(
+            filter(None, [latest_renewal.notes, renewal_marker])
+        )
+        renewal_update_fields = ["end_date", "notes", "updated_at"]
+        if user and getattr(user, "is_authenticated", False):
+            latest_renewal.updated_by = user
+            renewal_update_fields.append("updated_by")
+        latest_renewal.save(update_fields=renewal_update_fields)
+    for occupancy in lease.unit_occupancies.filter(move_out_date__isnull=True):
+        # A lease cancelled before occupancy still needs its planned occupancy
+        # closed. Keep the planned move-in date and use it as the zero-length
+        # closure date so the database never stores move-out before move-in.
+        occupancy.move_out_date = max(end_date, occupancy.move_in_date)
+        occupancy.active_lease_key = None
+        occupancy.save(update_fields=["move_out_date", "active_lease_key", "updated_at"])
     lease.recurringcharge_set.filter(
         Q(end_date__isnull=True) | Q(end_date__gt=end_date)
     ).update(end_date=end_date)
@@ -1114,9 +1155,43 @@ def rollback_end_lease(lease, *, restored_end_date: date, user=None, notes="") -
     ).exclude(refund_status="CANCELLED").update(refund_status="CANCELLED")
 
     lease.recurringcharge_set.filter(end_date=ended_date).update(end_date=None)
-    for occupancy in lease.unit_occupancies.filter(move_out_date=ended_date):
+    for occupancy in lease.unit_occupancies.filter(move_out_date__isnull=False):
+        if occupancy.move_out_date != max(ended_date, occupancy.move_in_date):
+            continue
         occupancy.move_out_date = None
         occupancy.save(update_fields=["move_out_date", "active_lease_key", "updated_at"])
+
+    renewal_marker_prefix = f"END_LEASE_RENEWAL_END:{ended_date:%Y-%m-%d}:"
+    latest_renewal = (
+        lease.renewals.select_for_update()
+        .filter(notes__contains=renewal_marker_prefix)
+        .order_by("-renewal_number", "-id")
+        .first()
+    )
+    if latest_renewal is None:
+        latest_renewal = (
+            lease.renewals.select_for_update()
+            .filter(end_date=ended_date)
+            .order_by("-renewal_number", "-id")
+            .first()
+        )
+    if latest_renewal:
+        latest_renewal.end_date = restored_end_date
+        latest_renewal.notes = "\n".join(
+            filter(
+                None,
+                [
+                    latest_renewal.notes,
+                    f"End Lease rollback restored renewal end date to "
+                    f"{restored_end_date:%Y-%m-%d}.",
+                ],
+            )
+        )
+        renewal_update_fields = ["end_date", "notes", "updated_at"]
+        if user and getattr(user, "is_authenticated", False):
+            latest_renewal.updated_by = user
+            renewal_update_fields.append("updated_by")
+        latest_renewal.save(update_fields=renewal_update_fields)
 
     lease.status = "active"
     lease.end_date = restored_end_date

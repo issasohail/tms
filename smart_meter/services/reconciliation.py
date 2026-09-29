@@ -564,26 +564,25 @@ def build_check2_breakdown(system, start_date, end_date):
         _natural_text_key(getattr(row["unit"], "unit_number", "") or ""),
         row["meter"].meter_number,
     ))
-    unit_counts = {}
+    # Count only meters that already have a Check Group membership when deciding
+    # whether a unit should be shown as one meter or as a multi-meter unit.
+    assigned_unit_counts = {}
     for row in billing_rows:
+        if row["is_replacement"]:
+            continue
         unit_id = getattr(row["unit"], "pk", None)
-        unit_counts[unit_id] = unit_counts.get(unit_id, 0) + 1
+        assigned_unit_counts[unit_id] = assigned_unit_counts.get(unit_id, 0) + 1
+
     unit_groups_by_id = {}
     for sequence, row in enumerate(billing_rows, start=1):
         row["sequence"] = sequence
         unit_id = getattr(row["unit"], "pk", None)
-        multiple = unit_counts.get(unit_id, 0) > 1
-        if multiple:
+        multiple_assigned = assigned_unit_counts.get(unit_id, 0) > 1
+        row["show_unit_total"] = multiple_assigned
+        if row["is_replacement"] or multiple_assigned:
             row["display_name"] = row["meter"].name or row["meter"].meter_number
         else:
-            property_name = getattr(
-                getattr(row["unit"], "property", None), "property_name", ""
-            )
-            property_name = property_name[:8]
-            unit_name = getattr(row["unit"], "unit_number", "")
-            row["display_name"] = " - ".join(
-                part for part in (property_name, unit_name) if part
-            )
+            row["display_name"] = getattr(row["unit"], "unit_number", "") or row["meter"].meter_number
         group = unit_groups_by_id.setdefault(unit_id, {
             "unit": row["unit"],
             "rows": [],
@@ -597,6 +596,8 @@ def build_check2_breakdown(system, start_date, end_date):
         group["total_amount"] += row["amount"] or ZERO
     unit_groups = list(unit_groups_by_id.values())
     for unit_group in unit_groups:
+        assigned_rows = [row for row in unit_group["rows"] if not row["is_replacement"]]
+        unit_group["show_total"] = len(assigned_rows) > 1
         unit_group["average_rate"] = (
             (unit_group["total_amount"] / unit_group["total_kwh"]).quantize(
                 Decimal("0.01")

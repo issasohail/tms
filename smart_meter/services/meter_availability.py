@@ -206,12 +206,12 @@ def build_meter_availability_timeline(
         visible_timestamps = [
             ts for ts in timestamps if start_at - pad <= ts <= end_at + pad
         ]
-        if not visible_timestamps and live_in_window is None:
-            state = "unknown"
-            state_label = "No readings"
-        elif current_offline:
+        if current_offline:
             state = "offline"
             state_label = "Offline"
+        elif not visible_timestamps and live_in_window is None:
+            state = "unknown"
+            state_label = "No readings"
         else:
             state = "online"
             state_label = "Online"
@@ -256,6 +256,8 @@ def build_meter_availability_timeline(
         "start_at": start_at,
         "end_at": end_at,
         "axis_labels": axis_labels,
+        "start_epoch_ms": int(start_at.timestamp() * 1000),
+        "end_epoch_ms": int(end_at.timestamp() * 1000),
         "cadence_minutes": cadence_minutes,
         "offline_gap_minutes": offline_gap_minutes,
     }

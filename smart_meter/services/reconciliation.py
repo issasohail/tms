@@ -638,6 +638,97 @@ def iesco_bill_history(system, limit=6):
     return bills[:limit]
 
 
+def latest_iesco_reading_period(system):
+    """Return the latest saved IESCO meter-reading interval, if two readings exist."""
+    bills = list(_iesco_invoice_queryset(system))
+    bills.sort(
+        key=lambda bill: (
+            _parse_iesco_date(bill.reading_date) or datetime.min.date(),
+            bill.pk,
+        )
+    )
+    dated = [
+        (bill, _parse_iesco_date(bill.reading_date))
+        for bill in bills
+        if _parse_iesco_date(bill.reading_date) is not None
+    ]
+    if len(dated) < 2:
+        return None, None
+    return dated[-2][1], dated[-1][1]
+
+
+def build_iesco_history_rows(system, limit=12):
+    """IESCO history enriched with non-overlapping billing-meter periods.
+
+    Each billing period starts on the previous saved IESCO reading date and ends
+    at the current saved reading date. ``build_check2_breakdown`` treats the end
+    boundary as exclusive, so adjacent bill rows do not double-count a day.
+    """
+    bills = list(_iesco_invoice_queryset(system))
+    bills.sort(
+        key=lambda bill: (
+            _parse_iesco_date(bill.reading_date)
+            or _parse_iesco_date(bill.issue_date)
+            or datetime.min.date(),
+            bill.pk,
+        )
+    )
+    rows_by_pk = {}
+    previous_reading_date = None
+
+    for bill in bills:
+        reading_date = _parse_iesco_date(bill.reading_date)
+        billing_units = None
+        billing_amount = None
+        billing_period_start = previous_reading_date
+        billing_period_end = reading_date
+        if (
+            previous_reading_date
+            and reading_date
+            and reading_date > previous_reading_date
+        ):
+            breakdown = build_check2_breakdown(
+                system,
+                previous_reading_date,
+                reading_date,
+            )
+            billing_units = breakdown.get("billing_total_kwh")
+            billing_amount = breakdown.get("billing_total_amount")
+
+        bill_amount = bill.current_bill_amount
+        income_difference = (
+            billing_amount - bill_amount
+            if billing_amount is not None and bill_amount is not None
+            else None
+        )
+        rows_by_pk[bill.pk] = {
+            "bill": bill,
+            "reading_date_obj": reading_date,
+            "billing_period_start": billing_period_start,
+            "billing_period_end": billing_period_end,
+            "billing_units": billing_units,
+            "billing_amount": billing_amount,
+            "bill_amount": bill_amount,
+            "income_difference": income_difference,
+            "average_rate": bill.per_unit_rate,
+            "net_bill_units": bill.net_units,
+        }
+        if reading_date:
+            previous_reading_date = reading_date
+
+    ordered = sorted(
+        rows_by_pk.values(),
+        key=lambda row: (
+            row["reading_date_obj"]
+            or _parse_iesco_date(row["bill"].issue_date)
+            or datetime.min.date(),
+            row["bill"].pk,
+        ),
+        reverse=True,
+    )
+    return ordered[:limit]
+
+
 def inverter_reading_period_delta(inverter, start_date, end_date):
     """Generation for one inverter over a period: the closest logged reading at/before the
     period end minus the closest logged reading at/before the period start. Mirrors the

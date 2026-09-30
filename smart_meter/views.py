@@ -1022,6 +1022,13 @@ SMART_METER_CHIPS = OrderedDict(
 
 
 def _normalized_meter_chip(request):
+    # An explicit status or meter selection must win over the default Active
+    # chip. Otherwise "All Statuses" and inactive meter selections can never
+    # return an inactive row even though the dropdown contains it.
+    if "chip" not in request.GET and (
+        "active" in request.GET or (request.GET.get("meter") or "").strip()
+    ):
+        return "total"
     chip = (request.GET.get("chip") or "active").strip().lower()
     return chip if chip in SMART_METER_CHIPS else "total"
 
@@ -3531,7 +3538,9 @@ def live_custom(request):
     # 1) Pull the filter values from query string
     q = (request.GET.get("q") or "").strip()
     offline_only = request.GET.get("offline") == "1"
-    active_filter = (request.GET.get("active") or "active").strip()
+    active_filter = (
+        "active" if "active" not in request.GET else request.GET.get("active", "")
+    ).strip()
 
     # 2) Reuse the same cascading filter sets as meter list
     #    selected_meters = the final meter set based on property/unit/meter GET params
@@ -4076,6 +4085,215 @@ def unknown_meter_list(request):
     )
 
 
+def _latest_meter_total(meter):
+    live = LiveReading.objects.filter(meter=meter).order_by("-ts").first()
+    if live is not None and live.total_energy is not None:
+        return live.total_energy
+    reading = MeterReading.objects.filter(meter=meter).order_by("-ts", "-pk").first()
+    return reading.total_energy if reading is not None else None
+
+
+def _active_unit_installations(unit, *, exclude_meter_id=None, lock=False):
+    queryset = MeterInstallation.objects.select_related(
+        "meter", "unit", "unit__property"
+    ).filter(unit=unit, is_active=True, end_date__isnull=True)
+    if exclude_meter_id:
+        queryset = queryset.exclude(meter_id=exclude_meter_id)
+    if lock:
+        queryset = queryset.select_for_update()
+    return list(queryset.order_by("meter__meter_number", "pk"))
+
+
+def _installation_conflict_payload(unit, *, exclude_meter_id=None):
+    installations = _active_unit_installations(
+        unit, exclude_meter_id=exclude_meter_id
+    )
+    live_by_meter = {
+        reading.meter_id: reading
+        for reading in LiveReading.objects.filter(
+            meter_id__in=[item.meter_id for item in installations]
+        )
+    }
+    statuses = resolve_meter_online_statuses(
+        (item.meter, live_by_meter.get(item.meter_id)) for item in installations
+    )
+    rows = []
+    for installation in installations:
+        live = live_by_meter.get(installation.meter_id)
+        status = statuses[installation.meter_id]
+        rows.append({
+            "installation_id": installation.pk,
+            "unit_id": installation.unit_id,
+            "meter_id": installation.meter_id,
+            "meter_number": installation.meter.meter_number,
+            "meter_role": installation.meter.get_meter_role_display(),
+            "last_reading": (
+                f"{live.total_energy:.3f}" if live and live.total_energy is not None else ""
+            ),
+            "last_reading_at": live.ts.isoformat() if live and live.ts else "",
+            "online": status["is_online"],
+            "connection_state": status["connection_state"],
+        })
+    return rows
+
+
+def _current_unit_lease(unit, on_date):
+    return (
+        Lease.objects.filter(
+            unit=unit,
+            status="active",
+            start_date__lte=on_date,
+            end_date__gte=on_date,
+        )
+        .order_by("-start_date", "-pk")
+        .first()
+    )
+
+
+def _close_replaced_installation(installation, *, replacement_meter, user):
+    audit_group = MeterCheckGroup.objects.select_for_update().filter(
+        check_meter=installation.meter,
+    ).first()
+    if audit_group:
+        if replacement_meter.meter_role != Meter.METER_ROLE_CHECK:
+            raise ValidationError(
+                "An Audit meter must be replaced by another Audit meter."
+            )
+        existing_group = MeterCheckGroup.objects.filter(
+            check_meter=replacement_meter
+        ).exclude(pk=audit_group.pk).first()
+        if existing_group:
+            raise ValidationError(
+                "The replacement Audit meter already belongs to another Check Group."
+            )
+
+    end_reading = _latest_meter_total(installation.meter)
+    installation.close(
+        end_date=timezone.localdate(),
+        end_reading=end_reading,
+        notes=(
+            f"Replaced by meter {replacement_meter.meter_number} by "
+            f"{getattr(user, 'get_username', lambda: '')()}."
+        ),
+    )
+    old_meter = installation.meter
+    if old_meter.unit_id == installation.unit_id:
+        old_meter.unit = None
+    old_meter.is_active = False
+    old_meter.save(update_fields=["unit", "is_active"])
+    if audit_group:
+        audit_group.check_meter = replacement_meter
+        audit_group.save(
+            update_fields=["check_meter"],
+            audit_effective_date=timezone.localdate(),
+        )
+
+
+@login_required
+@permission_required("smart_meter.change_meter", raise_exception=True)
+def unit_meter_conflicts(request):
+    unit = get_object_or_404(
+        restrict_queryset_to_properties(Unit.objects.select_related("property"), request.user, "property"),
+        pk=request.GET.get("unit"),
+    )
+    exclude_meter_id = request.GET.get("exclude_meter") or None
+    return JsonResponse({
+        "success": True,
+        "unit_id": unit.pk,
+        "unit_label": f"{unit.property.property_name} / {unit.unit_number}",
+        "meters": _installation_conflict_payload(
+            unit, exclude_meter_id=exclude_meter_id
+        ),
+    })
+
+
+@require_POST
+@login_required
+@permission_required("smart_meter.change_meter", raise_exception=True)
+def move_meter_installation(request):
+    destination = get_object_or_404(
+        restrict_queryset_to_properties(Unit.objects.select_related("property"), request.user, "property"),
+        pk=request.POST.get("destination_unit"),
+    )
+    resolution = (request.POST.get("resolution") or "").strip().lower()
+    replacement_id = request.POST.get("replace_installation")
+
+    try:
+        with transaction.atomic():
+            installation = get_object_or_404(
+                MeterInstallation.objects.select_for_update().select_related(
+                    "meter", "unit", "unit__property"
+                ),
+                pk=request.POST.get("installation_id"),
+                is_active=True,
+                end_date__isnull=True,
+            )
+            if installation.unit_id == destination.pk:
+                raise ValidationError("Select a different destination unit.")
+            conflicts = _active_unit_installations(
+                destination,
+                exclude_meter_id=installation.meter_id,
+                lock=True,
+            )
+            if conflicts and resolution not in {"add", "replace"}:
+                return JsonResponse({
+                    "success": False,
+                    "needs_confirmation": True,
+                    "unit_id": destination.pk,
+                    "unit_label": f"{destination.property.property_name} / {destination.unit_number}",
+                    "meters": _installation_conflict_payload(
+                        destination, exclude_meter_id=installation.meter_id
+                    ),
+                }, status=409)
+            if resolution == "replace":
+                replaced = next(
+                    (item for item in conflicts if str(item.pk) == str(replacement_id)),
+                    None,
+                )
+                if replaced is None:
+                    raise ValidationError(
+                        "Select an active meter from the destination unit to replace."
+                    )
+                _close_replaced_installation(
+                    replaced,
+                    replacement_meter=installation.meter,
+                    user=request.user,
+                )
+
+            reading = _latest_meter_total(installation.meter)
+            source_label = str(installation.unit)
+            installation.close(
+                end_date=timezone.localdate(),
+                end_reading=reading,
+                notes=f"Moved to {destination} by {request.user.get_username()}.",
+            )
+            MeterInstallation.objects.create(
+                meter=installation.meter,
+                unit=destination,
+                lease=_current_unit_lease(destination, timezone.localdate()),
+                start_date=timezone.localdate(),
+                start_reading=reading or Decimal("0"),
+                installed_by=request.user,
+                reason=f"Moved from {source_label} during meter assignment.",
+            )
+            if not installation.meter.is_active:
+                installation.meter.is_active = True
+                installation.meter.save(update_fields=["is_active"])
+    except ValidationError as exc:
+        return JsonResponse({
+            "success": False,
+            "error": "; ".join(exc.messages),
+        }, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "message": (
+            f"Meter {installation.meter.meter_number} moved to "
+            f"{destination.property.property_name} / {destination.unit_number}."
+        ),
+    })
+
+
 @transaction.atomic
 def unknown_meter_convert(request, pk):
     um = get_object_or_404(UnknownMeter, pk=pk)
@@ -4110,13 +4328,43 @@ def unknown_meter_convert(request, pk):
                             )
 
                     selected_unit = form.cleaned_data["unit"]
+                    conflicts = _active_unit_installations(
+                        selected_unit,
+                        exclude_meter_id=meter.pk,
+                        lock=True,
+                    )
+                    resolution = (request.POST.get("assignment_resolution") or "").strip().lower()
+                    replacement = None
+                    if conflicts and resolution not in {"add", "replace"}:
+                        raise ValidationError(
+                            "This unit already has an active meter. Choose Replace, Move, or Add Another."
+                        )
+                    if resolution == "replace":
+                        replacement_id = request.POST.get("replace_installation")
+                        replacement = next(
+                            (item for item in conflicts if str(item.pk) == str(replacement_id)),
+                            None,
+                        )
+                        if replacement is None:
+                            raise ValidationError(
+                                "Select an active meter from this unit to replace."
+                            )
                     meter.meter_number = locked_um.meter_number
                     meter.unit = selected_unit
+                    meter.is_active = True
                     meter.save()
+                    if replacement is not None:
+                        _close_replaced_installation(
+                            replacement,
+                            replacement_meter=meter,
+                            user=request.user,
+                        )
                     MeterInstallation.objects.create(
                         meter=meter,
                         unit=selected_unit,
+                        lease=_current_unit_lease(selected_unit, timezone.localdate()),
                         start_date=timezone.localdate(),
+                        start_reading=_latest_meter_total(meter) or Decimal("0"),
                         installed_by=(
                             request.user if request.user.is_authenticated else None
                         ),
@@ -4132,7 +4380,7 @@ def unknown_meter_convert(request, pk):
                 else:
                     reasons.extend(str(reason) for reason in exc.messages)
                 reason = "; ".join(reasons) or "Validation failed."
-                if reason.startswith("This physical meter already has"):
+                if reason.startswith("This physical meter already has") or reason.startswith("This unit already has") or reason.startswith("Select an active meter"):
                     form.add_error(None, reason)
                 else:
                     form.add_error(
@@ -6429,7 +6677,9 @@ def live_custom_data(request):
     # keep filters identical to live_custom
     q = (request.GET.get("q") or "").strip()
     offline_only = request.GET.get("offline") == "1"
-    active_filter = (request.GET.get("active") or "active").strip()
+    active_filter = (
+        "active" if "active" not in request.GET else request.GET.get("active", "")
+    ).strip()
 
     (
         selected_meters,

@@ -111,6 +111,10 @@ class LiveVacancyRefreshRegressionTests(TestCase):
         self.assertNotIn('name="confirm_meter_number"', modal_source)
         self.assertIn('id="prepaidMoneyTimer"', modal_source)
         self.assertIn("pollMoneyStatus", modal_source)
+        self.assertIn("if (!modalElement || !form) return;", modal_source)
+        self.assertIn("if (!window.bootstrap?.Modal)", modal_source)
+        self.assertIn("window.location.assign(trigger.href);", modal_source)
+        self.assertIn("credentials: 'same-origin'", modal_source)
 
     def test_meter_list_has_the_same_guarded_rate_editor_and_progress_timer(self):
         source = (
@@ -122,6 +126,8 @@ class LiveVacancyRefreshRegressionTests(TestCase):
         self.assertIn('id="meterListRateProgressModal"', source)
         self.assertIn('id="meterListRateTimer"', source)
         self.assertIn("submission_key: rateSubmissionKey()", source)
+        self.assertIn('data-meter-id="{{ m.id }}" data-meter-number="{{ m.meter_number }}" data-unit=', source)
+        self.assertNotIn('data-location="{{ m.display_location_name }}"', source)
 
 
 class PrepaidTariffConsistencyRegressionTests(TestCase):

@@ -1548,7 +1548,7 @@ class UnknownMeterConversionTests(TestCase):
             "notes": "Approved from unknown meters",
         }
 
-    def test_conversion_allows_another_active_meter_on_same_unit(self):
+    def test_conversion_allows_another_active_meter_after_confirmation(self):
         old_meter = Meter.objects.create(meter_number="KNOWN-METER-A", unit=self.unit_one)
         old_installation = MeterInstallation.objects.create(
             meter=old_meter,
@@ -1557,9 +1557,11 @@ class UnknownMeterConversionTests(TestCase):
         )
         unknown = UnknownMeter.objects.create(meter_number="UNKNOWN-METER-B")
 
+        payload = self.payload(unknown.meter_number, self.unit_one)
+        payload["assignment_resolution"] = "add"
         response = self.client.post(
             reverse("smart_meter:unknown_meter_convert", args=[unknown.pk]),
-            self.payload(unknown.meter_number, self.unit_one),
+            payload,
         )
 
         self.assertEqual(
@@ -1586,6 +1588,181 @@ class UnknownMeterConversionTests(TestCase):
                 end_date__isnull=True,
             ).exists()
         )
+
+    def test_conversion_requires_confirmation_when_unit_has_active_meter(self):
+        old_meter = Meter.objects.create(meter_number="KNOWN-CONFLICT-A", unit=self.unit_one)
+        MeterInstallation.objects.create(
+            meter=old_meter,
+            unit=self.unit_one,
+            start_date=timezone.localdate() - timedelta(days=30),
+        )
+        unknown = UnknownMeter.objects.create(meter_number="UNKNOWN-CONFLICT-B")
+
+        response = self.client.post(
+            reverse("smart_meter:unknown_meter_convert", args=[unknown.pk]),
+            self.payload(unknown.meter_number, self.unit_one),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Choose Replace, Move, or Add Another")
+        self.assertFalse(Meter.objects.filter(meter_number=unknown.meter_number).exists())
+        unknown.refresh_from_db()
+        self.assertEqual(unknown.status, "new")
+
+    def test_conversion_replace_closes_old_and_activates_new_meter(self):
+        old_meter = Meter.objects.create(
+            meter_number="KNOWN-REPLACE-A", unit=self.unit_one, is_active=True
+        )
+        old_installation = MeterInstallation.objects.create(
+            meter=old_meter,
+            unit=self.unit_one,
+            start_date=timezone.localdate() - timedelta(days=30),
+        )
+        LiveReading.objects.create(
+            meter=old_meter,
+            total_energy=Decimal("123.456"),
+        )
+        unknown = UnknownMeter.objects.create(meter_number="UNKNOWN-REPLACE-B")
+        payload = self.payload(unknown.meter_number, self.unit_one)
+        payload.pop("is_active")
+        payload.update({
+            "assignment_resolution": "replace",
+            "replace_installation": str(old_installation.pk),
+        })
+
+        response = self.client.post(
+            reverse("smart_meter:unknown_meter_convert", args=[unknown.pk]),
+            payload,
+        )
+
+        self.assertRedirects(response, reverse("smart_meter:unknown_meter_list"))
+        old_meter.refresh_from_db()
+        old_installation.refresh_from_db()
+        new_meter = Meter.objects.get(meter_number=unknown.meter_number)
+        self.assertFalse(old_meter.is_active)
+        self.assertIsNone(old_meter.unit_id)
+        self.assertFalse(old_installation.is_active)
+        self.assertEqual(old_installation.end_reading, Decimal("123.456"))
+        self.assertTrue(new_meter.is_active)
+        self.assertEqual(new_meter.unit, self.unit_one)
+        self.assertTrue(new_meter.installations.filter(is_active=True).exists())
+
+    def test_conflict_api_and_move_refresh_assignment(self):
+        meter = Meter.objects.create(meter_number="MOVE-CONFLICT-A", unit=self.unit_one)
+        installation = MeterInstallation.objects.create(
+            meter=meter,
+            unit=self.unit_one,
+            start_date=timezone.localdate() - timedelta(days=7),
+        )
+        LiveReading.objects.create(meter=meter, total_energy=Decimal("9.250"))
+
+        conflicts = self.client.get(
+            reverse("smart_meter:unit_meter_conflicts"),
+            {"unit": self.unit_one.pk},
+        )
+        self.assertEqual(conflicts.status_code, 200)
+        self.assertEqual(conflicts.json()["meters"][0]["meter_number"], meter.meter_number)
+        self.assertEqual(conflicts.json()["meters"][0]["last_reading"], "9.250")
+
+        moved = self.client.post(
+            reverse("smart_meter:move_meter_installation"),
+            {
+                "installation_id": installation.pk,
+                "destination_unit": self.unit_two.pk,
+                "resolution": "add",
+            },
+        )
+        self.assertEqual(moved.status_code, 200, moved.content)
+        installation.refresh_from_db()
+        meter.refresh_from_db()
+        self.assertFalse(installation.is_active)
+        self.assertEqual(installation.end_reading, Decimal("9.250"))
+        self.assertEqual(meter.unit, self.unit_two)
+        self.assertTrue(
+            meter.installations.filter(unit=self.unit_two, is_active=True).exists()
+        )
+
+    def test_move_requires_destination_decision_and_can_replace(self):
+        moving_meter = Meter.objects.create(
+            meter_number="MOVE-SOURCE-A", unit=self.unit_one
+        )
+        moving_installation = MeterInstallation.objects.create(
+            meter=moving_meter,
+            unit=self.unit_one,
+            start_date=timezone.localdate() - timedelta(days=10),
+        )
+        destination_meter = Meter.objects.create(
+            meter_number="MOVE-DESTINATION-B", unit=self.unit_two
+        )
+        destination_installation = MeterInstallation.objects.create(
+            meter=destination_meter,
+            unit=self.unit_two,
+            start_date=timezone.localdate() - timedelta(days=20),
+        )
+
+        needs_decision = self.client.post(
+            reverse("smart_meter:move_meter_installation"),
+            {
+                "installation_id": moving_installation.pk,
+                "destination_unit": self.unit_two.pk,
+            },
+        )
+        self.assertEqual(needs_decision.status_code, 409)
+        self.assertTrue(needs_decision.json()["needs_confirmation"])
+        self.assertEqual(
+            needs_decision.json()["meters"][0]["meter_number"],
+            destination_meter.meter_number,
+        )
+
+        replaced = self.client.post(
+            reverse("smart_meter:move_meter_installation"),
+            {
+                "installation_id": moving_installation.pk,
+                "destination_unit": self.unit_two.pk,
+                "resolution": "replace",
+                "replace_installation": destination_installation.pk,
+            },
+        )
+        self.assertEqual(replaced.status_code, 200, replaced.content)
+        destination_meter.refresh_from_db()
+        destination_installation.refresh_from_db()
+        moving_meter.refresh_from_db()
+        self.assertFalse(destination_meter.is_active)
+        self.assertFalse(destination_installation.is_active)
+        self.assertEqual(moving_meter.unit, self.unit_two)
+
+    def test_conversion_page_exposes_ajax_conflict_controls(self):
+        unknown = UnknownMeter.objects.create(meter_number="UNKNOWN-AJAX-A")
+
+        response = self.client.get(
+            reverse("smart_meter:unknown_meter_convert", args=[unknown.pk])
+        )
+
+        self.assertContains(response, 'id="meterAssignmentConflictModal"')
+        self.assertContains(response, reverse("smart_meter:unit_meter_conflicts"))
+        self.assertContains(response, reverse("smart_meter:move_meter_installation"))
+        self.assertContains(response, "Active on approval")
+        self.assertNotContains(response, 'name="is_active"')
+
+    def test_all_status_filter_shows_explicit_inactive_meter(self):
+        meter = Meter.objects.create(
+            meter_number="INACTIVE-FILTER-A",
+            unit=self.unit_one,
+            is_active=False,
+        )
+        LiveReading.objects.create(meter=meter, total_energy=Decimal("1.000"))
+
+        meter_page = self.client.get(
+            reverse("smart_meter:meter_list"),
+            {"meter": meter.pk, "active": ""},
+        )
+        live_page = self.client.get(
+            reverse("smart_meter:smart_meter_live_custom"),
+            {"meter": meter.pk, "active": ""},
+        )
+
+        self.assertContains(meter_page, meter.meter_number)
+        self.assertContains(live_page, meter.meter_number)
 
     def test_conversion_rejects_meter_already_installed_elsewhere(self):
         meter = Meter.objects.create(

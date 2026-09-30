@@ -101,8 +101,11 @@
 
   async function pollMoneyStatus(statusUrl, meterId) {
     try {
-      const response = await fetch(statusUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}});
-      const data = await response.json();
+      const response = await fetch(statusUrl, {
+        credentials: 'same-origin',
+        headers: {'X-Requested-With': 'XMLHttpRequest'},
+      });
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Unable to read command status.');
       document.getElementById('prepaidMoneyPhase').textContent = data.message || 'Waiting for the meter…';
       if (data.terminal) {
@@ -117,45 +120,52 @@
 
   function bindPrepaidMoneyModal() {
     if (window.prepaidMoneyModalBound) return;
-    window.prepaidMoneyModalBound = true;
     const modalElement = document.getElementById('prepaidMoneyModal');
     const form = document.getElementById('prepaidMoneyForm');
+    if (!modalElement || !form) return;
+    window.prepaidMoneyModalBound = true;
 
     document.addEventListener('click', function (event) {
       const trigger = event.target instanceof Element ? event.target.closest('[data-prepaid-money]') : null;
       if (!trigger) return;
-      event.preventDefault();
-      stopMoneyTracking();
       const operation = trigger.dataset.operation === 'refund' ? 'refund' : 'recharge';
-      const row = trigger.closest('[data-meter-row]');
-      const currentTenant = row?.querySelector('td.col-tenant, .mobile-full-tenant')?.textContent.trim();
-      const currentBalance = row?.querySelector('td[data-col="balance"], .mobile-balance')?.textContent.trim();
-      form.reset();
-      form.action = trigger.dataset.actionUrl;
-      form.dataset.meterId = trigger.dataset.meterId || '';
-      document.getElementById('prepaidMoneyOperation').value = operation;
-      document.getElementById('prepaidMoneyMeterNumber').textContent = trigger.dataset.meterNumber || '—';
-      document.getElementById('prepaidMoneyUnit').textContent = trigger.dataset.unit || '—';
-      document.getElementById('prepaidMoneyTenant').textContent = currentTenant || trigger.dataset.tenant || 'Vacant';
-      document.getElementById('prepaidMoneyCurrentBalance').textContent = currentBalance || trigger.dataset.balance || '—';
-      document.getElementById('prepaidMoneyModalLabel').textContent = operation === 'refund' ? 'Refund meter balance' : 'Top up meter balance';
-      document.getElementById('prepaidMoneySubmit').textContent = operation === 'refund' ? 'Submit refund' : 'Submit top up';
-      document.getElementById('prepaidMoneyFields').classList.remove('d-none');
-      document.getElementById('prepaidMoneyProgress').classList.add('d-none');
-      document.getElementById('prepaidMoneyResult').classList.add('d-none');
-      document.getElementById('prepaidMoneyCancel').classList.remove('d-none');
-      document.getElementById('prepaidMoneySubmit').classList.remove('d-none');
-      document.getElementById('prepaidMoneyDone').classList.add('d-none');
-      document.getElementById('prepaidMoneyHeaderClose').classList.remove('d-none');
+      // Keep the anchor's ledger URL usable when Bootstrap did not load.
       if (!window.bootstrap?.Modal) {
-        window.location.href = `${trigger.dataset.actionUrl}?action=${operation}`;
         return;
       }
-      bootstrap.Modal.getOrCreateInstance(modalElement, {backdrop: 'static', keyboard: false}).show();
-      modalElement.addEventListener('shown.bs.modal', () => document.getElementById('prepaidMoneyAmount')?.focus(), {once: true});
+      event.preventDefault();
+      try {
+        stopMoneyTracking();
+        const row = trigger.closest('[data-meter-row]');
+        const currentTenant = row?.querySelector('td.col-tenant, .mobile-full-tenant, .meter-mobile-tenant')?.textContent.trim();
+        const currentBalance = row?.querySelector('td[data-col="balance"], td.col-balance, .mobile-balance')?.textContent.trim();
+        form.reset();
+        document.getElementById('prepaidMoneyConfirmation').setCustomValidity('');
+        form.action = trigger.dataset.actionUrl || trigger.href;
+        form.dataset.meterId = trigger.dataset.meterId || '';
+        document.getElementById('prepaidMoneyOperation').value = operation;
+        document.getElementById('prepaidMoneyMeterNumber').textContent = trigger.dataset.meterNumber || '—';
+        document.getElementById('prepaidMoneyUnit').textContent = trigger.dataset.unit || '—';
+        document.getElementById('prepaidMoneyTenant').textContent = currentTenant || trigger.dataset.tenant || 'Vacant';
+        document.getElementById('prepaidMoneyCurrentBalance').textContent = currentBalance || trigger.dataset.balance || '—';
+        document.getElementById('prepaidMoneyModalLabel').textContent = operation === 'refund' ? 'Refund meter balance' : 'Top up meter balance';
+        document.getElementById('prepaidMoneySubmit').textContent = operation === 'refund' ? 'Submit refund' : 'Submit top up';
+        document.getElementById('prepaidMoneyFields').classList.remove('d-none');
+        document.getElementById('prepaidMoneyProgress').classList.add('d-none');
+        document.getElementById('prepaidMoneyResult').classList.add('d-none');
+        document.getElementById('prepaidMoneyCancel').classList.remove('d-none');
+        document.getElementById('prepaidMoneySubmit').classList.remove('d-none');
+        document.getElementById('prepaidMoneyDone').classList.add('d-none');
+        document.getElementById('prepaidMoneyHeaderClose').classList.remove('d-none');
+        bootstrap.Modal.getOrCreateInstance(modalElement, {backdrop: 'static', keyboard: false}).show();
+        modalElement.addEventListener('shown.bs.modal', () => document.getElementById('prepaidMoneyAmount')?.focus(), {once: true});
+      } catch (error) {
+        window.location.assign(trigger.href);
+      }
     });
 
     form.addEventListener('submit', async function (event) {
+      if (!window.fetch) return;
       event.preventDefault();
       const amount = document.getElementById('prepaidMoneyAmount');
       const confirmation = document.getElementById('prepaidMoneyConfirmation');
@@ -175,16 +185,21 @@
       try {
         const response = await fetch(form.action, {
           method: 'POST',
+          credentials: 'same-origin',
           headers: {'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value, 'X-Requested-With': 'XMLHttpRequest'},
           body: new FormData(form),
         });
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.success) throw new Error(data.error || 'The command could not be queued.');
         document.getElementById('prepaidMoneyPhase').textContent = data.message;
         pollMoneyStatus(data.status_url, form.dataset.meterId);
       } catch (error) {
         finishMoneyTracking(false, error.message || 'The command could not be queued.', '', '', form.dataset.meterId);
       }
+    });
+
+    document.getElementById('prepaidMoneyConfirmation').addEventListener('input', function () {
+      this.setCustomValidity('');
     });
 
     modalElement.addEventListener('hidden.bs.modal', stopMoneyTracking);

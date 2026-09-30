@@ -182,6 +182,8 @@ class MeterForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if not self.is_bound and not self.instance.pk:
+            self.fields["is_active"].initial = True
         self.fields["raw_frame_capture_until"].input_formats = ["%Y-%m-%dT%H:%M"]
         self.fields["connection_event_capture_until"].input_formats = ["%Y-%m-%dT%H:%M"]
         self.original_meter_role = self.instance.meter_role if self.instance.pk else None
@@ -406,7 +408,6 @@ class UnknownToMeterForm(forms.ModelForm):
             "min_balance_alert",
             "min_balance_cutoff",
             "installed_at",
-            "is_active",
             "notes",
         ]
         widgets = {

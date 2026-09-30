@@ -101,8 +101,11 @@
 
   async function pollMoneyStatus(statusUrl, meterId) {
     try {
-      const response = await fetch(statusUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}});
-      const data = await response.json();
+      const response = await fetch(statusUrl, {
+        credentials: 'same-origin',
+        headers: {'X-Requested-With': 'XMLHttpRequest'},
+      });
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Unable to read command status.');
       document.getElementById('prepaidMoneyPhase').textContent = data.message || 'Waiting for the meter…';
       if (data.terminal) {
@@ -127,6 +130,7 @@
 
   function bindPrepaidMoneyModal() {
     if (window.prepaidMoneyModalBound) return;
+    if (!document.getElementById('prepaidMoneyModal') || !document.getElementById('prepaidMoneyForm')) return;
     window.prepaidMoneyModalBound = true;
 
     // Delegated handlers survive Live Reading's AJAX replacement of #captureArea.
@@ -134,6 +138,8 @@
     document.addEventListener('click', function (event) {
       const trigger = event.target instanceof Element ? event.target.closest('[data-prepaid-money]') : null;
       if (!trigger) return;
+      // Keep the ledger link usable when Bootstrap is unavailable.
+      if (!window.bootstrap?.Modal) return;
       event.preventDefault();
       stopMoneyTracking();
 
@@ -154,7 +160,7 @@
       ]);
 
       form.reset();
-      form.action = trigger.dataset.actionUrl;
+      form.action = trigger.dataset.actionUrl || trigger.href;
       form.dataset.meterId = trigger.dataset.meterId || row?.dataset.meterId || row?.getAttribute('data-meter-row') || '';
       document.getElementById('prepaidMoneyOperation').value = operation;
       document.getElementById('prepaidMoneyMeterNumber').textContent = trigger.dataset.meterNumber || '—';
@@ -203,10 +209,11 @@
       try {
         const response = await fetch(form.action, {
           method: 'POST',
+          credentials: 'same-origin',
           headers: {'X-CSRFToken': form.querySelector('[name=csrfmiddlewaretoken]').value, 'X-Requested-With': 'XMLHttpRequest'},
           body: new FormData(form),
         });
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.success) throw new Error(data.error || 'The command could not be queued.');
         document.getElementById('prepaidMoneyPhase').textContent = data.message;
         pollMoneyStatus(data.status_url, form.dataset.meterId);
@@ -217,6 +224,10 @@
 
     document.addEventListener('hidden.bs.modal', function (event) {
       if (event.target?.id === 'prepaidMoneyModal') stopMoneyTracking();
+    });
+
+    document.addEventListener('input', function (event) {
+      if (event.target?.id === 'prepaidMoneyConfirmation') event.target.setCustomValidity('');
     });
   }
 

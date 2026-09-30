@@ -150,6 +150,19 @@
     background: #f8fafc;
   }
 
+  .assignment-meter-row {
+    display: grid;
+    grid-template-columns: minmax(150px, 1.2fr) minmax(110px, .8fr) minmax(135px, 1fr) auto;
+    gap: .6rem;
+    align-items: center;
+    padding: .65rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+    background: #fff;
+  }
+  .assignment-meter-reading { color: #475569; font-size: .76rem; }
+  .assignment-meter-actions { display: flex; gap: .35rem; justify-content: flex-end; }
+
   @media (min-width: 576px) and (max-width: 991.98px) {
     .meter-convert-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
@@ -177,6 +190,9 @@
     .meter-convert-field textarea { font-size: .76rem; }
 
     .meter-convert-actions .btn { flex: 1 1 0; }
+    .assignment-meter-row { grid-template-columns: 1fr; }
+    .assignment-meter-actions { justify-content: stretch; }
+    .assignment-meter-actions .btn { flex: 1 1 0; }
   }
 </style>
 
@@ -194,8 +210,10 @@
     </details>
   </div>
 
-  <form method="post" novalidate>
+  <form method="post" id="unknownMeterConvertForm" novalidate>
     {% csrf_token %}
+    <input type="hidden" name="assignment_resolution" id="assignmentResolution">
+    <input type="hidden" name="replace_installation" id="replaceInstallation">
     {% if form.errors %}
       <div class="alert alert-danger py-2" role="alert">
         <div class="fw-semibold mb-1">Please correct the following error{{ form.errors|length|pluralize }}:</div>
@@ -226,10 +244,7 @@
           <div class="meter-convert-field">{{ form.min_balance_alert.label_tag }}{{ form.min_balance_alert }}{{ form.min_balance_alert.errors }}</div>
           <div class="meter-convert-field">{{ form.min_balance_cutoff.label_tag }}{{ form.min_balance_cutoff }}{{ form.min_balance_cutoff.errors }}</div>
           <div class="meter-convert-field">{{ form.installed_at.label_tag }}{{ form.installed_at }}{{ form.installed_at.errors }}</div>
-          <div class="meter-convert-field">
-            <div class="meter-convert-check">{{ form.is_active }}{{ form.is_active.label_tag }}</div>
-            {{ form.is_active.errors }}
-          </div>
+          <div class="meter-convert-field"><div class="meter-convert-check"><span class="badge bg-success">Active on approval</span></div></div>
           <div class="meter-convert-field meter-convert-notes">{{ form.notes.label_tag }}{{ form.notes }}{{ form.notes.errors }}</div>
         </div>
       </div>
@@ -241,4 +256,221 @@
     </div>
   </form>
 </div>
+
+<div class="modal fade" id="meterAssignmentConflictModal" tabindex="-1" aria-labelledby="meterAssignmentConflictTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="meterAssignmentConflictTitle">Meter already assigned</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="assignmentConflictMessage" class="alert alert-warning py-2"></div>
+        <div id="assignmentConflictResult" class="alert d-none py-2"></div>
+        <div id="assignmentConflictList" class="d-grid gap-2"></div>
+
+        <div id="assignmentMovePanel" class="border-top mt-3 pt-3 d-none">
+          <h3 class="h6 mb-2" id="assignmentMoveTitle">Move meter</h3>
+          <label for="assignmentMoveUnit" class="form-label">Move to unit</label>
+          <select id="assignmentMoveUnit" class="form-select form-select-sm mb-2"></select>
+          <div id="assignmentMoveConflicts" class="d-grid gap-2"></div>
+          <button type="button" id="assignmentMoveAdd" class="btn btn-sm btn-primary mt-2 d-none">Move here as an additional meter</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="assignmentAddAnother" class="btn btn-outline-primary">Add new meter alongside existing meters</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const form = document.getElementById('unknownMeterConvertForm');
+  const unitSelect = document.getElementById('id_unit');
+  const resolution = document.getElementById('assignmentResolution');
+  const replacement = document.getElementById('replaceInstallation');
+  const modalElement = document.getElementById('meterAssignmentConflictModal');
+  const list = document.getElementById('assignmentConflictList');
+  const message = document.getElementById('assignmentConflictMessage');
+  const result = document.getElementById('assignmentConflictResult');
+  const movePanel = document.getElementById('assignmentMovePanel');
+  const moveUnit = document.getElementById('assignmentMoveUnit');
+  const moveConflicts = document.getElementById('assignmentMoveConflicts');
+  const moveAdd = document.getElementById('assignmentMoveAdd');
+  const conflictUrl = "{% url 'smart_meter:unit_meter_conflicts' %}";
+  const moveUrl = "{% url 'smart_meter:move_meter_installation' %}";
+  let currentUnitId = '';
+  let movingInstallationId = '';
+
+  function csrfToken() {
+    return form.querySelector('[name=csrfmiddlewaretoken]').value;
+  }
+
+  function escapeHtml(value) {
+    const holder = document.createElement('div');
+    holder.textContent = value == null ? '' : String(value);
+    return holder.innerHTML;
+  }
+
+  function meterRow(item, context) {
+    const row = document.createElement('div');
+    row.className = 'assignment-meter-row';
+    const stateClass = item.online ? 'bg-success' : 'bg-secondary';
+    const readingAt = item.last_reading_at ? new Date(item.last_reading_at).toLocaleString() : 'No reading time';
+    row.innerHTML = `
+      <div><strong>${escapeHtml(item.meter_number)}</strong><br><small class="text-muted">${escapeHtml(item.meter_role)}</small></div>
+      <div><span class="badge ${stateClass}">${item.online ? 'Online' : 'Offline'}</span></div>
+      <div class="assignment-meter-reading">${item.last_reading ? `${escapeHtml(item.last_reading)} kWh` : 'No reading'}<br>${escapeHtml(readingAt)}</div>
+      <div class="assignment-meter-actions"></div>`;
+    const actions = row.querySelector('.assignment-meter-actions');
+    const replaceButton = document.createElement('button');
+    replaceButton.type = 'button';
+    replaceButton.className = 'btn btn-sm btn-danger';
+    replaceButton.textContent = 'Replace';
+    replaceButton.addEventListener('click', () => {
+      if (context === 'new-meter') {
+        resolution.value = 'replace';
+        replacement.value = item.installation_id;
+        form.submit();
+      } else {
+        executeMove('replace', item.installation_id);
+      }
+    });
+    const moveButton = document.createElement('button');
+    moveButton.type = 'button';
+    moveButton.className = 'btn btn-sm btn-warning';
+    moveButton.textContent = 'Move';
+    moveButton.addEventListener('click', () => startMove(item));
+    actions.append(replaceButton, moveButton);
+    return row;
+  }
+
+  async function fetchConflicts(unitId) {
+    const url = new URL(conflictUrl, window.location.origin);
+    url.searchParams.set('unit', unitId);
+    const response = await fetch(url, {
+      credentials: 'same-origin',
+      headers: {'X-Requested-With': 'XMLHttpRequest'},
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) throw new Error(data.error || 'Unable to check unit meters.');
+    return data;
+  }
+
+  function showResult(text, success) {
+    result.className = `alert py-2 ${success ? 'alert-success' : 'alert-danger'}`;
+    result.textContent = text;
+  }
+
+  function renderMainConflicts(data) {
+    currentUnitId = String(data.unit_id);
+    list.replaceChildren(...data.meters.map(item => meterRow(item, 'new-meter')));
+    message.textContent = data.meters.length
+      ? `${data.unit_label} already has ${data.meters.length} active meter${data.meters.length === 1 ? '' : 's'}. Replace or move one, or explicitly add another meter.`
+      : `${data.unit_label} has no remaining active meter conflict. You can continue saving the new meter.`;
+    movePanel.classList.add('d-none');
+    result.classList.add('d-none');
+  }
+
+  async function checkSelectedUnit(showWhenClear) {
+    if (!unitSelect.value) return null;
+    const data = await fetchConflicts(unitSelect.value);
+    if (data.meters.length) {
+      renderMainConflicts(data);
+      if (window.bootstrap?.Modal) bootstrap.Modal.getOrCreateInstance(modalElement).show();
+    } else if (showWhenClear) {
+      showResult('No active meter conflict remains for this unit.', true);
+    }
+    return data;
+  }
+
+  function populateMoveUnits(sourceUnitId) {
+    moveUnit.replaceChildren(new Option('Select destination unit', ''));
+    Array.from(unitSelect.options).forEach(option => {
+      if (option.value && option.value !== String(sourceUnitId)) {
+        moveUnit.add(new Option(option.textContent.trim(), option.value));
+      }
+    });
+  }
+
+  function startMove(item) {
+    movingInstallationId = String(item.installation_id);
+    document.getElementById('assignmentMoveTitle').textContent = `Move meter ${item.meter_number}`;
+    populateMoveUnits(item.unit_id);
+    moveConflicts.replaceChildren();
+    moveAdd.classList.add('d-none');
+    movePanel.classList.remove('d-none');
+    moveUnit.focus();
+  }
+
+  async function executeMove(moveResolution, replaceInstallationId) {
+    if (!movingInstallationId || !moveUnit.value) return;
+    const body = new FormData();
+    body.append('installation_id', movingInstallationId);
+    body.append('destination_unit', moveUnit.value);
+    body.append('resolution', moveResolution);
+    if (replaceInstallationId) body.append('replace_installation', replaceInstallationId);
+    try {
+      const response = await fetch(moveUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'X-CSRFToken': csrfToken(), 'X-Requested-With': 'XMLHttpRequest'},
+        body,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'The meter could not be moved.');
+      showResult(`${data.message} The original list has been refreshed; continue the new meter assignment.`, true);
+      const refreshed = await fetchConflicts(unitSelect.value);
+      renderMainConflicts(refreshed);
+      showResult(`${data.message} Continue the new meter assignment below.`, true);
+    } catch (error) {
+      showResult(error.message || 'The meter could not be moved.', false);
+    }
+  }
+
+  moveUnit.addEventListener('change', async function () {
+    moveConflicts.replaceChildren();
+    moveAdd.classList.add('d-none');
+    if (!this.value) return;
+    try {
+      const data = await fetchConflicts(this.value);
+      if (data.meters.length) {
+        const note = document.createElement('div');
+        note.className = 'alert alert-warning py-2 mb-0';
+        note.textContent = `${data.unit_label} also has active meters. Choose one to replace or move, or add the moving meter alongside them.`;
+        moveConflicts.append(note, ...data.meters.map(item => meterRow(item, 'move-destination')));
+      }
+      moveAdd.textContent = data.meters.length ? 'Move here as an additional meter' : 'Move meter here';
+      moveAdd.classList.remove('d-none');
+    } catch (error) {
+      showResult(error.message, false);
+    }
+  });
+
+  moveAdd.addEventListener('click', () => executeMove('add', ''));
+  document.getElementById('assignmentAddAnother').addEventListener('click', function () {
+    resolution.value = 'add';
+    replacement.value = '';
+    form.submit();
+  });
+  unitSelect.addEventListener('change', function () {
+    resolution.value = '';
+    replacement.value = '';
+    checkSelectedUnit(false).catch(error => showResult(error.message, false));
+  });
+  form.addEventListener('submit', async function (event) {
+    if (resolution.value || !unitSelect.value) return;
+    event.preventDefault();
+    try {
+      const data = await checkSelectedUnit(false);
+      if (data && !data.meters.length) form.submit();
+    } catch (error) {
+      showResult(error.message, false);
+      if (window.bootstrap?.Modal) bootstrap.Modal.getOrCreateInstance(modalElement).show();
+    }
+  });
+})();
+</script>
 {% endblock %}

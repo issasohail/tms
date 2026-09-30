@@ -115,6 +115,8 @@ class LiveVacancyRefreshRegressionTests(TestCase):
         self.assertIn("document.addEventListener('submit'", modal_source)
         self.assertIn("trigger.dataset.location", modal_source)
         self.assertIn("td.col-balance", modal_source)
+        self.assertIn("if (!window.bootstrap?.Modal) return;", modal_source)
+        self.assertIn("credentials: 'same-origin'", modal_source)
 
     def test_meter_list_has_the_same_guarded_rate_editor_and_progress_timer(self):
         source = (
@@ -129,6 +131,7 @@ class LiveVacancyRefreshRegressionTests(TestCase):
         self.assertIn('data-unit="{{ m.display_location_name }}"', source)
         self.assertIn("data-tenant=\"{{ m.tenant_name|default:'Vacant' }}\"", source)
         self.assertIn('data-meter-id="{{ m.id }}"', source)
+        self.assertIn('data-location="{{ m.display_location_name }}"', source)
 
 
 class PrepaidTariffConsistencyRegressionTests(TestCase):

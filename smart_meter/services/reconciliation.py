@@ -564,26 +564,25 @@ def build_check2_breakdown(system, start_date, end_date):
         _natural_text_key(getattr(row["unit"], "unit_number", "") or ""),
         row["meter"].meter_number,
     ))
-    unit_counts = {}
+    # Count only meters that already have a Check Group membership when deciding
+    # whether a unit should be shown as one meter or as a multi-meter unit.
+    assigned_unit_counts = {}
     for row in billing_rows:
+        if row["is_replacement"]:
+            continue
         unit_id = getattr(row["unit"], "pk", None)
-        unit_counts[unit_id] = unit_counts.get(unit_id, 0) + 1
+        assigned_unit_counts[unit_id] = assigned_unit_counts.get(unit_id, 0) + 1
+
     unit_groups_by_id = {}
     for sequence, row in enumerate(billing_rows, start=1):
         row["sequence"] = sequence
         unit_id = getattr(row["unit"], "pk", None)
-        multiple = unit_counts.get(unit_id, 0) > 1
-        if multiple:
+        multiple_assigned = assigned_unit_counts.get(unit_id, 0) > 1
+        row["show_unit_total"] = multiple_assigned
+        if row["is_replacement"] or multiple_assigned:
             row["display_name"] = row["meter"].name or row["meter"].meter_number
         else:
-            property_name = getattr(
-                getattr(row["unit"], "property", None), "property_name", ""
-            )
-            property_name = property_name[:8]
-            unit_name = getattr(row["unit"], "unit_number", "")
-            row["display_name"] = " - ".join(
-                part for part in (property_name, unit_name) if part
-            )
+            row["display_name"] = getattr(row["unit"], "unit_number", "") or row["meter"].meter_number
         group = unit_groups_by_id.setdefault(unit_id, {
             "unit": row["unit"],
             "rows": [],
@@ -597,6 +596,8 @@ def build_check2_breakdown(system, start_date, end_date):
         group["total_amount"] += row["amount"] or ZERO
     unit_groups = list(unit_groups_by_id.values())
     for unit_group in unit_groups:
+        assigned_rows = [row for row in unit_group["rows"] if not row["is_replacement"]]
+        unit_group["show_total"] = len(assigned_rows) > 1
         unit_group["average_rate"] = (
             (unit_group["total_amount"] / unit_group["total_kwh"]).quantize(
                 Decimal("0.01")
@@ -636,6 +637,97 @@ def iesco_bill_history(system, limit=6):
         reverse=True,
     )
     return bills[:limit]
+
+
+def latest_iesco_reading_period(system):
+    """Return the latest saved IESCO meter-reading interval, if two readings exist."""
+    bills = list(_iesco_invoice_queryset(system))
+    bills.sort(
+        key=lambda bill: (
+            _parse_iesco_date(bill.reading_date) or datetime.min.date(),
+            bill.pk,
+        )
+    )
+    dated = [
+        (bill, _parse_iesco_date(bill.reading_date))
+        for bill in bills
+        if _parse_iesco_date(bill.reading_date) is not None
+    ]
+    if len(dated) < 2:
+        return None, None
+    return dated[-2][1], dated[-1][1]
+
+
+def build_iesco_history_rows(system, limit=12):
+    """IESCO history enriched with non-overlapping billing-meter periods.
+
+    Each billing period starts on the previous saved IESCO reading date and ends
+    at the current saved reading date. ``build_check2_breakdown`` treats the end
+    boundary as exclusive, so adjacent bill rows do not double-count a day.
+    """
+    bills = list(_iesco_invoice_queryset(system))
+    bills.sort(
+        key=lambda bill: (
+            _parse_iesco_date(bill.reading_date)
+            or _parse_iesco_date(bill.issue_date)
+            or datetime.min.date(),
+            bill.pk,
+        )
+    )
+    rows_by_pk = {}
+    previous_reading_date = None
+
+    for bill in bills:
+        reading_date = _parse_iesco_date(bill.reading_date)
+        billing_units = None
+        billing_amount = None
+        billing_period_start = previous_reading_date
+        billing_period_end = reading_date
+        if (
+            previous_reading_date
+            and reading_date
+            and reading_date > previous_reading_date
+        ):
+            breakdown = build_check2_breakdown(
+                system,
+                previous_reading_date,
+                reading_date,
+            )
+            billing_units = breakdown.get("billing_total_kwh")
+            billing_amount = breakdown.get("billing_total_amount")
+
+        bill_amount = bill.current_bill_amount
+        income_difference = (
+            billing_amount - bill_amount
+            if billing_amount is not None and bill_amount is not None
+            else None
+        )
+        rows_by_pk[bill.pk] = {
+            "bill": bill,
+            "reading_date_obj": reading_date,
+            "billing_period_start": billing_period_start,
+            "billing_period_end": billing_period_end,
+            "billing_units": billing_units,
+            "billing_amount": billing_amount,
+            "bill_amount": bill_amount,
+            "income_difference": income_difference,
+            "average_rate": bill.per_unit_rate,
+            "net_bill_units": bill.net_units,
+        }
+        if reading_date:
+            previous_reading_date = reading_date
+
+    ordered = sorted(
+        rows_by_pk.values(),
+        key=lambda row: (
+            row["reading_date_obj"]
+            or _parse_iesco_date(row["bill"].issue_date)
+            or datetime.min.date(),
+            row["bill"].pk,
+        ),
+        reverse=True,
+    )
+    return ordered[:limit]
 
 
 def inverter_reading_period_delta(inverter, start_date, end_date):

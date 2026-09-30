@@ -94,7 +94,10 @@
     .menu-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } /* 6 across on ≥sm */
   }
   @media (min-width: 768px) {
-    .menu-grid { grid-template-columns: repeat(9, minmax(0, 1fr)); } /* denser on ≥md */
+    .menu-grid { grid-template-columns: repeat(9, minmax(0, 1fr)); }
+  }
+  @media (min-width: 1200px) {
+    .menu-grid { grid-template-columns: repeat(10, minmax(0, 1fr)); } /* keep Dashboard on the first row */
   }
 
   .menu-grid .nav-link {

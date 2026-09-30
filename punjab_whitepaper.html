@@ -1,0 +1,2169 @@
+<!DOCTYPE html>
+<html lang="en" >
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="/eStampCitizenPortal/Content/FontsFamily.css">
+    
+    <title id="div_titleTop">Government of the Punjab - eStamping Citizen Portal</title>
+    <link href="/eStampCitizenPortal/Content/css?v=ABOzXaCQalcYxSLjsqVCHglwVSTuSGlt_IGD6yQMVtA1" rel="stylesheet"/>
+
+    <script src="/eStampCitizenPortal/bundles/modernizr?v=wBEWDufH_8Md-Pbioxomt90vm6tJN2Pyy9u9zHtWsPo1"></script>
+
+    <script src="/eStampCitizenPortal/bundles/jquery?v=FVs3ACwOLIVInrAl5sdzR2jrCDmVOWFbZMY6g6Q0ulE1"></script>
+
+    <script src="/eStampCitizenPortal/bundles/bootstrap?v=2Fz3B0iizV2NnnamQFrx-NbYJNTFeBJ2GM05SilbtQU1"></script>
+
+    
+    
+    <script src="/eStampCitizenPortal/Scripts/ViewsScripts/pairValidation.js?ver=92"></script>
+
+    <link href="/eStampCitizenPortal/Content/kendo/css?v=MngViPMfDqvTC0CSHa-0Ca7K5W0HilZLK3dq7LN9p-01" rel="stylesheet"/>
+
+    <script src="/eStampCitizenPortal/bundles/kendo?v=EtsCfpp7QKg7DhGxBuYhXt78cREbEU6cmV_Tl-CpfCw1"></script>
+
+    <script src="/eStampCitizenPortal/Scripts/ViewsScripts/ViewChallan.js?ver=92"></script>
+    <script src="/eStampCitizenPortal/Scripts/ViewsScripts/Common.js?ver=92"></script>
+    <link href="/eStampCitizenPortal/content/materialcss/roboto.css" rel="stylesheet">
+    <link href="/eStampCitizenPortal/content/materialcss/material.min.css" rel="stylesheet">
+    <link href="/eStampCitizenPortal/content/materialcss/ripples.min.css" rel="stylesheet">
+   
+    <link href="/eStampCitizenPortal/Content/font-awesome-4.3.0/css/font-awesome.min.css" rel="stylesheet" />
+    <link href='https://fonts.googleapis.com/css?family=Crete+Round' rel='stylesheet' type='text/css'>
+    <link href='https://fonts.googleapis.com/css?family=Lato' rel='stylesheet' type='text/css'>
+    <link href='https://fonts.googleapis.com/css?family=Montserrat' rel='stylesheet' type='text/css'>
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet' type='text/css'>
+    <link href='https://fonts.googleapis.com/css?family=Arvo:400,700' rel='stylesheet' type='text/css'>
+    <link href="/eStampCitizenPortal/Content/font-awesome-4.3.0/css/font-awesome.min.css" rel="stylesheet" />
+    <link href='https://fonts.googleapis.com/css?family=Oswald' rel='stylesheet' type='text/css'>
+    <link href="/eStampCitizenPortal/Content/HomePage.css?ver=2" rel="stylesheet" />
+   
+    
+
+    <style>
+         body {
+             vertical-align: middle;
+             /*word-spacing: 2px;*/
+         }
+         .form-control{
+             font-family: 'Lato', sans-serif !important;
+             font-size:14px;
+         }
+         .KendoText {
+             width: 350px;
+         }
+         .top15 {
+             top: 0px !important;
+         }
+         .KendoList {
+             width: 280px;
+         }
+         .k-dropdown-wrap {
+             border: 0px;
+             border-bottom: 1px solid #ccc !important;
+         }
+         .k-state-hover {
+             background-color: white !important;
+         }
+         .k-state-focused {
+             border: 0px;
+         }
+         label.error {
+             font-size: 12px;
+             color: #f44336;
+             font-weight: 100;
+         }
+        .k-invalid-msg .text-danger {
+             font-size: 10px;
+                 font-family: 'Lato', sans-serif !important;
+             border: 0px;
+         }
+         .addFormElement {
+             font-style: normal;
+         }
+         h1{
+             font-family: 'Crete Round', serif;
+             font-size:26px;
+
+         }
+         .panel-heading{
+             font-family: 'Crete Round', serif;
+             font-size:20px;
+
+         }
+         label{
+             font-family: 'Lato', sans-serif;
+                font-size:14px;
+         }
+         .k-widget.k-tooltip-validation {
+             border-color: #FFFFFF;
+             background-color: rgba(255, 255, 255, 0);
+             color: #F70A0A;
+             font-size: 10px;
+              font-family: 'Lato', sans-serif !important;
+         }
+         .k-widget {
+             background-color: white;
+         }
+         .logo-header{
+             width:100%;
+             height: 110px;
+             background-color:#38922e !important;
+         }
+         .GOP-logo{
+             margin-top: 1%;
+             margin-left: 1%;
+         }
+         .Header-Links{
+             font-weight: bold;
+         }
+         .panel-heading{
+             background-color: ##eeeeee !important;
+         }
+         .navigation-bar{
+             width:100%;
+             height:25px;
+             background-color: #e3e3e3 !important;
+             opacity: 0.9;
+             line-height: 25px;
+             font-size: 14px;  
+             padding-left: 1%;        
+         }
+         .link-nav{
+              /*color: #4f504f !important;*/
+              color: black;
+             text-decoration: none !important;
+
+         }
+
+        .urduFont {
+            font-family: MehrNastaliqWeb;
+        }
+            .urduFont::-webkit-input-placeholder {
+                font-family: MehrNastaliqWeb, 'Lato', sans-serif;/*Arial, Helvetica, sans-serif*/;
+            }
+
+        .mainLoginInput:-ms-input-placeholder {
+            font-family: 'myFont', Arial, Helvetica, sans-serif;
+        }
+
+        .mainLoginInput:-moz-placeholder {
+            font-family: 'myFont', Arial, Helvetica, sans-serif;
+        }
+
+        .mainLoginInput::-moz-placeholder {
+            font-family: 'myFont', Arial, Helvetica, sans-serif;
+        }
+    </style>
+
+</head>
+<body>
+    <div id="wrapper">
+        <div class="Header-container">
+            <div class="Header-Bar">
+                <div class="pull-left  contact">
+
+                    <div class="left-icon-circle float-left iconic-circle" style="height:22px; width:20px; margin-left:0px;">
+                        <a href="/eStampCitizenPortal/ChallanFormView/HomePage" class="social-text float-left fa fa-home" style="color: #428bca;"></a>
+                    </div>
+                    <div class="margin-text left-icon-circle float-left" style="width: 13.359px; height: 20px; margin-top: 2px !important;"><i class="social-text fa fa-phone"></i></div>
+                    <div class="margin-text floating-left-text" id="helpLine">HELPLINE: (042) 111-22-22-77 (Monday to Saturday 8:00 AM - 5:00 PM)</div>
+                    <div style="clear:both"></div>
+                </div>
+
+
+                <div class="pull-right">
+                   
+    
+                    <div style="clear:both"></div>
+                </div>
+            </div>
+        </div>
+        <div class="logo-header">
+            <img class="GOP-logo" id="Logo-Estamp-en-1" style="display:none;" src="/eStampCitizenPortal/Images/Logo-eStamp.png" /> 
+            <img class="GOP-logo" id="Logo-Estamp-ur-1" style="display:none;" src="/eStampCitizenPortal/Images/Logo-eStamp-ur.png" /> 
+        </div>
+
+        <div class="navigation-bar" id="div_nav">
+            <a class="link-nav" href="/eStampCitizenPortal/ChallanFormView/HomePage" id="div_home">Home</a>
+                    <span> > <label  id="div_pageNo" style="font-family: RobotoDraft,Roboto,Helvetica Neue,Helvetica,Arial,sans-serif; font-weight: 300;">Challan Form (Low Denomination)</label></span>
+
+        </div>
+
+        <div class="container">
+            <center>
+                <h1 style="font-size:28px;font-family:'Crete Round', serif;text-align:center" id="div_title">Challan Form (Low Denomination)</h1>
+            </center>
+        </div>
+
+        
+            <div class="container body-content">
+                
+                
+
+
+<script>
+    var selectRelationText = "Select Relation";
+    var copyingFeeDeed = "COPYING FEE DEED";
+    var LowDenominationDeed = "LOW DENOMINATION DEED";
+    var transactionType = "Low Denomination Stamps"
+    var lang = 'en-US';
+    var selectDistrictText = "Select District";
+    var selectTehsilText = "Select Tehsil";
+    var selectBranchText = "Select Branch";
+    var selectPurposeText = "Select Purpose";
+    var PleaseEnterAgain = "Please Enter Again";
+    var CaptchaisRequired = "Captcha is Required";
+    var InvalidCodeEntered = "Invalid Code Entered ";
+    var AddAtleastOneDenomination = "Add Atleast One Denomination";
+    var Name = "Name";
+    var CNIC = "CNIC";
+
+    var Add = "Add";
+    var ContactNoIsInComplete = "Contact No is incomplete";
+    var CNICIsIncomplete = "CNIC is incomplete";
+    var SelectDistrictFirst = "Select District First";
+
+    var Contact = "Contact";
+    var FormErrorMessage = "*Enter data in all required fields";
+    var AgentCNICnotvalid = "Agent CNIC is not valid";
+    var CNICnotvalid = "CNIC is not valid";
+    var DenominationId = 0;
+
+
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://gitcdn.github.io/bootstrap-toggle/2.2.0/css/bootstrap-toggle.min.css" rel="stylesheet">
+<script src="https://gitcdn.github.io/bootstrap-toggle/2.2.0/js/bootstrap-toggle.min.js"></script>
+<script src="/eStampCitizenPortal/Scripts/ViewsScripts/AddChallanFormForWhitePaper.js?ver=92"></script>
+<script src="/eStampCitizenPortal/Scripts/ViewsScripts/AddOrganization.js"></script>
+<!-- Include Google reCAPTCHA script -->
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+<link href="/eStampCitizenPortal/BotDetectCaptcha.ashx?get=layout-stylesheet"
+      rel="stylesheet" type="text/css" />
+
+<link rel="stylesheet" href="/eStampCitizenPortal/Content/custom/estampingCitizenPortal.css">
+
+<style>
+    /*html:lang(ur) label, html:lang(ur) span,html:lang(ur) .floating-label, html:lang(ur) .panel-heading, html:lang(ur) h4, html:lang(ur) .k-invalid-msg , html:lang(ur) .label {
+            font-family: MehrNastaliqWeb !important;
+
+        }*/
+
+    .k-item:hover {
+        background-color: #428bca !important;
+    }
+
+    .k-grid-header .k-header {
+        font-weight: bold;
+    }
+
+    .ob-center {
+        text-align: center;
+    }
+
+    .buttons-aligment {
+        display: inline-block;
+        vertical-align: middle;
+        line-height: 32px;
+        padding-left: 3px;
+    }
+
+    .delete-btn-center-adjustment {
+        padding-right: 14px;
+    }
+
+    .edit-btn-center-adjustment {
+        padding-right: 10px;
+    }
+
+    .view-btn-center-adjustment {
+        padding-right: 14px;
+    }
+
+    .challanDetText {
+        text-indent: 0.5em;
+    }
+
+
+
+    .checkbox-material {
+        float: left;
+    }
+
+    /*.required .floating-label:after {
+        color: #e32;
+        content: ' *';
+        display:inline;
+    }
+        html:lang(ur) .k-item{
+            font-family:"MehrNastaliqWeb, Lato, sans-serif !important"
+        }*/
+    .custom_error_class {
+        color: #F70A0A;
+        font-size: 10px;
+        font-family: 'Lato', sans-serif !important;
+        padding: 2px 5px 1px 6px;
+    }
+</style>
+
+<script>
+    $(document).ready(function () {
+        $("#Tehsil_nodataMessage").hide();
+        $("#AdhesiveStamp_nodataMessage").hide();
+        $("#denomination_nodataMessage").hide();
+
+
+        if (document.cookie == "_culture=ur") {
+            //$("#div_search").css("direction", "rtl");
+            $("#div_wait").css("text-align", "right");
+
+
+        }
+    });
+    $("#AgentName").on('keypress', function (event) {
+        debugger;
+        var regex = new RegExp("[a-zA-Z0-9]+[a-zA-Z0-9 ]+");
+        var key = String.fromCharCode(!event.charCode ? event.which : event.charCode);
+        if (!regex.test(key)) {
+            event.preventDefault();
+            return false;
+        }
+    });
+</script>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Government of Punjab - eStamping Portal</title>
+    <link href="/eStampCitizenPortal/Content/css?v=ABOzXaCQalcYxSLjsqVCHglwVSTuSGlt_IGD6yQMVtA1" rel="stylesheet"/>
+
+    <script src="/eStampCitizenPortal/bundles/modernizr?v=wBEWDufH_8Md-Pbioxomt90vm6tJN2Pyy9u9zHtWsPo1"></script>
+
+    <script src="/eStampCitizenPortal/bundles/jquery?v=FVs3ACwOLIVInrAl5sdzR2jrCDmVOWFbZMY6g6Q0ulE1"></script>
+
+    <script src="/eStampCitizenPortal/bundles/bootstrap?v=2Fz3B0iizV2NnnamQFrx-NbYJNTFeBJ2GM05SilbtQU1"></script>
+
+
+    <link href="/eStampCitizenPortal/Content/kendo/css?v=MngViPMfDqvTC0CSHa-0Ca7K5W0HilZLK3dq7LN9p-01" rel="stylesheet"/>
+
+    <script src="/eStampCitizenPortal/bundles/kendo?v=EtsCfpp7QKg7DhGxBuYhXt78cREbEU6cmV_Tl-CpfCw1"></script>
+
+    <script src="/eStampCitizenPortal/Scripts/ViewsScripts/Common.js?ver=92"></script>
+
+    <link href="/eStampCitizenPortal/Content/googleapis.css" rel="stylesheet" />
+    <link href="/eStampCitizenPortal/Content/googleapis1.css" rel="stylesheet" />
+    <link href="/eStampCitizenPortal/Content/googleapis2.css" rel="stylesheet" />
+    <link href="/eStampCitizenPortal/content/materialcss/roboto.css" rel="stylesheet">
+    <link href="/eStampCitizenPortal/content/materialcss/material.min.css" rel="stylesheet">
+    <link href="/eStampCitizenPortal/content/materialcss/ripples.min.css" rel="stylesheet">
+    <link href="/eStampCitizenPortal/Content/font-awesome-4.3.0/css/font-awesome.min.css" rel="stylesheet" />
+    <script src="/eStampCitizenPortal/Scripts/SweetAlert/sweetalert2@11.js"></script>
+
+    <style>
+        body {
+            vertical-align: middle;
+        }
+
+        .form-control {
+            font-family: 'Lato', sans-serif !important;
+            font-size: 14px;
+        }
+
+        .KendoText {
+            width: 350px;
+        }
+
+        .top15 {
+            top: 0px !important;
+        }
+
+        .KendoList {
+            width: 280px;
+        }
+
+        .k-dropdown-wrap {
+            border: 0px;
+            border-bottom: 1px solid #ccc !important;
+        }
+
+        .k-state-hover {
+            background-color: white !important;
+        }
+
+        .k-state-focused {
+            border: 0px;
+        }
+
+        label.error {
+            font-size: 12px;
+            color: #f44336;
+            font-weight: 100;
+        }
+
+        .k-invalid-msg .text-danger {
+            font-size: 10px;
+            font-family: 'Lato', sans-serif !important;
+            border: 0px;
+        }
+
+        .addFormElement {
+            font-style: normal;
+        }
+
+        h1 {
+            font-family: 'Crete Round', serif;
+            font-size: 26px;
+        }
+
+        .panel-heading {
+            font-family: 'Crete Round', serif;
+            font-size: 20px;
+        }
+
+        label {
+            font-family: 'Lato', sans-serif;
+            font-size: 14px;
+        }
+
+        .k-widget.k-tooltip-validation {
+            border-color: #FFFFFF;
+            background-color: rgba(255, 255, 255, 0);
+            color: #F70A0A;
+            font-size: 10px;
+            font-family: 'Lato', sans-serif !important;
+        }
+
+        .k-widget {
+            background-color: white;
+        }
+
+
+
+
+        .custom_error_class {
+            color: #F70A0A;
+            font-size: 10px;
+            font-family: 'Lato', sans-serif !important;
+            padding: 2px 5px 1px 6px;
+        }
+
+        .custom-alert-modal {
+            height: 200px;
+            width: 70%;
+            border-radius: 10px;
+            margin: 0 auto;
+        }
+
+        /* Verification Modal CSS */
+
+        #successAlertModal, #OTPInputonSaveModal, #OTPInputModal {
+            z-index: 10010 !important;
+        }
+
+            #successAlertModal + .modal-backdrop {
+                z-index: 10009 !important;
+            }
+
+        #errorAlertModal {
+            z-index: 10020 !important;
+        }
+
+            #errorAlertModal + .modal-backdrop {
+                z-index: 10019 !important;
+            }
+
+        #OtherErrorAlertModal {
+            z-index: 10030 !important;
+        }
+
+            #OtherErrorAlertModal + .modal-backdrop {
+                z-index: 10029 !important;
+            }
+
+        #succesModal {
+            z-index: 10040 !important;
+        }
+
+            #succesModal + .modal-backdrop {
+                z-index: 10039 !important;
+            }
+
+        .modal-body {
+            text-align: center;
+            padding: 30px 24px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .modal-subtitle {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .otp-container {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            /*margin-bottom: 20px;*/
+        }
+
+        .otp-input, .otp-input-save {
+            width: 45px;
+            height: 45px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+            .otp-input:focus {
+                border-color: #28a745;
+                box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+            }
+
+
+            .otp-input-save :focus {
+                border-color: #28a745;
+                box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+            }
+
+        .resend-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .resend-link {
+            color: #28a745;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+            .resend-link:hover {
+                text-decoration: underline;
+            }
+
+        .timer {
+            color: #28a745;
+            font-weight: 600;
+        }
+
+        .btn-verify {
+            background-color: #28a745;
+            border-color: #28a745;
+            padding: 10px 40px;
+            font-weight: 500;
+            border-radius: 5px;
+            color: white;
+        }
+
+            .btn-verify:hover {
+                background-color: #218838;
+                border-color: #1e7e34;
+            }
+
+        .modal-content {
+            border-radius: 10px;
+            border: none;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .modal-header {
+            border-bottom: none;
+            padding: 0.5rem 1rem;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .close {
+            padding: 0;
+            line-height: 1;
+        }
+    </style>
+
+</head>
+<body>
+
+    <!-- Success Modal -->
+    <div class="modal fade" id="succesModal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content text-center p-3 custom-alert-modal">
+                <div class="modal-body d-flex flex-column justify-content-center h-100">
+                    <div class="mb-3">
+                        <i class="fa fa-check-circle text-success" style="font-size: 6rem; margin-right: 25px; margin-bottom: 10px;"></i>
+                    </div>
+                    <p>Congratulations! Your mobile number has been successfully verified.</p>
+                    <button type="button" class="btn btn-success" data-dismiss="modal">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OTP Modal -->
+    <div class="modal fade" id="successAlertModal" tabindex="-1" role="dialog" aria-labelledby="successAlertModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width:420px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close otp-close-btn" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+
+                    <p id="OtpSentMessage"
+                       class="text-center fw-bold"
+                       style="color:#007bff; margin-top:5px; margin-bottom:15px; font-size:15px;">
+                    </p>
+
+                    <!-- ⚠️ Invalid otp error message -->
+                    
+
+                    <div id="OTPgeneric"
+                         class="text-center fw-semibold"
+                         style="display: none; color: #d9534f; font-size: 15px; margin-bottom: 15px;">
+                        <strong>MSG:</strong>
+                    </div>
+
+                    <h5 class="modal-title" id="successAlertModalLabel">OTP Verification</h5>
+                    <p class="modal-subtitle">Please enter OTP you received</p>
+
+                    <div class="otp-container">
+                            <input type="text" class="otp-input1" maxlength="1" oninput="moveToNext(this, 0)">
+                            <input type="text" class="otp-input1" maxlength="1" oninput="moveToNext(this, 1)">
+                            <input type="text" class="otp-input1" maxlength="1" oninput="moveToNext(this, 2)">
+                            <input type="text" class="otp-input1" maxlength="1" oninput="moveToNext(this, 3)">
+                            <input type="text" class="otp-input1" maxlength="1" oninput="moveToNext(this, 4)">
+                            <input type="text" class="otp-input1" maxlength="1" oninput="moveToNext(this, 5)">
+                    </div>
+                    <div class="resend-container">
+                        <span style="margin-right: -20px">Resend?</span>
+                        <button id="resendBtn1" type="button" class="btn btn-link resend-link" disabled>
+                        </button>
+                    </div>
+                    <div class="text-center">
+                        <button type="button" id="verifyOtpBtn1" class="btn btn-verify btn-success">Verify</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+
+    <div class="modal fade" id="OTPInputonSaveModal" tabindex="-1" role="dialog" aria-labelledby="OTPInputonSaveModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width:420px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close otp-close-btn" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <!-- <h5 class="modal-title" id="successAlertModalLabel">Contact Verification</h5>
+                    <p class="modal-subtitle">Please enter OTP you received on your mobile number</p>-->
+                    <!-- New message area -->
+                    <h5 class="modal-title" id="OTPonSaveInputModalLabel">OTP Verification</h5>
+                    <p class="modal-subtitle">Please enter OTP you received on <span id="onSavemsgCellNo"></span></p>
+                    <p id="OtpSentonSaveMessage"
+                       class="text-center fw-bold"
+                       style="color:#007bff; margin-top:5px; margin-bottom:15px; font-size:15px;">
+                    </p>
+
+                    <!--  Invalid otp error message -->
+                    <p id="InvalidOtponSaveErrorMessage"
+                       class="text-center fw-bold"
+                       style="color: red; margin-top: 5px; margin-bottom: 10px; font-size: 14px; display: none;">
+                    </p>
+
+
+
+
+                    <div id="onSaveOTPgeneric" class="text-center" style="display:none; color: red; font-weight: 600;">
+                        <strong>MSG:</strong>
+                    </div>
+                    <div class="otp-container">
+                            <input type="text" class="otp-input-save" maxlength="1" oninput="moveToNextonSave(this, 0)">
+                            <input type="text" class="otp-input-save" maxlength="1" oninput="moveToNextonSave(this, 1)">
+                            <input type="text" class="otp-input-save" maxlength="1" oninput="moveToNextonSave(this, 2)">
+                            <input type="text" class="otp-input-save" maxlength="1" oninput="moveToNextonSave(this, 3)">
+                            <input type="text" class="otp-input-save" maxlength="1" oninput="moveToNextonSave(this, 4)">
+                            <input type="text" class="otp-input-save" maxlength="1" oninput="moveToNextonSave(this, 5)">
+                    </div>
+                    <div class="resend-container">
+                        <span style="margin-right: -20px">Resend?</span>
+                        <button id="resendBtnonSave" type="button" class="btn btn-link resend-link" disabled>
+                        </button>
+                    </div>
+                    <div class="text-center">
+                        <button type="button" id="verifyOtpBtnonSave" data-verified="0" class="btn btn-verify btn-success">Verify</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Error Modal -->
+    <div class="modal fade" id="errorAlertModal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content text-center p-3 custom-alert-modal" style="height: 235px;">
+                <div class="modal-body d-flex flex-column justify-content-center h-100">
+                    <div class="mb-3">
+                        <i class="fa fa-exclamation-circle text-danger" style="font-size: 6rem; margin-right: 25px; margin-bottom: 10px;"></i>
+                    </div>
+                    
+                    <p id="error-MsgTxt"></p>
+                    
+                    <button type="button" class="btn btn-danger" data-dismiss="modal">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Other Error Modal -->
+    <div class="modal fade" id="OtherErrorAlertModal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content text-center p-3 custom-alert-modal" style="height: 235px;">
+                <div class="modal-body d-flex flex-column justify-content-center h-100">
+                    <div class="mb-3">
+                        <i class="fa fa-exclamation-circle text-danger" style="font-size: 6rem; margin-right: 25px; margin-bottom: 10px;"></i>
+                    </div>
+                    <p id="OtherErrorAlertMessage"></p>
+                    <button type="button" class="btn btn-danger" data-dismiss="modal">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Other Error Modal -->
+    <div class="modal fade" id="OtherErrorAlertModal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content text-center p-3 custom-alert-modal" style="height: 235px;">
+                <div class="modal-body d-flex flex-column justify-content-center h-100">
+                    <div class="mb-3">
+                        <i class="fa fa-exclamation-circle text-danger" style="font-size: 6rem; margin-right: 25px; margin-bottom: 10px;"></i>
+                    </div>
+                    <p id="OtherErrorAlertMessage"></p>
+                    <button type="button" class="btn btn-danger" data-dismiss="modal">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OTP Modal -->
+    <div class="modal fade" id="OTPInputModal" tabindex="-1" role="dialog" aria-labelledby="OTPInputModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered" role="document" style="max-width:420px;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close otp-close-btn" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <!-- <h5 class="modal-title" id="successAlertModalLabel">Contact Verification</h5>
+                    <p class="modal-subtitle">Please enter OTP you received on your mobile number</p>-->
+                    <!-- New message area -->
+                    <h5 class="modal-title" id="OTPInputModalLabel">OTP Verification</h5>
+                    <p class="modal-subtitle">Please enter OTP you received on <span id="msgCellNo"></span></p>
+                    <p id="OtpSentMessage"
+                       class="text-center fw-bold"
+                       style="color:#007bff; margin-top:5px; margin-bottom:15px; font-size:15px;">
+                    </p>
+
+                    <!--  Invalid otp error message -->
+                    <p id="InvalidOtpErrorMessage"
+                       class="text-center fw-bold"
+                       style="color: red; margin-top: 5px; margin-bottom: 10px; font-size: 14px; display: none;">
+                    </p>
+
+
+
+
+                    <div id="OTPgeneric" class="text-center" style="display:none; color: red; font-weight: 600;">
+                        <strong>MSG:</strong>
+                    </div>
+                    <div class="otp-container">
+                            <input type="text" class="otp-input" maxlength="1" oninput="moveToNext(this, 0)">
+                            <input type="text" class="otp-input" maxlength="1" oninput="moveToNext(this, 1)">
+                            <input type="text" class="otp-input" maxlength="1" oninput="moveToNext(this, 2)">
+                            <input type="text" class="otp-input" maxlength="1" oninput="moveToNext(this, 3)">
+                            <input type="text" class="otp-input" maxlength="1" oninput="moveToNext(this, 4)">
+                            <input type="text" class="otp-input" maxlength="1" oninput="moveToNext(this, 5)">
+                    </div>
+                    <div class="resend-container">
+                        <span style="margin-right: -20px">Resend?</span>
+                        <button id="resendBtn" type="button" class="btn btn-link resend-link" disabled>
+                        </button>
+                    </div>
+                    <div class="text-center">
+                        <button type="button" id="verifyOtpBtn" class="btn btn-verify btn-success">Verify</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <input type="hidden" value="" id="inputName" />
+    <input type="hidden" value="" id="cnictxt" />
+    <input type="hidden" value="" id="contacttxt" />
+    <input type="hidden" value="" id="partyTypetxt" />
+
+
+    <script src="/eStampCitizenPortal/scripts/materialjs/ripples.min.js"></script>
+    <script src="/eStampCitizenPortal/scripts/materialjs/material.min.js"></script>
+    <script src="/eStampCitizenPortal/Scripts/jquery.validate.min.js"></script>
+    <script src="/eStampCitizenPortal/Scripts/jquery.validate.unobtrusive.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            // This command is used to initialize some elements and make them work properly
+            $.material.init();
+        });
+
+        
+
+    </script>
+
+</body>
+</html>
+
+
+
+<input id="ImplementFiveHundred" name="ImplementFiveHundred" type="hidden" value="Yes" />
+
+
+<div class="row" style="margin: 0 auto 0 auto; width: 1200px;padding:50px 0 0 10px;">
+    <div class="col-md-10">
+        <div id="stepsArrowFirstScreen" style="position: relative;">
+            <div id="informationDiv" style="position: absolute;"></div>
+            <div id="stepsArrow" style="position: absolute;"></div>
+        </div>
+    </div>
+</div>
+
+<div id="confirmChallan" class="container formContainer" style="display:none;background-color:white">
+    
+<script>
+    var string1MSG = "Please visit your selected district";
+    var string2MSG = "BOP bank branches to get e-Stamp on plain white paper.";
+
+</script>
+
+
+
+
+
+<span style="display: inline;">
+    <label style="margin-right:2px;">Your Challan Number is</label>
+    <b id="serialNum"></b>
+    <span id="psidStr" style="display: inline;">
+        <label style="margin-right:2px;">And Your PSID is</label>
+        <b id="PsidVal"></b>
+    </span>
+</span>
+<br />
+<div id="downloadStampNoteDiv" style=" margin-top:30px;">
+    <span class="fw-semibold text-dark" style="font-size: 14px;font-weight:bold; ">
+        <strong>Note:</strong>
+        After completing the online challan payment, please visit the
+        <span style="color:red; font-weight:bold;">‘Download Stamp Paper’</span>
+        section to obtain your e-Stamp on plain white paper.
+     
+    </span>
+</div>
+
+<br />
+<br />
+<input type="submit" value="Print Challan" class="btn btn-primary pull-right" onclick="PrintChallan()" />
+
+<div class="row" id="MsgWhitePaperChallan" style="display: none;margin-left: -2px; ">
+
+    <p id="districtString" style="font-weight:bold; font-size:small"></p>
+    <i id="placehere" style="display:inline;"></i>
+    <div style="font-size:xx-large;font-weight:bold;display:inline;font-family: MehrNastaliqWeb ,'Crete Round', serif;" id="StatusMsg">
+    </div>
+</div>
+
+<div class="checkbox" id="" style="margin-top:5px !important">
+    
+
+
+    
+</div>
+
+<script>
+
+    $(document).ready(function () {
+        //debugger
+        var isPSIDImplement = true;
+        console.log(isPSIDImplement);
+        var url = window.location.pathname; // Get the pathname of the current URL
+        var pathSegments = url.split('/');  // Split the pathname into parts
+        var actionName = pathSegments[pathSegments.length - 1]; // Get the last part (action name)
+
+        // List of action names for which the button should be hidden
+        var actionsToHideButton = ['AddChallanPLRA', 'AddMutationPLRAChallan', 'AddChallanPLRAForAhleCommision']; //, 'AddChallanTTIP'
+        var psidToShow = ['AddChallanForWhitePaper', 'AddChallanForAdhesiveStamps', 'AddChallan', 'AddChallanForCopyingFee']
+        // Check if the actionName is in the list and hide the button if it matches
+        if (actionsToHideButton.includes(actionName)) {
+            $('#psidBtn').hide(); // Hide the button
+        }
+        //$('#psidStr').show(); // Hide the button
+        if (psidToShow.includes(actionName) && isPSIDImplement) {
+            $('#psidStr').show(); // Hide the button
+        }
+    });
+</script>
+</div>
+
+
+<input type="hidden" id="checkPerson" value="" />
+
+<div id='printarea'>
+    <div class="container formContainer" id="challanform">
+        <div id="dealSection">
+            <div class="col-md-12 col-centered">
+                <div class="row panel-default">
+                    <div class="panel-heading">
+                        <i class="fa fa-search icon"></i>
+                        <div style="display: inline" id="searchHeading">
+                            Challan Details
+                        </div>
+                    </div>
+                    <div class="panel-body innerContainer">
+
+                        <div id="ChallanDetailsValuesDiv">
+                            <form id="dealform">
+                                <div class="col-lg-12 row col-md-12">
+                                    <div class=" required col-md-4 rowContainer">
+                                        <div class="col-md-12 rowheight ">
+                                            <div class="form-control-wrapper">
+
+                                                <select class="form-control kendoDropDownCustom" id="District" name="District" data-required-msg="District is Required" required="required" onchange="populateTehsils()"></select>
+                                                <div class="floating-label" id="districtFloatingLbl">District</div>
+
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                    
+                                    <div class=" required col-md-4 rowContainer">
+                                        <div class="col-md-12 rowheight ">
+                                            <div class="form-control-wrapper" onclick="validateTehsil()" onblur="TehsilBlur()">
+
+                                                <select class="form-control kendoDropDownCustom" id="Tehsil" data-required-msg="Tehsil is Required" name="Tehsil" required="required">
+                                                    <option>Select Tehsil</option>
+                                                </select>
+                                                <div class="floating-label" id="tehsilFloatingLbl">Tehsil</div>
+                                                <span class="k-widget k-tooltip k-tooltip-validation k-invalid-msg field-validation-error" role="alert" id="Tehsil_nodataMessage"></span>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                            <input type="hidden" name="as_sfid" value="AAAAAAXpTBm2Foaz8Z5N8TMfPCaqEzSyT6RNJHIFu1uEsU83Y-pV6s8ua3Ah7iYKPekO1HjCbOaO4YODjgOyH5F4X4zcJ5I_0JEqPcgw9qBiKEobl7Y9spwXVKaNbJLgjSdWc7nGU79rbWXWpQzLBB1OSzGV_6J6t6Gc9JEUkIVW81Hh2Q==" /><input type="hidden" name="as_fid" value="2c0d21e9c8ffe303edfa7902a821b8387eee2aa5" /></form>
+
+
+
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-12 col-centered">
+            <div id="ApplicantThroughDivId">
+
+                <div class="row panel-default">
+                    <div class="panel-heading">
+                        <i class="fa fa-user icon"></i><div id="HeaderLabel" style="display:inline; font-weight:normal !important">Applied Through</div>
+                    </div>
+                    <div id="purchasersection">
+                        <div class="panel-body innerContainer" style="min-height:0px">
+
+                            <form id="personForm1">
+
+                                <div class="row col-sm-3">
+                                    <div class=" zeroPadding">
+                                        <div class="radio radio-success zeroPadding">
+                                            <label class="labelPadding">
+                                                <input name="InfoType" id="Self" value="option1" checked="checked" type="radio" onclick="InfoTypeChange();">
+                                                <label id="SelfLbl" style="padding-left:0px;">
+                                                    Self
+                                                </label>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class=" zeroPadding" id="RuralRadio">
+                                        <div class="radio radio-success zeroPadding">
+                                            <label class="labelPadding">
+                                                <input name="InfoType" id="Agent" value="option1" type="radio" onclick="InfoTypeChange();">
+                                                <label id="AgentLbl" style="padding-left:0px;">
+                                                    Agent
+                                                </label>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row col-sm-9">
+                                    <div class="form-text text-muted" style="margin-top:5px; font-size:12px; color:#888;">
+                                        <span style="font-weight:900;color:red;">Note:</span>
+                                        <span style="color:red;">Please provide a valid CNIC and associated contact number to receive the eStamp number via SMS and continue with the eStamp download.</span><br />
+                                        The information you enter for the first time will be verified and validated by the system.
+                                        In case of any query contact us:
+                                        <a href="mailto:estamp-support@punjab-zameen.gov.pk">
+                                            estamp-support@punjab-zameen.gov.pk
+                                        </a>
+
+                                    </div>
+                                </div>
+                            <input type="hidden" name="as_sfid" value="AAAAAAXMNBIskIlwHN9VNBou1z2MO9zW7W428YO_OWleofwRwWoGPtu7KyVvhuY7_qaTeW7LAHQX1bFyhn79otmp3Ai-20JTcncikwoh45I9u2suDdr84HnaG4bsG0FQNXSo78o9SOwhnSV24GvEQ3oAiiBEwBUiCrHrBbCzAzic-oalMg==" /><input type="hidden" name="as_fid" value="a8df6fa168691c0355f85f6de60b5ec085b4f5aa" /></form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+
+        <div class="col-md-12 col-centered" id="AgentFormId">
+            <div class="row panel-default">
+                <div class="panel-heading">
+                    <i class="fa fa-legal icon"></i><span id="agentInformationPanelHeading">Agent Information</span>
+                </div>
+                <div class="panel-body innerContainer">
+                    <form id="agentForm">
+
+                        <div class=" row col-md-12">
+                            <div class="rowContainer required col-md-4">
+                                <div class="label label-default" id="agentNameFloatingLbl">Agent Name</div>
+                                <div class="col-md-12 rowheight">
+                                    <div class="input-group">
+                                        <input class="form-control " pattern="[A-Za-z ]+" maxlength="60" placeholder="Agent Name" id="AgentName" name="Agent Name" required="required" data-required-msg="Agent Name is required" />
+                                        <!--<input class="form-control" id="AgentName" maxlength="60" pattern="[a-zA-Z0-9]+[a-zA-Z0-9 ]+"-->  <!--name="Agent Name" type="text" min=0 />-->
+                                        <span class="input-group-addon"><i class="fa fa-question-circle" id="tooltip_AgentName"></i></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="rowContainer required col-sm-4 rowheight">
+                                <div class="label label-default" id="agentCnicFloatingLbl">Agent CNIC</div>
+                                <div class="col-md-12">
+                                    <div class="input-group">
+                                        <input id="AgentCnic" data-validmask-msg="CNIC is incomplete" class="form-control KendoText" data-role="maskedtextbox" data-mask="00000-0000000-0" required="required" name="CNIC" />
+                                        <span class="field-validation-error custom_error_class" id="AgentCNICNo_validationMessage" role="alert"><span class="k-icon k-warning" style="margin-right: 3px;"> </span> Agent CNIC is not valid</span>
+                                        <span class="input-group-addon"><i class="fa fa-question-circle" id="tooltip_cnic"></i></span>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            
+
+                        </div>
+
+                        <div class="col-md-12 row ">
+
+                            <!--<div class=" rowContainer required col-md-4 rowheight">
+                                <div class="label label-default" id="agentContactFloatingLbl">Agent Contact</div>
+                                <div class="col-md-12">
+                                    <div class="input-group">-->
+                                        <!-- Readonly masked display (for user only) -->
+                                        <!--<input id="AgentCellMasked" class="form-control" readonly style="display:none; background:#f9f9f9;" />
+                                        <input class="form-control RemoveMask" id="AgentCell" data-validmask-msg="Agent Contact is incomplete" name="Agent Contact" required="required" data-required-msg="Agent Contact is required" onblur="CheckMobileNumber('agent');" />
+                                        <span class="field-validation-error custom_error_class" id="AgentContactNo_validationMessage" role="alert"><span class="k-icon k-warning" style="margin-right: 3px;"> </span> Agent Contact is not valid</span>
+                                        <span class="input-group-addon"><i class="fa fa-question-circle" id="tooltip_AgentCell"></i></span>
+                                    </div>
+                                </div>
+                            </div>-->
+
+                            <div class="rowContainer required col-md-4 rowheight" style="vertical-align:top">
+                                <div class="label label-default" id="agentContactFloatingLbl">Agent Contact</div>
+                                <div class="col-md-12">
+                                    <div class="input-group">
+                                        <!-- Readonly masked display (for user only) -->
+                                        <input id="AgentCellMasked" class="form-control" readonly style="display:none; background:#f9f9f9;" />
+                                        <!-- Input -->
+                                        <input id="AgentCell"
+                                               name="Contact No"
+                                               
+                                               onblur="verifyWhitePaper('PersonPhone', 'PersonCnic','Agent')"
+                                               validationmessage="Contact No is not valid"
+                                               data-required-msg="Contact No is required"
+                                               data-validmask-msg="Contact No is incomplete"
+                                               class="form-control"
+                                               required="required" />
+
+                                        <span class="field-validation-error custom_error_class"
+                                              id="AgentContactNo_validationMessage"
+                                              role="alert"
+                                              style="display:none;">
+                                            <span class="k-icon k-warning" style="margin-right: 3px;"> </span>
+                                            Contact No is not valid
+                                        </span>
+
+                                        <span class="input-group-addon">
+                                            <i class="fa fa-question-circle" id="tooltip_PersonPhone"></i>
+                                        </span>
+                                    </div>
+                                </div>
+
+
+                            </div>
+
+
+                            <div class=" rowContainer col-md-4 rowheight">
+                                <div class="label label-default" id="agentEmailFloatingLbl">Agent Email</div>
+                                <div class="col-md-12">
+                                    <div class="input-group">
+                                        <input class="form-control" maxlength="50" type="email" id="agentEmail" name="Agent Email Format" validationmessage="Agent Email is required and must be in a valid format." required="required" />
+                                        
+                                        
+
+                                        <span class="input-group-addon"><i class="fa fa-question-circle" id="tooltip_agentEmail"></i></span>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                        </div>
+                    <input type="hidden" name="as_sfid" value="AAAAAAXeUNbMEjI0Uy76jJndt0Jz5BgFAyBEz6f2Pl-oINzNr-5F4KEZ1AkGgvQWdrvhX4sGU7WZVx4SqwM3hcIbN3sBZMvifd_Zj8mhCbDlDoJwRhoQ3z_d9953QTWqXkLivkOEcM1WvbvqoO-LAI0ZWrArhfkzxhQbDzQc2pdRoZYEpA==" /><input type="hidden" name="as_fid" value="32395359789326a3c282da77cec78989ec1239b8" /></form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-12 col-centered">
+            <div id="PersonDivId">
+
+                <div class="row panel-default">
+                    <div class="panel-heading">
+                        <i class="fa fa-user icon"></i><div id="purchaserLabel" style="display:inline; font-weight:normal !important">Applicant Information</div>
+                    </div>
+                    <div id="purchasersection">
+                        <div class="panel-body innerContainer" style="min-height:0px">
+
+                            <form id="personForm">
+
+                                <div class=" row col-sm-12">
+                                    <div class="rowContainer required col-sm-5" style="vertical-align:top">
+                                        <div class="label label-default" id="agentEmailFloatingLbl">Name</div>
+                                        <div class="col-sm-11 rowheight">
+                                            <div class="input-group">
+                                                <input class="form-control" id="PersonName" maxlength="60" pattern="[a-zA-Z0-9]*[a-zA-Z ]+[0-9]*"  data-required-msg="Name is Required" validationmessage="Name is not Valid" name="Name" type="text" min=0 required="required" />
+                                                <span class="input-group-addon"><i class="fa fa-question-circle" id="tooltip_PersonName"></i></span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="rowContainer required col-sm-5 rowheight" id="cnicPersonEditForm">
+                                        <div class="label label-default" id="agentEmailFloatingLbl">CNIC</div>
+                                        <div class="col-sm-11">
+                                            <div class="input-group">
+                                                <input id="PersonCnic" data-validmask-msg="CNIC is incomplete" class=" form-control KendoText" required="required" data-role="maskedtextbox" data-mask="00000-0000000-0" data-required-msg="CNIC is required" data-validmask-msg="CNIC is incomplete" name="CNIC" />
+                                                <span class="field-validation-error custom_error_class" id="CNICNo_validationMessage" role="alert" style="display:none;"><span class="k-icon k-warning" style="margin-right: 3px;"> </span> CNIC is not valid</span>
+                                                <span class="input-group-addon"><i class="fa fa-question-circle" id="tooltip_PersonCnic"></i></span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    
+
+                                </div>
+
+                                <div class="row col-sm-12" style="margin-top:10px;">
+                                    <div class="rowContainer required col-sm-5" style="vertical-align:top">
+                                        <div class="label label-default" id="agentEmailFloatingLbl">Relation</div>
+                                        <div class="form-control-wrapper col-sm-11 rowheight">
+                                            <select class="form-control kendoDropDownCustom" id="Relation" onchange="changeRelation()" name="Relation" data-required-msg="Relation is required" required="required" placeholder="Relation"></select>
+                                        </div>
+                                    </div>
+                                    <div class="rowContainer required col-sm-5" style="vertical-align:top">
+                                        <div class="label label-default" id="agentEmailFloatingLbl">Relation Name</div>
+                                        <div class="col-sm-11 rowheight" id="RelationNameDiv">
+                                            <div class="input-group">
+                                                <input class="form-control" id="RelationName" maxlength="100" pattern="[a-zA-Z0-9]*[a-zA-Z ]+[0-9]*" name="Relation Name" validationmessage="Relation Name is not valid" data-required-msg="Relation Name is required" type="text" min=0 required="required" onblur="" />
+                                                <span class="input-group-addon"><i class="fa fa-question-circle" id="tooltip_PersonRelationName"></i></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class=" row col-sm-12">
+                                    <!--<div class="rowContainer required col-sm-5" style="vertical-align:top">
+                                        <div class="label label-default" id="agentEmailFloatingLbl">Contact No</div>
+
+                                        <div class="col-sm-11 rowheight">
+                                            <div class="input-group">-->
+                                                <!-- Readonly masked display (for user only) -->
+                                                <!--<input id="PersonPhoneMasked" class="form-control" readonly style="display:none; background:#f9f9f9;" />
+                                                <input id="PersonPhone" name="Contact No" validationmessage="Contact No is not valid" data-required-msg="Contact No is required" data-validmask-msg="Contact No is incomplete" class=" form-control" required="required" />
+                                                <span class="field-validation-error custom_error_class" id="ContactNo_validationMessage" role="alert" style="display:none;"><span class="k-icon k-warning" style="margin-right: 3px;"> </span> Contact No is not valid</span>
+                                                <span class="input-group-addon"><i class="fa fa-question-circle" id="tooltip_PersonPhone"></i></span>
+                                            </div>
+                                        </div>
+
+                                    </div>-->
+
+                                    <div class="rowContainer required col-md-5 rowheight" style="vertical-align:top">
+                                        <div class="label label-default" id="agentEmailFloatingLbl">Contact No</div>
+                                        <div class="col-md-12">
+                                            <div class="input-group">
+                                                <!-- Readonly masked display (for user only) -->
+                                                <input id="PersonPhoneMasked" class="form-control" readonly style="display:none; background:#f9f9f9;" />
+                                                <!-- Input -->
+                                                <input id="PersonPhone"
+                                                       name="Contact No"
+                                                       
+                                                       onblur="verifyWhitePaper('PersonPhone', 'PersonCnic','Person')"
+                                                       validationmessage="Contact No is not valid"
+                                                       data-required-msg="Contact No is required"
+                                                       data-validmask-msg="Contact No is incomplete"
+                                                       class="form-control"
+                                                       required="required" />
+
+                                                <span class="field-validation-error custom_error_class"
+                                                      id="ContactNo_validationMessage"
+                                                      role="alert"
+                                                      style="display:none;">
+                                                    <span class="k-icon k-warning" style="margin-right: 3px;"> </span>
+                                                    Contact No is not valid
+                                                </span>
+
+                                                <span class="input-group-addon">
+                                                    <i class="fa fa-question-circle" id="tooltip_PersonPhone"></i>
+                                                </span>
+                                            </div>
+                                        </div>
+
+
+                                    </div>
+
+                                    <div class="rowContainer required col-sm-5 rowheight">
+                                        <div class="label label-default" id="agentEmailFloatingLbl">Email</div>
+                                        <div class="col-sm-11">
+                                            <div class="input-group">
+                                                <input id="PersonEmail" name="Email" maxlength="50" class="form-control KendoText " validationmessage="Email is required and must be in a valid format." type="email" required="required" />
+                                                <span class="input-group-addon"><i class="fa fa-question-circle" id="tooltip_PersonEmail"></i></span>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                </div>
+
+                                <div class=" row col-sm-12">
+                                    <div class="rowContainer required col-sm-5" style="vertical-align:top">
+                                        <div class="label label-default" id="agentEmailFloatingLbl">Address</div>
+
+                                        <div class="col-sm-11 rowheight">
+                                            <div class="input-group">
+                                                <input id="PersonAddress" name="Address" validationmessage="Address is not valid" data-required-msg="Address is required" class="form-control" required="required" maxlength="300" />
+                                                <span class="input-group-addon"><i class="fa fa-question-circle" id="tooltip_PersonAdress"></i></span>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            <input type="hidden" name="as_sfid" value="AAAAAAWoEWGIBV7RoAofNo0KBkNkmtofUHBDgDNmHF3pry23FTesi58IonaKMzB9ZL7D_9PNE4TSqvPGThXmIeSu_pLaauf9JACpra5MU-EzJ1XHFt_ib1U_I3IsrfCBeervOIafI9ArqbngVpPPstxwrVuWu4oWZfkvQ2IzqB-CY11jQg==" /><input type="hidden" name="as_fid" value="df057da660732afcd8877d95ddbde7c2be8cd449" /></form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-12 col-centered">
+
+            <div class="row panel-default">
+                <div class="panel-heading">
+                    <i class="fa fa-legal icon"></i><div id="sellerLabel" style="display:inline; font-weight:normal !important">Stamp Details</div>
+                </div>
+                <div id="denominationSection">
+                    <div class="panel-body innerContainer">
+                        <form id="registryForm">
+
+                            <div class="row col-sm-12" style="margin-top:10px;">
+                                <div class="rowContainer required col-sm-5" style="vertical-align:top">
+                                    <div class="label label-default" id="agentEmailFloatingLbl">Purpose</div>
+                                    <div class="form-control-wrapper col-sm-11 rowheight">
+                                        <select class="form-control kendoDropDownCustom" id="Purpose" onchange="OnChangePurpose()" name="Purpose" data-required-msg="Purpose is Required" required="required" placeholder="Purpose"></select>
+                                    </div>
+
+                                </div>
+                                <div class="rowContainer required col-sm-5" style="vertical-align:top">
+                                    <div class="label label-default" id="agentEmailFloatingLbl">Denomination</div>
+                                    <div class="col-sm-11 rowheight" id="DenominationDiv">
+                                        <div class="input-group">
+                                            <input class="form-control" id="Denomination" name="Denomination" data-required-msg="Denomination is Required" type="text" required="required" onblur="" disabled="disabled" />
+                                            
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row col-sm-12">
+                                <div class="label label-default" style="position:absolute;" id="agentEmailFloatingLbl">Reason</div>
+                                <div class="col-sm-10">
+                                    <div class="input-group" style="width:100%;margin-top:25px;">
+                                        <textarea maxlength="100" rows="4" style="max-width: 800px; border-color: #cccaca;padding-left:5px; " data-required-msg="Reason is Required" class="col-md-11" id="Reason" name='Reason' onchange="ReasonValidation();" required onKeyDown=" var key=event.keyCode || event.charCode; if (key= =13) { return false; } else { return true; }"></textarea>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                        <input type="hidden" name="as_sfid" value="AAAAAAV2MgxGH94LbpS0c81jwelRl8lE34a0DO49SMhpsmqoLa-a7uEvbpeCeB6Ck-G-ke4qReIoI6XgboyKs-nrVRAAHxiQAw3glv6aif1lG6gUojrrJXG8sPnoEvqGXQ_zK3wH2hKLbJtik6vkKVbiUcXgUIVfJOeAOzjcuTHEJ-8Jmw==" /><input type="hidden" name="as_fid" value="1258d8c44cc94b9a3d3320d1594f7fce5a66aaf6" /></form>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="col-md-12 col-centered">
+
+            <div class="row row-centered" id="captchaDiv">
+                <div class="col-md-12 col-centered">
+
+                    <div class="row panel-default">
+                        <div class="panel-heading">
+
+                            <i class="fa fa-info icon"></i>Prove you're not a robot
+
+                        </div>
+                        <div class="col-lg-12 innerContainer">
+                            <div>
+                                
+
+
+                                <fieldset>
+                                        <!-- CAPTCHA image -->
+                                        <div class="col-sm-12">
+                                            <img id="CaptchaImage" src="data:image/png;base64,R0lGODlhPAAZAPcAAAAAAAAAMwAAZgAAmQAAzAAA/wArAAArMwArZgArmQArzAAr/wBVAABVMwBVZgBVmQBVzABV/wCAAACAMwCAZgCAmQCAzACA/wCqAACqMwCqZgCqmQCqzACq/wDVAADVMwDVZgDVmQDVzADV/wD/AAD/MwD/ZgD/mQD/zAD//zMAADMAMzMAZjMAmTMAzDMA/zMrADMrMzMrZjMrmTMrzDMr/zNVADNVMzNVZjNVmTNVzDNV/zOAADOAMzOAZjOAmTOAzDOA/zOqADOqMzOqZjOqmTOqzDOq/zPVADPVMzPVZjPVmTPVzDPV/zP/ADP/MzP/ZjP/mTP/zDP//2YAAGYAM2YAZmYAmWYAzGYA/2YrAGYrM2YrZmYrmWYrzGYr/2ZVAGZVM2ZVZmZVmWZVzGZV/2aAAGaAM2aAZmaAmWaAzGaA/2aqAGaqM2aqZmaqmWaqzGaq/2bVAGbVM2bVZmbVmWbVzGbV/2b/AGb/M2b/Zmb/mWb/zGb//5kAAJkAM5kAZpkAmZkAzJkA/5krAJkrM5krZpkrmZkrzJkr/5lVAJlVM5lVZplVmZlVzJlV/5mAAJmAM5mAZpmAmZmAzJmA/5mqAJmqM5mqZpmqmZmqzJmq/5nVAJnVM5nVZpnVmZnVzJnV/5n/AJn/M5n/Zpn/mZn/zJn//8wAAMwAM8wAZswAmcwAzMwA/8wrAMwrM8wrZswrmcwrzMwr/8xVAMxVM8xVZsxVmcxVzMxV/8yAAMyAM8yAZsyAmcyAzMyA/8yqAMyqM8yqZsyqmcyqzMyq/8zVAMzVM8zVZszVmczVzMzV/8z/AMz/M8z/Zsz/mcz/zMz///8AAP8AM/8AZv8Amf8AzP8A//8rAP8rM/8rZv8rmf8rzP8r//9VAP9VM/9VZv9Vmf9VzP9V//+AAP+AM/+AZv+Amf+AzP+A//+qAP+qM/+qZv+qmf+qzP+q///VAP/VM//VZv/Vmf/VzP/V////AP//M///Zv//mf//zP///wAAAAAAAAAAAAAAACH5BAEAAPwALAAAAAA8ABkAAAj/APcJHEiwoMGDCBMqNBhtX8OHDiNCnCixIsWLFjM+bLivXsN6DkHuWybQY8eQAkl2/IhyZEmW0USqNAkyJkGOECNW1JkTJ0+BPYH+3ImzpkiaLF0qNdoS6UmlM1FGVSnUJEeTEVVyJFm0ItaGWoX6JPqRY0qeIq+atakTa0uYIGm2pBryRYG7ePHGGUiyWIEgA9UKfFdgwdiIhCOMXatzX5a8kKNBJFwgVMyyQOvZLRBNJUmSmu8uw8z0JcLHe0/65Xzz7L5EeE8JBQr7ruyhG89OfFRg78PQkkNi3uc3zuPgK4n3Pj6zrMjZNBMXhB2qtU6/ERyzpkr4gnaKP2EK4X1c/WFi3nfjlH4sm71Y98fhuq7K8VcB72VzQb57JDDv1PGJ9J9A7oUHlE1b7cNbdTrx5t1gd1m2T3cDFRiNdARyRtp8Du3n4YcghvihWIFxJOKJKJ64VEuNaaaYQbClJtCCp7FW42I8CeYXYBStFhxvhmHknpAFnLKWTAN9ddxTWtWW122lRRPgfFJuF9iVPhEWBHj14WVYcl098mVPIIlplmdKcZgkaWZdedJhT30VmJxuJghWYwZi5pxwRBllllN04fmSXAjO1tiRKB0WVJ1+WmWdWkxxxdRYUbHVnFIBAQA7" alt="CAPTCHA" class="captcha-image" />
+                                        </div>
+                                        <!-- CAPTCHA input field -->
+                                        <div class="col-sm-12 marginTop15">
+
+                                            <input autocomplete="off" class="form-control" id="CaptchaCode" maxlength="4" name="CaptchaCodeText" placeholder="Enter CAPTCHA" type="text" value="" />
+                                            <span class="field-validation-valid text-danger" data-valmsg-for="CaptchaCodeText" data-valmsg-replace="true"></span>
+
+                                        </div>
+                                        <!-- CAPTCHA error message -->
+                                        <div id="captchaError" class="text-danger" style="display: none;"></div>
+                                </fieldset>
+
+
+
+
+
+
+                                <!--<fieldset>
+                                <div>-->
+                                
+                                <!--<div class="g-recaptcha" data-sitekey="ConfigurationManager.AppSettings["GoogleCaptchaPublicKey"]"></div>
+
+                                        <span class="status text-danger" id="captchaError"></span>
+                                    </div>
+
+                                </fieldset>-->
+                                
+                                
+                            </div>
+                        </div>
+                    </div>
+                    
+                    
+                    <button class="btn btn-primary pull-right" id="btnNextCVT" type="button" style="margin-left:10px" onclick="onNextWhitePaper()">Next</button>&nbsp;&nbsp;&nbsp;
+                    <div class="rowContainer" id="ChallanErrorMessage">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="CopyingFeeAmount" class="container formContainer" style="display:none">
+        
+
+
+<script>
+   
+</script>
+<div id="">
+    <div class="col-md-12 col-centered" id="">
+        <div class="row panel-default">
+            <div class="panel-heading">
+                <i class="fa fa-users icon"></i>Copying Fee Amount
+            </div>
+            <div class="panel-body innerContainer">
+                <div class=" row col-sm-12">
+                    <div class="rowContainer required col-sm-5" style="vertical-align:top">
+                        <div class="label label-default" id="agentEmailFloatingLbl">Copying Fee Amount(Rs.):</div>
+                        <div class="col-sm-11 rowheight">
+                            <div class="input-group">
+                                <input class="form-control" id="copyingFeeAmountText" disabled required="required" min=0 maxlength=20 />
+                                <span class="input-group-addon"><i class="" id="tooltip_PersonName"></i></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            
+            </div> 
+        </div>
+    </div>
+
+
+</div>
+
+
+
+
+        <button class="btn btn-primary pull-right" id="btnNextCVT" type="button" style="margin-left:10px" onclick="onNextCopyingAmount()">Next</button>&nbsp;&nbsp;&nbsp;
+        <button class="btn btn-default pull-right" type="button" style="margin-left:10px" onclick="BackButtonToChallanForm()">Back</button>&nbsp;&nbsp;&nbsp;
+
+    </div>
+    <div id="confirmfrom" class="container formContainer" style="display:none">
+        
+
+
+<div id="applicantDetailedWindow">
+
+        <style>
+            .labelTextMargin {
+                padding-left: 22px !important;
+            }
+
+            html:lang(ur) label, html:lang(ur) .floating-label, html:lang(ur) .floating-label2, html:lang(ur) .panel-heading, html:lang(ur) h4, html:lang(ur) .k-invalid-msg, html:lang(ur) .label, html:lang(ur) button, html:lang(ur) .description, html:lang(ur) .tabs-footer, html:lang(ur) .text-heading, html:lang(ur) .text-heading-footer, html:lang(ur) .text-container, html:lang(ur) p, html:lang(ur) boldLabel, html:lang(ur) #findLandClickMessage, html:lang(ur) .footer-copyrights-text,
+            html:lang(ur) #stampErrorMessage, html:lang(ur) .btn {
+                font-family: MehrNastaliqWeb,'Lato', sans-serif !important;
+                word-spacing: 2px;
+            }
+
+            html:lang(ur) .k-window-title {
+                bottom: 0px;
+            }
+
+            html:lang(ur) .k-window-actions {
+                top: -9px !important
+            }
+        </style>
+
+        <div class="row">
+            <div class="col-md-12 row">
+
+                <div class="col-md-12 row">
+                    <div class="boldLabel col-md-5">
+Name:
+                    </div>
+                    <div class="boldLabel col-md-5">
+CNIC:
+                    </div>
+                </div>
+
+                <div class="col-md-12 row">
+                    <div class="label labelpadding  col-md-5" id="applicantNameText" style="white-space: normal; word-wrap: break-word;">
+
+                    </div>
+                    <div id="applicantCNICText" class="label labelpadding  col-md-5">
+
+                    </div>
+                </div>
+
+                <div class="col-md-12 row" id="divParty1ContactInfoLabel">
+                    <div class="boldLabel col-md-5">
+Contact:
+                    </div>
+                    <div class="boldLabel col-md-5">
+Address:
+                    </div>
+                </div>
+
+                <div class="col-md-12 row" id="divParty1ContactInfoValue">
+                    <div class="label labelpadding  col-md-5" id="applicantContactText">
+
+                    </div>
+                    <div id="applicantAddressText" class="label labelpadding  col-md-5" style="white-space: normal; word-wrap: break-word;">
+
+                    </div>
+                </div>
+
+                <div id="applicantEmail">
+                    <div class="col-md-12 row">
+                        <div class="boldLabel col-md-6">
+Email:
+                        </div>
+                    </div>
+
+                    <div class="col-md-12 row">
+                        <div class="label labelpadding  col-md-6" id="applicantEmailText">
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div><script>
+	jQuery(function(){jQuery("#applicantDetailedWindow").kendoWindow({"modal":true,"iframe":false,"draggable":false,"scrollable":true,"pinned":false,"title":"Applicant Information","resizable":false,"width":600,"actions":["Close"]});});
+</script>
+
+<style>
+    .col-boot {
+        padding-top: 50px;
+        padding-bottom: initial;
+        font-weight: 200;
+        font-size: large;
+    }
+
+    .text {
+        text-indent: 1em;
+    }
+
+    .labelpadding {
+        padding-left: 27px;
+    }
+   
+    .label, .label-default {
+        background-color: transparent;
+        text-align: left;
+        font-weight: normal !important;
+    }
+
+    .label {
+        font-size: 14px !important;
+        font-family: 'Lato',serif !important;
+        font-style: normal !important;
+        color: black;
+    }
+
+    .boldLabel {
+        font-weight: bold !important;
+        font-style: normal !important;
+        background-color: transparent;
+        text-align: left;
+        font-size: 14px !important;
+        font-family: 'Lato',serif !important;
+        color: black;
+        margin-bottom: 0px;
+    }
+
+    .k-grid tr {
+        font-size: 14px;
+        font-family: 'Lato',serif;
+        font-style: normal !important;
+        color: black;
+    }
+
+    .k-grid tbody .k-button, .k-ie8 .k-grid tbody button.k-button {
+        min-width: 0px !important;
+    }
+
+    .innerContainer {
+        min-height: inherit !important;
+    }
+
+    .view-btn-center-adjustment {
+        padding-right: 14px;
+    }
+
+    #purchasersData .k-button, #data .k-button {
+        font-size: 100% !important;
+        border-style: solid !important;
+        border-width: 1px !important;
+        border-color: #ccc !important;
+    }
+
+    .k-grid .k-grid-header .k-header .k-link {
+        height: auto;
+    }
+
+    .k-grid .k-grid-header .k-header {
+        white-space: normal;
+        vertical-align: initial;
+    }
+</style>
+
+<div>
+
+
+
+    <!--Challan Information-->
+
+    <div class="row" id="challanDiv">
+        <div class="col-md-12 row panel-default">
+
+            <div class="panel-heading">
+                <i class="fa fa-users icon"></i> Total Payable Amount
+            </div>
+            <div class="panel-body innerContainer">
+                <div class="row col-md-12">
+                    <div id="chNbPair">
+                        <div class="col-md-12 row">
+                            <div class="boldLabel col-md-6">
+                                Total Payable Amount (Rs.):
+                            </div> 
+                        </div>
+                    </div>
+                    <div id="chNbPair">
+                        <div class="col-md-12 row">
+                            <div id="challanAmountText" class="challanDetText col-md-6" style="font-weight:normal !important">
+
+                            </div>
+                        </div>
+                    </div>
+              
+                </div>
+            </div>
+        </div>
+
+
+
+        <!-- For Property 2 Exchange of property Deed -->
+        <div class="col-md-12 col-centered">
+            <div class="row" id="propertyInfo2Div">
+                <div class="col-md-12 row  panel-default">
+
+                    <div class="panel-heading">
+                        <i class="fa fa-list icon"></i> Challan Details
+                    </div>
+                    <div class="panel-body innerContainer">
+
+                        <div class="col-md-12 row" id="districtTehsilLabel2">
+                            <div class="boldLabel col-md-6">
+                                District:
+                            </div>
+                            <div class="boldLabel col-md-6">
+                                
+                                Tehsil:
+                            </div>
+                        </div>
+
+                        <div class="col-md-12 row" id="districtTehsilText2">
+                            <div id="districtText2" class="label labelTextMargin col-md-6">
+
+                            </div>
+                            
+                            <div id="tehsilText2" class="label labelTextMargin col-md-6">
+
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+        <div class="col-md-12 col-centered" id="stampDetails">
+            <!--Agent Information-->
+            <div class="row ">
+                <div class="col-md-12 row panel-default">
+
+                    <div class="panel-heading">
+                        <i class="fa fa-legal icon"></i> Stamp Details
+                    </div>
+                    <div class="panel-body innerContainer">
+
+
+                        <div class="col-md-12 row">
+                            <div class="boldLabel col-md-6">
+                                Purpose
+                            </div>
+                            <div class="boldLabel col-md-6">
+                                Denomination
+                            </div>
+                        </div>
+
+                        <div class="col-md-12 row">
+                            <div id="purposetext" class="label col-md-6" style="white-space: normal; padding-left: 22px;">
+
+                            </div>
+                            <div id="denominationtext" class="label text col-md-6">
+
+                            </div>
+                        </div>
+
+                
+                        <div class="col-md-12 row" id="divAgentContactInfoLabel">
+                            <div class="boldLabel col-md-6">
+                                Reason
+                            </div>
+                           
+                        </div>
+
+                        <div class="col-md-12 row" id="divAgentContactInfoValue">
+                            <div class="label labelTextMargin col-md-5" id="reasontext" style="white-space: normal; word-wrap: break-word;text-align:justify">
+
+                            </div>
+                           
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        <div class="col-md-12 col-centered" id="AgentInfo">
+            <!--Agent Information-->
+            <div class="row ">
+                <div class="col-md-12 row panel-default">
+
+                    <div class="panel-heading">
+                        <i class="fa fa-user icon"></i> Agent Details
+                    </div>
+                    <div class="panel-body innerContainer">
+
+
+                        <div class="col-md-12 row">
+                            <div class="boldLabel col-md-6">
+                                Agent Name:
+                            </div>
+                            <div class="boldLabel col-md-6">
+                                CNIC:
+                            </div>
+                        </div>
+
+                        <div class="col-md-12 row">
+                            <div id="agentNameText" class="label col-md-6" style="white-space: normal; padding-left: 22px;">
+
+                            </div>
+                            <div id="agentCninText" class="label text col-md-6">
+
+                            </div>
+                        </div>
+
+                        <div class="col-md-12 row" id="divAgentContactInfoLabel">
+                            <div class="boldLabel col-md-6">
+                                Contact:
+                            </div>
+                            <div class="boldLabel col-md-6" id="agentEmailLabel">
+                                Email:
+                            </div>
+                        </div>
+
+                        <div class="col-md-12 row" id="divAgentContactInfoValue">
+                            <div class="label text col-md-6" id="agentContactText">
+
+                            </div>
+                            <div id="agentEmailText" class="label text col-md-6">
+
+                            </div>
+                        </div>
+
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        <div class="col-md-12 col-centered">
+            <!--Purchaser-->
+            <div class="row" id="Applicantdiv">
+                <div class="col-md-12 row panel-default">
+
+                    <div class="panel-heading">
+                        <i class="fa fa-user icon"></i><div id="ApplicantHeading" style="display: inline !important; font-weight:normal !important">Applicant Information</div>
+                    </div>
+                    <div class="panel-body innerContainer">
+                        <div id="ApplicantViewSection">
+                            <div class="panel-body innerContainer" style="min-height:0px">
+                                <div class=" row col-md-12 ">
+                                    <div id="ApplicantViewData">
+                                        <div id="ApplicantDataGrid"></div>
+                                        <div id="purchaserSectionError"></div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+<script>
+    var applicantInfoLabel = "Applicant Information";
+    var ChallanNumber = "Challan Number";
+    var StampType = "Stamp Type";
+    var StampPages = "e-Stamp Pages";
+    var PaymentReferenceNumber = "Payment Reference";
+    var PaymentTimeStamp = "Payment Time";
+    var StampAmountRs = "Stamp Amount (Rs.)";
+    var Duty = "Duty";
+    var PaymentReference = "Payment Reference";
+    var PaymentTime = "Payment Time";
+    var DutyAmountRs = "Duty Amount (Rs.)";
+    var RefundStatus = "Refund Status";
+    var KhasraNo = "Khasra No";
+    var LandClassification = "Land Classification";
+    var Location = "Location";
+    var LandArea = "Land Area";
+    var DCRateRs = "DC Rate (Rs.)";
+    var ApplyCVT = "Apply CVT";
+    var QilaNo = "Qila No.";
+    var SquareNo = "Square No.";
+    var Name = "Name";
+    var CNIC = "CNIC";
+    var Contact = "Contact";
+    var Status = "Status";
+    var ApplicationNumber = "Application Number";
+    var ApplicationDate = "Application Date";
+    var DCValuation = "DC Valuation";
+    var DCValuationFP = "DC Valuation Details for First Property";
+    var Urban = "Urban";
+    var RevenueCircle = "Revenue Circle:";
+    var PropertyArea = "Property Area:";
+    var Rural = "Rural";
+    var Qanoongoee = "Qanoongoee:";
+    var Mouza = "Mouza:";
+    var stampErrorMessageNonJ = "To Generate Challan 32-A, minimum payable Total Amount must be greater than or equal to Rs. 1001/-";
+    var stampErrorMessageNonJ_ContractDeed = "To Generate Challan 32-A for deed: CONTRACT - 22A(b), minimum payable Total Amount must be greater than or equal to Rs. 1200/-";
+    var stampErrorMessageNonJ500 = "To Generate Challan 32-A, minimum payable Total Amount must be greater than or equal to Rs. 500/-";
+    var firstPropertyChallanInformationLbl = "First Property/Challan Information";
+    var PropertyChallanInformationLbl = "Property/Challan Information";
+    var secondPropertyChallanInformationLbl = "Second Property/Challan Information";
+  
+
+    $(document).ready(function () {
+
+        if (document.cookie == "_culture=ur") {
+
+            $("#TotalPayableTaxAmountLabelId").css("direction", "rtl");
+            $("#TotalPayableTaxAmountLabelId").css("font-size", "14px");
+            $("#TotalPayableTaxAmountLabelId").css("font-weight", "bold");
+            $("#AmountOfDutyCalLabel").css("direction", "rtl");
+            $("#AmountOfDutyCalLabel").css("font-size", "14px");
+            $("#AmountOfDutyCalLabel").css("font-weight", "bold");
+            $("#amountLabelinDeedDetails").css("direction", "rtl");
+            $("#amountLabelinDeedDetails").css("font-size", "14px");
+            $("#amountLabelinDeedDetails").css("font-weight", "bold");
+            $("#AmountOfDutyCalLabel").css("direction", "rtl");
+            $("#AmountOfDutyCalLabel").css("font-size", "14px");
+            $("#AmountOfDutyCalLabel").css("font-weight", "bold");
+            $("#applyStampDutyDivViewChallan").css("direction", "rtl");
+            $("#applyStampDutyDivViewChallan").css("font-size", "14px");
+            $("#applyStampDutyDivViewChallan").css("font-weight", "bold");
+            $("#AmountOfDutyCalLabel").css("direction", "rtl");
+            $("#AmountOfDutyCalLabel").css("font-size", "14px");
+            $("#AmountOfDutyCalLabel").css("font-weight", "bold");
+
+            $("#div_LandValueDCRsLbl1").css("direction", "rtl");
+            $("#div_LandValueDCRsLbl1").css("font-size", "14px");
+            $("#div_LandValueDCRsLbl1").css("font-weight", "bold");
+            $("#div_LandValueDCRsLbl2").css("direction", "rtl");
+            $("#div_LandValueDCRsLbl2").css("font-size", "14px");
+            $("#div_LandValueDCRsLbl2").css("font-weight", "bold");
+            $("#div_LandValueUserProvidedRsLbl1").css("direction", "rtl");
+            $("#div_LandValueUserProvidedRsLbl1").css("font-size", "14px");
+            $("#div_LandValueUserProvidedRsLbl1").css("font-weight", "bold");
+            $("#div_LandValueUserProvidedRsLbl2").css("direction", "rtl");
+            $("#div_LandValueUserProvidedRsLbl2").css("font-size", "14px");
+            $("#div_LandValueUserProvidedRsLbl2").css("font-weight", "bold");
+            $("#div_AreaConstructedLbl").css("direction", "rtl");
+            $("#div_AreaConstructedLbl").css("font-size", "14px");
+            $("#div_AreaConstructedLbl").css("font-weight", "bold");
+            $("#div_ConstructedAreasqftLbl").css("direction", "rtl");
+            $("#div_ConstructedAreasqftLbl").css("font-size", "14px");
+            $("#div_ConstructedAreasqftLbl").css("font-weight", "bold");
+            $("#div_DCRateRsLbl").css("direction", "rtl");
+            $("#div_DCRateRsLbl").css("font-size", "14px");
+            $("#div_DCRateRsLbl").css("font-weight", "bold");
+            $("#div_DCRateRsLbl1").css("direction", "rtl");
+            $("#div_DCRateRsLbl1").css("font-size", "14px");
+            $("#div_DCRateRsLbl1").css("font-weight", "bold");
+
+            $("#div_LandValueDCRsLbl").css("direction", "rtl");
+            $("#div_LandValueDCRsLbl").css("font-size", "14px");
+            $("#div_LandValueDCRsLbl").css("font-weight", "bold");
+            $("#div_LandValueUserProvidedRsLbl").css("direction", "rtl");
+            $("#div_LandValueUserProvidedRsLbl").css("font-size", "14px");
+            $("#div_LandValueUserProvidedRsLbl").css("font-weight", "bold");
+            $("#div_ConstructedStructureValueDCRslbl").css("direction", "rtl");
+            $("#div_ConstructedStructureValueDCRslbl").css("font-size", "14px");
+            $("#div_ConstructedStructureValueDCRslbl").css("font-weight", "bold");
+            $("#div_ConstructedStructureValueUPRslbl").css("direction", "rtl");
+            $("#div_ConstructedStructureValueUPRslbl").css("font-size", "14px");
+            $("#div_ConstructedStructureValueUPRslbl").css("font-weight", "bold");
+
+            $("#div_RegistrationFeeRsLbl1").css("direction", "rtl");
+            $("#div_RegistrationFeeRsLbl1").css("font-size", "14px");
+            $("#div_RegistrationFeeRsLbl1").css("font-weight", "bold");
+            $("#div_ComparisonFeeRsLbl").css("direction", "rtl");
+            $("#div_ComparisonFeeRsLbl").css("font-size", "14px");
+            $("#div_ComparisonFeeRsLbl").css("font-weight", "bold");
+            $("#div_ConstructedStructureValueDCRslbl1").css("direction", "rtl");
+            $("#div_ConstructedStructureValueDCRslbl1").css("font-size", "14px");
+            $("#div_ConstructedStructureValueDCRslbl1").css("font-weight", "bold");
+
+            $("#div_ConstructedStructureValueDCRslbl2").css("direction", "rtl");
+            $("#div_ConstructedStructureValueDCRslbl2").css("font-size", "14px");
+            $("#div_ConstructedStructureValueDCRslbl2").css("font-weight", "bold");
+
+            $("#div_ConstructedStructureValueUPRslbl1").css("direction", "rtl");
+            $("#div_ConstructedStructureValueUPRslbl1").css("font-size", "14px");
+            $("#div_ConstructedStructureValueUPRslbl1").css("font-weight", "bold");
+
+
+            $("#div_ConstructedStructureValueUPRslbl2").css("direction", "rtl");
+            $("#div_ConstructedStructureValueUPRslbl2").css("font-size", "14px");
+            $("#div_ConstructedStructureValueUPRslbl2").css("font-weight", "bold");
+
+            //$(".boldLabel").css("direction", "rtl");
+            $("#div_StampDutyRsLbl").css("direction", "rtl");
+            $("#div_StampDutyRsLbl").css("font-size", "14px");
+            $("#div_StampDutyRsLbl").css("font-weight", "bold");
+            $("#div_ApplyStampDutyLbl").css("direction", "rtl");
+            $("#div_ApplyStampDutyLbl").css("font-size", "14px");
+            $("#div_ApplyStampDutyLbl").css("font-weight", "bold");
+            $("#div_ApplyRegistrationFeeLbl").css("direction", "rtl");
+            $("#div_ApplyRegistrationFeeLbl").css("font-size", "14px");
+            $("#div_ApplyRegistrationFeeLbl").css("font-weight", "bold");
+            $("#div_RegistrationFeeRsLbl").css("direction", "rtl");
+            $("#div_RegistrationFeeRsLbl").css("font-size", "14px");
+            $("#div_RegistrationFeeRsLbl").css("font-weight", "bold");
+            $("#div_ApplyCVTTaxLbl").css("direction", "rtl");
+            $("#div_ApplyCVTTaxLbl").css("font-size", "14px");
+            $("#div_ApplyCVTTaxLbl").css("font-weight", "bold");
+            $("#div_CVTTaxRsLbl").css("direction", "rtl");
+            $("#div_CVTTaxRsLbl").css("font-size", "14px");
+            $("#div_CVTTaxRsLbl").css("font-weight", "bold");
+            $("#div_DeficientCVTRsLbl").css("direction", "rtl");
+            $("#div_DeficientCVTRsLbl").css("font-size", "14px");
+            $("#div_DeficientCVTRsLbl").css("font-weight", "bold");
+            $("#div_DeficientRegistrationRsLbl").css("direction", "rtl");
+            $("#div_DeficientRegistrationRsLbl").css("font-size", "14px");
+            $("#div_DeficientRegistrationRsLbl").css("font-weight", "bold");
+            $("#div_TotalPayableAmountRslbl").css("direction", "rtl");
+            $("#div_TotalPayableAmountRslbl").css("font-size", "14px");
+            $("#div_TotalPayableAmountRslbl").css("font-weight", "bold");
+            $("#div_DeficientAmountRsLbl").css("direction", "rtl");
+            $("#div_DeficientAmountRsLbl").css("font-size", "14px");
+            $("#div_DeficientAmountRsLbl").css("font-weight", "bold");
+            $("#div_PenaltyRsLbl").css("direction", "rtl");
+            $("#div_PenaltyRsLbl").css("font-size", "14px");
+            $("#div_PenaltyRsLbl").css("font-weight", "bold");
+
+            $("#div_TotalDeficientAmountRsLbl").css("direction", "rtl");
+            $("#div_TotalDeficientAmountRsLbl").css("font-size", "14px");
+            $("#div_TotalDeficientAmountRsLbl").css("font-weight", "bold");
+            $("#div_TotalStampAmountRsLbl").css("direction", "rtl");
+            $("#div_TotalStampAmountRsLbl").css("font-size", "14px");
+            $("#div_TotalStampAmountRsLbl").css("font-weight", "bold");
+        }
+
+    });
+
+</script>
+
+        <div class="row">
+            <div class="col-md-12">
+                <button class="btn btn-primary pull-right" id="submitChallan" type="button" style="margin-left:10px" onclick="SubmitChallan()">Save</button>&nbsp;&nbsp;&nbsp;
+                <button class="btn btn-default pull-right" type="button" style="margin-left:10px" onclick="BackButtonToChallanForm()">Back</button>&nbsp;&nbsp;&nbsp;
+
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="waitModalForSave" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true" data-backdrop="static" data-keyboard="false" style="padding-top: 300px">
+        <div class="modal-dialog modal-vertical-centered">
+            <div class="modal-content">
+                <div class="modal-body">
+                    
+                    
+                    <h4 id="div_wait">Please wait while we are processing your request...</h4>
+                    <div class="progress progress-striped active">
+                        <div class="progress-bar" style="width: 100%;">
+                            <span class="sr-only">60% Complete</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+            </div>
+
+            
+
+            <div class="wrapper_footer_container">
+                <div id="footer" class="container">
+                    <div class="row" style="margin-bottom:15px !important;">
+                        <center>
+                            <div class="col-md-4  tab-pane">
+                                <div class="text-heading-footer" style="color:white !important; direction:rtl;">About Us</div>
+                                <a href="../ChallanFormView/AboutUsForeStamping" target=_blank style="color:white !important;">
+
+                                    <div class="tabs-footer col-lg-12" id="eStampingFooter">e-Stamping</div>
+                                </a>
+                                <a href="http://www.punjab.gov.pk/board_of_revenue" target=_blank style="color:white !important;">
+                                    <div class="tabs-footer col-lg-12" id="boardOfRevFooter">Board Of Revenue</div>
+                                </a>
+                                
+                            </div>
+                            <div class="col-md-4  tab-pane">
+                                
+								<!-- <div class="text-heading-footer">Help</div> -->
+                                <!-- <div class="tabs-footer col-lg-12" style="cursor:text;" id="userGuideFooter"><a href="/eStampCitizenPortal/ChallanFormView/UserGuid" target=_blank class="tabs-footer-without-bottom-border col-lg-12" style="color:white;">User Guide</a></div> -->
+                                <!-- <div class="tabs-footer col-lg-12" style="cursor:text;" id="judicialFooter"><a href="https://www.youtube.com/channel/UCo6oliHovpytlLyn0kBbolQ" target=_blank class="tabs-footer-without-bottom-border col-lg-12" style="color:white;">Helping Video(s)</a></div> -->
+                            
+							</div>
+                            <div class="col-md-4  tab-pane">
+                                <div class="text-heading-footer" id="div_contactUs">Contact Us</div>
+                                <div class="tabs-footer col-lg-12" style="cursor:text;pointer-events:none" id="emailFooter"><span>estamp-support@punjab-zameen.gov.pk</span></div>
+                                <a href="../ChallanFormView/HelpFAQs" target=_blank style="color:white !important;">
+                                    <div class="tabs-footer col-lg-12">FAQs</div>
+                                </a>
+                                
+                            </div>
+                        </center>
+
+                    </div>
+                    <div id="shadow-line"></div>
+                </div>
+            </div>
+
+
+            <div class="wrapper_footer_logo_container">
+                <div class="wrapper_logo_container_bottom">
+                    <br/>
+                    <div id="logo-footer" class="logo-footer container">
+                    </div>
+                    <div class="footer-copyrights-text">
+                        © Copyrights GOP<span style="margin-left:3px;" id="currentYear"></span> , All Rights Reserved
+                    </div><br />
+                </div>
+            </div>
+
+        </div>
+    <script src="/eStampCitizenPortal/scripts/materialjs/ripples.min.js"></script>
+    <script src="/eStampCitizenPortal/scripts/materialjs/material.min.js"></script>
+    <script src="/eStampCitizenPortal/Scripts/jquery.validate.min.js"></script>
+    <script src="/eStampCitizenPortal/Scripts/jquery.validate.unobtrusive.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            // This command is used to initialize some elements and make them work properly
+           // debugger;
+            $.material.init();
+            var today = new Date();
+            var year = today.getFullYear();
+            $('#currentYear').html(year);
+
+            var baseUrl = "../Scripts/kendo/messages/kendo.messages.";
+            var cultureInfo = 'en-US'
+            $.getScript(baseUrl + cultureInfo + ".min.js", function () {
+
+            });
+
+
+            if (document.cookie == "_culture=ur") {
+                $("#userGuideFooter").css("direction", "rtl");
+                $("#judicialFooter").css("direction", "rtl");
+                $("#div_contactUs").css("direction", "rtl");
+                $("#aboutUsFooter").css("direction", "rtl");
+                $("#helpLine").css("font-family", "MehrNastaliqWeb");
+                $("#helpLine").css("font-size", "14px");
+                $("#div_title").css("font-family", "MehrNastaliqWeb");
+                $("#div_title").css("font-weight", "normal");
+                $("#div_titleTop").css("font-family", "MehrNastaliqWeb");
+                $("#div_home").css("font-family", "MehrNastaliqWeb");
+                $("#div_nav").css("direction", "rtl");
+                $("#div_nav").css("padding-right", "15px");
+                $("#div_pageNo:contains(A-32)").css("direction", "ltr");
+                $("#Logo-Estamp-ur-1").show();
+                $("#Logo-Estamp-en-1").hide();
+
+                //$("#div_pageNo").css("direction", "ltr");
+
+
+                //$(".label").css("direction", "rtl");
+                //$(".boldLabel").css("direction", "rtl");
+
+
+            }
+            else {
+                $("#Logo-Estamp-ur-1").hide();
+                $("#Logo-Estamp-en-1").show();
+            }
+        });
+
+        function englishToUrdu_Layout() {
+            //sessionStorage["currentLanguage"] = "Urdu";
+           
+            $("#languageTranslateLink").html("English");
+            $("#helpLine").html('<b style="font-family:MehrNastaliqWeb;">ہیلپ لائن:</b> ' + ' <span>(042) 111-22-22-77 (Monday to Saturday 8:00 AM - 5:00 PM)</span>');
+            $('#eStampingFooter').html('<span style="font-family:MehrNastaliqWeb;">ای ۔اسٹامپ</span>');
+            $('#boardOfRevFooter').html('<span style="font-family:MehrNastaliqWeb;">بورڈ آف ریونیو</span>');
+            $("#userGuideFooter").html('<span style="font-family:MehrNastaliqWeb;">(</span><span style="font-family:MehrNastaliqWeb;"> صارف گائیڈ </span>(<a href="../UserGuide/e-Stamping_UserGuide_v1.0_(Citizen_Urdu).pdf" target=_blank class="tabs-footer-without-bottom-border col-lg-12" style="color:white; font-family:MehrNastaliqWeb;">اردو</a>,<a href="../UserGuide/e-Stamping_UserGuide_v1.0_(Citizen_Eng).pdf" target=_blank class="tabs-footer-without-bottom-border col-lg-12" style="color:white;font-family:MehrNastaliqWeb;">انگریزی</a>');
+            $('#judicialFooter').html('<span style="font-family:MehrNastaliqWeb;">(</span><span style="font-family:MehrNastaliqWeb;">جوڈیشل </span>(<a href="https://www.youtube.com/channel/UCo6oliHovpytlLyn0kBbolQ" target=_blank class="tabs-footer-without-bottom-border col-lg-12" style="color:white; font-family:MehrNastaliqWeb;">ویڈیو</a>,<a href="../UserGuide/e-Stamping_UserGuide_v1.0_(Judicial Citizen_Eng).pdf" target=_blank class="tabs-footer-without-bottom-border col-lg-12" style="color:white; font-family:MehrNastaliqWeb;"> گائیڈ </a>');
+            $('#emailFooter').html('<span>estamp-support@punjab-zameen.gov.pk</span> :<span style="font-family:MehrNastaliqWeb;"> ای میل</span>');
+
+        }
+        function urduToEnglish_Layout() {
+            //sessionStorage["currentLanguage"] = "English";
+           // debugger;
+            $("#languageTranslateLink").html('<span style="font-family:MehrNastaliqWeb;">اردو</span>');
+            $("#helpLine").html('HELP LINE: (042) 111-22-22-77 (Monday to Saturday 8:00 AM - 5:00 PM)');
+            $('#eStampingFooter').html('e-Stamping');
+            $('#boardOfRevFooter').html('Board Of Revenue');
+            $("#userGuideFooter").html('User Guide (<a href="../UserGuide/e-Stamping_UserGuide_v1.0_(Citizen_Urdu).pdf" target=_blank class="tabs-footer-without-bottom-border col-lg-12" style="color:white;">Urdu</a>,<a href="../UserGuide/e-Stamping_UserGuide_v1.0_(Citizen_Eng).pdf" target=_blank class="tabs-footer-without-bottom-border col-lg-12" style="color:white;">English</a>)');
+            $('#judicialFooter').html('Judicial (<a href="https://www.youtube.com/channel/UCo6oliHovpytlLyn0kBbolQ" target=_blank class="tabs-footer-without-bottom-border col-lg-12" style="color:white;">Video</a>,<a href="../UserGuide/e-Stamping_UserGuide_v1.0_(Judicial Citizen_Eng).pdf" target=_blank class="tabs-footer-without-bottom-border col-lg-12" style="color:white;">Guide</a>)');
+            $('#emailFooter').html('<span>estamp-support@punjab-zameen.gov.pk</span>');
+        }
+        function changeLanguage() {
+            //  kendo.ui.progress($("#grid"), true);
+            debugger;
+            var baseUrl = "../Scripts/kendo/messages/kendo.messages.";
+            var cultureInfo = 'en-US'
+            $.getScript(baseUrl + cultureInfo + ".min.js", function (data, textStatus, jqxhr) {
+              //  console.log(data); // Data returned
+                console.log(textStatus); // Success
+                console.log(jqxhr.status); // 200
+                console.log("Load was performed.");
+            });
+            if ('ur' == cultureInfo) {
+                $.getScript("../Scripts/kendo/kendo.all-ur.min.js", function (data, textStatus, jqxhr) {
+                    //  console.log(data); // Data returned
+                    console.log(textStatus); // Success
+                    console.log(jqxhr.status); // 200
+                    console.log("Load was performed.");
+                });
+                $.getScript("../Scripts/kendo/kendo.validator-ur.min.js", function (data, textStatus, jqxhr) {
+                    //  console.log(data); // Data returned
+                    console.log(textStatus); // Success
+                    console.log(jqxhr.status); // 200
+                    console.log("Load was performed.");
+                });
+            }
+            return true;
+        }
+
+    </script>
+
+</body>
+</html>
+

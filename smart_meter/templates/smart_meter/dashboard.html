@@ -2,7 +2,7 @@
      Goal: Presentable dashboard that follows meter_list design: compact cards, tidy headings,
            no duplicate titles, sticky table header, aligned buttons -->
 {% extends "base.html" %}
-{% block main_container_class %}container energy-dashboard-page{% endblock %}
+{% block main_container_class %}container-fluid energy-dashboard-page{% endblock %}
 {% block content %}
 {% include "smart_meter/meterbar.html" %}
 
@@ -255,7 +255,12 @@
             <!-- End: hidden on small (rendered under Begin) -->
             <th class="d-none d-sm-table-cell col-end"><span>End<br>(kWh)</span></th>
 
-            <th class="col-usage"><span>{% if energy_view == 'forward' %}Forward{% elif energy_view == 'reverse' %}Reverse{% else %}Forward / Reverse{% endif %}<br>(kWh)</span></th>
+            {% if current_role == 'check' %}
+              <th class="col-usage col-forward-usage"><span>Forward<br>(kWh)</span></th>
+              <th class="col-usage col-reverse-usage"><span>Reverse<br>(kWh)</span></th>
+            {% else %}
+              <th class="col-usage"><span>{% if energy_view == 'forward' %}Forward{% elif energy_view == 'reverse' %}Reverse{% else %}Forward / Reverse{% endif %}<br>(kWh)</span></th>
+            {% endif %}
 
             <!-- Rate: shows Usage Charges beneath on small -->
             <th class="col-rate"><span>Rate<br>({{ currency }}/kWh)</span></th>
@@ -351,21 +356,43 @@
               {% endif %}
             </td>
 
-            <td class="fw-semibold col-usage">
-              {% if not r.usage_valid %}
-                <span class="text-warning-emphasis" title="{{ r.continuity_reason }}">Withheld</span>
-                <div class="small text-muted">{{ r.continuity_reason }}</div>
-              {% elif report_type == 'monthly' %}
-                <a href="{{ r.daily_forward_url }}" title="Show daily forward readings for {{ r.period_label }}">F: {{ r.display_usage|floatformat:3 }}</a>
-                {% if r.reverse_usage is not None %}<div class="small"><a class="text-warning-emphasis" href="{{ r.daily_reverse_url }}" title="Show daily reverse readings for {{ r.period_label }}">R: {{ r.reverse_usage|floatformat:3 }}</a></div><div class="small text-muted">Net: {{ r.net_usage|floatformat:3 }}</div>{% endif %}
-              {% elif energy_view == 'reverse' %}
-                R: {{ r.reverse_usage|default_if_none:"-"|floatformat:3 }}
-              {% elif energy_view == 'forward' %}
-                F: {{ r.display_usage|floatformat:3 }}
-              {% else %}
-                F: {{ r.display_usage|floatformat:3 }}{% if r.reverse_usage is not None %}<div class="small text-warning-emphasis">R: {{ r.reverse_usage|floatformat:3 }}</div><div class="small text-muted">Net: {{ r.net_usage|floatformat:3 }}</div>{% endif %}
-              {% endif %}
-            </td>
+            {% if current_role == 'check' %}
+              <td class="fw-semibold col-usage col-forward-usage">
+                {% if not r.usage_valid %}
+                  <span class="text-warning-emphasis" title="{{ r.continuity_reason }}">Withheld</span>
+                  <div class="small text-muted">{{ r.continuity_reason }}</div>
+                {% elif report_type == 'monthly' %}
+                  <a href="{{ r.daily_forward_url }}" title="Show daily forward readings for {{ r.period_label }}">{{ r.display_usage|floatformat:3 }}</a>
+                {% else %}
+                  {{ r.display_usage|floatformat:3 }}
+                {% endif %}
+              </td>
+              <td class="fw-semibold col-usage col-reverse-usage text-warning-emphasis">
+                {% if not r.usage_valid %}
+                  —
+                {% elif r.reverse_usage is not None %}
+                  {% if report_type == 'monthly' %}<a class="text-warning-emphasis" href="{{ r.daily_reverse_url }}" title="Show daily reverse readings for {{ r.period_label }}">{{ r.reverse_usage|floatformat:3 }}</a>{% else %}{{ r.reverse_usage|floatformat:3 }}{% endif %}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            {% else %}
+              <td class="fw-semibold col-usage">
+                {% if not r.usage_valid %}
+                  <span class="text-warning-emphasis" title="{{ r.continuity_reason }}">Withheld</span>
+                  <div class="small text-muted">{{ r.continuity_reason }}</div>
+                {% elif report_type == 'monthly' %}
+                  <a href="{{ r.daily_forward_url }}" title="Show daily forward readings for {{ r.period_label }}">F: {{ r.display_usage|floatformat:3 }}</a>
+                  {% if r.reverse_usage is not None %}<div class="small"><a class="text-warning-emphasis" href="{{ r.daily_reverse_url }}" title="Show daily reverse readings for {{ r.period_label }}">R: {{ r.reverse_usage|floatformat:3 }}</a></div><div class="small text-muted">Net: {{ r.net_usage|floatformat:3 }}</div>{% endif %}
+                {% elif energy_view == 'reverse' %}
+                  R: {{ r.reverse_usage|default_if_none:"-"|floatformat:3 }}
+                {% elif energy_view == 'forward' %}
+                  F: {{ r.display_usage|floatformat:3 }}
+                {% else %}
+                  F: {{ r.display_usage|floatformat:3 }}{% if r.reverse_usage is not None %}<div class="small text-warning-emphasis">R: {{ r.reverse_usage|floatformat:3 }}</div><div class="small text-muted">Net: {{ r.net_usage|floatformat:3 }}</div>{% endif %}
+                {% endif %}
+              </td>
+            {% endif %}
 
             <!-- Rate (small also shows Usage Charges under it) -->
             <td class="col-rate">
@@ -418,8 +445,17 @@
             
 
             <!-- Usage (kWh) -->
-            
-            <td>{{ totals_disp.display_total_kwh }}</td>
+            {% if current_role == 'check' %}
+              <td>
+                <div>F: {{ totals_disp.total_kwh|floatformat:3 }}</div>
+              </td>
+              <td>
+                <div>R: {{ totals_disp.total_reverse_kwh|floatformat:3 }}</div>
+                <div class="small text-muted">Net: {{ totals_disp.total_net_kwh|floatformat:3 }}</div>
+              </td>
+            {% else %}
+              <td>{{ totals_disp.display_total_kwh }}</td>
+            {% endif %}
 
             <!-- Rate -->
             <td></td>
@@ -441,7 +477,7 @@
             <tr class="fw-bold d-sm-none">
               <td></td>
               <td class="text-end">Service</td>
-              <td>{{ totals_disp.display_total_kwh }}</td>   <!-- keep "total unit" under Unit col on small too -->
+              <td>{% if current_role == 'check' %}F {{ totals_disp.total_kwh|floatformat:3 }}<br><span class="small text-warning-emphasis">R {{ totals_disp.total_reverse_kwh|floatformat:3 }}</span><br><span class="small text-muted">Net {{ totals_disp.total_net_kwh|floatformat:3 }}</span>{% else %}{{ totals_disp.display_total_kwh }}{% endif %}</td>   <!-- keep total units under Unit col on small too -->
               <!-- skip hidden cols by spanning across them -->
               <td colspan="4"></td>
               <td class="text-end" colspan="2">Amount</td>
@@ -453,7 +489,7 @@
             <tr class="fw-bold d-sm-none">
               <td></td>
               <td class="text-end">Total</td>
-              <td>{{ totals_disp.display_total_kwh }}</td>
+              <td>{% if current_role == 'check' %}F {{ totals_disp.total_kwh|floatformat:3 }}<br><span class="small text-warning-emphasis">R {{ totals_disp.total_reverse_kwh|floatformat:3 }}</span><br><span class="small text-muted">Net {{ totals_disp.total_net_kwh|floatformat:3 }}</span>{% else %}{{ totals_disp.display_total_kwh }}{% endif %}</td>
               <td colspan="4"></td>
               <td class="text-end" colspan="2">Amount</td>
               <td></td>
@@ -465,7 +501,7 @@
             <tr class="fw-bold d-sm-none">
               <td></td>
               <td class="text-end">Totals</td>
-              <td>{{ totals_disp.display_total_kwh }}</td> <!-- under Unit -->
+              <td>{% if current_role == 'check' %}F {{ totals_disp.total_kwh|floatformat:3 }}<br><span class="small text-warning-emphasis">R {{ totals_disp.total_reverse_kwh|floatformat:3 }}</span><br><span class="small text-muted">Net {{ totals_disp.total_net_kwh|floatformat:3 }}</span>{% else %}{{ totals_disp.display_total_kwh }}{% endif %}</td> <!-- under Unit -->
               <td colspan="4"></td>
               <td class="text-end" colspan="2">Amount</td>
               <td></td>
@@ -937,12 +973,10 @@ document.addEventListener('DOMContentLoaded', function(){
   #meter-filter-form .meter-filter-col select,
   #meter-filter-form .meter-filter-col select + .select2-container { min-width:280px; width:100% !important; }
   #meter-filter-form .select2-container--bootstrap-5 .select2-selection--single { min-height:31px; height:31px; font-size:.875rem; }
-  /* Bootstrap's desktop container plus the requested 150px working width. */
+  /* Wider dashboard workspace so filters, table and meter navigation use the desktop width. */
+  .energy-dashboard-page { width: 100%; max-width: 1760px; margin-left: auto; margin-right: auto; }
   @media (min-width: 1200px) {
-    .energy-dashboard-page { max-width: 1290px; }
-  }
-  @media (min-width: 1400px) {
-    .energy-dashboard-page { max-width: 1470px; }
+    .energy-dashboard-page { padding-left: 16px; padding-right: 16px; }
   }
 
   /* ===============================
@@ -959,7 +993,7 @@ document.addEventListener('DOMContentLoaded', function(){
     --col-period-lg:       110px;
     --col-begin-lg:         70px;
     --col-end-lg:           70px;
-    --col-usage-lg:         96px;
+    --col-usage-lg:         82px;
     --col-rate-lg:          44px;
     --col-usage-amt-lg:     90px;
     --col-service-lg:       86px;
@@ -975,7 +1009,7 @@ document.addEventListener('DOMContentLoaded', function(){
     --col-period-sm:       120px; /* period is hidden on small in your markup */
     --col-begin-sm:         86px;
     --col-end-sm:           86px; /* end is hidden on small in your markup */
-    --col-usage-sm:         90px;
+    --col-usage-sm:         78px;
     --col-rate-sm:          85px;
     --col-usage-amt-sm:    110px;
     --col-service-sm:      110px; /* service is hidden on small in your markup */

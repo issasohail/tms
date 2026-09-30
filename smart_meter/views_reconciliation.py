@@ -8,12 +8,15 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
+from properties.models import Property
 from smart_meter.forms_reconciliation import (
     EnergySystemReassignmentForm,
     EnergySystemSetupForm,
@@ -34,6 +37,7 @@ from smart_meter.models import (
     Meter,
     MeterReading,
     MeterCheckGroup,
+    MeterCheckGroupMembership,
     UtilityBillCycle,
     UtilityBillPayment,
     UtilityConnection,
@@ -47,11 +51,14 @@ from smart_meter.services.reconciliation import (
     build_latest_linked_meter_snapshot,
     confirm_bill,
     finalize_bill,
+    build_iesco_history_rows,
     iesco_bill_history,
     iesco_display_bill,
+    latest_iesco_reading_period,
     log_audit,
     reopen_record,
 )
+from smart_meter.services.meter_availability import build_meter_availability_timeline
 from smart_meter.services.utility_bill_parser import UtilityBillParseError, parse_utility_bill
 
 
@@ -99,6 +106,155 @@ def _average_rate(amount, units):
     if amount is None or units is None or units == 0:
         return None
     return (Decimal(amount) / Decimal(units)).quantize(Decimal("0.01"))
+
+
+def _scoreboard_group_summary(group, start_date, end_date):
+    """Compact reconciliation summary used by the responsive combined table."""
+    system = getattr(group, "energy_system", None)
+    if system is None:
+        return None
+
+    from smart_meter.views_dashboard import _per_meter_series
+
+    detail_context = build_energy_system_detail_context(
+        system, start_date, end_date + timedelta(days=1)
+    )
+    report = detail_context["report"]
+    check2 = build_check2_breakdown(system, start_date, end_date + timedelta(days=1))
+
+    _labels, _datasets, output_rows, output_totals = _per_meter_series(
+        Meter.objects.filter(pk=group.check_meter_id), start_date, end_date, "daily"
+    )
+    valid_output_rows = [row for row in output_rows if row.get("usage_valid", True)]
+    audit_units = (
+        Decimal(str(output_totals["total_kwh"])) if valid_output_rows else None
+    )
+
+    input_meter_ids = list(
+        system.meter_links.filter(side=EnergySystemMeterLink.SIDE_INPUT)
+        .values_list("meter_id", flat=True)
+    )
+    if not input_meter_ids and system.grid_interface_meter_id:
+        input_meter_ids = [system.grid_interface_meter_id]
+
+    input_import_values = []
+    input_export_values = []
+    for input_meter in Meter.objects.filter(pk__in=input_meter_ids):
+        _l, _d, input_rows, input_totals = _per_meter_series(
+            Meter.objects.filter(pk=input_meter.pk), start_date, end_date, "daily"
+        )
+        if any(row.get("usage_valid", True) for row in input_rows):
+            input_import_values.append(Decimal(str(input_totals["total_kwh"])))
+        if any(
+            row.get("reverse_usage_valid", True) and row.get("reverse_usage") is not None
+            for row in input_rows
+        ):
+            input_export_values.append(
+                Decimal(str(input_totals["total_reverse_kwh"]))
+            )
+
+    input_import = (sum(input_import_values, Decimal("0")) if input_import_values else None)
+    input_export = (sum(input_export_values, Decimal("0")) if input_export_values else None)
+    input_net = (
+        input_import - input_export
+        if input_import is not None and input_export is not None
+        else None
+    )
+
+    iesco_import = report.get("iesco_import_kwh")
+    iesco_export = report.get("iesco_export_kwh")
+    iesco_import = Decimal(str(iesco_import)) if iesco_import is not None else None
+    iesco_export = Decimal(str(iesco_export)) if iesco_export is not None else None
+    iesco_net = (
+        iesco_import - iesco_export
+        if iesco_import is not None and iesco_export is not None
+        else None
+    )
+    iesco_amount = report.get("current_cycle_utility_cost")
+    iesco_amount = Decimal(str(iesco_amount)) if iesco_amount is not None else None
+    iesco_average_rate = _average_rate(iesco_amount, iesco_import)
+
+    billing_units = check2.get("billing_total_kwh")
+    billing_amount = check2.get("billing_total_amount")
+    billing_units = Decimal(str(billing_units)) if billing_units is not None else None
+    billing_amount = Decimal(str(billing_amount)) if billing_amount is not None else None
+    solar_units = None
+    has_separate_audit = group.check_meter_id not in set(input_meter_ids)
+    if has_separate_audit and audit_units is not None and input_import is not None:
+        if system.output_meter_includes_grid_export is True:
+            solar_units = audit_units - input_import
+        elif system.output_meter_includes_grid_export is False and input_export is not None:
+            solar_units = audit_units + input_export - input_import
+
+    # Operational variance requested for the combined scoreboard:
+    #   Unit variance = IESCO import + Solar - Billing units
+    # Missing solar data is treated as zero rather than withholding the row.
+    solar_for_variance = solar_units if solar_units is not None else Decimal("0")
+    unit_variance = (
+        iesco_import + solar_for_variance - billing_units
+        if iesco_import is not None and billing_units is not None
+        else None
+    )
+    # Positive money variance means tenant billing exceeded the IESCO bill.
+    amount_variance = (
+        billing_amount - iesco_amount
+        if billing_amount is not None and iesco_amount is not None
+        else None
+    )
+
+    required_meter_ids = {group.check_meter_id, *input_meter_ids}
+    required_meter_ids.update(
+        group.memberships.filter(
+            start_date__lte=end_date
+        ).filter(
+            Q(end_date__isnull=True) | Q(end_date__gte=start_date)
+        ).values_list("billing_meter_id", flat=True)
+    )
+    period_end_at = _aware_midnight(end_date + timedelta(days=1))
+    latest_by_meter = {}
+    for meter_id, ts in (
+        MeterReading.objects.filter(
+            meter_id__in=required_meter_ids, ts__lt=period_end_at
+        )
+        .order_by("meter_id", "-ts", "-id")
+        .values_list("meter_id", "ts")
+    ):
+        latest_by_meter.setdefault(meter_id, ts)
+    data_through = min(latest_by_meter.values()) if latest_by_meter and len(latest_by_meter) == len(required_meter_ids) else None
+    expected_end = period_end_at - timedelta(hours=1)
+    short_seconds = (expected_end - data_through).total_seconds() if data_through and data_through < expected_end else 0
+    if short_seconds >= 86400:
+        short_label = f"{int(short_seconds // 86400)}d {int((short_seconds % 86400) // 3600)}h short"
+        short_level = "bad"
+    elif short_seconds >= 3600:
+        short_label = f"{int(short_seconds // 3600)}h {int((short_seconds % 3600) // 60)}m short"
+        short_level = "warn"
+    else:
+        short_label = ""
+        short_level = "ok"
+
+    return {
+        "group": group,
+        "period_start": start_date,
+        "period_end": end_date,
+        "data_through": data_through,
+        "short_label": short_label,
+        "short_level": short_level,
+        "iesco_import": iesco_import,
+        "iesco_export": iesco_export,
+        "iesco_net": iesco_net,
+        "iesco_amount": iesco_amount,
+        "iesco_average_rate": iesco_average_rate,
+        "input_import": input_import,
+        "input_export": input_export,
+        "input_net": input_net,
+        "audit_units": audit_units,
+        "billing_units": billing_units,
+        "billing_amount": billing_amount,
+        "solar_units": solar_units,
+        "unit_variance": unit_variance,
+        "amount_variance": amount_variance,
+    }
 
 
 def _parse_period(request):
@@ -316,6 +472,14 @@ def energy_group_scoreboard(request, pk=None):
     start_date = today.replace(day=1)
     end_date = today
     quick_range = (request.GET.get("range") or "").strip().lower()
+    explicit_period = bool(
+        quick_range or request.GET.get("start") or request.GET.get("end")
+    )
+    if not explicit_period:
+        iesco_period_start, iesco_period_end = latest_iesco_reading_period(system)
+        if iesco_period_start and iesco_period_end:
+            start_date = iesco_period_start
+            end_date = iesco_period_end
     if quick_range == "this_month":
         start_date = today.replace(day=1)
     elif quick_range == "last_month":
@@ -347,6 +511,42 @@ def energy_group_scoreboard(request, pk=None):
             messages.warning(request, "Invalid date range; the current month is shown.")
     if end_date < start_date:
         start_date, end_date = end_date, start_date
+
+    timeline_window = (request.GET.get("timeline") or "24").strip().lower()
+    if timeline_window not in {"24", "48", "168", "this_month", "last_month", "custom"}:
+        timeline_window = "24"
+    timeline_now = timezone.now()
+    timeline_today = timezone.localdate()
+    timeline_start_value = (request.GET.get("timeline_start") or "").strip()
+    timeline_end_value = (request.GET.get("timeline_end") or "").strip()
+    if timeline_window == "this_month":
+        timeline_start_date = timeline_today.replace(day=1)
+        timeline_end_date = timeline_today
+        timeline_start_at = _aware_midnight(timeline_start_date)
+        timeline_end_at = timeline_now
+    elif timeline_window == "last_month":
+        timeline_end_date = timeline_today.replace(day=1) - timedelta(days=1)
+        timeline_start_date = timeline_end_date.replace(day=1)
+        timeline_start_at = _aware_midnight(timeline_start_date)
+        timeline_end_at = _aware_midnight(timeline_end_date + timedelta(days=1))
+    elif timeline_window == "custom":
+        try:
+            timeline_start_date = date.fromisoformat(timeline_start_value) if timeline_start_value else start_date
+            timeline_end_date = date.fromisoformat(timeline_end_value) if timeline_end_value else end_date
+        except ValueError:
+            timeline_start_date, timeline_end_date = start_date, end_date
+        if timeline_end_date < timeline_start_date:
+            timeline_start_date, timeline_end_date = timeline_end_date, timeline_start_date
+        timeline_start_at = _aware_midnight(timeline_start_date)
+        timeline_end_at = _aware_midnight(timeline_end_date + timedelta(days=1))
+        if timeline_start_at <= timeline_now < timeline_end_at:
+            timeline_end_at = timeline_now
+    else:
+        timeline_hours = int(timeline_window)
+        timeline_end_at = timeline_now
+        timeline_start_at = timeline_end_at - timedelta(hours=timeline_hours)
+        timeline_start_date = timezone.localtime(timeline_start_at).date()
+        timeline_end_date = timezone.localtime(timeline_end_at).date()
 
     detail_context = build_energy_system_detail_context(
         system, start_date, end_date + timedelta(days=1)
@@ -384,10 +584,47 @@ def energy_group_scoreboard(request, pk=None):
     check2 = build_check2_breakdown(system, start_date, end_date + timedelta(days=1))
     check2["status"] = _tolerance_status(check2["variance_kwh"], check2["output_total_kwh"])
 
-    other_groups = (
+    other_groups = list(
         MeterCheckGroup.objects.filter(energy_system__isnull=False, is_active=True)
-        .select_related("check_meter")
+        .select_related("check_meter", "energy_system")
         .order_by("name", "pk")
+    )
+    combined_rows = [
+        summary
+        for summary in (
+            _scoreboard_group_summary(item, start_date, end_date)
+            for item in other_groups
+        )
+        if summary is not None
+    ]
+    combined_total = {
+        "iesco_import": sum((row["iesco_import"] or Decimal("0") for row in combined_rows), Decimal("0")),
+        "iesco_export": sum((row["iesco_export"] or Decimal("0") for row in combined_rows), Decimal("0")),
+        "iesco_amount": sum((row["iesco_amount"] or Decimal("0") for row in combined_rows), Decimal("0")),
+        "input_import": sum((row["input_import"] or Decimal("0") for row in combined_rows), Decimal("0")),
+        "input_export": sum((row["input_export"] or Decimal("0") for row in combined_rows), Decimal("0")),
+        "audit_units": sum((row["audit_units"] or Decimal("0") for row in combined_rows), Decimal("0")),
+        "billing_units": sum((row["billing_units"] or Decimal("0") for row in combined_rows), Decimal("0")),
+        "billing_amount": sum((row["billing_amount"] or Decimal("0") for row in combined_rows), Decimal("0")),
+        "solar_units": sum((row["solar_units"] or Decimal("0") for row in combined_rows), Decimal("0")),
+    }
+    # Net totals are subtractive, never import+export.
+    combined_total["iesco_net"] = (
+        combined_total["iesco_import"] - combined_total["iesco_export"]
+    )
+    combined_total["input_net"] = (
+        combined_total["input_import"] - combined_total["input_export"]
+    )
+    combined_total["iesco_average_rate"] = _average_rate(
+        combined_total["iesco_amount"], combined_total["iesco_import"]
+    )
+    combined_total["unit_variance"] = (
+        combined_total["iesco_import"]
+        + combined_total["solar_units"]
+        - combined_total["billing_units"]
+    )
+    combined_total["amount_variance"] = (
+        combined_total["billing_amount"] - combined_total["iesco_amount"]
     )
 
     memberships = list(
@@ -560,8 +797,13 @@ def energy_group_scoreboard(request, pk=None):
         "iesco_amount": report.get("current_cycle_utility_cost"),
         "billing_amount": report.get("tenant_energy_revenue"),
         "solar_income": report.get("operating_energy_margin"),
-        "audit_import_kwh": output_period_total if has_separate_audit_meter else None,
-        "audit_net_kwh": output_period_total if has_separate_audit_meter else None,
+        "income_difference": (
+            Decimal(str(report.get("tenant_energy_revenue"))) - Decimal(str(report.get("current_cycle_utility_cost")))
+            if report.get("tenant_energy_revenue") is not None and report.get("current_cycle_utility_cost") is not None
+            else None
+        ),
+        "audit_import_kwh": output_period_total,
+        "audit_net_kwh": output_period_total,
         "billing_import_kwh": check2["billing_total_kwh"],
         "billing_export_kwh": check2["billing_total_reverse_kwh"],
         "billing_net_kwh": (
@@ -586,7 +828,7 @@ def energy_group_scoreboard(request, pk=None):
         ),
         "audit_average_rate": _average_rate(
             check2["billing_total_amount"], output_period_total
-        ) if has_separate_audit_meter else None,
+        ),
         "input_average_rate": _average_rate(
             report.get("current_cycle_utility_cost"), input_import_kwh
         ),
@@ -618,13 +860,157 @@ def energy_group_scoreboard(request, pk=None):
         system.inverter_statements.order_by("-period_end", "-id")[:6]
     )
 
+    # Timeline meters come from the selected Energy Group(s). Property and
+    # Unit/Meter filters only narrow that group-derived pool.
+    timeline_group_options = list(
+        MeterCheckGroup.objects.filter(
+            energy_system__isnull=False,
+            is_active=True,
+        )
+        .select_related("check_meter", "energy_system", "energy_system__grid_interface_meter")
+        .order_by("name", "pk")
+    )
+    timeline_group_value = (request.GET.get("timeline_group") or str(group.pk)).strip()
+    if timeline_group_value == "all":
+        selected_timeline_groups = timeline_group_options
+    else:
+        try:
+            selected_group_id = int(timeline_group_value)
+        except (TypeError, ValueError):
+            selected_group_id = group.pk
+            timeline_group_value = str(group.pk)
+        selected_timeline_groups = [
+            item for item in timeline_group_options if item.pk == selected_group_id
+        ] or [group]
+
+    timeline_include_inactive = request.GET.get("timeline_inactive") == "1"
+
+    timeline_meter_ids = set()
+    timeline_role_map = {}
+    for timeline_group in selected_timeline_groups:
+        timeline_meter_ids.add(timeline_group.check_meter_id)
+        timeline_role_map.setdefault(timeline_group.check_meter_id, set()).add("Audit")
+        if timeline_include_inactive:
+            for meter_id in timeline_group.audit_assignments.values_list(
+                "meter_id", flat=True
+            ):
+                timeline_meter_ids.add(meter_id)
+                timeline_role_map.setdefault(meter_id, set()).add("Audit")
+
+        energy_system = getattr(timeline_group, "energy_system", None)
+        if energy_system is not None:
+            linked_input_ids = list(
+                energy_system.meter_links.filter(
+                    side=EnergySystemMeterLink.SIDE_INPUT
+                ).values_list("meter_id", flat=True)
+            )
+            if not linked_input_ids and energy_system.grid_interface_meter_id:
+                linked_input_ids = [energy_system.grid_interface_meter_id]
+            for meter_id in linked_input_ids:
+                timeline_meter_ids.add(meter_id)
+                timeline_role_map.setdefault(meter_id, set()).add("Input")
+            if timeline_include_inactive:
+                for assignment in energy_system.meter_assignments.select_related("meter"):
+                    timeline_meter_ids.add(assignment.meter_id)
+                    role_label = (
+                        "Input"
+                        if assignment.role == "grid_interface"
+                        else "Audit"
+                    )
+                    timeline_role_map.setdefault(assignment.meter_id, set()).add(role_label)
+
+        for meter_id in timeline_group.memberships.values_list(
+            "billing_meter_id", flat=True
+        ):
+            timeline_meter_ids.add(meter_id)
+            timeline_role_map.setdefault(meter_id, set()).add("Billing")
+
+    timeline_meter_qs = (
+        Meter.objects.filter(
+            pk__in=timeline_meter_ids,
+            meter_type=Meter.METER_TYPE_ELECTRIC,
+        )
+        .select_related("unit", "unit__property")
+        .order_by("unit__property__property_name", "unit__unit_number", "meter_number")
+    )
+    if not timeline_include_inactive:
+        timeline_meter_qs = timeline_meter_qs.filter(is_active=True)
+    timeline_group_meter_pool = list(timeline_meter_qs)
+
+    property_ids = {
+        meter.unit.property_id
+        for meter in timeline_group_meter_pool
+        if meter.unit_id and meter.unit and meter.unit.property_id
+    }
+    timeline_property_options = list(
+        Property.objects.filter(pk__in=property_ids).order_by("property_name", "pk")
+    )
+
+    try:
+        selected_timeline_property_id = int(
+            request.GET.get("timeline_property") or 0
+        ) or None
+    except (TypeError, ValueError):
+        selected_timeline_property_id = None
+    if (
+        selected_timeline_property_id
+        and selected_timeline_property_id not in property_ids
+    ):
+        selected_timeline_property_id = None
+
+    timeline_meter_options = [
+        meter
+        for meter in timeline_group_meter_pool
+        if (
+            not selected_timeline_property_id
+            or (
+                meter.unit_id
+                and meter.unit
+                and meter.unit.property_id == selected_timeline_property_id
+            )
+        )
+    ]
+
+    try:
+        selected_timeline_meter_id = int(request.GET.get("timeline_meter") or 0) or None
+    except (TypeError, ValueError):
+        selected_timeline_meter_id = None
+    valid_timeline_meter_ids = {meter.pk for meter in timeline_meter_options}
+    if (
+        selected_timeline_meter_id
+        and selected_timeline_meter_id not in valid_timeline_meter_ids
+    ):
+        selected_timeline_meter_id = None
+
+    timeline_meters = (
+        [meter for meter in timeline_meter_options if meter.pk == selected_timeline_meter_id]
+        if selected_timeline_meter_id
+        else timeline_meter_options
+    )
+    timeline_roles = {
+        meter.pk: sorted(timeline_role_map.get(meter.pk) or {meter.get_meter_role_display()})
+        for meter in timeline_meters
+    }
+
+    meter_availability = build_meter_availability_timeline(
+        timeline_meters,
+        timeline_start_at,
+        timeline_end_at,
+        role_labels=timeline_roles,
+    )
+    timeline_group_heading = (
+        "All Energy Groups"
+        if timeline_group_value == "all"
+        else (selected_timeline_groups[0].name if selected_timeline_groups else group.name)
+    )
+
     context = {
         "group": group,
         "system": system,
         "report": report,
         "check1": check1,
         "check2": check2,
-        "bill_history": iesco_bill_history(system),
+        "bill_history": build_iesco_history_rows(system, limit=12),
         "iesco_display": iesco_display,
         "inverter_breakdown": inverter_breakdown,
         "audit_summary": audit_summary,
@@ -636,6 +1022,18 @@ def energy_group_scoreboard(request, pk=None):
         "output_period_total": output_period_total,
         "output_billing_difference": output_billing_difference,
         "inverter_statements": inverter_statements,
+        "meter_availability": meter_availability,
+        "timeline_window": timeline_window,
+        "timeline_start_date": timeline_start_date,
+        "timeline_end_date": timeline_end_date,
+        "timeline_group_options": timeline_group_options,
+        "timeline_group_value": timeline_group_value,
+        "timeline_group_heading": timeline_group_heading,
+        "timeline_property_options": timeline_property_options,
+        "timeline_meter_options": timeline_meter_options,
+        "selected_timeline_property_id": selected_timeline_property_id,
+        "selected_timeline_meter_id": selected_timeline_meter_id,
+        "timeline_include_inactive": timeline_include_inactive,
         "start_date": start_date,
         "end_date": end_date,
         "quick_range": quick_range,
@@ -650,10 +1048,73 @@ def energy_group_scoreboard(request, pk=None):
             max(today.year + 1, start_date.year) + 1,
         ),
         "other_groups": other_groups,
+        "combined_rows": combined_rows,
+        "combined_total": combined_total,
         "grid_forward_total": detail_context["grid_forward_total"],
         "grid_reverse_total": detail_context["grid_reverse_total"],
     }
     return render(request, "smart_meter/energy_group_scoreboard.html", context)
+
+
+@require_POST
+@login_required
+@permission_required("smart_meter.change_metercheckgroup", raise_exception=True)
+def energy_group_assign_billing_meter(request, pk, meter_id):
+    """Assign a discovered billing meter to the selected Energy Group."""
+    group = get_object_or_404(MeterCheckGroup, pk=pk)
+    meter = get_object_or_404(
+        Meter.objects.select_related("unit"),
+        pk=meter_id,
+        meter_role=Meter.METER_ROLE_BILLING,
+        meter_type=Meter.METER_TYPE_ELECTRIC,
+    )
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    ok = True
+    message = ""
+
+    if group.memberships.filter(billing_meter=meter).exists():
+        message = f"Meter {meter.meter_number} is already assigned to this Energy Group."
+        messages.info(request, message)
+    else:
+        first_reading = meter.readings.order_by("ts", "id").first()
+        last_reading = meter.readings.order_by("-ts", "-id").first()
+        if first_reading is None or last_reading is None:
+            ok = False
+            message = "This meter has no readings from which to infer an assignment period."
+            messages.error(request, message)
+        else:
+            start_date = timezone.localtime(first_reading.ts).date()
+            end_date = None if meter.is_active else timezone.localtime(last_reading.ts).date()
+            membership = MeterCheckGroupMembership(
+                group=group,
+                billing_meter=meter,
+                start_date=start_date,
+                end_date=end_date,
+                is_active=end_date is None,
+                assigned_automatically=False,
+                notes="Assigned from Energy Reconciliation Check 2.",
+            )
+            try:
+                membership.save()
+                message = f"Meter {meter.meter_number} assigned to {group.name}."
+                messages.success(request, message)
+            except ValidationError as exc:
+                ok = False
+                message = f"Could not assign meter: {exc}"
+                messages.error(request, message)
+
+    target = reverse("smart_meter:energy_group_scoreboard", kwargs={"pk": group.pk})
+    selected_start = (request.POST.get("start") or "").strip()
+    selected_end = (request.POST.get("end") or "").strip()
+    if selected_start and selected_end:
+        target = f"{target}?start={selected_start}&end={selected_end}"
+
+    if is_ajax:
+        return JsonResponse(
+            {"ok": ok, "message": message, "redirect": target},
+            status=200 if ok else 400,
+        )
+    return redirect(target)
 
 
 @require_GET
@@ -954,6 +1415,38 @@ def energy_group_inverter_detail(request, pk, inverter_id):
     return JsonResponse({"html": html})
 
 
+@require_GET
+@login_required
+@permission_required("smart_meter.view_energysystem", raise_exception=True)
+def energy_group_solar_detail(request, pk):
+    """AJAX summary of all inverter readings behind the Solar total."""
+    group = get_object_or_404(MeterCheckGroup, pk=pk)
+    system = group.energy_system
+    today = timezone.localdate()
+    try:
+        start_date = date.fromisoformat(request.GET.get("start") or today.replace(day=1).isoformat())
+        end_date = date.fromisoformat(request.GET.get("end") or today.isoformat())
+    except ValueError:
+        return JsonResponse({"error": "Invalid date range."}, status=400)
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    breakdown = build_inverter_breakdown(system, start_date, end_date)
+    html = render_to_string(
+        "smart_meter/partials/scoreboard_solar_detail.html",
+        {
+            "group": group,
+            "system": system,
+            "rows": breakdown["rows"],
+            "total_kwh": breakdown["total_kwh"],
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+        request=request,
+    )
+    return JsonResponse({"html": html})
+
+
 @login_required
 @permission_required("smart_meter.add_inverterreading", raise_exception=True)
 def inverter_reading_add(request, system_id):
@@ -1021,7 +1514,10 @@ def energy_system_reassign_meter(request, pk):
 def inverter_statement_add(request, system_id):
     system = get_object_or_404(EnergySystem, pk=system_id)
     inverters = list(system.inverters.filter(is_active=True).order_by("name", "pk"))
-    selected_date = timezone.localdate()
+    try:
+        selected_date = date.fromisoformat(request.GET.get("reading_date") or "")
+    except ValueError:
+        selected_date = timezone.localdate()
     errors = []
     if request.method == "POST":
         try:
@@ -1062,12 +1558,38 @@ def inverter_statement_add(request, system_id):
                 request,
                 f"Saved {len(entries)} inverter reading{'s' if len(entries) != 1 else ''} for {selected_date:%d %b %Y}.",
             )
+            if request.headers.get("x-requested-with") == "XMLHttpRequest":
+                return JsonResponse({
+                    "ok": True,
+                    "saved": [inverter.pk for inverter, _value in entries],
+                    "reading_date": selected_date.isoformat(),
+                })
             return redirect("smart_meter:energy_group_scoreboard", pk=system.output_group_id)
+
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({"ok": False, "errors": errors}, status=400)
+
+    recorded_at = timezone.make_aware(
+        datetime.combine(selected_date, time(hour=12)), timezone.get_current_timezone()
+    )
+    existing_readings = {
+        reading.inverter_id: reading.reading_kwh
+        for reading in InverterReading.objects.filter(
+            inverter__in=inverters, recorded_at=recorded_at
+        )
+    }
+    previous_readings = {}
+    for inverter in inverters:
+        previous_readings[inverter.pk] = inverter.readings.filter(
+            recorded_at__lt=recorded_at
+        ).order_by("-recorded_at", "-id").first()
 
     return render(request, "smart_meter/inverter_reading_bulk_form.html", {
         "system": system,
         "inverters": inverters,
         "selected_date": selected_date,
+        "existing_readings": existing_readings,
+        "previous_readings": previous_readings,
         "errors": errors,
     })
 

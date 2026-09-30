@@ -8,7 +8,11 @@
       <span class="text-muted ms-2">{{ tenant_names|join:", "|default:"Vacant" }}</span>
       <span class="text-muted ms-2">{{ start_date|date:"d M Y" }} to {{ end_date|date:"d M Y" }}</span>
     </div>
-    <a class="btn btn-sm btn-outline-primary" href="{{ full_dashboard_url }}">Open full dashboard</a>
+    <div class="d-flex gap-1 no-export">
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-export-jpg-target="scoreboardMeterDetail"><i class="fas fa-file-image me-1"></i>JPG</button>
+      <button type="button" class="btn btn-sm btn-outline-success" data-export-excel-target="scoreboardMeterDetail"><i class="fas fa-file-excel me-1"></i>Excel</button>
+      <a class="btn btn-sm btn-outline-primary" href="{{ full_dashboard_url }}">Open full dashboard</a>
+    </div>
   </div>
   <div class="px-2 pt-2 small text-muted">{% if is_input_detail %}Input meter{% else %}Audit meter{% endif %}: {{ meter.name|default:meter.meter_number }} ({{ meter.meter_number }}){% if not is_input_detail %}; audit reference: {{ audit_meter.name|default:audit_meter.meter_number }} ({{ audit_meter.meter_number }}){% endif %}</div>
   <div class="ld-scroll-x">

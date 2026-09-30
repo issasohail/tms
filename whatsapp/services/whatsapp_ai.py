@@ -2148,6 +2148,17 @@ class WhatsAppAIAssistant:
             "send tenant registration link",
         } or (lowered == "12" and not conversation.pending_state):
             return self._create_registration_link_for_staff(message_log, conversation, staff_user)
+        if lowered in {
+            "offline meter",
+            "offline meters",
+            "show offline meter",
+            "show offline meters",
+            "view offline meter",
+            "view offline meters",
+            "meter offline",
+            "meters offline",
+        } or (lowered == "13" and not conversation.pending_state):
+            return self._staff_offline_meters(message_log, staff_user)
         if lowered in {"upload property photo", "upload property photos", "property photo", "property photos"}:
             return self._start_staff_upload_target_search(
                 conversation,
@@ -2250,6 +2261,8 @@ class WhatsAppAIAssistant:
             return self._staff_pending_requests(message_log, staff_user)
         if any(phrase in lowered for phrase in ("open maintenance", "maintenance summary", "pending maintenance")):
             return self._staff_maintenance_summary(message_log, staff_user)
+        if any(phrase in lowered for phrase in ("offline meter", "meters offline", "meter offline")):
+            return self._staff_offline_meters(message_log, staff_user)
         if any(phrase in lowered for phrase in ("missing meter", "missing reading")):
             return self._staff_missing_meter_readings(message_log, staff_user)
         if any(phrase in lowered for phrase in ("vacant", "available unit", "empty unit")):
@@ -3827,6 +3840,83 @@ class WhatsAppAIAssistant:
         lines = ["Missing Meter Readings"]
         for index, installation in enumerate(missing[:10], start=1):
             lines.append(f"{index}. {installation.unit.property.property_name} / {installation.unit.unit_number} - Meter {installation.meter.meter_number}")
+        return "\n".join(lines)
+
+    def _staff_offline_meters(self, message_log, staff_user):
+        from smart_meter.models import LiveReading, Meter
+        from smart_meter.status import resolve_meter_online_statuses
+        from smart_meter.utils.display import attach_active_meter_counts
+
+        meters = (
+            Meter.objects.filter(
+                is_active=True,
+                meter_type=Meter.METER_TYPE_ELECTRIC,
+            )
+            .select_related("unit", "unit__property")
+            .order_by(
+                "unit__property__property_name",
+                "unit__unit_number",
+                "meter_number",
+            )
+        )
+        if not staff_user.is_superuser:
+            meters = meters.filter(
+                unit__property__in=self._staff_accessible_properties(staff_user)
+            )
+
+        meters = attach_active_meter_counts(meters)
+        live_by_meter = {
+            reading.meter_id: reading
+            for reading in LiveReading.objects.filter(
+                meter_id__in=[meter.pk for meter in meters]
+            )
+        }
+        status_by_meter = resolve_meter_online_statuses(
+            (meter, live_by_meter.get(meter.pk)) for meter in meters
+        )
+        offline = [
+            meter for meter in meters
+            if not status_by_meter[meter.pk]["is_online"]
+        ]
+
+        log_staff_action(
+            staff_user,
+            message_log.phone_number,
+            "offline_meters_requested",
+            "allowed",
+            offline_count=len(offline),
+        )
+        if not offline:
+            return "All active electricity meters in properties you can access are online."
+
+        lines = [f"Offline Meters ({len(offline)})"]
+        for index, meter in enumerate(offline, start=1):
+            live = live_by_meter.get(meter.pk)
+            property_name = (
+                meter.unit.property.property_name
+                if meter.unit_id and meter.unit and meter.unit.property_id
+                else "No property"
+            )
+            location = meter.display_location_name
+            reading_value = None
+            if live is not None:
+                reading_value = (
+                    live.forward_active_energy_kwh
+                    if live.forward_active_energy_kwh is not None
+                    else live.total_energy
+                )
+            if live is not None and live.ts:
+                seen = timezone.localtime(live.ts).strftime("%d %b %H:%M")
+            else:
+                seen = "never"
+            if reading_value is None:
+                reading_text = f"last seen {seen}"
+            else:
+                reading_text = f"{reading_value:.3f} kWh @ {seen}"
+            lines.append(
+                f"{index}. {property_name} / {location} | "
+                f"{meter.meter_number} | {reading_text}"
+            )
         return "\n".join(lines)
 
     def _staff_payment_verification(self, message_log, staff_user):

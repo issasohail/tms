@@ -8,10 +8,10 @@
 {% include "smart_meter/meterbar.html" %}
 <style>
   /* Layout tuning: change these four values to resize the page and top cards. */
-  .ld-scoreboard { max-width: 1800px; margin: 0 auto; }
-  .top-checks .check1-col { --w: 450px; }
-  .top-checks .check2-col { --w: 620px; }
-  .top-checks .meter-detail-col { --w: 650px; }
+  .ld-scoreboard { max-width: 1760px; margin: 0 auto; }
+  .top-checks .check1-col { --w: 430px; }
+  .top-checks .check2-col { --w: 650px; }
+  .top-checks .meter-detail-col { --w: 640px; }
   .ld-scoreboard .card { border-radius: .65rem; }
 
   /* fixed-width boxed cards that wrap to fewer columns when the row is narrower than
@@ -68,8 +68,165 @@
   .ld-kv-row .v .unit { font-weight: 400; color: #6c757d; font-size: .68rem; }
   .ld-positive { color: #198754; font-weight: 700; }
   .ld-negative { color: #dc3545; font-weight: 700; }
+
+  .availability-card { border: 2px solid #1f2937; border-radius: .65rem; overflow: hidden; }
+  .availability-card .card-header { border-bottom: 2px solid #1f2937; background: #f8f9fb; }
+  .availability-row { display: grid; grid-template-columns: minmax(190px, 250px) 135px 1fr 108px; gap: 10px; align-items: center; padding: 8px 10px; border-bottom: 1px solid #e9ecef; }
+  .availability-row:last-child { border-bottom: 0; }
+  .availability-meter { min-width: 0; }
+  .availability-meter .meter-name { font-weight: 700; font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .availability-meter .meter-meta { color: #6c757d; font-size: .66rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .availability-track-wrap { min-width: 420px; }
+  .availability-track { position: relative; height: 22px; border: 1px solid #adb5bd; border-radius: 5px; background: #dff3e5; overflow: visible; }
+  .availability-track.unknown { background: #e9ecef; }
+  .availability-offline { position: absolute; top: 0; bottom: 0; background: #dc3545; min-width: 3px; border-left: 1px solid rgba(0,0,0,.15); border-right: 1px solid rgba(0,0,0,.15); }
+  .availability-offline.ongoing { background: #dc3545; }
+  .availability-axis { display: flex; justify-content: space-between; gap: 5px; color: #6c757d; font-size: .58rem; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .availability-state { text-align: right; font-size: .68rem; }
+  .availability-state .latest { display: block; margin-top: 2px; color: #6c757d; font-size: .6rem; white-space: nowrap; }
+  .availability-serial { font-size:.72rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .availability-serial a { font-weight:700; }
+  .availability-events { grid-column: 3 / 5; font-size: .64rem; color: #495057; display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: -3px; }
+  .availability-event { background: #fff3f4; border: 1px solid #f1c7cc; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
+  .availability-legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: .66rem; color: #6c757d; }
+  .availability-legend .swatch { display: inline-block; width: 18px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: 1px; }
+  .availability-legend .online { background: #dff3e5; border: 1px solid #8ac79c; }
+  .availability-legend .offline { background: #dc3545; }
+  .availability-legend .ongoing { background: #dc3545; }
+  .availability-legend .unknown { background: #e9ecef; border: 1px solid #adb5bd; }
+  .timeline-click-marker { position:absolute; top:0; bottom:0; width:2px; background:#111827; z-index:4; pointer-events:none; }
+  .timeline-click-label { position:absolute; top:-31px; left:50%; transform:translateX(-50%); background:#111827; color:#fff; padding:3px 6px; border-radius:4px; font-size:.62rem; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.25); }
+  .availability-card.timeline-expanded { position:fixed; inset:8px; z-index:1095; margin:0 !important; background:#fff; overflow:auto; box-shadow:0 0 0 9999px rgba(0,0,0,.55); }
+  .availability-card.timeline-expanded .availability-row { grid-template-columns:minmax(220px, 300px) 150px 1fr 120px; }
+  body.timeline-expanded-open { overflow:hidden; }
+  .select2-container { min-width: 0; }
+  .select2-container .select2-selection--single { min-height:31px; font-size:.78rem; }
+  .timeline-filter-row > div { min-width:0; }
+  .timeline-filter-group { flex:0 1 315px; }
+  .timeline-filter-property { flex:0 1 210px; }
+  .timeline-filter-meter { flex:0 1 235px; min-width:190px !important; }
+  .timeline-filter-period { flex:0 1 auto; }
+  .timeline-filter-date { flex:0 0 145px; }
+  .timeline-period-bar { display:flex; flex-wrap:wrap; gap:0; }
+  .timeline-period-bar .btn { border-radius:0; white-space:nowrap; }
+  .timeline-period-bar .btn:first-child { border-radius:.25rem 0 0 .25rem; }
+  .timeline-period-bar .btn:last-child { border-radius:0 .25rem .25rem 0; }
+  .no-export.export-hidden { display:none !important; }
+
+  .combined-card { border:1px solid #d8dee8; box-shadow:0 1px 4px rgba(15,23,42,.06); }
+  .combined-card .card-header { background:#fff; border-bottom:1px solid #e5e7eb; }
+  /* Combined desktop column widths: edit these px values to tune each column independently. */
+  .combined-desktop-table {
+    --cg-group: 190px;
+    --cg-serial: 105px;
+    --cg-iesco-import: 72px;
+    --cg-iesco-export: 72px;
+    --cg-iesco-net: 72px;
+    --cg-iesco-amount: 82px;
+    --cg-iesco-rate: 72px;
+    --cg-input-import: 78px;
+    --cg-input-export: 78px;
+    --cg-audit: 76px;
+    --cg-billing-units: 78px;
+    --cg-billing-amount: 86px;
+    --cg-solar: 76px;
+    --cg-unit-var: 82px;
+    --cg-amount-var: 88px;
+    --cg-actions: 58px;
+    table-layout:fixed;
+    min-width:1450px;
+    font-size:.70rem;
+  }
+  .combined-desktop-table col.cg-group { width:var(--cg-group); }
+  .combined-desktop-table col.cg-serial { width:var(--cg-serial); }
+  .combined-desktop-table col.cg-iesco-import { width:var(--cg-iesco-import); }
+  .combined-desktop-table col.cg-iesco-export { width:var(--cg-iesco-export); }
+  .combined-desktop-table col.cg-iesco-net { width:var(--cg-iesco-net); }
+  .combined-desktop-table col.cg-iesco-amount { width:var(--cg-iesco-amount); }
+  .combined-desktop-table col.cg-iesco-rate { width:var(--cg-iesco-rate); }
+  .combined-desktop-table col.cg-input-import { width:var(--cg-input-import); }
+  .combined-desktop-table col.cg-input-export { width:var(--cg-input-export); }
+  .combined-desktop-table col.cg-audit { width:var(--cg-audit); }
+  .combined-desktop-table col.cg-billing-units { width:var(--cg-billing-units); }
+  .combined-desktop-table col.cg-billing-amount { width:var(--cg-billing-amount); }
+  .combined-desktop-table col.cg-solar { width:var(--cg-solar); }
+  .combined-desktop-table col.cg-unit-var { width:var(--cg-unit-var); }
+  .combined-desktop-table col.cg-amount-var { width:var(--cg-amount-var); }
+  .combined-desktop-table col.cg-actions { width:var(--cg-actions); }
+  .combined-desktop-table th { white-space:normal; line-height:1.1; text-align:center; vertical-align:middle; padding:5px 3px; }
+  .combined-desktop-table td { text-align:center; vertical-align:middle; padding:5px 3px; }
+  .combined-desktop-table .group-cell { text-align:left; }
+  .combined-group-name {
+    display:-webkit-box;
+    -webkit-box-orient:vertical;
+    -webkit-line-clamp:2;
+    overflow:hidden;
+    line-height:1.18;
+    max-height:2.36em;
+  }
+  .combined-serial { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .combined-card.is-exporting .combined-desktop { display:block !important; }
+  .combined-card.is-exporting .combined-responsive { display:none !important; }
+  .combined-card.is-exporting .combined-desktop-table { min-width:1320px; font-size:.62rem; }
+  .combined-card.is-exporting .combined-desktop-table th,
+  .combined-card.is-exporting .combined-desktop-table td { padding:3px 2px; }
+  .combined-desktop-table .selected-group-row { background:#e8f4ff; }
+  .combined-desktop-table .combined-total-row { background:#f1f5f9; font-weight:700; }
+  .combined-link { font-weight:700; text-decoration:underline; cursor:pointer; }
+  .combined-detail-link { color:#000; text-decoration:none; cursor:pointer; }
+  .combined-detail-link:hover, .combined-detail-link:focus { color:#000; text-decoration:none; }
+  .data-through { display:block; color:#64748b; font-size:.62rem; line-height:1.15; margin-top:2px; }
+  .data-short-warn { color:#d97706; font-weight:700; }
+  .data-short-bad { color:#dc2626; font-weight:700; }
+  .variance-missing { color:#dc2626; font-weight:800; }
+  .variance-over { color:#15803d; font-weight:800; }
+  .combined-responsive { display:none; }
+  .combined-group-card { border:1px solid #dce3ec; border-radius:7px; margin-bottom:8px; overflow:hidden; background:#fff; }
+  .combined-group-card.is-selected { border-color:#66aaf7; box-shadow:0 0 0 1px #66aaf7 inset; }
+  .combined-group-head { display:flex; justify-content:space-between; gap:8px; padding:8px 10px 5px; background:#fbfdff; }
+  .combined-group-period { font-size:.63rem; color:#64748b; white-space:nowrap; }
+  .combined-metrics { display:grid; gap:1px; background:#e8edf3; border-top:1px solid #e8edf3; }
+  .combined-metric { background:#fff; padding:6px 7px; min-width:0; }
+  .combined-metric .label { color:#35506f; font-weight:700; font-size:.62rem; }
+  .combined-metric .value { font-size:.69rem; line-height:1.25; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .income-difference { margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:10px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:6px; padding:7px 9px; font-size:.78rem; }
+  .income-difference .amount { font-size:1rem; font-weight:900; }
+  .responsive-collapsible .card-header { cursor:pointer; }
+
+  @media (min-width: 768px) and (max-width: 1199.98px) {
+    .top-checks .check1-col .card-body { display:none; }
+    .top-checks .check1-col .card.is-open .card-body { display:block; }
+    .top-checks .check1-col .card-header { cursor:pointer; }
+    .top-checks .check1-col .card-header::after { content:'⌄'; margin-left:auto; font-size:1rem; }
+  }
+
+  @media (max-width: 1199.98px) {
+    .ld-scoreboard { max-width:none; width:100%; }
+    .combined-desktop { display:none; }
+    .combined-responsive { display:block; }
+    .combined-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .top-checks .box-col { flex:1 1 100%; width:100%; --w:100%; }
+    .top-checks .check2-col .card-body, .top-checks .meter-detail-col .card-body { display:none; }
+    .top-checks .check2-col .card.is-open .card-body, .top-checks .meter-detail-col .card.is-open .card-body { display:block; }
+    .top-checks .check2-col .card-header::after, .top-checks .meter-detail-col .card-header::after { content:'⌄'; margin-left:auto; font-size:1rem; }
+  }
+
   @media (max-width: 767.98px) {
+    .ld-scoreboard { padding-left:2px; padding-right:2px; }
+    .combined-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .combined-group-head { align-items:flex-start; }
+    .combined-group-period { white-space:normal; text-align:right; }
+    .top-checks .check1-col .card-body { display:block; }
+    .ld-mini-table { font-size:.68rem; }
+    .ld-mini-table th, .ld-mini-table td { padding:4px 3px; }
+    .availability-card .card-body, #iescoHistoryExportArea .ld-scroll-x { display:none; }
+    .availability-card.is-open .card-body, #iescoHistoryExportArea.is-open .ld-scroll-x { display:block; }
+    .availability-card .card-header, #iescoHistoryExportArea .card-header { cursor:pointer; }
     .ld-scoreboard .box-col { flex: 1 1 100%; width: 100%; min-width: 0; }
+    .availability-row { grid-template-columns: 170px 125px minmax(420px, 1fr) 96px; }
+    .availability-scroll { overflow-x: auto; }
+    .timeline-filter-group, .timeline-filter-property, .timeline-filter-meter,
+    .timeline-filter-period, .timeline-filter-date { flex:1 1 100%; min-width:0 !important; }
   }
 </style>
 
@@ -77,7 +234,7 @@
 
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div>
-      <h2 class="mb-0">{{ group.name }} — Solar Scoreboard</h2>
+      <h2 class="mb-0">Energy Reconciliation</h2>
       <small class="text-muted">
         Audit/output meter <a href="{% url 'smart_meter:meter_detail' group.check_meter_id %}">{{ group.check_meter.meter_number }}</a>
         {% if system.grid_interface_meter_id %} · Grid interface <a href="{% url 'smart_meter:meter_detail' system.grid_interface_meter_id %}">{{ system.grid_interface_meter.meter_number }}</a>{% endif %}
@@ -131,27 +288,147 @@
     </div>
   </form>
 
-  {% if report.withheld_reasons %}
-    <div class="card border-warning mb-3" id="scoreboardDiagnostics">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center gap-2 bg-warning-subtle">
-        <strong class="small">Calculation notes ({{ report.withheld_reasons|length }})</strong>
-        <button class="btn btn-sm btn-outline-dark" type="button" data-bs-toggle="collapse" data-bs-target="#scoreboardDiagnosticBody" aria-expanded="true" aria-controls="scoreboardDiagnosticBody">Show / Hide</button>
+  <div class="card combined-card mb-3" id="combinedEnergyGroups">
+    <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <strong>Combined Energy Groups</strong>
+        <span class="text-muted small ms-2">Period: {{ start_date|date:"d M Y" }} – {{ end_date|date:"d M Y" }}</span>
       </div>
-      <div class="collapse show" id="scoreboardDiagnosticBody">
-        <div class="card-body py-2 small"><ul class="mb-0 ps-3">{% for reason in report.withheld_reasons %}<li class="mb-1">{{ reason }}</li>{% endfor %}</ul></div>
+      <div class="d-flex gap-1 no-export">
+        <button type="button" class="btn btn-sm btn-success" data-export-excel-target="combinedEnergyGroups"><i class="fas fa-file-excel me-1"></i>Excel</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-export-jpg-target="combinedEnergyGroups"><i class="fas fa-file-image me-1"></i>JPG</button>
       </div>
     </div>
-  {% endif %}
+
+    <div class="combined-desktop ld-scroll-x">
+      <table class="ld-mini-table combined-desktop-table mb-0">
+        <colgroup>
+          <col class="cg-group"><col class="cg-serial">
+          <col class="cg-iesco-import"><col class="cg-iesco-export"><col class="cg-iesco-net"><col class="cg-iesco-amount"><col class="cg-iesco-rate">
+          <col class="cg-input-import"><col class="cg-input-export">
+          <col class="cg-audit"><col class="cg-billing-units"><col class="cg-billing-amount"><col class="cg-solar">
+          <col class="cg-unit-var"><col class="cg-amount-var"><col class="cg-actions">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Energy<br>Group</th><th>Serial<br>#</th>
+            <th>IESCO<br>Import</th><th>IESCO<br>Export</th><th>IESCO<br>Net</th><th>IESCO<br>Amount</th><th>IESCO<br>Avg Rate</th>
+            <th>Input<br>Import</th><th>Input<br>Export</th>
+            <th>Audit<br>Units</th><th>Billing<br>Units</th><th>Billing<br>Amount</th><th>Solar<br>Units</th>
+            <th>
+              Unit<br>Variance
+              <button type="button" class="btn btn-link btn-sm p-0 ms-1 variance-info"
+                      aria-label="Unit variance formula"
+                      data-bs-toggle="popover" data-bs-trigger="hover focus"
+                      data-bs-placement="top"
+                      data-bs-content="Unit variance = IESCO import + Solar units − Billing units. If no Solar reading is available, Solar is treated as 0. Positive means source units exceed billed units; negative means billed units are higher.">
+                <i class="fas fa-circle-info"></i>
+              </button>
+            </th>
+            <th>
+              Amount<br>Variance
+              <button type="button" class="btn btn-link btn-sm p-0 ms-1 variance-info"
+                      aria-label="Amount variance formula"
+                      data-bs-toggle="popover" data-bs-trigger="hover focus"
+                      data-bs-placement="top"
+                      data-bs-content="Amount variance = Billing amount − IESCO amount. Positive means billing revenue is above the IESCO bill; negative means it is below the IESCO bill.">
+                <i class="fas fa-circle-info"></i>
+              </button>
+            </th>
+            <th class="no-export">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in combined_rows %}
+          <tr class="{% if row.group.pk == group.pk %}selected-group-row{% endif %}" data-combined-group-row="{{ row.group.pk }}" data-input-import-url="{% if row.group.energy_system.grid_interface_meter_id %}{% url 'smart_meter:energy_group_meter_detail' row.group.pk row.group.energy_system.grid_interface_meter_id %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=import{% endif %}" data-input-export-url="{% if row.group.energy_system.grid_interface_meter_id %}{% url 'smart_meter:energy_group_meter_detail' row.group.pk row.group.energy_system.grid_interface_meter_id %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=export{% endif %}" data-audit-url="{% url 'smart_meter:energy_group_meter_detail' row.group.pk row.group.check_meter_id %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&direction=import" data-solar-url="{% url 'smart_meter:energy_group_solar_detail' row.group.pk %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-solar-fallback="{% url 'smart_meter:inverter_statement_add' row.group.energy_system.pk %}">
+            <td class="group-cell">
+              <a class="combined-link js-combined-group combined-group-name" href="{% url 'smart_meter:energy_group_scoreboard' row.group.pk %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.group.name }}</a>
+              {% if row.short_label %}
+              <span class="data-through {% if row.short_level == 'bad' %}data-short-bad{% else %}data-short-warn{% endif %}">
+                <i class="fas fa-triangle-exclamation"></i>
+                {% if row.data_through %}Last required reading {{ row.data_through|date:"d M H:i" }} · {% endif %}{{ row.short_label }}
+              </span>
+              {% endif %}
+            </td>
+            <td class="combined-serial"><a href="{% url 'smart_meter:meter_detail' row.group.check_meter_id %}">{{ row.group.check_meter.meter_number }}</a></td>
+            <td>{{ row.iesco_import|default_if_none:"—"|floatformat:3 }}</td>
+            <td>{{ row.iesco_export|default_if_none:"—"|floatformat:3 }}</td>
+            <td><strong>{{ row.iesco_net|default_if_none:"—"|floatformat:3 }}</strong></td>
+            <td><strong>Rs {{ row.iesco_amount|default_if_none:"—"|floatformat:0|intcomma }}</strong></td>
+            <td><strong>{% if row.iesco_average_rate != None %}Rs {{ row.iesco_average_rate|floatformat:2 }}{% else %}—{% endif %}</strong></td>
+            <td>{{ row.input_import|default_if_none:"—"|floatformat:3 }}</td>
+            <td>{{ row.input_export|default_if_none:"—"|floatformat:3 }}</td>
+            <td>{{ row.audit_units|default_if_none:"—"|floatformat:3 }}</td>
+            <td>{{ row.billing_units|default_if_none:"—"|floatformat:3 }}</td>
+            <td><strong>Rs {{ row.billing_amount|default_if_none:"—"|floatformat:0|intcomma }}</strong></td>
+            <td><a class="js-meter-dashboard" href="{% url 'smart_meter:inverter_statement_add' row.group.energy_system.pk %}" data-detail-url="{% url 'smart_meter:energy_group_solar_detail' row.group.pk %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.solar_units|default_if_none:"0"|floatformat:3 }}</a></td>
+            <td class="{% if row.unit_variance > 0 %}variance-missing{% elif row.unit_variance < 0 %}variance-over{% endif %}">{{ row.unit_variance|default_if_none:"—"|floatformat:3 }}</td>
+            <td class="{% if row.amount_variance > 0 %}variance-over{% elif row.amount_variance < 0 %}variance-missing{% endif %}">Rs {{ row.amount_variance|default_if_none:"—"|floatformat:0|intcomma }}</td>
+            <td class="no-export"><a class="btn btn-sm btn-primary js-combined-group" href="{% url 'smart_meter:energy_group_scoreboard' row.group.pk %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">View</a></td>
+          </tr>
+          {% endfor %}
+          <tr class="combined-total-row">
+            <td class="group-cell">COMBINED</td><td>—</td>
+            <td>—</td><td>—</td><td>{{ combined_total.iesco_net|floatformat:3 }}</td>
+            <td>Rs {{ combined_total.iesco_amount|floatformat:0|intcomma }}</td><td>—</td>
+            <td>—</td><td>—</td>
+            <td>{{ combined_total.audit_units|floatformat:3 }}</td><td>{{ combined_total.billing_units|floatformat:3 }}</td><td>Rs {{ combined_total.billing_amount|floatformat:0|intcomma }}</td>
+            <td>{{ combined_total.solar_units|floatformat:3 }}</td>
+            <td class="{% if combined_total.unit_variance > 0 %}variance-missing{% elif combined_total.unit_variance < 0 %}variance-over{% endif %}">{{ combined_total.unit_variance|floatformat:3 }}</td>
+            <td class="{% if combined_total.amount_variance > 0 %}variance-over{% elif combined_total.amount_variance < 0 %}variance-missing{% endif %}">Rs {{ combined_total.amount_variance|floatformat:0|intcomma }}</td>
+            <td class="no-export">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="combined-responsive card-body p-2">
+      {% for row in combined_rows %}
+      <div class="combined-group-card {% if row.group.pk == group.pk %}is-selected{% endif %}" data-combined-group-row="{{ row.group.pk }}">
+        <div class="combined-group-head">
+          <div>
+            <a class="combined-link js-combined-group combined-group-name" href="{% url 'smart_meter:energy_group_scoreboard' row.group.pk %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.group.name }}</a>
+            <div class="combined-group-period">Serial # {{ row.group.check_meter.meter_number }}</div>
+            {% if row.short_label %}<span class="data-through {% if row.short_level == 'bad' %}data-short-bad{% else %}data-short-warn{% endif %}"><i class="fas fa-triangle-exclamation"></i> {% if row.data_through %}{{ row.data_through|date:"d M H:i" }} · {% endif %}{{ row.short_label }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="combined-metrics">
+          <div class="combined-metric"><div class="label">IESCO</div><div class="value">{{ row.iesco_import|default_if_none:"—"|floatformat:3 }} / {{ row.iesco_export|default_if_none:"—"|floatformat:3 }}<br><strong>Net {{ row.iesco_net|default_if_none:"—"|floatformat:3 }}</strong> | Rs {{ row.iesco_amount|default_if_none:"—"|floatformat:0|intcomma }}</div></div>
+          <div class="combined-metric"><div class="label">IESCO Avg Rate</div><div class="value"><strong>{% if row.iesco_average_rate != None %}Rs {{ row.iesco_average_rate|floatformat:2 }}{% else %}—{% endif %}</strong></div></div>
+          <div class="combined-metric"><div class="label">Input Import / Export</div><div class="value">{{ row.input_import|default_if_none:"—"|floatformat:3 }} / {{ row.input_export|default_if_none:"—"|floatformat:3 }}</div></div>
+          <div class="combined-metric"><div class="label">Audit</div><div class="value">{{ row.audit_units|default_if_none:"—"|floatformat:3 }}</div></div>
+          <div class="combined-metric"><div class="label">Billing</div><div class="value">{{ row.billing_units|default_if_none:"—"|floatformat:3 }}<br><strong>Rs {{ row.billing_amount|default_if_none:"—"|floatformat:0|intcomma }}</strong></div></div>
+          <div class="combined-metric"><div class="label">Solar</div><div class="value"><a class="js-meter-dashboard" href="{% url 'smart_meter:inverter_statement_add' row.group.energy_system.pk %}" data-detail-url="{% url 'smart_meter:energy_group_solar_detail' row.group.pk %}?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.solar_units|default_if_none:"0"|floatformat:3 }}</a></div></div>
+          <div class="combined-metric"><div class="label">Unit Variance</div><div class="value {% if row.unit_variance > 0 %}variance-missing{% elif row.unit_variance < 0 %}variance-over{% endif %}">{{ row.unit_variance|default_if_none:"—"|floatformat:3 }}</div></div>
+          <div class="combined-metric"><div class="label">Amount Variance</div><div class="value {% if row.amount_variance > 0 %}variance-over{% elif row.amount_variance < 0 %}variance-missing{% endif %}">Rs {{ row.amount_variance|default_if_none:"—"|floatformat:0|intcomma }}</div></div>
+        </div>
+      </div>
+      {% endfor %}
+      <div class="combined-group-card">
+        <div class="combined-group-head"><strong>Combined</strong></div>
+        <div class="combined-metrics">
+          <div class="combined-metric"><div class="label">IESCO Net / Amount</div><div class="value"><strong>{{ combined_total.iesco_net|floatformat:3 }}</strong><br>Rs {{ combined_total.iesco_amount|floatformat:0|intcomma }}</div></div>
+          <div class="combined-metric"><div class="label">Audit</div><div class="value">{{ combined_total.audit_units|floatformat:3 }}</div></div>
+          <div class="combined-metric"><div class="label">Billing</div><div class="value">{{ combined_total.billing_units|floatformat:3 }}<br><strong>Rs {{ combined_total.billing_amount|floatformat:0|intcomma }}</strong></div></div>
+          <div class="combined-metric"><div class="label">Solar</div><div class="value">{{ combined_total.solar_units|floatformat:3 }}</div></div>
+          <div class="combined-metric"><div class="label">Unit Variance</div><div class="value {% if combined_total.unit_variance > 0 %}variance-missing{% elif combined_total.unit_variance < 0 %}variance-over{% endif %}">{{ combined_total.unit_variance|floatformat:3 }}</div></div>
+          <div class="combined-metric"><div class="label">Amount Variance</div><div class="value {% if combined_total.amount_variance > 0 %}variance-over{% elif combined_total.amount_variance < 0 %}variance-missing{% endif %}">Rs {{ combined_total.amount_variance|floatformat:0|intcomma }}</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <h5 class="mb-2">Checks</h5>
   <div class="box-row top-checks">
 
     <!-- COMBINED CHECKS 1 AND 3 -->
     <div class="box-col check1-col">
-      <div class="card">
+      <div class="card" id="check1ExportArea">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <span>Check 1 — IESCO, Audit, Billing, Solar &amp; Income</span>
-          <div class="d-flex gap-1">
+          <span>Check 1 — {{ group.name }}</span>
+          <div class="d-flex gap-1 no-export">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-export-jpg-target="check1ExportArea"><i class="fas fa-file-image me-1"></i>JPG</button>
+            <button type="button" class="btn btn-sm btn-outline-success" data-export-excel-target="check1ExportArea"><i class="fas fa-file-excel me-1"></i>Excel</button>
             {% if iesco_display.bill %}<a class="btn btn-sm btn-info" href="{% url 'invoices:iesco_bill_pitc' iesco_display.bill.reference_no %}" target="_blank" rel="noopener">Current bill</a>{% endif %}
             <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:inverter_statement_add' system.pk %}">Add inverter readings</a>
           </div>
@@ -185,7 +462,13 @@
                 <td>Import</td>
                 <td class="num">{{ check1.iesco_import_kwh|default_if_none:"—"|floatformat:3 }}</td>
                 <td class="num">{% if input_meter_rows %}<a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ input_meter_rows.0.meter.unit_id|default:'' }}&meter={{ input_meter_rows.0.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ input_meter_rows.0.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=import">{{ check1.input_import_kwh|default_if_none:"—"|floatformat:3 }}</a>{% else %}—{% endif %}</td>
-                <td class="num">{{ check1.audit_import_kwh|default_if_none:"—"|floatformat:3 }}</td>
+                <td class="num">
+                  <a class="js-meter-dashboard"
+                     href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}"
+                     data-detail-url="{{ request.path }}meter/{{ group.check_meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&direction=import">
+                    {{ check1.audit_import_kwh|default_if_none:"—"|floatformat:3 }}
+                  </a>
+                </td>
                 <td class="num">{{ check1.billing_import_kwh|default_if_none:"—"|floatformat:3 }}</td>
                 <td class="num">—</td>
               </tr>
@@ -208,8 +491,8 @@
               <tr>
                 <td>Avg rate</td>
                 <td class="num">Rs {{ check1.iesco_average_rate|default_if_none:"—"|floatformat:2 }}</td>
-                <td class="num">Rs {{ check1.input_average_rate|default_if_none:"—"|floatformat:2 }}</td>
-                <td class="num">Rs {{ check1.audit_average_rate|default_if_none:"—"|floatformat:2 }}</td>
+                <td class="num">—</td>
+                <td class="num">—</td>
                 <td class="num">Rs {{ check1.billing_average_rate|default_if_none:"—"|floatformat:2 }}</td>
                 <td class="num">—</td>
               </tr>
@@ -219,21 +502,27 @@
                 <td class="num">—</td>
                 <td class="num">—</td>
                 <td class="num">Rs {{ check1.billing_amount|default_if_none:"—"|floatformat:0|intcomma }}</td>
-                <td class="num"><b>Rs {{ check1.solar_income|default_if_none:"—"|floatformat:0|intcomma }}</b></td>
+                <td class="num">—</td>
               </tr>
             </tbody>
           </table>
-          <div class="ld-formula-note">Input net = <code>Import − Export</code>. Solar units = <code>{% if system.output_meter_includes_grid_export %}Audit output − Input import{% else %}Audit output + Input export − Input import{% endif %}</code>. Amount shows the IESCO bill, tenant electricity revenue, and resulting Solar Income.{% if not has_separate_audit_meter %} No separate audit meter is assigned, so Solar units cannot be calculated for this group.{% endif %}</div>
+          <div class="income-difference">
+            <span><strong>Income difference</strong> <span class="text-muted">(Billing − IESCO)</span></span>
+            <span class="amount {% if check1.income_difference >= 0 %}ld-positive{% else %}ld-negative{% endif %}">Rs {{ check1.income_difference|default_if_none:"—"|floatformat:0|intcomma }}</span>
+          </div>
+          <div class="ld-formula-note">Input net = <code>Import − Export</code>. Solar units = <code>{% if system.output_meter_includes_grid_export %}Audit output − Input import{% else %}Audit output + Input export − Input import{% endif %}</code>. IESCO Avg Rate is utility amount ÷ IESCO import. Billing Avg Rate is billing amount ÷ billing units.{% if not has_separate_audit_meter %} No separate audit meter is assigned, so Solar units cannot be calculated for this group.{% endif %}</div>
         </div>
       </div>
     </div>
 
     <!-- CHECK 2 -->
     <div class="box-col check2-col">
-      <div class="card">
+      <div class="card" id="check2ExportArea">
         <div class="card-header d-flex justify-content-between align-items-center">
           <span>Check 2 — Output Distribution <small class="text-muted">({{ start_date|date:"d M Y" }} – {{ end_date|date:"d M Y" }})</small></span>
-          <div class="d-flex align-items-center gap-1">
+          <div class="d-flex align-items-center gap-1 no-export">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-export-jpg-target="check2ExportArea"><i class="fas fa-file-image me-1"></i>JPG</button>
+          <button type="button" class="btn btn-sm btn-outline-success" data-export-excel-target="check2ExportArea"><i class="fas fa-file-excel me-1"></i>Excel</button>
           <a class="btn btn-sm btn-outline-primary" href="{% url 'smart_meter:meter_check_group_edit' group.pk %}#billing-coverage">Add meters</a>
           {% if check2.status == 'ok' %}
             <span class="ld-badge ld-badge-ok"><span class="ld-dot" style="background:#198754;"></span> OK</span>
@@ -245,7 +534,7 @@
           </div>
         </div>
         <div class="card-body">
-          <div class="check2-section-title"><span>Input Meter</span><span>Avg rate: Rs {{ check1.input_average_rate|default_if_none:"—"|floatformat:2 }}</span></div>
+          <div class="check2-section-title"><span>Input Meter</span></div>
           <div class="ld-scroll-x">
             <table class="ld-mini-table check2-table">
               <thead><tr><th>#</th><th>Meter / direction</th><th>Serial</th><th class="num">Begin</th><th class="num">End</th><th class="num">Units</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead>
@@ -253,7 +542,7 @@
                 {% for row in input_meter_rows %}
                 <tr style="background:#eefaf4;">
                   <td>{{ forloop.counter }}.1</td><td><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ row.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=import"><b>Import — {{ row.meter.name|default:"Input meter" }}</b></a></td><td><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.meter.meter_number }}</a></td>
-                  <td class="num">{{ row.begin|default_if_none:"—"|floatformat:3 }}</td><td class="num">{{ row.end|default_if_none:"—"|floatformat:3 }}</td><td class="num"><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ row.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=import"><b>{{ row.import_kwh|default_if_none:"—"|floatformat:3 }}</b></a></td><td class="num">{{ check1.input_average_rate|default_if_none:"—"|floatformat:2 }}</td><td class="num">—</td>
+                  <td class="num">{{ row.begin|default_if_none:"—"|floatformat:3 }}</td><td class="num">{{ row.end|default_if_none:"—"|floatformat:3 }}</td><td class="num"><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ row.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=import"><b>{{ row.import_kwh|default_if_none:"—"|floatformat:3 }}</b></a></td><td class="num">—</td><td class="num">—</td>
                 </tr>
                 <tr style="background:#f6fcf9;">
                   <td>{{ forloop.counter }}.2</td><td><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ row.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&source=input&direction=export"><b>Export — {{ row.meter.name|default:"Input meter" }}</b></a></td><td><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.meter.meter_number }}</a></td>
@@ -263,8 +552,7 @@
               </tbody>
             </table>
           </div>
-          {% if has_separate_audit_meter %}
-          <div class="check2-section-title"><span>Audit Meter</span><span>Avg rate: Rs {{ check1.audit_average_rate|default_if_none:"—"|floatformat:2 }}</span></div>
+          <div class="check2-section-title"><span>Audit Meter</span></div>
           <div class="ld-scroll-x">
             <table class="ld-mini-table check2-table">
               <thead><tr><th>#</th><th>Unit / meter name</th><th>Serial</th><th class="num">Begin</th><th class="num">End</th><th class="num">Units</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead>
@@ -273,14 +561,14 @@
                   <td>1</td><td><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ group.check_meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&direction=import"><b>Import — {{ group.check_meter.name|default:"Audit meter" }}</b></a></td><td><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ group.check_meter.meter_number }}</a></td>
                   <td class="num">{{ audit_summary.begin|default_if_none:"—"|floatformat:3 }}</td><td class="num">{{ audit_summary.end|default_if_none:"—"|floatformat:3 }}</td>
                   <td class="num"><a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ group.check_meter.unit_id|default:'' }}&meter={{ group.check_meter.pk }}&role=check&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ group.check_meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}&direction=import"><b>{{ check1.audit_import_kwh|default_if_none:"—"|floatformat:3 }}</b></a></td>
-                  <td class="num">{{ check1.audit_average_rate|default_if_none:"—"|floatformat:2 }}</td>
+                  <td class="num">—</td>
                   <td class="num">—</td>
                 </tr>
               </tbody>
             </table>
           </div>
-          {% else %}
-          <div class="ld-formula-note mt-2">No separate audit meter is assigned; the input meter is shown only once.</div>
+          {% if not has_separate_audit_meter %}
+          <div class="ld-formula-note mt-1">This Audit Meter is also assigned on the input side. It remains visible here so Input, Audit, Billing and Inverter are always shown separately.</div>
           {% endif %}
           <div class="check2-section-title"><span>Billing Meters</span><span>Avg rate: Rs {{ check1.billing_average_rate|default_if_none:"—"|floatformat:2 }}</span></div>
           <div class="ld-scroll-x">
@@ -293,7 +581,17 @@
                   <td>
                     {% if row.unit %}<a class="js-meter-dashboard" href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.unit.pk }}&meter={{ row.meter.pk }}&role=billing&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}" data-detail-url="{{ request.path }}meter/{{ row.meter.pk }}/?start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.display_name }}</a>{% else %}—{% endif %}
                   </td>
-                  <td><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.unit.pk }}&meter={{ row.meter.pk }}&role=billing&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.meter.meter_number }}</a>{% if row.is_replacement %}<span class="d-block text-danger" style="font-size:.62rem;">not assigned</span>{% endif %}</td>
+                  <td>
+                    <a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.unit.pk }}&meter={{ row.meter.pk }}&role=billing&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ row.meter.meter_number }}</a>
+                    {% if row.is_replacement %}
+                    <form method="post" action="{% url 'smart_meter:energy_group_assign_billing_meter' group.pk row.meter.pk %}" class="d-inline no-export js-assign-billing-meter">
+                      {% csrf_token %}
+                      <input type="hidden" name="start" value="{{ start_date|date:'Y-m-d' }}">
+                      <input type="hidden" name="end" value="{{ end_date|date:'Y-m-d' }}">
+                      <button type="submit" class="btn btn-link p-0 d-block text-danger text-decoration-underline" style="font-size:.62rem;line-height:1.05;" title="Assign this meter to {{ group.name }}" onclick="return confirm('Assign meter {{ row.meter.meter_number }} to this Energy Group?');">not assigned — click to assign</button>
+                    </form>
+                    {% endif %}
+                  </td>
                   <td class="num">{{ row.begin|default_if_none:"—"|floatformat:3 }}</td>
                   <td class="num">{{ row.end|default_if_none:"—"|floatformat:3 }}</td>
                   <td class="num"{% if not row.valid %} style="color:#b45309;"{% endif %}>{{ row.kwh|default_if_none:"—"|floatformat:3 }}</td>
@@ -301,7 +599,7 @@
                   <td class="num" title="Energy Dashboard usage × configured meter rate">Rs {{ row.amount|floatformat:0|intcomma }}{% if row.unit_rate == 0 %}<span class="d-block text-danger" style="font-size:.6rem;">rate Rs 0</span>{% endif %}</td>
                 </tr>
                 {% endfor %}
-                {% if unit_group.rows|length > 1 %}<tr class="total-row" style="background:#f8fafc;">
+                {% if unit_group.show_total %}<tr class="total-row" style="background:#f8fafc;">
                   <td></td><td colspan="2"><a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ unit_group.unit.pk }}&role=billing&report_type=daily&start={{ start_date|date:'Y-m-d' }}&end={{ end_date|date:'Y-m-d' }}">{{ unit_group.unit.unit_number }} total</a></td><td></td><td></td>
                   <td class="num">{{ unit_group.total_kwh|floatformat:3 }}</td><td class="num">{{ unit_group.average_rate|default_if_none:"—"|floatformat:2 }}</td><td class="num">Rs {{ unit_group.total_amount|floatformat:0|intcomma }}</td>
                 </tr>{% endif %}{% endfor %}
@@ -312,8 +610,18 @@
                   <td class="num">Rs {{ check2.billing_total_amount|floatformat:0|intcomma }}</td>
                 </tr>
                 <tr class="variance-row">
-                  <td></td><td colspan="2">Audit − billing variance</td><td></td><td></td>
-                  <td class="num {% if check2.variance_kwh > 0 %}ld-positive{% elif check2.variance_kwh < 0 %}ld-negative{% endif %}">{{ check2.variance_kwh|default_if_none:"—"|floatformat:3 }}</td><td></td><td></td>
+                  <td></td>
+                  <td colspan="2">
+                    Audit − billing variance
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-1"
+                            aria-label="Audit billing variance formula"
+                            data-bs-toggle="popover" data-bs-trigger="hover focus"
+                            data-bs-placement="top"
+                            data-bs-content="Audit − billing variance = energy measured by the Audit meter minus the total units measured by all Billing meters for the same period. A positive result means some Audit energy is not represented in Billing meters; a negative result means Billing meters total more than the Audit meter.">
+                      <i class="fas fa-circle-info"></i>
+                    </button>
+                  </td><td></td><td></td>
+                  <td class="num {% if check2.variance_kwh > 0 %}ld-negative{% elif check2.variance_kwh < 0 %}ld-positive{% endif %}">{{ check2.variance_kwh|default_if_none:"—"|floatformat:3 }}</td><td></td><td></td>
                 </tr>
               </tbody>
             </table>
@@ -333,55 +641,219 @@
 
   </div>
 
-  <h5 class="mb-2 mt-4">Detail</h5>
-  <div class="box-row">
-
-    <div class="box-col" style="--w:380px;">
-      <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <span>Legacy inverter statements</span>
-          <a class="btn btn-sm btn-primary" href="{% url 'smart_meter:inverter_statement_add' system.pk %}">Add</a>
-        </div>
-        <div class="ld-scroll-x">
-          <table class="ld-mini-table">
-            <thead><tr><th>Period</th><th>PV start → end</th><th class="num">Generation</th><th>Status</th></tr></thead>
-            <tbody>
-              {% for s in inverter_statements %}
-              <tr>
-                <td>{{ s.period_start }} – {{ s.period_end }}</td>
-                <td class="num">{{ s.pv_reading_start_kwh|floatformat:0 }} → {{ s.pv_reading_end_kwh|floatformat:0 }}</td>
-                <td class="num">{{ s.pv_generation_kwh|floatformat:3 }} kWh</td>
-                <td>{% if s.confirmed_at %}<span class="ld-badge ld-badge-ok">Confirmed</span>{% else %}<span class="ld-badge ld-badge-warn">Unconfirmed</span>{% endif %}</td>
-              </tr>
-              {% empty %}<tr><td colspan="4" class="text-muted">No inverter statements recorded yet.</td></tr>{% endfor %}
-            </tbody>
-          </table>
-        </div>
+  <div class="card availability-card mb-3" id="timelineExportArea">
+    <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <strong>Meter Online / Offline Timeline — {{ timeline_group_heading }}</strong>
+        <span class="text-muted small">— all matching group meters, evaluated independently</span>
+      </div>
+      <div class="d-flex flex-wrap gap-1 no-export">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-export-jpg-target="timelineExportArea"><i class="fas fa-file-image me-1"></i>JPG</button>
+        <button type="button" class="btn btn-sm btn-outline-dark" id="timelineExpandButton"><i class="fas fa-expand me-1"></i>Expand</button>
       </div>
     </div>
 
+    <form method="get" class="px-3 py-2 border-bottom no-export" id="timelineFilterForm">
+      <input type="hidden" name="start" value="{{ start_date|date:'Y-m-d' }}">
+      <input type="hidden" name="end" value="{{ end_date|date:'Y-m-d' }}">
+      <div class="d-flex flex-wrap align-items-end gap-2 timeline-filter-row">
+        <div class="timeline-filter-group">
+          <label class="form-label small mb-1">Energy Group</label>
+          <select name="timeline_group" class="form-select form-select-sm js-scoreboard-select2" data-placeholder="Energy group">
+            <option value="all" {% if timeline_group_value == 'all' %}selected{% endif %}>All Energy Groups</option>
+            {% for option_group in timeline_group_options %}
+              <option value="{{ option_group.pk }}" {% if timeline_group_value == option_group.pk|stringformat:"s" %}selected{% endif %}>{{ option_group.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="timeline-filter-property">
+          <label class="form-label small mb-1">Property</label>
+          <select name="timeline_property" class="form-select form-select-sm js-scoreboard-select2" data-placeholder="All properties">
+            <option value="">All properties</option>
+            {% for property in timeline_property_options %}
+              <option value="{{ property.pk }}" {% if property.pk == selected_timeline_property_id %}selected{% endif %}>{{ property.property_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="timeline-filter-meter">
+          <label class="form-label small mb-1">Unit / Meter</label>
+          <select name="timeline_meter" class="form-select form-select-sm js-scoreboard-select2" data-placeholder="All units / meters">
+            <option value="">All units / meters</option>
+            {% for meter in timeline_meter_options %}
+              <option value="{{ meter.pk }}" {% if meter.pk == selected_timeline_meter_id %}selected{% endif %}>
+                {{ meter.unit.unit_number|default:"Unassigned" }} — {{ meter.name|default:meter.meter_number }} — {{ meter.meter_number }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="timeline-filter-period">
+          <label class="form-label small mb-1 d-block">Period</label>
+          <input type="hidden" name="timeline" id="timelineMode" value="{{ timeline_window }}">
+          <div class="timeline-period-bar" role="group" aria-label="Timeline period">
+            <button type="button" class="btn btn-sm {% if timeline_window == '24' %}btn-primary{% else %}btn-outline-secondary{% endif %}" data-timeline-mode="24">Today</button>
+            <button type="button" class="btn btn-sm {% if timeline_window == '48' %}btn-primary{% else %}btn-outline-secondary{% endif %}" data-timeline-mode="48">48 hrs</button>
+            <button type="button" class="btn btn-sm {% if timeline_window == '168' %}btn-primary{% else %}btn-outline-secondary{% endif %}" data-timeline-mode="168">7 days</button>
+            <button type="button" class="btn btn-sm {% if timeline_window == 'this_month' %}btn-primary{% else %}btn-outline-secondary{% endif %}" data-timeline-mode="this_month">This month</button>
+            <button type="button" class="btn btn-sm {% if timeline_window == 'last_month' %}btn-primary{% else %}btn-outline-secondary{% endif %}" data-timeline-mode="last_month">Last month</button>
+          </div>
+        </div>
+        <div class="timeline-filter-date">
+          <label class="form-label small mb-1">From</label>
+          <input type="date" class="form-control form-control-sm" name="timeline_start" value="{{ timeline_start_date|date:'Y-m-d' }}">
+        </div>
+        <div class="timeline-filter-date">
+          <label class="form-label small mb-1">To</label>
+          <input type="date" class="form-control form-control-sm" name="timeline_end" value="{{ timeline_end_date|date:'Y-m-d' }}">
+        </div>
+        <label class="form-check mb-1 ms-auto">
+          <input class="form-check-input" type="checkbox" name="timeline_inactive" value="1" {% if timeline_include_inactive %}checked{% endif %}>
+          <span class="form-check-label small">Include inactive meters</span>
+        </label>
+      </div>
+    </form>
+
+    <div class="card-body p-0">
+      <div class="px-3 py-2 d-flex flex-wrap justify-content-between gap-2 border-bottom">
+        <div class="availability-legend">
+          <span><span class="swatch online"></span>Reporting / no detected gap</span>
+          <span><span class="swatch offline"></span>Offline / missing readings</span>
+          <span><span class="swatch unknown"></span>No readings in view</span>
+        </div>
+        <div class="small text-muted">
+          {{ meter_availability.start_at|date:"d M Y H:i" }} → {{ meter_availability.end_at|date:"d M Y H:i" }}
+        </div>
+      </div>
+      <div class="availability-scroll">
+        {% for row in meter_availability.rows %}
+        <div class="availability-row">
+          <div class="availability-meter">
+            <div class="meter-name">
+              <a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role={{ row.dashboard_role }}&report_type=daily&start={{ timeline_start_date|date:'Y-m-d' }}&end={{ timeline_end_date|date:'Y-m-d' }}">
+                {{ row.display_name }}
+              </a>
+            </div>
+            <div class="meter-meta">
+              {% if row.property_name %}{{ row.property_name }} · {% endif %}
+              {% if row.roles %}{{ row.roles|join:" / " }}{% endif %}
+              {% if not row.meter.is_active %} · <span class="text-danger">Inactive</span>{% endif %}
+            </div>
+          </div>
+          <div class="availability-serial">
+            <span class="text-muted">Serial #</span><br>
+            <a href="{% url 'smart_meter:energy_dashboard' %}?unit={{ row.meter.unit_id|default:'' }}&meter={{ row.meter.pk }}&role={{ row.dashboard_role }}&report_type=daily&start={{ timeline_start_date|date:'Y-m-d' }}&end={{ timeline_end_date|date:'Y-m-d' }}">{{ row.meter.meter_number }}</a>
+          </div>
+          <div class="availability-track-wrap">
+            <div class="availability-track {% if row.state == 'unknown' %}unknown{% endif %}"
+                 data-start-ms="{{ meter_availability.start_epoch_ms }}"
+                 data-end-ms="{{ meter_availability.end_epoch_ms }}"
+                 title="Click anywhere on the timeline to see the exact date and time.">
+              {% for segment in row.segments %}
+              <span class="availability-offline{% if segment.ongoing %} ongoing{% endif %}"
+                    style="left:{{ segment.left }}%;width:{{ segment.width }}%;"
+                    title="{{ segment.title }}"></span>
+              {% endfor %}
+              <span class="timeline-click-marker" hidden><span class="timeline-click-label"></span></span>
+            </div>
+            <div class="availability-axis">
+              {% for mark in meter_availability.axis_labels %}<span>{{ mark|date:"d M H:i" }}</span>{% endfor %}
+            </div>
+          </div>
+          <div class="availability-state">
+            {% if row.state == 'online' %}
+              <span class="ld-badge ld-badge-ok">Online</span>
+            {% elif row.state == 'offline' %}
+              <span class="ld-badge ld-badge-bad">Offline</span>
+            {% else %}
+              <span class="ld-badge ld-badge-warn">No readings</span>
+            {% endif %}
+            <span class="latest">
+              {% if row.latest_reading != None %}{{ row.latest_reading|floatformat:3 }} kWh · {% endif %}
+              {% if row.latest_contact %}{{ row.latest_contact|date:"d M H:i:s" }}{% else %}never{% endif %}
+            </span>
+          </div>
+          {% if row.events %}
+          <div class="availability-events">
+            {% for event in row.events %}
+            <span class="availability-event">
+              Offline approx {{ event.offline_from|date:"d M H:i" }}
+              {% if event.online_at %}→ {{ event.online_at|date:"d M H:i" }}{% else %}→ now{% endif %}
+              · {{ event.duration_label }}
+            </span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% empty %}
+        <div class="p-3 text-muted">No meters match the selected property/unit filters.</div>
+        {% endfor %}
+      </div>
+      <div class="ld-formula-note m-2">
+        Red means the meter was offline / missing readings during that interval, whether it later recovered or is still offline. The current status badge on the right shows whether the meter is online or offline now. Historical offline periods are inferred from missing readings; meter history is normally saved about every {{ meter_availability.cadence_minutes }} minutes and a gap of {{ meter_availability.offline_gap_minutes }} minutes or more is shown as offline.
+      </div>
+    </div>
   </div>
 
-  <div class="card mb-4">
-    <div class="card-header">IESCO bill source &amp; history <span class="text-muted small">— pulled from the Invoices app's own IESCO records, not re-fetched</span></div>
+  <div class="card mb-4" id="iescoHistoryExportArea">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <div class="d-flex align-items-center gap-1">
+          <strong>IESCO bill source &amp; history</strong>
+          <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none no-export"
+                  aria-label="Billing period calculation information"
+                  data-bs-toggle="popover"
+                  data-bs-trigger="hover focus"
+                  data-bs-placement="right"
+                  data-bs-content="Billing units use previous reading date → current reading date, end-exclusive to avoid overlap.">
+            <i class="fas fa-circle-info"></i>
+          </button>
+        </div>
+        {% if bill_history %}
+          {% with latest_row=bill_history.0 %}
+            <div class="small mt-1">
+              <strong>{{ latest_row.bill.consumer_name|default:"IESCO consumer" }}</strong>
+              {% if latest_row.bill.address %}<span class="text-muted ms-2">{{ latest_row.bill.address }}</span>{% endif %}
+            </div>
+          {% endwith %}
+        {% endif %}
+      </div>
+      <div class="d-flex gap-1 no-export">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-export-jpg-target="iescoHistoryExportArea"><i class="fas fa-file-image me-1"></i>JPG</button>
+        <button type="button" class="btn btn-sm btn-outline-success" data-export-excel-target="iescoHistoryExportArea"><i class="fas fa-file-excel me-1"></i>Excel</button>
+      </div>
+    </div>
     <div class="ld-scroll-x">
-      <table class="ld-mini-table" style="font-size:.8rem;">
-        <thead><tr><th>#</th><th>Reference</th><th>Bill month</th><th>Issue date</th><th>Reading date</th><th>Status</th><th class="num">Import</th><th class="num">Export</th><th class="num">Current bill</th><th></th></tr></thead>
+      <table class="ld-mini-table" style="font-size:.76rem;">
+        <thead>
+          <tr>
+            <th>#</th><th>Reference</th><th>Bill month</th><th>Issue date</th><th>Reading date</th>
+            <th class="num">Import</th><th class="num">Export</th><th class="num">Net bill units</th><th class="num"><strong>Avg rate</strong></th>
+            <th>Billing period</th><th class="num">Billing units</th><th class="num">Billing amount</th><th class="num">IESCO amount</th><th class="num">Difference</th><th></th>
+          </tr>
+        </thead>
         <tbody>
-          {% for bill in bill_history %}
+          {% for row in bill_history %}
+          {% with bill=row.bill %}
           <tr {% if forloop.first %}style="background:#eef4ff;"{% endif %}>
             <td>{{ forloop.counter }}</td>
             <td><a href="{% url 'invoices:iesco_bill_reading_list' %}?property=&unit=&reference_no={{ bill.reference_no|urlencode }}&period=this_month&bill_month=&payment_status=">{{ bill.reference_no }}</a></td>
             <td>{{ bill.bill_month }}</td>
             <td>{{ bill.issue_date|default:"—" }}</td>
-            <td>{{ bill.reading_date }}</td>
-            <td>{{ bill.get_trust_status_display }}</td>
+            <td>{{ bill.reading_date|default:"—" }}</td>
             <td class="num">{{ bill.import_units_display }} kWh</td>
             <td class="num">{{ bill.export_units_display }} kWh</td>
-            <td class="num">{{ bill.current_bill_display }}</td>
-            <td><a class="btn btn-sm btn-outline-secondary" href="{% url 'invoices:iesco_bill_reading_list' %}?property=&unit=&reference_no={{ bill.reference_no|urlencode }}&period=this_month&bill_month=&payment_status=">Open</a></td>
+            <td class="num">{{ row.net_bill_units|default_if_none:"—"|floatformat:3 }} kWh</td>
+            <td class="num"><strong>Rs {{ row.average_rate|default_if_none:"—"|floatformat:2 }}</strong></td>
+            <td>{% if row.billing_period_start and row.billing_period_end %}{{ row.billing_period_start|date:"d M Y" }} → {{ row.billing_period_end|date:"d M Y" }}{% else %}—{% endif %}</td>
+            <td class="num">{{ row.billing_units|default_if_none:"—"|floatformat:3 }} kWh</td>
+            <td class="num">Rs {{ row.billing_amount|default_if_none:"—"|floatformat:0|intcomma }}</td>
+            <td class="num">Rs {{ row.bill_amount|default_if_none:"—"|floatformat:0|intcomma }}</td>
+            <td class="num {% if row.income_difference > 0 %}ld-positive{% elif row.income_difference < 0 %}ld-negative{% endif %}">
+              Rs {{ row.income_difference|default_if_none:"—"|floatformat:0|intcomma }}
+            </td>
+            <td><a class="btn btn-sm btn-outline-secondary no-export" href="{% url 'invoices:iesco_bill_reading_list' %}?property=&unit=&reference_no={{ bill.reference_no|urlencode }}&period=this_month&bill_month=&payment_status=">Open</a></td>
           </tr>
-          {% empty %}<tr><td colspan="10" class="text-muted">No IESCO bills found for this connection yet.</td></tr>{% endfor %}
+          {% endwith %}
+          {% empty %}<tr><td colspan="15" class="text-muted">No IESCO bills found for this connection yet.</td></tr>{% endfor %}
         </tbody>
       </table>
     </div>
@@ -397,21 +869,332 @@ function ldToggleReadings(btn) {
   btn.textContent = expanded ? 'Expand all' : 'Collapse all';
   btn.setAttribute('data-expanded', expanded ? '0' : '1');
 }
+
+function loadScoreboardScriptOnce(src, test) {
+  if (test()) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      existing.addEventListener('load', resolve, { once: true });
+      existing.addEventListener('error', reject, { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+async function scoreboardCanvas(targetId) {
+  await loadScoreboardScriptOnce(
+    'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+    () => Boolean(window.html2canvas)
+  );
+  const target = document.getElementById(targetId);
+  if (!target) throw new Error('Export area was not found.');
+  const hidden = Array.from(target.querySelectorAll('.no-export'));
+  hidden.forEach(el => el.classList.add('export-hidden'));
+  target.classList.add('is-exporting');
+  try {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const width = Math.ceil(Math.max(target.scrollWidth, target.getBoundingClientRect().width));
+    return await window.html2canvas(target, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      windowWidth: Math.max(width, 1200),
+      width: width
+    });
+  } finally {
+    target.classList.remove('is-exporting');
+    hidden.forEach(el => el.classList.remove('export-hidden'));
+  }
+}
+
+async function exportScoreboardJpg(targetId) {
+  try {
+    const canvas = await scoreboardCanvas(targetId);
+    const link = document.createElement('a');
+    link.download = `${targetId}_${new Date().toISOString().slice(0, 10)}.jpg`;
+    link.href = canvas.toDataURL('image/jpeg', 0.95);
+    link.click();
+  } catch (error) {
+    alert(error && error.message ? error.message : 'Could not export JPG.');
+  }
+}
+
+async function exportScoreboardExcel(targetId) {
+  try {
+    await loadScoreboardScriptOnce(
+      'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+      () => Boolean(window.XLSX)
+    );
+    const target = document.getElementById(targetId);
+    if (!target) throw new Error('Export area was not found.');
+    const tables = Array.from(target.querySelectorAll('table'));
+    if (!tables.length) throw new Error('No table was found in this section.');
+    const wb = window.XLSX.utils.book_new();
+    tables.forEach((table, index) => {
+      const ws = window.XLSX.utils.table_to_sheet(table, { raw: true });
+      const heading = table.closest('.card-body, .ld-scroll-x')?.previousElementSibling?.textContent || '';
+      let sheetName = (heading.trim() || `Table ${index + 1}`)
+        .replace(/[\\/*?:[\]]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 31);
+      if (!sheetName || wb.SheetNames.includes(sheetName)) sheetName = `Table ${index + 1}`;
+      window.XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+    window.XLSX.writeFile(wb, `${targetId}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  } catch (error) {
+    alert(error && error.message ? error.message : 'Could not export Excel.');
+  }
+}
+
+async function refreshReconciliationSections(url) {
+  const response = await fetch(url || window.location.href, {
+    headers: {'X-Requested-With': 'XMLHttpRequest'}
+  });
+  if (!response.ok) throw new Error('Unable to refresh reconciliation.');
+  const html = await response.text();
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  ['combinedEnergyGroups', 'check1ExportArea', 'check2ExportArea', 'scoreboardMeterDetail'].forEach(function (id) {
+    const fresh = parsed.getElementById(id);
+    const current = document.getElementById(id);
+    if (fresh && current) current.replaceWith(fresh);
+  });
+  initScoreboardPopovers();
+}
+
+document.addEventListener('submit', function (event) {
+  const form = event.target.closest('.js-assign-billing-meter');
+  if (!form) return;
+  event.preventDefault();
+  const button = form.querySelector('button[type="submit"]');
+  const original = button ? button.textContent : '';
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Assigning…';
+  }
+  fetch(form.action, {
+    method: 'POST',
+    body: new FormData(form),
+    headers: {'X-Requested-With': 'XMLHttpRequest'}
+  })
+    .then(async response => {
+      const contentType = response.headers.get('content-type') || '';
+      const payload = contentType.includes('application/json') ? await response.json() : null;
+      if (!response.ok) {
+        throw new Error(payload?.message || 'Could not assign this meter.');
+      }
+      return payload;
+    })
+    .then(async payload => {
+      await refreshReconciliationSections(payload?.redirect || window.location.href);
+    })
+    .catch(error => {
+      alert(error && error.message ? error.message : 'Could not assign this meter.');
+      if (button) {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    });
+});
+
+document.addEventListener('click', function (event) {
+  const combinedLink = event.target.closest('.js-combined-group');
+  if (combinedLink) {
+    event.preventDefault();
+    const row = combinedLink.closest('[data-combined-group-row]');
+    document.querySelectorAll('[data-combined-group-row]').forEach(function (item) {
+      item.classList.remove('selected-group-row', 'is-selected');
+    });
+    if (row) {
+      row.classList.add(row.tagName === 'TR' ? 'selected-group-row' : 'is-selected');
+    }
+    fetch(combinedLink.href, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(response => { if (!response.ok) throw new Error('Unable to load Energy Group.'); return response.text(); })
+      .then(html => {
+        const parsed = new DOMParser().parseFromString(html, 'text/html');
+        ['check1ExportArea', 'check2ExportArea', 'scoreboardMeterDetail'].forEach(function (id) {
+          const fresh = parsed.getElementById(id);
+          const current = document.getElementById(id);
+          if (fresh && current) current.replaceWith(fresh);
+        });
+        window.history.pushState({}, '', combinedLink.href);
+      })
+      .catch(() => { window.location.href = combinedLink.href; });
+    return;
+  }
+
+  const detailLink = event.target.closest('.js-meter-dashboard[data-detail-url]');
+  if (detailLink) {
+    event.preventDefault();
+    const target = document.getElementById('scoreboardMeterDetail');
+    target.innerHTML = '<div class="card"><div class="card-body py-3 text-muted">Loading meter dashboard…</div></div>';
+    fetch(detailLink.dataset.detailUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(response => {
+        if (!response.ok) throw new Error('Unable to load meter details.');
+        return response.json();
+      })
+      .then(data => { target.innerHTML = data.html; })
+      .catch(() => {
+        target.innerHTML = `<div class="alert alert-danger">Unable to load this meter. <a href="${detailLink.href}">Open the full dashboard</a>.</div>`;
+      });
+    return;
+  }
+
+  const jpgButton = event.target.closest('[data-export-jpg-target]');
+  if (jpgButton) {
+    event.preventDefault();
+    exportScoreboardJpg(jpgButton.dataset.exportJpgTarget);
+    return;
+  }
+
+  const excelButton = event.target.closest('[data-export-excel-target]');
+  if (excelButton) {
+    event.preventDefault();
+    exportScoreboardExcel(excelButton.dataset.exportExcelTarget);
+    return;
+  }
+});
+
 document.getElementById('showInactiveMemberships')?.addEventListener('change', function () {
   document.querySelectorAll('.membership-inactive').forEach(function (row) {
     row.style.display = this.checked ? '' : 'none';
   }, this);
 });
-document.querySelectorAll('.js-meter-dashboard').forEach(function (link) {
-  link.addEventListener('click', function (event) {
-    event.preventDefault();
-    var target = document.getElementById('scoreboardMeterDetail');
-    target.innerHTML = '<div class="card"><div class="card-body py-3 text-muted">Loading meter dashboard…</div></div>';
-    fetch(link.dataset.detailUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
-      .then(function (response) { if (!response.ok) throw new Error('Unable to load meter details.'); return response.json(); })
-      .then(function (data) { target.innerHTML = data.html; })
-      .catch(function () { target.innerHTML = '<div class="alert alert-danger">Unable to load this meter. <a href="' + link.href + '">Open the full dashboard</a>.</div>'; });
+
+document.getElementById('timelineExpandButton')?.addEventListener('click', function () {
+  const card = document.getElementById('timelineExportArea');
+  const expanded = card.classList.toggle('timeline-expanded');
+  document.body.classList.toggle('timeline-expanded-open', expanded);
+  this.innerHTML = expanded
+    ? '<i class="fas fa-compress me-1"></i>Close expanded'
+    : '<i class="fas fa-expand me-1"></i>Expand';
+});
+
+document.querySelectorAll('.availability-track').forEach(function (track) {
+  track.addEventListener('click', function (event) {
+    const rect = track.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const startMs = Number(track.dataset.startMs);
+    const endMs = Number(track.dataset.endMs);
+    const selectedMs = startMs + ((endMs - startMs) * ratio);
+    const marker = track.querySelector('.timeline-click-marker');
+    const label = marker?.querySelector('.timeline-click-label');
+    if (!marker || !label || !Number.isFinite(selectedMs)) return;
+    marker.hidden = false;
+    marker.style.left = `${ratio * 100}%`;
+    label.textContent = new Intl.DateTimeFormat(undefined, {
+      year: 'numeric', month: 'short', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    }).format(new Date(selectedMs));
   });
 });
+
+function submitTimelineFilters(mode) {
+  const form = document.getElementById('timelineFilterForm');
+  if (!form) return;
+  if (mode) document.getElementById('timelineMode').value = mode;
+  form.requestSubmit();
+}
+
+document.querySelectorAll('[data-timeline-mode]').forEach(function (button) {
+  button.addEventListener('click', function () {
+    submitTimelineFilters(button.dataset.timelineMode);
+  });
+});
+
+document.querySelectorAll('#timelineFilterForm input[type="date"]').forEach(function (input) {
+  input.addEventListener('change', function () {
+    submitTimelineFilters('custom');
+  });
+});
+
+document.querySelector('#timelineFilterForm input[name="timeline_inactive"]')?.addEventListener('change', function () {
+  submitTimelineFilters();
+});
+
+if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
+  window.jQuery('.js-scoreboard-select2').each(function () {
+    const select = window.jQuery(this);
+    select.select2({
+      width: '100%',
+      allowClear: select.attr('name') !== 'timeline_group',
+      minimumResultsForSearch: 0,
+      placeholder: select.data('placeholder') || ''
+    });
+  });
+
+  window.jQuery('select[name="timeline_group"]').on('change', function () {
+    const property = window.jQuery('select[name="timeline_property"]');
+    const meter = window.jQuery('select[name="timeline_meter"]');
+    property.val('').trigger('change.select2');
+    meter.val('').trigger('change.select2');
+    submitTimelineFilters();
+  });
+
+  window.jQuery('select[name="timeline_property"]').on('change', function () {
+    const meter = window.jQuery('select[name="timeline_meter"]');
+    meter.val('').trigger('change.select2');
+    submitTimelineFilters();
+  });
+
+  window.jQuery('select[name="timeline_meter"]').on('change', function () {
+    submitTimelineFilters();
+  });
+}
+
+function initScoreboardPopovers() {
+  if (!(window.bootstrap && window.bootstrap.Popover)) return;
+  document.querySelectorAll('[data-bs-toggle="popover"]').forEach(function (element) {
+    if (!window.bootstrap.Popover.getInstance(element)) {
+      new window.bootstrap.Popover(element);
+    }
+  });
+}
+initScoreboardPopovers();
+
+function makeCombinedDetailLink(cell, detailUrl, fallbackUrl) {
+  if (!cell || !detailUrl) return;
+  const existingLink = cell.querySelector('a');
+  if (existingLink) {
+    existingLink.classList.add('combined-detail-link');
+    return;
+  }
+  const link = document.createElement('a');
+  link.className = 'js-meter-dashboard combined-detail-link';
+  link.href = fallbackUrl || detailUrl;
+  link.dataset.detailUrl = detailUrl;
+  link.textContent = cell.textContent.trim();
+  cell.textContent = '';
+  cell.appendChild(link);
+}
+
+document.querySelectorAll('.combined-desktop-table [data-combined-group-row]').forEach(function (row) {
+  const cells = row.querySelectorAll('td');
+  makeCombinedDetailLink(cells[7], row.dataset.inputImportUrl);
+  makeCombinedDetailLink(cells[8], row.dataset.inputExportUrl);
+  makeCombinedDetailLink(cells[9], row.dataset.auditUrl);
+  makeCombinedDetailLink(cells[12], row.dataset.solarUrl, row.dataset.solarFallback);
+});
+
+function responsiveCardToggle(event) {
+  if (window.innerWidth >= 1200 || event.target.closest('a,button,input,select')) return;
+  const card = event.currentTarget.closest('.card');
+  if (card) card.classList.toggle('is-open');
+}
+
+document.querySelectorAll('.top-checks .check1-col .card-header, .top-checks .check2-col .card-header, .top-checks .meter-detail-col .card-header').forEach(function (header) {
+  header.addEventListener('click', responsiveCardToggle);
+});
+
+if (window.innerWidth < 768) {
+  document.querySelector('#timelineExportArea .card-header')?.addEventListener('click', responsiveCardToggle);
+  document.querySelector('#iescoHistoryExportArea .card-header')?.addEventListener('click', responsiveCardToggle);
+}
 </script>
 {% endblock %}

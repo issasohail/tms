@@ -151,6 +151,7 @@ class MarketingRouteTests(TestCase):
         paths = (
             "/properties/",
             "/payments/",
+            "/punjab-estamp/workflow/79/68/state/",
             "/tenants/",
             "/leases/",
             "/expenses/",
@@ -174,6 +175,17 @@ class MarketingRouteTests(TestCase):
                     f"https://kirayas.com/tms{path}",
                 )
 
+    def test_legacy_punjab_estamp_post_preserves_method_under_tms_prefix(self):
+        response = self.client.post(
+            "/punjab-estamp/workflow/79/68/launch/",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(
+            response["Location"],
+            "https://kirayas.com/tms/punjab-estamp/workflow/79/68/launch/",
+        )
+
     def test_special_tms_paths_redirect_to_their_legacy_targets(self):
         cases = {
             "/dashboard/": "https://kirayas.com/tms/",
@@ -186,10 +198,18 @@ class MarketingRouteTests(TestCase):
                 self.assertEqual(response.status_code, 302)
                 self.assertEqual(response["Location"], expected)
 
+    @override_settings(MARKETING_WHATSAPP_NUMBER="+92 (316) 5994820")
     def test_public_whatsapp_page_is_not_redirected_to_tms(self):
         response = self.client.get("/whatsapp/")
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(response["Location"].startswith("https://wa.me/"))
+        target = urlsplit(response["Location"])
+        self.assertEqual(
+            (target.scheme, target.netloc, target.path),
+            ("https", "wa.me", "/923165994820"),
+        )
+        message = unquote(parse_qs(target.query)["text"][0])
+        self.assertIn("Hello Kirayas.com", message)
+        self.assertIn("rental management platform", message)
 
     def test_www_redirect_is_permanent_and_preserves_path_and_query(self):
         response = Client(HTTP_HOST="www.kirayas.com").get(

@@ -18,6 +18,7 @@ TMS_LEGACY_UI_PREFIXES = (
     "/notifications",
     "/payment-methods",
     "/payments",
+    "/punjab-estamp",
     "/pending-approvals",
     "/properties",
     "/reports",

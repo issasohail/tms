@@ -71,6 +71,7 @@ from smart_meter.models import (
     MeterCommand,
     MeterConnectionEvent,
     MeterPrepaidSettings,
+    MeterPrepaidPilot,
     MeterPrepaidRecharge,
     MeterRawFrame,
     MeterReading,
@@ -673,6 +674,7 @@ def prepaid_controls(request):
         meter.last_read_at = getattr(reading, "ts", None)
         meter.current_voltage = getattr(reading, "voltage_a", None)
         meter.current_current = getattr(reading, "current_a", None)
+    attach_active_tenant_names(meters, lambda item: item.unit_id)
     return render(request, "smart_meter/prepaid_controls.html", {
         "form": form,
         "meters": meters,
@@ -709,6 +711,15 @@ def prepaid_meter_ledger(request, meter_id):
         from smart_meter.services.prepaid_money import queue_prepaid_money_transaction
 
         try:
+            # Some legacy meters were assigned prepaid billing mode through the
+            # general meter editor before the durable pilot record existed.
+            # Repair that exact invariant at the guarded money-entry boundary;
+            # non-prepaid and explicitly disabled pilots remain blocked.
+            if meter.is_active and meter.billing_mode == "prepaid_pilot":
+                MeterPrepaidPilot.objects.get_or_create(
+                    meter=meter,
+                    defaults={"status": "active_test", "enabled_by": request.user},
+                )
             recharge, command = queue_prepaid_money_transaction(
                 meter=meter,
                 operation=operation,
@@ -765,6 +776,7 @@ def prepaid_meter_ledger(request, meter_id):
     from smart_meter.ledger_display import build_ledger_data
     ledger_data = build_ledger_data(request, meter)
     live = getattr(meter, "live", None)
+    tenant_info = active_tenant_info_for_units([meter.unit_id]).get(meter.unit_id, {})
     from smart_meter.rates import resolve_electricity_rate
     from smart_meter.models import MeterTariffConfiguration
 
@@ -777,6 +789,7 @@ def prepaid_meter_ledger(request, meter_id):
         "tariff_configuration": MeterTariffConfiguration.objects.filter(
             meter=meter
         ).first(),
+        "current_tenant_name": tenant_info.get("name", "Vacant"),
     })
 
 
@@ -811,7 +824,10 @@ def prepaid_money_command_status(request, command_id):
         command.raw_ack_hex
     )
     if verified:
-        message = "Meter balance was written and verified from a fresh reading."
+        operation_label = (
+            "Refund" if command.command_type == "prepaid_refund" else "Payment"
+        )
+        message = f"{operation_label} applied successfully."
     elif transaction_status == "uncertain":
         message = money_transaction.reconciliation_note or (
             "The result is uncertain. Do not send the command again; verify the meter balance."
@@ -827,6 +843,38 @@ def prepaid_money_command_status(request, command_id):
     else:
         message = "Writing to the meter; waiting for acknowledgement…"
 
+    balance = (
+        f"{money_transaction.after_balance:.2f}"
+        if verified and money_transaction and money_transaction.after_balance is not None
+        else (f"{live.balance:.2f}" if live and live.balance is not None else "")
+    )
+    whatsapp_url = ""
+    if verified and balance and command.meter.unit_id:
+        today = timezone.localdate()
+        active_lease = (
+            Lease.objects.filter(
+                unit_id=command.meter.unit_id,
+                status="active",
+                start_date__lte=today,
+                end_date__gte=today,
+            )
+            .select_related("tenant", "unit")
+            .order_by("-start_date", "-id")
+            .first()
+        )
+        if active_lease and active_lease.tenant.phone:
+            whatsapp_message = (
+                f"{operation_label} applied successfully for meter "
+                f"{command.meter.meter_number}, unit "
+                f"{command.meter.display_location_name}. The new balance is {balance}."
+            )
+            from leases.whatsapp import build_whatsapp_url as build_tenant_whatsapp_url
+
+            whatsapp_url = build_tenant_whatsapp_url(
+                active_lease.tenant.phone,
+                whatsapp_message,
+            )
+
     return JsonResponse(
         {
             "success": not terminal_failure,
@@ -839,12 +887,12 @@ def prepaid_money_command_status(request, command_id):
             "transaction_status": transaction_status,
             "message": message,
             "error": message if terminal_failure else "",
-            "balance": (
-                f"{money_transaction.after_balance:.2f}"
-                if verified and money_transaction and money_transaction.after_balance is not None
-                else (f"{live.balance:.2f}" if live and live.balance is not None else "")
-            ),
+            "balance": balance,
             "reading_at": _ts_iso(live.ts) if live else "",
+            "operation_label": (
+                "Refund" if command.command_type == "prepaid_refund" else "Payment"
+            ),
+            "whatsapp_url": whatsapp_url,
         }
     )
 

@@ -6,6 +6,7 @@ from .views import recharge_balance, meter_status
 from smart_meter.views import meter_settings, refund_balance, toggle_power
 from . import views
 from . import views_ledger_export
+from . import views_refill_audit
 from . import views_reconciliation
 from . import views_schedule
 from . import views_credit_control
@@ -85,6 +86,8 @@ urlpatterns = [
     path('meters/<int:pk>/raw-readings/', views.meter_raw_frame_history, name='meter_raw_frame_history'),
     path('meters/<int:meter_id>/prepaid-ledger/', views.prepaid_meter_ledger, name='prepaid_meter_ledger'),
     path('prepaid-command/<int:command_id>/status/', views.prepaid_money_command_status, name='prepaid_money_command_status'),
+    path('refill-audit/', views_refill_audit.refill_audit, name='refill_audit'),
+    path('refill-audit/export/<str:format>/', views_refill_audit.refill_audit_export, name='refill_audit_export'),
     path('meters/<int:meter_id>/ledger/export/<str:format>/', views_ledger_export.meter_ledger_export, name='meter_ledger_export'),
     path('meters/<int:pk>/', views.meter_detail, name='meter_detail'),
     path('meters/<int:pk>/credit-control/', views_credit_control.credit_control, name='credit_control'),

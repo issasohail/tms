@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block main_container_class %}container-fluid refill-audit-shell{% endblock %}
+{% block content %}
+{% include "smart_meter/meterbar.html" %}
+<div class="px-2 px-md-3 py-3 refill-audit-page">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <h1 class="h3 mb-1"><i class="fas fa-receipt me-1 text-primary" aria-hidden="true"></i> Refill Audit</h1>
+      <p class="text-muted mb-0">Top-up and refund command history, acknowledgement, and physical balance verification.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-1 no-print">
+      <a class="btn btn-sm btn-success" href="{% url 'smart_meter:refill_audit_export' 'xlsx' %}?{{ filter_query }}"><i class="fas fa-file-excel me-1"></i>Excel</a>
+      <a class="btn btn-sm btn-danger" href="{% url 'smart_meter:refill_audit_export' 'pdf' %}?{{ filter_query }}"><i class="fas fa-file-pdf me-1"></i>PDF</a>
+      <a class="btn btn-sm btn-secondary" href="{% url 'smart_meter:refill_audit_export' 'jpg' %}?{{ filter_query }}"><i class="fas fa-file-image me-1"></i>JPG</a>
+      <button class="btn btn-sm btn-primary" type="button" id="refillAuditReload"><i class="fas fa-sync-alt me-1"></i>Refresh records</button>
+    </div>
+  </div>
+
+  <div class="card mb-3 no-print"><div class="card-body py-2">
+    <form method="get" id="refillAuditFilters" class="row g-2 align-items-end">
+      <div class="col-6 col-md-3 col-xl-2"><label class="form-label small mb-1" for="auditPeriod">Date period</label><select class="form-select form-select-sm" name="period" id="auditPeriod">{% for value, label in periods %}<option value="{{ value }}"{% if period == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+      <div class="col-6 col-md-3 col-xl-2"><label class="form-label small mb-1" for="auditFrom">From</label><input class="form-control form-control-sm" type="date" name="from_date" id="auditFrom" value="{{ from_date|date:'Y-m-d' }}"></div>
+      <div class="col-6 col-md-3 col-xl-2"><label class="form-label small mb-1" for="auditTo">To</label><input class="form-control form-control-sm" type="date" name="to_date" id="auditTo" value="{{ to_date|date:'Y-m-d' }}"></div>
+      <div class="col-6 col-md-3 col-xl-2"><label class="form-label small mb-1" for="auditProperty">Property</label><select class="form-select form-select-sm" name="property" id="auditProperty"><option value="">All properties</option>{% for item in properties %}<option value="{{ item.pk }}"{% if property_id == item.pk|stringformat:'s' %} selected{% endif %}>{{ item.property_name }}</option>{% endfor %}</select></div>
+      <div class="col-6 col-md-3 col-xl-2"><label class="form-label small mb-1" for="auditUnit">Unit</label><select class="form-select form-select-sm" name="unit" id="auditUnit"><option value="">All units</option>{% for item in units %}<option value="{{ item.pk }}"{% if unit_id == item.pk|stringformat:'s' %} selected{% endif %}>{{ item.property.property_name }} / {{ item.unit_number }}</option>{% endfor %}</select></div>
+      <div class="col-6 col-md-3 col-xl-2"><label class="form-label small mb-1" for="auditMeter">Meter</label><select class="form-select form-select-sm" name="meter" id="auditMeter"><option value="">All meters</option>{% for item in meters %}<option value="{{ item.pk }}"{% if meter_id == item.pk|stringformat:'s' %} selected{% endif %}>{{ item.meter_number }} · {{ item.display_location_name }}</option>{% endfor %}</select></div>
+      <div class="col-12 d-flex gap-1"><button class="btn btn-primary btn-sm" type="submit">Apply filters</button><a class="btn btn-outline-secondary btn-sm" href="{% url 'smart_meter:refill_audit' %}">Reset</a></div>
+    </form>
+  </div></div>
+
+  <div class="small text-muted mb-2">{{ filter_summary }} · {{ page_obj.paginator.count }} record{{ page_obj.paginator.count|pluralize }}</div>
+
+  <div class="card refill-audit-card">
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0 refill-audit-table">
+      <thead><tr><th>S/N</th><th>Date / time</th><th>Meter #</th><th>Property</th><th>Unit</th><th>Current tenant</th><th>Operation</th><th>Amount</th><th>Balance</th><th>Transaction</th><th>Command</th><th>Ack</th><th>Verified</th><th>Order serial</th><th>Name</th><th>Reason / detail</th><th class="no-print">Action</th></tr></thead>
+      <tbody>{% for row in rows %}<tr data-audit-command{% if row.status_url %} data-status-url="{{ row.status_url }}"{% endif %} data-command-id="{{ row.command.pk|default:'' }}">
+        <td data-label="S/N">{{ row.number }}</td>
+        <td data-label="Date / time" class="text-nowrap">{{ row.transaction.created_at|date:"Y-m-d H:i:s" }}</td>
+        <td data-label="Meter #"><a href="{% url 'smart_meter:meter_detail' row.meter.pk %}?tab=ledger">{{ row.meter.meter_number }}</a></td>
+        <td data-label="Property">{{ row.property_name }}</td><td data-label="Unit">{{ row.unit_name }}</td><td data-label="Current tenant">{{ row.tenant_name }}</td>
+        <td data-label="Operation"><span class="badge {% if row.operation_key == 'refund' %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ row.operation }}</span></td>
+        <td data-label="Amount" class="fw-semibold">{{ CURRENCY_SYMBOL }} {{ row.transaction.amount|floatformat:2|intcomma }}</td>
+        <td data-label="Balance"><span class="text-nowrap">{{ row.transaction.before_balance|default_if_none:"—"|floatformat:2 }} → <strong data-audit-balance>{{ row.transaction.after_balance|default_if_none:"—"|floatformat:2 }}</strong></span></td>
+        <td data-label="Transaction"><span data-audit-transaction class="badge {% if row.transaction.status == 'verified' %}bg-success{% elif row.transaction.status == 'failed' %}bg-danger{% elif row.transaction.status == 'uncertain' %}bg-dark{% else %}bg-warning text-dark{% endif %}">{{ row.transaction.get_status_display }}</span></td>
+        <td data-label="Command"><span data-audit-command-status class="badge {% if row.command_status == 'verified' %}bg-success{% elif row.command_status == 'failed' or row.command_status == 'cancelled' or row.command_status == 'expired' %}bg-danger{% elif row.command_status == 'acknowledged' %}bg-info text-dark{% else %}bg-secondary{% endif %}">{{ row.command_status_label }}</span></td>
+        <td data-label="Acknowledged"><span data-audit-ack>{% if row.acknowledged %}<i class="fas fa-check-circle text-success"></i> Yes{% else %}<i class="fas fa-clock text-muted"></i> No{% endif %}</span></td>
+        <td data-label="Verified"><span data-audit-verified>{% if row.verified %}<i class="fas fa-check-circle text-success"></i> Yes{% else %}<i class="fas fa-times-circle text-muted"></i> No{% endif %}</span></td>
+        <td data-label="Order serial" class="audit-order">{{ row.transaction.transaction_id }}</td><td data-label="Name">{{ row.user_name }}</td><td data-label="Reason / detail" class="audit-detail">{{ row.reason|default:"—" }}</td>
+        <td data-label="Action" class="no-print">{% if row.can_resend %}<a href="{% url 'smart_meter:prepaid_meter_ledger' row.meter.pk %}?action={{ row.operation_key }}" class="btn btn-sm btn-outline-danger" data-prepaid-money data-operation="{{ row.operation_key }}" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' row.meter.pk %}" data-meter-id="{{ row.meter.pk }}" data-meter-number="{{ row.meter.meter_number }}" data-unit="{{ row.unit_name }}" data-tenant="{{ row.tenant_name }}" data-balance="{{ CURRENCY_SYMBOL }} {{ row.transaction.after_balance|default:row.transaction.before_balance|floatformat:2 }}" data-amount="{{ row.transaction.amount|floatformat:2 }}">Resend</a>{% elif row.is_active %}<span class="badge bg-warning text-dark">Do not resend</span>{% else %}—{% endif %}</td>
+      </tr>{% empty %}<tr><td colspan="17" class="text-center text-muted py-4">No top-up or refund records match these filters.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+
+  {% if page_obj.paginator.num_pages > 1 %}<nav class="d-flex justify-content-between align-items-center mt-3 no-print" aria-label="Refill audit pages"><span class="small text-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span><div class="btn-group btn-group-sm">{% if page_obj.has_previous %}<a class="btn btn-outline-secondary" href="?{{ filter_query }}{% if filter_query %}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}{% if page_obj.has_next %}<a class="btn btn-outline-secondary" href="?{{ filter_query }}{% if filter_query %}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>{% endif %}</div></nav>{% endif %}
+</div>
+
+{% include "smart_meter/partials/prepaid_money_modal.html" %}
+
+<style>
+  .refill-audit-shell { max-width: 100%; }
+  .refill-audit-table { font-size: .76rem; }
+  .refill-audit-table th { white-space: nowrap; font-size: .68rem; text-transform: uppercase; }
+  .refill-audit-table td { max-width: 220px; }
+  .refill-audit-table .audit-order { font-family: monospace; overflow-wrap: anywhere; }
+  .refill-audit-table .audit-detail { white-space: normal; min-width: 180px; }
+  @media (max-width: 991.98px) {
+    .refill-audit-card { border: 0; background: transparent; }
+    .refill-audit-table, .refill-audit-table tbody { display: block; }
+    .refill-audit-table thead { display: none; }
+    .refill-audit-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin-bottom: .75rem; border: 1px solid #dee2e6; border-radius: .5rem; background: #fff; overflow: hidden; }
+    .refill-audit-table td { display: flex; justify-content: space-between; gap: .5rem; max-width: none; padding: .42rem .55rem; border-bottom: 1px solid #eef1f4; text-align: right; overflow-wrap: anywhere; }
+    .refill-audit-table td::before { content: attr(data-label); color: #64748b; font-weight: 700; text-align: left; }
+    .refill-audit-table td[data-label="Reason / detail"], .refill-audit-table td[data-label="Action"] { grid-column: 1 / -1; }
+  }
+  @media (max-width: 575.98px) {
+    .refill-audit-table tr { grid-template-columns: 1fr; }
+    .refill-audit-table td[data-label] { grid-column: auto; }
+    .refill-audit-page { padding-left: .35rem !important; padding-right: .35rem !important; }
+  }
+</style>
+<script>
+  (() => {
+    const form = document.getElementById('refillAuditFilters');
+    const period = document.getElementById('auditPeriod');
+    const from = document.getElementById('auditFrom');
+    const to = document.getElementById('auditTo');
+    const format = value => [value.getFullYear(), String(value.getMonth() + 1).padStart(2, '0'), String(value.getDate()).padStart(2, '0')].join('-');
+    period?.addEventListener('change', () => {
+      const now = new Date(); let start = null; let end = null;
+      if (period.value === 'this_week' || period.value === 'last_week') {
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7) - (period.value === 'last_week' ? 7 : 0));
+        end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+      } else if (period.value === 'this_month' || period.value === 'last_month') {
+        const offset = period.value === 'last_month' ? -1 : 0;
+        start = new Date(now.getFullYear(), now.getMonth() + offset, 1); end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+      }
+      if (period.value === 'all') { from.value = ''; to.value = ''; }
+      else if (start) { from.value = format(start); to.value = format(end); }
+      form.requestSubmit();
+    });
+    [from, to].forEach(input => input?.addEventListener('change', () => { period.value = 'custom'; }));
+
+    async function refreshStatuses() {
+      await Promise.all([...document.querySelectorAll('[data-audit-command][data-status-url]')].map(async row => {
+        try {
+          const response = await fetch(row.dataset.statusUrl, {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}});
+          const data = await response.json();
+          if (!response.ok) return;
+          const commandBadge = row.querySelector('[data-audit-command-status]');
+          const transactionBadge = row.querySelector('[data-audit-transaction]');
+          commandBadge.textContent = data.command_status.replaceAll('_', ' ');
+          transactionBadge.textContent = data.transaction_status.replaceAll('_', ' ');
+          commandBadge.className = `badge ${data.verified ? 'bg-success' : data.terminal ? 'bg-danger' : data.acknowledged ? 'bg-info text-dark' : 'bg-secondary'}`;
+          transactionBadge.className = `badge ${data.verified ? 'bg-success' : data.transaction_status === 'uncertain' ? 'bg-dark' : data.terminal ? 'bg-danger' : 'bg-warning text-dark'}`;
+          row.querySelector('[data-audit-ack]').innerHTML = data.acknowledged ? '<i class="fas fa-check-circle text-success"></i> Yes' : '<i class="fas fa-clock text-muted"></i> No';
+          row.querySelector('[data-audit-verified]').innerHTML = data.verified ? '<i class="fas fa-check-circle text-success"></i> Yes' : '<i class="fas fa-times-circle text-muted"></i> No';
+          if (data.verified && data.balance) row.querySelector('[data-audit-balance]').textContent = data.balance;
+        } catch (error) { console.debug('Refill status refresh failed', error); }
+      }));
+    }
+    document.getElementById('refillAuditReload')?.addEventListener('click', () => window.location.reload());
+    if (document.querySelector('[data-audit-command][data-status-url]')) window.setInterval(refreshStatuses, 10000);
+  })();
+</script>
+{% endblock %}

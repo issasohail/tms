@@ -112,6 +112,7 @@ class PrepaidMoneyForm(forms.Form):
         widget=forms.NumberInput(attrs={"class": "form-control", "step": "0.01"}),
     )
     reason = forms.CharField(
+        required=False,
         max_length=256,
         widget=forms.TextInput(attrs={"class": "form-control"}),
     )

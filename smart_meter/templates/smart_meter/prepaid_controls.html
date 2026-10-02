@@ -13,7 +13,7 @@
   </div></div>
   <div class="card"><div class="table-responsive"><table class="table table-sm align-middle mb-0 text-nowrap">
     <thead><tr><th>S/N</th><th>Meter</th><th>Property / Unit</th><th>Online</th><th>Tariff</th><th>Mode</th><th>Balance</th><th>Unit rate</th><th>Last reading</th><th>Power</th><th>Voltage</th><th>Current</th><th>Commands</th></tr></thead>
-    <tbody>{% for meter in meters %}<tr>
+    <tbody>{% for meter in meters %}<tr data-meter-row data-meter-id="{{ meter.pk }}">
       <td>{{ forloop.counter }}</td>
       <td><a href="{% url 'smart_meter:meter_detail' meter.pk %}">{{ meter.meter_number }}</a></td>
       <td>{{ meter.unit.property.property_name|default:"—" }} / {{ meter.display_location_name|default:"—" }}</td>
@@ -26,8 +26,8 @@
       <td>{% if meter.current_voltage is not None %}{{ meter.current_voltage|floatformat:1 }} V{% else %}—{% endif %}</td>
       <td>{% if meter.current_current is not None %}{{ meter.current_current|floatformat:3 }} A{% else %}—{% endif %}</td>
       <td><div class="d-flex gap-1">
-        <a class="btn btn-success btn-sm" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}?action=recharge">Top up</a>
-        <a class="btn btn-outline-warning btn-sm" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}?action=refund">Refund</a>
+        <a class="btn btn-success btn-sm" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}?action=recharge" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}" data-meter-id="{{ meter.pk }}" data-meter-number="{{ meter.meter_number }}" data-unit="{{ meter.display_location_name }}" data-tenant="{{ meter.tenant_name|default:'Vacant' }}" data-balance="{{ CURRENCY_SYMBOL }} {{ meter.current_balance|default_if_none:0|floatformat:2 }}">Top up</a>
+        <a class="btn btn-outline-warning btn-sm" href="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}?action=refund" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}" data-meter-id="{{ meter.pk }}" data-meter-number="{{ meter.meter_number }}" data-unit="{{ meter.display_location_name }}" data-tenant="{{ meter.tenant_name|default:'Vacant' }}" data-balance="{{ CURRENCY_SYMBOL }} {{ meter.current_balance|default_if_none:0|floatformat:2 }}">Refund</a>
         <form method="post" class="mode-toggle-form" data-tariff-verified="{% if meter.tariff_is_verified %}1{% else %}0{% endif %}" data-current-rate="{{ meter.display_electricity_rate.rate|floatformat:4 }}" data-meter-number="{{ meter.meter_number }}">{% csrf_token %}<input type="hidden" name="meter_id" value="{{ meter.pk }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">{% if meter.billing_mode == 'prepaid_pilot' %}<button type="submit" name="action" value="disable_meter" class="btn btn-outline-danger btn-sm">Set postpaid</button>{% else %}<button type="submit" name="action" value="enable_meter" class="btn btn-outline-success btn-sm">Set prepaid</button>{% endif %}</form>
       </div></td>
     </tr>{% empty %}<tr><td colspan="13">No meters found.</td></tr>{% endfor %}</tbody>
@@ -35,6 +35,7 @@
   <p class="small text-muted mt-2">Changing Mode changes TMS billing/command eligibility and is audited. A physical prepaid/postpaid mode frame is not sent because the manufacturer mode opcode has not been verified.</p>
 </div>
 {% include "smart_meter/partials/prepaid_activation_modal.html" %}
+{% include "smart_meter/partials/prepaid_money_modal.html" %}
 <style>
   .prepaid-controls-page {
     max-width: 1800px;

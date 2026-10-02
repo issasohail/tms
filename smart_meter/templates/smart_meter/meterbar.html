@@ -55,6 +55,12 @@
         </a>
       </li>
       <li>
+        <a class="nav-link{% if request.resolver_match.url_name == 'refill_audit' %} active{% endif %}"
+           href="{% url 'smart_meter:refill_audit' %}" aria-label="Refill Audit">
+          <span class="d-sm-none">Refill</span><span class="d-none d-sm-inline">Refill<BR>Audit</span>
+        </a>
+      </li>
+      <li>
         <a class="nav-link{% if cur == 'energy_group_scoreboard' %} active{% endif %}"
            href="{% url 'smart_meter:energy_group_scoreboard_default' %}" aria-label="Solar Reconciliation Scoreboard">
           <span class="d-sm-none">Solar</span><span class="d-none d-sm-inline">Solar<BR>Scoreboard</span>
@@ -98,6 +104,9 @@
   }
   @media (min-width: 1200px) {
     .menu-grid { grid-template-columns: repeat(10, minmax(0, 1fr)); } /* keep Dashboard on the first row */
+  }
+  @media (min-width: 1200px) {
+    .menu-grid { grid-template-columns: repeat(11, minmax(0, 1fr)); }
   }
 
   .menu-grid .nav-link {

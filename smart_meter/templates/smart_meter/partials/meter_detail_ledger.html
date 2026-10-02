@@ -47,8 +47,8 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <div><h4 class="mb-0">Meter Balance Ledger</h4><small class="text-muted">Current balance: {{ CURRENCY_SYMBOL }} {{ latest_live.balance|default_if_none:0|floatformat:2|intcomma }}</small></div>
   <div class="d-flex gap-2">
-    <button type="button" class="btn btn-success" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}" data-meter-number="{{ meter.meter_number }}" data-location="{{ meter.display_location_name }}"><i class="fas fa-plus me-1"></i>Top up</button>
-    <button type="button" class="btn btn-warning" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}" data-meter-number="{{ meter.meter_number }}" data-location="{{ meter.display_location_name }}"><i class="fas fa-minus me-1"></i>Refund</button>
+    <button type="button" class="btn btn-success" data-prepaid-money data-operation="recharge" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}" data-meter-id="{{ meter.pk }}" data-meter-number="{{ meter.meter_number }}" data-unit="{{ meter.display_location_name }}" data-tenant="{{ current_tenant.get_full_name|default:'Vacant' }}" data-balance="{{ CURRENCY_SYMBOL }} {{ latest_live.balance|default_if_none:0|floatformat:2 }}"><i class="fas fa-plus me-1"></i>Top up</button>
+    <button type="button" class="btn btn-warning" data-prepaid-money data-operation="refund" data-action-url="{% url 'smart_meter:prepaid_meter_ledger' meter.pk %}" data-meter-id="{{ meter.pk }}" data-meter-number="{{ meter.meter_number }}" data-unit="{{ meter.display_location_name }}" data-tenant="{{ current_tenant.get_full_name|default:'Vacant' }}" data-balance="{{ CURRENCY_SYMBOL }} {{ latest_live.balance|default_if_none:0|floatformat:2 }}"><i class="fas fa-minus me-1"></i>Refund</button>
   </div>
 </div>
 

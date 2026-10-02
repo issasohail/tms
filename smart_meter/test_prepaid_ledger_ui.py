@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
 
+from leases.models import Lease
 from properties.models import Property, Unit
 from smart_meter.models import (
     LiveReading,
@@ -16,7 +17,9 @@ from smart_meter.models import (
     MeterPrepaidPilot,
     MeterPrepaidRecharge,
     MeterReading,
+    MeterSettings,
 )
+from tenants.models import Tenant
 
 
 class PrepaidLedgerUITests(TestCase):
@@ -27,6 +30,10 @@ class PrepaidLedgerUITests(TestCase):
             email="ledger@example.com",
         )
         self.client.force_login(self.user)
+        MeterSettings.objects.update_or_create(
+            pk=1,
+            defaults={"prepaid_writes_enabled": True},
+        )
         property_obj = Property.objects.create(
             property_name="Ledger Property",
             owner_name="Owner",
@@ -36,6 +43,7 @@ class PrepaidLedgerUITests(TestCase):
             total_units=1,
         )
         unit = Unit.objects.create(property=property_obj, unit_number="L-1")
+        self.unit = unit
         self.meter = Meter.objects.create(
             meter_number="260305519991",
             unit=unit,
@@ -72,7 +80,9 @@ class PrepaidLedgerUITests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Meter Balance Ledger")
         self.assertContains(response, "Estimated usage charge")
-        self.assertContains(response, "Queue once")
+        self.assertContains(response, "data-prepaid-money")
+        self.assertContains(response, "Reason")
+        self.assertContains(response, "(optional)")
         self.assertContains(response, "95.00")
         self.assertTrue(response.context["has_collapsible_readings"])
         self.assertTrue(response.context["readings"][0].is_daily_latest)
@@ -99,7 +109,6 @@ class PrepaidLedgerUITests(TestCase):
                 "operation": "recharge",
                 "amount": "5.00",
                 "confirm_amount": "5.00",
-                "reason": "UI ledger test",
             },
         )
 
@@ -142,7 +151,41 @@ class PrepaidLedgerUITests(TestCase):
         self.assertTrue(response.json()["success"])
         self.assertIn("status_url", response.json())
 
+    def test_legacy_prepaid_meter_without_pilot_is_repaired_before_topup(self):
+        MeterPrepaidPilot.objects.filter(meter=self.meter).delete()
+
+        response = self.client.post(
+            reverse("smart_meter:prepaid_meter_ledger", args=[self.meter.pk]),
+            {
+                "operation": "recharge",
+                "amount": "1200.00",
+                "confirm_amount": "1200.00",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        pilot = MeterPrepaidPilot.objects.get(meter=self.meter)
+        self.assertEqual(pilot.status, "active_test")
+        self.assertEqual(pilot.enabled_by, self.user)
+
     def test_money_status_returns_verified_updated_balance_reading(self):
+        tenant = Tenant.objects.create(
+            first_name="Ledger",
+            last_name="Tenant",
+            cnic="6110112345678",
+            phone="03001234567",
+        )
+        today = timezone.localdate()
+        Lease.objects.create(
+            tenant=tenant,
+            unit=self.unit,
+            start_date=today - timedelta(days=1),
+            end_date=today + timedelta(days=30),
+            monthly_rent=Decimal("10000.00"),
+            status="active",
+        )
         response = self.client.post(
             reverse("smart_meter:prepaid_meter_ledger", args=[self.meter.pk]),
             {
@@ -167,6 +210,9 @@ class PrepaidLedgerUITests(TestCase):
         self.assertTrue(status.json()["terminal"])
         self.assertTrue(status.json()["verified"])
         self.assertEqual(status.json()["balance"], "100.00")
+        self.assertEqual(status.json()["operation_label"], "Payment")
+        self.assertIn("wa.me/923001234567", status.json()["whatsapp_url"])
+        self.assertIn("new%20balance%20is%20100.00", status.json()["whatsapp_url"])
 
     def test_meter_and_live_lists_link_balance_to_ledger(self):
         ledger_url = f'{reverse("smart_meter:meter_detail", args=[self.meter.pk])}?tab=ledger'

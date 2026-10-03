@@ -1,0 +1,90 @@
+        </div>
+    </form>
+
+    <div class="card punjab-estamp-card mb-2" id="punjabEstampCard" data-workflow-state="{{ punjab_estamp.state }}" data-launch-url="{% url 'punjab_estamp:launch' master_lease.pk history.pk %}">
+      <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <strong><i class="fas fa-stamp me-1"></i>Punjab e-Stamp</strong>
+          <span class="badge {% if punjab_estamp.state == 'uploaded' %}bg-success{% elif punjab_estamp.state == 'invalid' or punjab_estamp.state == 'failed' %}bg-danger{% elif punjab_estamp.state == 'paid' or punjab_estamp.state == 'stamp_issued' %}bg-primary{% elif punjab_estamp.state == 'challan_generated' %}bg-warning text-dark{% else %}bg-secondary{% endif %} ms-1">{{ punjab_estamp.status_label }}</span>
+          <span class="small text-muted ms-1">{{ history.history_label }}</span>
+        </div>
+        <div class="d-flex flex-wrap gap-1">
+          {% if punjab_estamp.state == 'ready' %}
+            {% if punjab_estamp.missing %}
+              <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#punjabEstampMissingModal"><i class="fas fa-plus-circle"></i> Create Stamp Paper</button>
+            {% else %}
+              <button class="btn btn-success btn-sm punjab-estamp-launch" type="button"><i class="fas fa-plus-circle"></i> Create Stamp Paper</button>
+            {% endif %}
+          {% elif punjab_estamp.state == 'challan_generated' %}
+            <button type="button" class="btn btn-outline-primary btn-sm punjab-estamp-launch">Check / Continue</button>
+            {% if punjab_estamp.whatsapp_url %}<a class="btn btn-success btn-sm" href="{{ punjab_estamp.whatsapp_url }}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> WhatsApp Payment</a>{% else %}<button class="btn btn-success btn-sm" type="button" disabled>WhatsApp Payment</button>{% endif %}
+          {% elif punjab_estamp.state == 'paid' %}
+            <button type="button" class="btn btn-primary btn-sm punjab-estamp-launch">Continue Stamp Process</button>
+          {% elif punjab_estamp.state == 'stamp_issued' %}
+            <button type="button" class="btn btn-primary btn-sm punjab-estamp-launch">Download / Continue</button>
+          {% elif punjab_estamp.state == 'uploaded' %}
+            {% if punjab_estamp.workflow.lease_document_id %}<a class="btn btn-primary btn-sm" href="{% url 'leases:lease_file_view' punjab_estamp.workflow.lease_document_id %}" target="_blank" rel="noopener">View E-Stamp</a>{% else %}<button class="btn btn-primary btn-sm" type="button" disabled>View E-Stamp</button>{% endif %}
+          {% elif punjab_estamp.state == 'invalid' %}
+            <form method="post" action="{% url 'punjab_estamp:replacement' master_lease.pk history.pk %}" class="d-inline">
+              {% csrf_token %}<button class="btn btn-danger btn-sm" type="submit"><i class="fas fa-redo"></i> Create Replacement Challan</button>
+            </form>
+          {% else %}
+            <button type="button" class="btn btn-outline-danger btn-sm" disabled>Check / Continue</button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-body py-2">
+        <div class="punjab-estamp-grid">
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Property</span><span class="punjab-estamp-value">{{ punjab_estamp.property.property_name|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Unit</span><span class="punjab-estamp-value">{{ punjab_estamp.property.unit_number|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Tenant</span><span class="punjab-estamp-value">{{ master_lease.tenant.get_full_name|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Applicant</span><span class="punjab-estamp-value">{{ punjab_estamp.applicant.source_label|default:"-" }}{% if punjab_estamp.applicant.name %} - {{ punjab_estamp.applicant.name }}{% endif %}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Zila / District</span><span class="punjab-estamp-value">{{ punjab_estamp.property.district_name|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Tehsil</span><span class="punjab-estamp-value">{{ punjab_estamp.property.tehsil_name|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Purpose</span><span class="punjab-estamp-value">{{ punjab_estamp.portal.purpose_name|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Challan</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.challan_number|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">PSID</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.psid|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Stamp #</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.stamp_number|default:"-" }}</span></div>
+          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Status</span><span class="punjab-estamp-value">{{ punjab_estamp.status_label }}</span></div>
+        </div>
+        <div class="small text-muted mt-2">
+          Punjab submission stays in dry-run mode: review the populated form, solve CAPTCHA, and click the portal's final action yourself.
+          <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-bs-toggle="modal" data-bs-target="#punjabEstampHelperInstallModal">Install/update browser helper</button>.
+        </div>
+      </div>
+    </div>
+
+    {% if punjab_estamp.missing %}
+    <div class="modal fade" id="punjabEstampMissingModal" tabindex="-1" aria-hidden="true" data-save-url="{% url 'punjab_estamp:configuration_update' master_lease.pk history.pk %}">
+      <div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Punjab e-Stamp Configuration Required</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="alert alert-light border py-2 mb-3">
+            <strong>Property:</strong> {{ punjab_estamp.property.property_name|default:"-" }}{% if punjab_estamp.property.unit_number %} / {{ punjab_estamp.property.unit_number }}{% endif %}<br>
+            <strong>Applicant:</strong> {{ punjab_estamp.applicant.source_label|default:"Not linked" }}{% if punjab_estamp.applicant.name %} - {{ punjab_estamp.applicant.name }}{% endif %}{% if punjab_estamp.applicant.record_id %} <span class="text-muted">(Tenant #{{ punjab_estamp.applicant.record_id }})</span>{% endif %}
+          </div>
+          <p class="mb-2">Missing information:</p>
+          <ul class="mb-3">{% for item in punjab_estamp.missing %}<li>{{ item }}</li>{% endfor %}</ul>
+          {% if punjab_estamp.quick_fix_allowed %}
+          <form id="punjabEstampQuickFixForm">
+            <div class="row g-2">
+              <div class="col-md-6"><label class="form-label form-label-sm">Zila / District</label><select class="form-select form-select-sm" name="district_id" id="punjabQuickDistrict"><option value="">Select District</option>{% for district in punjab_estamp.quick_fix_districts %}<option value="{{ district.pk }}" {% if punjab_estamp.property.district_id == district.pk %}selected{% endif %}>{{ district.name }}</option>{% endfor %}</select></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">Tehsil</label><select class="form-select form-select-sm" name="tehsil_id" id="punjabQuickTehsil"><option value="">Select Tehsil</option>{% for tehsil in punjab_estamp.quick_fix_tehsils %}<option value="{{ tehsil.pk }}" data-district-id="{{ tehsil.district_id }}" {% if punjab_estamp.property.tehsil_id == tehsil.pk %}selected{% endif %}>{{ tehsil.name }}</option>{% endfor %}</select></div>
+              {% if punjab_estamp.applicant.record_id %}
+              <div class="col-md-6"><label class="form-label form-label-sm">Applicant Name</label><input class="form-control form-control-sm" name="name" value="{{ punjab_estamp.applicant.name|default:'' }}"></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">CNIC</label><input class="form-control form-control-sm" name="cnic" value="{{ punjab_estamp.applicant.cnic|default:'' }}"></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">Phone</label><input class="form-control form-control-sm" name="phone" value="{{ punjab_estamp.applicant.phone|default:'' }}"></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">Email</label><input type="email" class="form-control form-control-sm" name="email" value="{{ punjab_estamp.applicant.email|default:'' }}"></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">Relation</label><select class="form-select form-select-sm" name="relation_id"><option value="">Select Relation</option>{% for relation in punjab_estamp.quick_fix_relations %}<option value="{{ relation.pk }}" {% if punjab_estamp.applicant.relation_id == relation.pk %}selected{% endif %}>{{ relation.name }}</option>{% endfor %}</select></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">Relation / Father Name</label><input class="form-control form-control-sm" name="relation_person_name" value="{{ punjab_estamp.applicant.relation_person_name|default:'' }}"></div>
+              <div class="col-12"><label class="form-label form-label-sm">Address</label><input class="form-control form-control-sm" name="address" value="{{ punjab_estamp.applicant.address|default:'' }}"></div>
+              {% else %}
+              <div class="col-12"><div class="alert alert-warning py-2 mb-0">No Owner/Caretaker Tenant is linked to this property. Use <strong>Edit Property</strong> to select one first.</div></div>
+              {% endif %}
+            </div>
+            <div class="alert alert-danger py-2 mt-3 d-none" id="punjabQuickFixError"></div>
+          </form>
+          {% endif %}
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button><a class="btn btn-outline-primary" href="{% url 'properties:property_update' master_lease.unit.property_id %}">Edit Property</a>{% if punjab_estamp.quick_fix_allowed %}<button type="button" class="btn btn-primary" id="punjabQuickFixSave">Save & Continue</button>{% endif %}</div>
+      </div></div>

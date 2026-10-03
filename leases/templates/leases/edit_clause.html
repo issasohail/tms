@@ -1552,6 +1552,39 @@
     return payload;
   }
 
+  async function refreshPunjabEstampCard() {
+    const response = await fetch(window.location.href, {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Could not refresh the Punjab e-Stamp status.');
+    }
+
+    const html = await response.text();
+    const page = new DOMParser().parseFromString(html, 'text/html');
+    const freshCard = page.getElementById('punjabEstampCard');
+
+    if (!freshCard) {
+      throw new Error('Punjab e-Stamp card was not found in the refreshed page.');
+    }
+
+    // Keep the same card element so the delegated click handler remains active.
+    card.innerHTML = freshCard.innerHTML;
+    card.dataset.workflowState = freshCard.dataset.workflowState || '';
+
+    if (freshCard.dataset.launchUrl) {
+      card.dataset.launchUrl = freshCard.dataset.launchUrl;
+    }
+
+    return card.dataset.workflowState;
+  }
+
   async function launchPunjab(button) {
     lastLaunchButton = button;
     const popup = window.open('about:blank', '_blank');
@@ -1574,6 +1607,16 @@
         }
       });
       const payload = await jsonResponse(response);
+
+      // The launch endpoint reads the current workflow from the DB. Refresh
+      // the agreement card so a stale Create/Continue button immediately
+      // catches up with the actual Challan/PSID/status.
+      try {
+        await refreshPunjabEstampCard();
+      } catch (refreshError) {
+        console.warn('Punjab e-Stamp card refresh failed:', refreshError);
+      }
+
       active = {
         popup: popup,
         channel: channelId(),
@@ -1610,6 +1653,15 @@
       active.flow.psid = payload.workflow.psid || active.flow.psid;
       active.flow.stampNumber = payload.workflow.stamp_number || active.flow.stampNumber;
     }
+
+    // Punjab has just saved a workflow event (for example Challan + PSID).
+    // Refresh only the e-Stamp card; do not reload the whole Agreement page.
+    try {
+      await refreshPunjabEstampCard();
+    } catch (refreshError) {
+      console.warn('Punjab e-Stamp card refresh failed:', refreshError);
+    }
+
     helperResponse(source, origin, message.requestId, true, payload);
   }
 
@@ -1666,8 +1718,11 @@
     }
   });
 
-  document.querySelectorAll('.punjab-estamp-launch').forEach((button) => {
-    button.addEventListener('click', () => launchPunjab(button));
+  // Delegated handler survives AJAX replacement of the card contents.
+  card.addEventListener('click', (event) => {
+    const button = event.target.closest('.punjab-estamp-launch');
+    if (!button || !card.contains(button)) return;
+    launchPunjab(button);
   });
   document.getElementById('punjabEstampTryAgain')?.addEventListener('click', () => {
     bootstrap.Modal.getOrCreateInstance(connectionModalElement).hide();

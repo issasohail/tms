@@ -1,3 +1,58 @@
+        .first()
+    )
+
+
+def workflow_comment(lease):
+    property_name = _text(lease.unit.property.property_name)
+    unit_number = _text(lease.unit.unit_number)
+    unit_name = " ".join(part for part in (property_name, unit_number) if part)
+    tenant_name = _text(lease.tenant.get_full_name())
+    return f"{unit_name} - {tenant_name}"
+
+
+def _linked_applicant(tenant, source):
+    relation = tenant.relation if tenant.relation_id else None
+    return {
+        "source": source,
+        "source_label": "Caretaker" if source == "linked_caretaker" else "Owner",
+        "record_id": tenant.pk,
+        "name": _text(tenant.first_name),
+        "cnic": _text(tenant.cnic),
+        "phone": _text(tenant.phone),
+        "email": _text(tenant.email),
+        "address": _text(
+            tenant.permanent_address or tenant.address or tenant.temporary_address
+        ),
+        "relation_name": _text(relation.name if relation else tenant.relation_legacy),
+        "relation_portal_value": _text(relation.portal_value if relation else ""),
+        "relation_person_name": _text(tenant.last_name),
+        "relation_id": relation.pk if relation else None,
+        "relation_active": bool(relation and relation.active),
+    }
+
+
+def _empty_applicant():
+    return {
+        "source": "",
+        "source_label": "",
+        "record_id": None,
+        "name": "",
+        "cnic": "",
+        "phone": "",
+        "email": "",
+        "address": "",
+        "relation_name": "",
+        "relation_portal_value": "",
+        "relation_person_name": "",
+        "relation_id": None,
+        "relation_active": False,
+    }
+
+
+def applicant_snapshot(lease):
+    property_obj = lease.unit.property
+    if property_obj.caretaker_tenant_id:
+        return _linked_applicant(property_obj.caretaker_tenant, "linked_caretaker")
     if property_obj.owner_tenant_id:
         return _linked_applicant(property_obj.owner_tenant, "linked_owner")
     return _empty_applicant()
@@ -82,49 +137,4 @@ def missing_configuration(lease, purpose=None):
         missing.append("Punjab Purpose portal mapping")
     return missing
 
-
-def _validated_components(lease, purpose=None):
-    purpose = purpose or default_lease_purpose()
-    missing = missing_configuration(lease, purpose)
-    if missing:
-        raise ValidationError(
-            "Punjab e-Stamp configuration is incomplete: " + ", ".join(missing)
-        )
-    applicant, property_data, portal_data = snapshot_components(lease, purpose)
-    return purpose, applicant, property_data, portal_data
-
-
-def _missing_stored_snapshot(workflow):
-    applicant = workflow.applicant_snapshot or {}
-    property_data = workflow.property_snapshot or {}
-    portal_data = workflow.portal_snapshot or {}
-    missing = []
-    for key, label in (
-        ("name", "Applicant Name"),
-        ("cnic", "Applicant CNIC"),
-        ("phone", "Applicant Phone"),
-        ("email", "Applicant Email"),
-        ("relation_name", "Applicant Relation"),
-        ("relation_portal_value", "Applicant Relation portal mapping"),
-        ("relation_person_name", "Applicant Relation/Father Name"),
-        ("address", "Applicant Address"),
-    ):
-        if not _text(applicant.get(key)):
-            missing.append(label)
-    for key, label in (
-        ("district_name", "District"),
-        ("district_portal_value", "District portal mapping"),
-        ("tehsil_name", "Tehsil"),
-        ("tehsil_portal_value", "Tehsil portal mapping"),
-    ):
-        if not _text(property_data.get(key)):
-            missing.append(label)
-    for key, label in (
-        ("purpose_name", "Purpose"),
-        ("purpose_portal_value", "Purpose portal mapping"),
-        ("reason", "Reason"),
-    ):
-        if not _text(portal_data.get(key)):
-            missing.append(label)
-    return missing
 

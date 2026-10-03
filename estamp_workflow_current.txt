@@ -1,0 +1,130 @@
+    if property_obj.owner_tenant_id:
+        return _linked_applicant(property_obj.owner_tenant, "linked_owner")
+    return _empty_applicant()
+
+def snapshot_components(lease, purpose=None):
+    property_obj = lease.unit.property
+    purpose = purpose or default_lease_purpose()
+    district = property_obj.zila
+    tehsil = property_obj.tehsil
+    applicant = applicant_snapshot(lease)
+    property_data = {
+        "property_id": property_obj.pk,
+        "property_name": _text(property_obj.property_name),
+        "unit_id": lease.unit_id,
+        "unit_name": " ".join(
+            part
+            for part in (
+                _text(property_obj.property_name),
+                _text(lease.unit.unit_number),
+            )
+            if part
+        ),
+        "unit_number": _text(lease.unit.unit_number),
+        "district_name": _text(district.name if district else ""),
+        "district_portal_value": _text(
+            district.portal_value if district else ""
+        ),
+        "district_id": district.pk if district else None,
+        "tehsil_name": _text(tehsil.name if tehsil else ""),
+        "tehsil_portal_value": _text(tehsil.portal_value if tehsil else ""),
+        "tehsil_id": tehsil.pk if tehsil else None,
+    }
+    portal_data = {
+        "purpose_name": _text(purpose.name if purpose else ""),
+        "purpose_portal_value": _text(purpose.portal_value if purpose else ""),
+        "purpose_id": purpose.pk if purpose else None,
+        "denomination": purpose.denomination if purpose else None,
+        "continuation_sheets": (
+            purpose.default_continuation_sheets if purpose else None
+        ),
+        "reason": workflow_comment(lease),
+        "comment": workflow_comment(lease),
+    }
+    return applicant, property_data, portal_data
+
+
+def missing_configuration(lease, purpose=None):
+    property_obj = lease.unit.property
+    purpose = purpose or default_lease_purpose()
+    applicant, _property_data, _portal_data = snapshot_components(lease, purpose)
+    missing = []
+
+    if not property_obj.zila_id:
+        missing.append("Property Zila / District")
+    elif not property_obj.zila.active or not _text(property_obj.zila.portal_value):
+        missing.append("active Punjab mapping for Property Zila / District")
+    if not property_obj.tehsil_id:
+        missing.append("Property Tehsil")
+    elif property_obj.zila_id and property_obj.tehsil.district_id != property_obj.zila_id:
+        missing.append("Tehsil belonging to the selected Zila / District")
+    elif not property_obj.tehsil.active or not _text(property_obj.tehsil.portal_value):
+        missing.append("active Punjab mapping for Property Tehsil")
+
+    if not applicant.get("name"):
+        missing.append("Applicant Name")
+    if len(normalize_cnic(applicant.get("cnic"))) != 13:
+        missing.append("Applicant CNIC")
+    if not applicant.get("phone"):
+        missing.append("Applicant Phone")
+    if not applicant.get("email"):
+        missing.append("Applicant Email")
+    if not applicant.get("relation_id") or not applicant.get("relation_active") or not applicant.get("relation_portal_value"):
+        missing.append("active Punjab Applicant Relation mapping")
+    if not applicant.get("relation_person_name"):
+        missing.append("Applicant Relation/Father Name")
+    if not applicant.get("address"):
+        missing.append("Applicant Address")
+
+    if not purpose:
+        missing.append("default Punjab lease Purpose")
+    elif not _text(purpose.portal_value):
+        missing.append("Punjab Purpose portal mapping")
+    return missing
+
+
+def _validated_components(lease, purpose=None):
+    purpose = purpose or default_lease_purpose()
+    missing = missing_configuration(lease, purpose)
+    if missing:
+        raise ValidationError(
+            "Punjab e-Stamp configuration is incomplete: " + ", ".join(missing)
+        )
+    applicant, property_data, portal_data = snapshot_components(lease, purpose)
+    return purpose, applicant, property_data, portal_data
+
+
+def _missing_stored_snapshot(workflow):
+    applicant = workflow.applicant_snapshot or {}
+    property_data = workflow.property_snapshot or {}
+    portal_data = workflow.portal_snapshot or {}
+    missing = []
+    for key, label in (
+        ("name", "Applicant Name"),
+        ("cnic", "Applicant CNIC"),
+        ("phone", "Applicant Phone"),
+        ("email", "Applicant Email"),
+        ("relation_name", "Applicant Relation"),
+        ("relation_portal_value", "Applicant Relation portal mapping"),
+        ("relation_person_name", "Applicant Relation/Father Name"),
+        ("address", "Applicant Address"),
+    ):
+        if not _text(applicant.get(key)):
+            missing.append(label)
+    for key, label in (
+        ("district_name", "District"),
+        ("district_portal_value", "District portal mapping"),
+        ("tehsil_name", "Tehsil"),
+        ("tehsil_portal_value", "Tehsil portal mapping"),
+    ):
+        if not _text(property_data.get(key)):
+            missing.append(label)
+    for key, label in (
+        ("purpose_name", "Purpose"),
+        ("purpose_portal_value", "Purpose portal mapping"),
+        ("reason", "Reason"),
+    ):
+        if not _text(portal_data.get(key)):
+            missing.append(label)
+    return missing
+

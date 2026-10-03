@@ -13,7 +13,7 @@ import re
 from datetime import date
 from django import forms
 from django.core.exceptions import ValidationError
-from django.db.models import F, Value
+from django.db.models import F, Q, Value
 from django.db.models.functions import Replace
 from .models import Tenant
 from core.utils.text import add_auto_titlecase_class

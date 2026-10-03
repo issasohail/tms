@@ -52,7 +52,6 @@ class PropertyForm(forms.ModelForm):
         widgets = {
             "address": forms.Textarea(attrs={"rows": 3}),
             "description": forms.Textarea(attrs={"rows": 3}),
-            "bank_account_details": forms.Textarea(attrs={"rows": 3}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -80,8 +79,6 @@ class PropertyForm(forms.ModelForm):
                     "data-tenant-role": field_name.removesuffix("_tenant"),
                 }
             )
-        self.fields["owner_name"].required = False
-        self.fields["owner_cnic"].required = False
         selected_district_id = None
         if self.is_bound:
             selected_district_id = self.data.get(self.add_prefix("zila"))
@@ -140,10 +137,6 @@ class PropertyForm(forms.ModelForm):
             if rawalpindi_tehsil:
                 self.initial.setdefault("tehsil", rawalpindi_tehsil.pk)
 
-        self.fields["bank_account_details"].label = "Legacy Bank Account Fallback"
-        self.fields[
-            "bank_account_details"
-        ].help_text = "Kept for compatibility. Manage multiple structured accounts on the property detail page."
         if "electricity_unit_rate" in self.fields:
             self.fields["electricity_unit_rate"].label = "Property rate override"
             self.fields["electricity_unit_rate"].help_text = (
@@ -161,10 +154,6 @@ class PropertyForm(forms.ModelForm):
             self.fields,
             {
                 "property_name",
-                "owner_name",
-                "owner_father_name",
-                "caretaker_name",
-                "caretaker_father_name",
                 "property_city",
                 "property_state",
             },
@@ -172,23 +161,6 @@ class PropertyForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        for role in ("owner", "caretaker"):
-            tenant = cleaned.get(f"{role}_tenant")
-            if not tenant:
-                continue
-            relation = tenant.relation.name if tenant.relation_id else tenant.relation_legacy
-            cleaned[f"{role}_prefix"] = tenant.prefix
-            cleaned[f"{role}_name"] = tenant.first_name
-            cleaned[f"{role}_father_name"] = tenant.last_name
-            cleaned[f"{role}_cnic"] = tenant.cnic
-            cleaned[f"{role}_phone"] = tenant.phone
-            cleaned[f"{role}_address"] = tenant.permanent_address or tenant.address
-            cleaned["relation" if role == "owner" else "caretaker_relation"] = relation
-        if not cleaned.get("owner_tenant"):
-            if not cleaned.get("owner_name"):
-                self.add_error("owner_name", "Select an Owner Tenant or enter the legacy owner name.")
-            if not cleaned.get("owner_cnic"):
-                self.add_error("owner_cnic", "Select an Owner Tenant or enter the legacy owner CNIC.")
         district = cleaned.get("zila")
         tehsil = cleaned.get("tehsil")
         if district and tehsil and tehsil.district_id != district.pk:
@@ -210,12 +182,6 @@ class UnitForm(forms.ModelForm):
         widgets = {
             # your model uses "comments", not "notes"
             "comments": forms.Textarea(attrs={"rows": 3}),
-            "bank_account_details": forms.Textarea(
-                attrs={
-                    "rows": 3,
-                    "data-unit-bank-account": "1",
-                }
-            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -228,11 +194,27 @@ class UnitForm(forms.ModelForm):
             else:
                 # don't fight crispy; just ensure controls look fine
                 field.widget.attrs.setdefault("class", "form-control")
-        self.fields["use_property_bank_account"].widget.attrs.update(
-            {
-                "data-use-property-bank-account": "1",
-            }
+
+        selected_property_id = None
+        if self.is_bound:
+            selected_property_id = self.data.get(self.add_prefix("property"))
+        elif self.instance and self.instance.pk:
+            selected_property_id = self.instance.property_id
+        selected_bank_id = getattr(self.instance, "bank_account_id", None)
+        bank_queryset = PropertyBankAccount.objects.filter(is_active=True)
+        if selected_bank_id:
+            bank_queryset = PropertyBankAccount.objects.filter(
+                Q(is_active=True) | Q(pk=selected_bank_id)
+            )
+        self.fields["bank_account"].queryset = bank_queryset.select_related("property").order_by(
+            "property__property_name", "sort_order", "account_label", "id"
         )
+        self.fields["bank_account"].label = "Payment Bank Account"
+        self.fields["bank_account"].empty_label = "Use property default account"
+        self.fields["bank_account"].help_text = (
+            "Choose a property bank account for this unit, or leave blank to use the property's default account."
+        )
+        self.fields["bank_account"].widget.attrs.update({"data-unit-bank-account-select": "1"})
 
         # quick visual proof you're on the right file
         self.fields["unit_number"].label = "Unit #"
@@ -342,8 +324,7 @@ class UnitForm(forms.ModelForm):
             ),
             # Full-width text fields (keep these readable)
             Div(
-                Div("use_property_bank_account", css_class="col-12 col-md-4"),
-                Div("bank_account_details", css_class="col-12 col-md-8"),
+                Div("bank_account", css_class="col-12 col-md-6"),
                 css_class="row g-3",
             ),
             Div(Div("paint_condition", css_class="col-12"), css_class="row g-3"),
@@ -352,17 +333,29 @@ class UnitForm(forms.ModelForm):
 
     @property
     def property_bank_account_map(self):
-        return {
-            str(prop.pk): prop.bank_account_details or ""
-            for prop in Property.objects.order_by("property_name")
-        }
+        result = {}
+        accounts = PropertyBankAccount.objects.filter(is_active=True).select_related("property").order_by(
+            "property_id", "sort_order", "account_label", "id"
+        )
+        for account in accounts:
+            result.setdefault(str(account.property_id), []).append(
+                {
+                    "id": account.pk,
+                    "label": f"{account.account_label}{' - ' + account.bank_name if account.bank_name else ''}",
+                    "is_default": account.is_default,
+                }
+            )
+        return result
+
 
     def clean(self):
         cleaned_data = super().clean()
-        if not cleaned_data.get("building_type") and cleaned_data.get("property"):
-            cleaned_data["building_type"] = default_building_type_for_property(
-                cleaned_data["property"]
-            )
+        property_obj = cleaned_data.get("property")
+        if not cleaned_data.get("building_type") and property_obj:
+            cleaned_data["building_type"] = default_building_type_for_property(property_obj)
+        bank_account = cleaned_data.get("bank_account")
+        if property_obj and bank_account and bank_account.property_id != property_obj.pk:
+            self.add_error("bank_account", "Select a bank account belonging to the selected property.")
         return cleaned_data
 
     def save(self, commit=True):

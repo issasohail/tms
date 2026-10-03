@@ -1055,7 +1055,12 @@ class LeaseListView(SingleTableView):
         queryset = (
             super()
             .get_queryset()
-            .select_related("tenant", "unit", "unit__property")
+            .select_related(
+                "tenant",
+                "unit",
+                "unit__property",
+                "unit__property__owner_tenant",
+            )
             .only(
                 "id",
                 "tenant_id",
@@ -1082,8 +1087,10 @@ class LeaseListView(SingleTableView):
                 "unit__unit_number",
                 "unit__property__id",
                 "unit__property__property_name",
-                "unit__property__owner_name",
-                "unit__property__owner_phone",
+                "unit__property__owner_tenant_id",
+                "unit__property__owner_tenant__id",
+                "unit__property__owner_tenant__first_name",
+                "unit__property__owner_tenant__phone",
             )
         )
 

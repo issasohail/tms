@@ -27,11 +27,21 @@ class ExpenseDistribution(models.Model):
         super().save(*args, **kwargs)
 
 
+
+
 def property_owner_photo_upload_to(instance, filename):
+    """
+    Historical migration compatibility callable.
+
+    Older Property migrations serialize this function by dotted path.
+    The legacy owner-photo field has now been removed, but Django must
+    still be able to import the callable while loading the migration graph.
+    """
     ext = os.path.splitext(filename or "")[1].lower() or ".jpg"
-    owner = "".join(ch if ch.isalnum() else "-" for ch in str(instance.owner_name or "owner"))
+    owner_name = getattr(instance, "owner_name", "") or "owner"
+    owner = "".join(ch if ch.isalnum() else "-" for ch in str(owner_name))
     owner = "-".join(part for part in owner.split("-") if part)[:60] or "owner"
-    return f"properties/owners/{instance.pk or 'new'}/{owner}-owner-photo{ext}"
+    return f"properties/owners/{getattr(instance, 'pk', None) or 'new'}/{owner}-owner-photo{ext}"
 
 
 class Property(models.Model):
@@ -52,22 +62,6 @@ class Property(models.Model):
         null=True,
         blank=True,
     )
-    owner_prefix = models.CharField(max_length=5, null=True, blank=True, default="Mr.")
-    owner_name = models.CharField(max_length=100)
-    owner_father_name = models.CharField(max_length=100, blank=True, null=True)
-    relation = models.CharField(max_length=10, null=True, blank=True, default="S/O")
-    owner_phone = NormalizedPhoneField(max_length=32, blank=True, null=True)
-    owner_address = models.CharField(max_length=200, blank=True, null=True)
-    owner_cnic = NormalizedCNICField(max_length=15)
-    owner_phone = NormalizedPhoneField(max_length=32, blank=True, null=True)
-    owner_photo = models.ImageField(upload_to=property_owner_photo_upload_to, blank=True, null=True)
-    caretaker_prefix = models.CharField(
-        max_length=5, null=True, blank=True, default="Mr."
-    )
-    caretaker_prefix = models.CharField(
-        max_length=5, null=True, blank=True, default="Mr."
-    )
-    caretaker_name = models.CharField(max_length=100, blank=True, null=True)
     caretaker_tenant = models.ForeignKey(
         "tenants.Tenant",
         on_delete=models.SET_NULL,
@@ -75,13 +69,6 @@ class Property(models.Model):
         null=True,
         blank=True,
     )
-    caretaker_father_name = models.CharField(max_length=100, blank=True, null=True)
-    caretaker_relation = models.CharField(
-        max_length=10, null=True, blank=True, default="S/O"
-    )
-    caretaker_address = models.CharField(max_length=200, blank=True, null=True)
-    caretaker_cnic = NormalizedCNICField(max_length=15, blank=True, null=True)
-    caretaker_phone = NormalizedPhoneField(max_length=32, blank=True, null=True)
     property_address1 = models.CharField(max_length=200, blank=True, null=True)
     property_address2 = models.TextField(max_length=100, blank=True, null=True)
     property_city = models.CharField(max_length=20, blank=True, null=True)
@@ -117,11 +104,6 @@ class Property(models.Model):
         null=True,
         blank=True,
     )
-    bank_account_details = models.TextField(
-        blank=True,
-        null=True,
-        help_text="Default bank account/payment instructions for this property.",
-    )
     WELCOME_BANK_SELECTED = "selected"
     WELCOME_BANK_ALL = "all"
     WELCOME_BANK_ACCOUNT_CHOICES = (
@@ -155,6 +137,80 @@ class Property(models.Model):
     def __str__(self):
         return f"{self.property_name} "
 
+    def _identity_value(self, role, attr, default=""):
+        tenant = getattr(self, f"{role}_tenant", None)
+        if tenant is None:
+            return getattr(self, f"_legacy_{role}_{attr}", default)
+        if attr == "relation":
+            return tenant.relation.name if tenant.relation_id else tenant.relation_legacy
+        if attr == "address":
+            return tenant.permanent_address or tenant.address or tenant.temporary_address
+        if attr == "father_name":
+            return tenant.last_name
+        return getattr(tenant, attr, default) or default
+
+    @property
+    def owner_prefix(self): return self._identity_value("owner", "prefix")
+    @owner_prefix.setter
+    def owner_prefix(self, value): self._legacy_owner_prefix = value
+    @property
+    def owner_name(self): return self._identity_value("owner", "first_name")
+    @owner_name.setter
+    def owner_name(self, value): self._legacy_owner_name = value
+    @property
+    def owner_father_name(self): return self._identity_value("owner", "father_name")
+    @owner_father_name.setter
+    def owner_father_name(self, value): self._legacy_owner_father_name = value
+    @property
+    def relation(self): return self._identity_value("owner", "relation")
+    @relation.setter
+    def relation(self, value): self._legacy_owner_relation = value
+    @property
+    def owner_phone(self): return self._identity_value("owner", "phone")
+    @owner_phone.setter
+    def owner_phone(self, value): self._legacy_owner_phone = value
+    @property
+    def owner_address(self): return self._identity_value("owner", "address")
+    @owner_address.setter
+    def owner_address(self, value): self._legacy_owner_address = value
+    @property
+    def owner_cnic(self): return self._identity_value("owner", "cnic")
+    @owner_cnic.setter
+    def owner_cnic(self, value): self._legacy_owner_cnic = value
+    @property
+    def owner_photo(self): return self._identity_value("owner", "photo", None)
+    @owner_photo.setter
+    def owner_photo(self, value): self._legacy_owner_photo = value
+
+    @property
+    def caretaker_prefix(self): return self._identity_value("caretaker", "prefix")
+    @caretaker_prefix.setter
+    def caretaker_prefix(self, value): self._legacy_caretaker_prefix = value
+    @property
+    def caretaker_name(self): return self._identity_value("caretaker", "first_name")
+    @caretaker_name.setter
+    def caretaker_name(self, value): self._legacy_caretaker_name = value
+    @property
+    def caretaker_father_name(self): return self._identity_value("caretaker", "father_name")
+    @caretaker_father_name.setter
+    def caretaker_father_name(self, value): self._legacy_caretaker_father_name = value
+    @property
+    def caretaker_relation(self): return self._identity_value("caretaker", "relation")
+    @caretaker_relation.setter
+    def caretaker_relation(self, value): self._legacy_caretaker_relation = value
+    @property
+    def caretaker_address(self): return self._identity_value("caretaker", "address")
+    @caretaker_address.setter
+    def caretaker_address(self, value): self._legacy_caretaker_address = value
+    @property
+    def caretaker_cnic(self): return self._identity_value("caretaker", "cnic")
+    @caretaker_cnic.setter
+    def caretaker_cnic(self, value): self._legacy_caretaker_cnic = value
+    @property
+    def caretaker_phone(self): return self._identity_value("caretaker", "phone")
+    @caretaker_phone.setter
+    def caretaker_phone(self, value): self._legacy_caretaker_phone = value
+
     def full_address(self):
         parts = [self.property_address1]
 
@@ -181,10 +237,6 @@ class Property(models.Model):
             self,
             (
                 "property_name",
-                "owner_name",
-                "owner_father_name",
-                "caretaker_name",
-                "caretaker_father_name",
                 "house_no",
                 "colony",
                 "road",
@@ -197,7 +249,6 @@ class Property(models.Model):
                 "property_state",
             ),
         )
-        compress_instance_file_field(self, "owner_photo")
         super().save(*args, **kwargs)
 
     def welcome_bank_accounts(self):
@@ -211,9 +262,7 @@ class Property(models.Model):
 
     def welcome_bank_account_details(self):
         accounts = self.welcome_bank_accounts()
-        if accounts:
-            return "\n\n".join(account.formatted_details() for account in accounts)
-        return (self.bank_account_details or "").strip()
+        return "\n\n".join(account.formatted_details() for account in accounts)
 
     class Meta:
         ordering = ["property_name"]
@@ -534,14 +583,13 @@ class Unit(models.Model):
         default=Decimal("1000.00"),
         help_text="Move-out charge when keys/key cards are not recorded as returned.",
     )
-    use_property_bank_account = models.BooleanField(
-        default=True,
-        help_text="Use the property's default bank account/payment instructions.",
-    )
-    bank_account_details = models.TextField(
-        blank=True,
+    bank_account = models.ForeignKey(
+        "PropertyBankAccount",
+        on_delete=models.SET_NULL,
+        related_name="units",
         null=True,
-        help_text="Optional unit-specific bank account/payment instructions.",
+        blank=True,
+        help_text="Optional account assigned to this unit. Leave blank to use the property's default account.",
     )
     monthly_rent = models.DecimalField(
         # Add this if missing
@@ -588,6 +636,38 @@ class Unit(models.Model):
         verbose_name="Show in Public Vacancy List",
         help_text="If unchecked, this unit will not appear in WhatsApp/public vacancy lists.",
     )
+
+    def clean(self):
+        super().clean()
+        if self.bank_account_id and self.property_id and self.bank_account.property_id != self.property_id:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({"bank_account": "The selected bank account belongs to another property."})
+
+    def effective_bank_account(self):
+        if self.bank_account_id and self.bank_account and self.bank_account.is_active:
+            return self.bank_account
+        if not self.property_id:
+            return None
+        return self.property.bank_accounts.filter(is_active=True, is_default=True).first() or self.property.bank_accounts.filter(is_active=True).order_by("sort_order", "account_label", "id").first()
+
+    def effective_bank_account_details(self):
+        account = self.effective_bank_account()
+        return account.formatted_details() if account else ""
+
+    @builtins.property
+    def use_property_bank_account(self):
+        return not bool(self.bank_account_id)
+    @use_property_bank_account.setter
+    def use_property_bank_account(self, value):
+        self._legacy_use_property_bank_account = value
+
+    @builtins.property
+    def bank_account_details(self):
+        transient = getattr(self, "_legacy_bank_account_details", "")
+        return transient or self.effective_bank_account_details()
+    @bank_account_details.setter
+    def bank_account_details(self, value):
+        self._legacy_bank_account_details = value
 
     def __str__(self):
         return f"{self.property.property_name}-{self.unit_number}"

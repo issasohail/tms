@@ -261,7 +261,7 @@
                 <option value="inactive" {% if request.GET.tenant_status == "inactive" %}selected{% endif %}>
                     Inactive Tenants
                 </option>
-                <option value="" {% if request.GET.show_inactive %}selected{% endif %}>
+                <option value="all" {% if request.GET.tenant_status == "all" %}selected{% endif %}>
                     All Tenants
                 </option>
             </select>

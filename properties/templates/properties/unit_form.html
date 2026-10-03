@@ -222,17 +222,9 @@
             <div class="col-6 col-md-3 col-xl-2">{{ form.society_maintenance|as_crispy_field }}</div>
             <div class="col-6 col-md-3 col-xl-2">{{ form.water_charges|as_crispy_field }}</div>
             <div class="col-6 col-md-3 col-xl-2">{{ form.internet_charges|as_crispy_field }}</div>
-            <div class="col-12 col-md-4 col-xl-2">{{ form.use_property_bank_account|as_crispy_field }}</div>
-            <div class="col-12 col-md-8 col-xl-6">{{ form.bank_account_details|as_crispy_field }}</div>
-            <div class="col-12 col-xl-4">
-              <div class="unit-copy-bank d-flex flex-wrap align-items-center gap-2">
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="copyPropertyBankAccount">
-                  <i class="bi bi-clipboard-check"></i> Copy Property Bank
-                </button>
-                <span class="text-muted small">
-                  Uses the selected property's default payment details.
-                </span>
-              </div>
+            <div class="col-12 col-md-8 col-xl-6">{{ form.bank_account|as_crispy_field }}</div>
+            <div class="col-12 col-xl-6 d-flex align-items-end">
+              <span class="text-muted small">Leave blank to use the selected property's default bank account.</span>
             </div>
           </div>
         </div>
@@ -286,17 +278,27 @@ document.addEventListener("DOMContentLoaded", function () {
     const mapEl = document.getElementById("property-bank-account-map");
     const bankMap = mapEl ? JSON.parse(mapEl.textContent || "{}") : {};
     const propertySelect = document.getElementById("id_property");
-    const unitBank = document.querySelector("[data-unit-bank-account='1']");
-    const useProperty = document.querySelector("[data-use-property-bank-account='1']");
-    const copyBtn = document.getElementById("copyPropertyBankAccount");
+    const bankSelect = document.querySelector("[data-unit-bank-account-select='1']");
+    if (!propertySelect || !bankSelect) return;
 
-    copyBtn?.addEventListener("click", function () {
-        if (!propertySelect || !unitBank) return;
-        const value = bankMap[String(propertySelect.value)] || "";
-        unitBank.value = value;
-        if (useProperty) useProperty.checked = false;
-        unitBank.focus();
-    });
+    const initialBank = bankSelect.value;
+    function refreshBankAccounts() {
+        const propertyId = String(propertySelect.value || "");
+        const accounts = bankMap[propertyId] || [];
+        const previous = bankSelect.value || initialBank || "";
+        bankSelect.replaceChildren(new Option("Use property default account", ""));
+        accounts.forEach(function (account) {
+            const label = account.label + (account.is_default ? " (Default)" : "");
+            bankSelect.add(new Option(label, String(account.id)));
+        });
+        if (Array.from(bankSelect.options).some(option => option.value === String(previous))) {
+            bankSelect.value = String(previous);
+        } else {
+            bankSelect.value = "";
+        }
+    }
+    propertySelect.addEventListener("change", refreshBankAccounts);
+    refreshBankAccounts();
 });
 </script>
 {% endblock %}

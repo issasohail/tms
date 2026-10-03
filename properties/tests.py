@@ -1,4 +1,4 @@
-import json
+﻿import json
 import tempfile
 from io import BytesIO
 from datetime import timedelta
@@ -259,20 +259,24 @@ class SignedGalleryMediaTests(TestCase):
 
     def test_signed_image_variants_return_jpeg(self):
         base_url = self._media_url()
+        responses = []
 
         for query in ("", "?variant=thumbnail", "?variant=original"):
             with self.subTest(query=query):
                 response = self.client.get(f"{base_url}{query}")
+                responses.append(response)
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response["Content-Type"], "image/jpeg")
                 self.assertTrue(b"".join(response.streaming_content))
-                response.close()
 
         download = self.client.get(f"{base_url}?variant=original&download=1")
+        responses.append(download)
         self.assertEqual(download.status_code, 200)
         self.assertIn("attachment", download["Content-Disposition"])
         self.assertIn("gallery.jpg", download["Content-Disposition"])
-        download.close()
+
+        for response in responses:
+            response.close()
 
     def test_invalid_expired_and_wrong_owner_tokens_return_404(self):
         invalid_url = self._media_url(token="invalid-token")
@@ -805,3 +809,4 @@ class UnitFormPersistenceRegressionTests(TestCase):
             reverse("properties:unit_detail", args=[unit.pk]),
             fetch_redirect_response=False,
         )
+

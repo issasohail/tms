@@ -5,11 +5,11 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
+from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.contrib.staticfiles import finders
-from django.test import TestCase
 from django.template.loader import render_to_string
+from django.test import TestCase
 from django.urls import reverse
 from pypdf import PdfReader, PdfWriter
 
@@ -42,27 +42,31 @@ from tenants.models import Tenant
 
 class PunjabEStampWorkflowServiceTests(TestCase):
     def setUp(self):
-        self.relation = PunjabEStampRelation.objects.create(
-            name="S/O", portal_value="33", active=True, sort_order=1
+        # Phase 7/seed migrations populate these portal reference rows in the
+        # test database. Reuse/update them rather than inserting duplicates.
+        self.relation, _ = PunjabEStampRelation.objects.update_or_create(
+            portal_value="33",
+            defaults={"name": "S/O", "active": True, "sort_order": 1},
         )
-        self.district = PunjabEStampDistrict.objects.create(
-            name="Rawalpindi", portal_value="18", active=True, sort_order=1
+        self.district, _ = PunjabEStampDistrict.objects.update_or_create(
+            portal_value="18",
+            defaults={"name": "Rawalpindi", "active": True, "sort_order": 1},
         )
-        self.tehsil = PunjabEStampTehsil.objects.create(
+        self.tehsil, _ = PunjabEStampTehsil.objects.update_or_create(
             district=self.district,
-            name="Rawalpindi",
             portal_value="72",
-            active=True,
-            sort_order=1,
+            defaults={"name": "Rawalpindi", "active": True, "sort_order": 1},
         )
-        self.purpose = PunjabEStampPurpose.objects.create(
-            name="Lease Agreement",
+        self.purpose, _ = PunjabEStampPurpose.objects.update_or_create(
             portal_value="208",
-            denomination=100,
-            default_continuation_sheets=1,
-            active=True,
-            is_default_for_lease=True,
-            sort_order=1,
+            defaults={
+                "name": "Lease Agreement",
+                "denomination": 100,
+                "default_continuation_sheets": 1,
+                "active": True,
+                "is_default_for_lease": True,
+                "sort_order": 1,
+            },
         )
         self.owner = Tenant.objects.create(
             first_name="Owner",
@@ -128,7 +132,7 @@ class PunjabEStampWorkflowServiceTests(TestCase):
             password="test-password",
         )
 
-    def test_applicant_priority_and_legacy_fallbacks(self):
+    def test_applicant_priority_uses_linked_tenants(self):
         self.assertEqual(applicant_snapshot(self.lease)["source"], "linked_owner")
 
         self.property.caretaker_name = "Legacy Caretaker"
@@ -139,7 +143,7 @@ class PunjabEStampWorkflowServiceTests(TestCase):
         self.property.caretaker_address = "Legacy Caretaker Address"
         self.property.save()
         legacy = applicant_snapshot(self.lease)
-        self.assertEqual(legacy["source"], "legacy_caretaker")
+        self.assertEqual(legacy["source"], "linked_owner")
         self.assertEqual(legacy["relation_portal_value"], "33")
 
         self.property.caretaker_tenant = self.caretaker
@@ -155,7 +159,7 @@ class PunjabEStampWorkflowServiceTests(TestCase):
         self.property.caretaker_address = ""
         self.property.owner_tenant = None
         self.property.save()
-        self.assertEqual(applicant_snapshot(self.lease)["source"], "legacy_owner")
+        self.assertEqual(applicant_snapshot(self.lease)["source"], "")
 
     def test_missing_relation_mapping_blocks_launch(self):
         self.owner.relation = None
@@ -174,9 +178,7 @@ class PunjabEStampWorkflowServiceTests(TestCase):
             "F56 Flat 2 - Primary Tenant",
         )
         first, created = prepare_workflow(self.lease, self.history, self.user)
-        second, created_again = prepare_workflow(
-            self.lease, self.history, self.user
-        )
+        second, created_again = prepare_workflow(self.lease, self.history, self.user)
         self.assertTrue(created)
         self.assertFalse(created_again)
         self.assertEqual(first.pk, second.pk)
@@ -322,7 +324,9 @@ class PunjabEStampWorkflowServiceTests(TestCase):
         self.assertTrue(payload["flow"]["dryRun"])
         self.assertEqual(payload["flow"]["stage"], "challan")
         self.assertTrue(payload["flow"]["launchToken"])
-        self.assertIn("HomePage", payload["portal_url"])
+        self.assertIn("AddChallanForWhitePaper", payload["portal_url"])
+        self.assertIn("name=GenerateChallan", payload["portal_url"])
+        self.assertIn("agree=true", payload["portal_url"])
         serialized = str(payload).lower()
         self.assertNotIn("'otp'", serialized)
         self.assertNotIn("'pin'", serialized)
@@ -451,20 +455,21 @@ class PunjabEStampWorkflowServiceTests(TestCase):
             )
 
     def test_browser_helper_enforces_dry_run_and_session_only_otp(self):
-        helper_path = finders.find(
-            "punjab_estamp/punjab_portal_helper.user.js"
-        )
+        helper_path = finders.find("punjab_estamp/punjab_portal_helper.user.js")
         self.assertTrue(helper_path)
         source = Path(helper_path).read_text(encoding="utf-8")
         self.assertIn("TMS dry run complete", source)
         self.assertIn("flow.dryRun !== true", source)
         self.assertNotIn("localStorage", source)
         self.assertIn("sessionStorage", source)
+        self.assertIn('setMasked("PersonCnic", applicantCnic)', source)
+        self.assertIn("formatPakistanMobile", source)
+        self.assertIn("Applicant Email is missing in TMS", source)
         self.assertIn("installPdfCapture", source)
         self.assertIn("navigator.credentials.get", source)
         self.assertNotIn('getElementById("btnNext")', source)
-        specific = source.index('/stamp/stampretrievalbycnic')
-        download = source.index('/stamp/searchchallan')
+        specific = source.index("/stamp/stampretrievalbycnic")
+        download = source.index("/stamp/searchchallan")
         generic = source.index('/stamp/stampretrieval"')
         self.assertLess(specific, download)
         self.assertLess(download, generic)
@@ -479,7 +484,11 @@ class PunjabEStampWorkflowServiceTests(TestCase):
             workflow.STATUS_UPLOADED: "View E-Stamp",
             workflow.STATUS_INVALID: "Create Replacement Challan",
         }
-        workflow.applicant_snapshot, workflow.property_snapshot, workflow.portal_snapshot = (
+        (
+            workflow.applicant_snapshot,
+            workflow.property_snapshot,
+            workflow.portal_snapshot,
+        ) = (
             applicant_snapshot(self.lease),
             {
                 "property_name": "F56",
@@ -513,9 +522,7 @@ class PunjabEStampWorkflowServiceTests(TestCase):
                     "role_tenants": [],
                     "relationship_types": [],
                     "punjab_estamp_relations": [self.relation],
-                    "punjab_estamp": workflow_card_context(
-                        self.lease, self.history
-                    ),
+                    "punjab_estamp": workflow_card_context(self.lease, self.history),
                     "estamp_status": SimpleNamespace(
                         document=None,
                         is_over_age=False,
@@ -539,8 +546,6 @@ class PunjabEStampWorkflowServiceTests(TestCase):
                 },
             )
             self.assertIn(button_text, html)
-            self.assertIn(
-                f'<option value="{self.relation.pk}">S/O</option>', html
-            )
+            self.assertIn(f'<option value="{self.relation.pk}">S/O</option>', html)
             self.assertNotIn(">OTP<", html)
             self.assertNotIn(">PDF PIN<", html)

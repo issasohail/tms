@@ -512,18 +512,10 @@ def _lease_bank_account(lease):
     if not lease:
         return ""
     unit = getattr(lease, "unit", None)
-    property_obj = getattr(unit, "property", None)
-    unit_bank = (getattr(unit, "bank_account_details", None) or "").strip()
-    use_property = getattr(unit, "use_property_bank_account", True)
-    property_bank = (getattr(property_obj, "bank_account_details", None) or "").strip()
-    if unit_bank and not use_property:
-        return unit_bank
-    structured_resolver = getattr(property_obj, "welcome_bank_account_details", None)
-    if callable(structured_resolver):
-        structured_bank = structured_resolver()
-        if structured_bank:
-            return structured_bank
-    return property_bank or unit_bank
+    if not unit:
+        return ""
+    resolver = getattr(unit, "effective_bank_account_details", None)
+    return resolver() if callable(resolver) else ""
 
 
 def _db_placeholders_for_lease(AgreementPlaceholder, lease=None):

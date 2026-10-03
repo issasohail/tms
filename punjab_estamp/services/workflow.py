@@ -6,8 +6,10 @@ from core.utils.identity import normalize_cnic
 from leases.whatsapp import build_whatsapp_url
 from punjab_estamp.models import (
     LeaseEStampWorkflow,
+    PunjabEStampDistrict,
     PunjabEStampPurpose,
     PunjabEStampRelation,
+    PunjabEStampTehsil,
 )
 
 
@@ -69,31 +71,21 @@ def _linked_applicant(tenant, source):
     }
 
 
-def _legacy_applicant(property_obj, source):
-    caretaker = source == "legacy_caretaker"
-    prefix = "caretaker" if caretaker else "owner"
-    relation_text = getattr(
-        property_obj,
-        "caretaker_relation" if caretaker else "relation",
-        "",
-    )
-    relation = resolve_property_relation(relation_text)
+def _empty_applicant():
     return {
-        "source": source,
-        "source_label": "Caretaker" if caretaker else "Owner",
+        "source": "",
+        "source_label": "",
         "record_id": None,
-        "name": _text(getattr(property_obj, f"{prefix}_name", "")),
-        "cnic": _text(getattr(property_obj, f"{prefix}_cnic", "")),
-        "phone": _text(getattr(property_obj, f"{prefix}_phone", "")),
+        "name": "",
+        "cnic": "",
+        "phone": "",
         "email": "",
-        "address": _text(getattr(property_obj, f"{prefix}_address", "")),
-        "relation_name": _text(relation.name if relation else relation_text),
-        "relation_portal_value": _text(relation.portal_value if relation else ""),
-        "relation_person_name": _text(
-            getattr(property_obj, f"{prefix}_father_name", "")
-        ),
-        "relation_id": relation.pk if relation else None,
-        "relation_active": bool(relation and relation.active),
+        "address": "",
+        "relation_name": "",
+        "relation_portal_value": "",
+        "relation_person_name": "",
+        "relation_id": None,
+        "relation_active": False,
     }
 
 
@@ -101,20 +93,9 @@ def applicant_snapshot(lease):
     property_obj = lease.unit.property
     if property_obj.caretaker_tenant_id:
         return _linked_applicant(property_obj.caretaker_tenant, "linked_caretaker")
-    if any(
-        _text(value)
-        for value in (
-            property_obj.caretaker_name,
-            property_obj.caretaker_cnic,
-            property_obj.caretaker_phone,
-            property_obj.caretaker_address,
-        )
-    ):
-        return _legacy_applicant(property_obj, "legacy_caretaker")
     if property_obj.owner_tenant_id:
         return _linked_applicant(property_obj.owner_tenant, "linked_owner")
-    return _legacy_applicant(property_obj, "legacy_owner")
-
+    return _empty_applicant()
 
 def snapshot_components(lease, purpose=None):
     property_obj = lease.unit.property
@@ -181,6 +162,8 @@ def missing_configuration(lease, purpose=None):
         missing.append("Applicant CNIC")
     if not applicant.get("phone"):
         missing.append("Applicant Phone")
+    if not applicant.get("email"):
+        missing.append("Applicant Email")
     if not applicant.get("relation_id") or not applicant.get("relation_active") or not applicant.get("relation_portal_value"):
         missing.append("active Punjab Applicant Relation mapping")
     if not applicant.get("relation_person_name"):
@@ -215,6 +198,7 @@ def _missing_stored_snapshot(workflow):
         ("name", "Applicant Name"),
         ("cnic", "Applicant CNIC"),
         ("phone", "Applicant Phone"),
+        ("email", "Applicant Email"),
         ("relation_name", "Applicant Relation"),
         ("relation_portal_value", "Applicant Relation portal mapping"),
         ("relation_person_name", "Applicant Relation/Father Name"),
@@ -527,6 +511,11 @@ def workflow_card_context(lease, lease_history):
         LeaseEStampWorkflow.STATUS_INVALID: "Invalid",
         LeaseEStampWorkflow.STATUS_FAILED: "Failed",
     }
+    missing = (
+        _missing_stored_snapshot(workflow)
+        if use_stored_snapshot
+        else missing_configuration(lease, purpose)
+    )
     return {
         "workflow": workflow,
         "state": state,
@@ -534,10 +523,10 @@ def workflow_card_context(lease, lease_history):
         "applicant": applicant,
         "property": property_data,
         "portal": portal_data,
-        "missing": (
-            _missing_stored_snapshot(workflow)
-            if use_stored_snapshot
-            else missing_configuration(lease, purpose)
-        ),
+        "missing": missing,
+        "quick_fix_allowed": bool(missing and not use_stored_snapshot),
+        "quick_fix_relations": PunjabEStampRelation.objects.filter(active=True).order_by("sort_order", "name"),
+        "quick_fix_districts": PunjabEStampDistrict.objects.filter(active=True).order_by("sort_order", "name"),
+        "quick_fix_tehsils": PunjabEStampTehsil.objects.filter(active=True).order_by("district_id", "sort_order", "name"),
         "whatsapp_url": payment_whatsapp_url(workflow) if workflow else "",
     }

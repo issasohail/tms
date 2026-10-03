@@ -1,0 +1,170 @@
+
+def _agreement_redirect(lease, history):
+    url = reverse("leases:edit_clauses", kwargs={"pk": lease.pk})
+    return redirect(f"{url}?history={history.pk}")
+
+
+def _json_body(request):
+    try:
+        return json.loads(request.body or b"{}")
+    except (TypeError, ValueError, UnicodeDecodeError) as exc:
+        raise ValidationError("The Punjab portal event is not valid JSON.") from exc
+
+
+def _normalize_identifier(value):
+    return "".join(str(value or "").split()).upper()
+
+
+def _workflow_json(workflow):
+    return {
+        "workflow_id": workflow.pk,
+        "status": workflow.status,
+        "challan_number": workflow.challan_number,
+        "psid": workflow.psid,
+        "stamp_number": workflow.stamp_number,
+    }
+
+
+@login_required
+@require_POST
+def prepare(request, lease_id, history_id):
+    _require_lease_change(request.user)
+    lease, history = _lease_and_history(lease_id, history_id)
+    try:
+        workflow, created = prepare_workflow(lease, history, request.user)
+    except ValidationError as exc:
+        messages.error(request, " ".join(exc.messages))
+        return _agreement_redirect(lease, history)
+    if workflow.challan_number:
+        messages.info(request, "The existing Punjab Challan will be continued.")
+    elif created:
+        messages.success(
+            request,
+            "Punjab e-Stamp workflow is ready. Portal launch will be connected in Phase 6.",
+        )
+    else:
+        messages.info(request, "The existing Punjab e-Stamp workflow was reused.")
+    return _agreement_redirect(lease, history)
+
+
+@login_required
+@require_POST
+def replacement(request, lease_id, history_id):
+    _require_lease_change(request.user)
+    lease, history = _lease_and_history(lease_id, history_id)
+    workflow = get_object_or_404(
+        LeaseEStampWorkflow,
+        lease=lease,
+        lease_history=history,
+    )
+    try:
+        prepare_replacement(workflow, request.user)
+    except ValidationError as exc:
+        messages.error(request, " ".join(exc.messages))
+    else:
+        messages.success(
+            request,
+            "The invalid Challan was archived. A replacement can now be created.",
+        )
+    return _agreement_redirect(lease, history)
+
+
+@login_required
+@require_POST
+def configuration_update(request, lease_id, history_id):
+    """Save missing pre-challan e-Stamp configuration without leaving the agreement."""
+    _require_lease_change(request.user)
+    lease, history = _lease_and_history(lease_id, history_id)
+    existing = LeaseEStampWorkflow.objects.filter(lease=lease, lease_history=history).first()
+    if existing and existing.challan_number:
+        return JsonResponse({"ok": False, "error": "This Challan already exists. Historical applicant data cannot be changed."}, status=409)
+
+    try:
+        payload = _json_body(request)
+        property_obj = lease.unit.property
+        applicant, _property_data, _portal_data = snapshot_components(lease)
+
+        district_id = payload.get("district_id")
+        tehsil_id = payload.get("tehsil_id")
+        if district_id:
+            property_obj.zila = get_object_or_404(PunjabEStampDistrict, pk=district_id, active=True)
+        if tehsil_id:
+            tehsil = get_object_or_404(PunjabEStampTehsil, pk=tehsil_id, active=True)
+            if property_obj.zila_id and tehsil.district_id != property_obj.zila_id:
+                raise ValidationError("The selected Tehsil does not belong to the selected District.")
+            property_obj.tehsil = tehsil
+        property_obj.full_clean(exclude=None)
+        property_obj.save()
+
+        record_id = applicant.get("record_id")
+        if record_id:
+            from tenants.models import Tenant
+            tenant = get_object_or_404(Tenant, pk=record_id)
+            if "name" in payload:
+                tenant.first_name = str(payload.get("name") or "").strip()
+            if "relation_person_name" in payload:
+                tenant.last_name = str(payload.get("relation_person_name") or "").strip()
+            if "cnic" in payload:
+                tenant.cnic = str(payload.get("cnic") or "").strip()
+            if "phone" in payload:
+                tenant.phone = str(payload.get("phone") or "").strip()
+            if "email" in payload:
+                email = str(payload.get("email") or "").strip()
+                if email:
+                    validate_email(email)
+                tenant.email = email or None
+            if "address" in payload:
+                address = str(payload.get("address") or "").strip()
+                tenant.address = address
+                tenant.permanent_address = address
+            if payload.get("relation_id"):
+                tenant.relation = get_object_or_404(PunjabEStampRelation, pk=payload["relation_id"], active=True)
+            tenant.full_clean()
+            tenant.save()
+        elif any(payload.get(key) for key in ("name", "cnic", "phone", "email", "relation_id", "relation_person_name", "address")):
+            raise ValidationError("Select an Owner or Caretaker Tenant on the Property before entering applicant identity.")
+
+        lease, _history = _lease_and_history(lease_id, history_id)
+        remaining = missing_configuration(lease)
+        applicant_after, property_after, _portal_after = snapshot_components(lease)
+        return JsonResponse({
+            "ok": not bool(remaining),
+            "saved": True,
+            "remaining": remaining,
+            "applicant": {"source_label": applicant_after.get("source_label"), "name": applicant_after.get("name"), "record_id": applicant_after.get("record_id")},
+            "property": {"property_name": property_after.get("property_name"), "unit_number": property_after.get("unit_number")},
+        })
+    except ValidationError as exc:
+        return JsonResponse({"ok": False, "error": " ".join(exc.messages)}, status=422)
+
+
+@login_required
+@require_POST
+def launch(request, lease_id, history_id):
+    """Return an in-memory browser-helper configuration; never submit Punjab."""
+    _require_lease_change(request.user)
+    lease, history = _lease_and_history(lease_id, history_id)
+    try:
+        workflow, _created = prepare_workflow(lease, history, request.user)
+    except ValidationError as exc:
+        return JsonResponse({"ok": False, "error": " ".join(exc.messages)}, status=422)
+
+    if workflow.status in {workflow.STATUS_INVALID, workflow.STATUS_FAILED}:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "This Challan is invalid. Create a replacement before continuing.",
+            },
+            status=409,
+        )
+    if workflow.status == workflow.STATUS_UPLOADED:
+        return JsonResponse(
+            {"ok": False, "error": "This e-Stamp is already uploaded to TMS."},
+            status=409,
+        )
+
+    if workflow.challan_number:
+        applicant = workflow.applicant_snapshot
+        property_data = workflow.property_snapshot
+        portal_data = workflow.portal_snapshot
+        launch_token = ""

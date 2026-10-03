@@ -4084,7 +4084,11 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
 
     def get_queryset(self):
         today = timezone.now().date()
-        show_inactive = self.request.GET.get("show_inactive") == "on"
+        tenant_status = (self.request.GET.get("tenant_status") or "").strip().lower()
+        show_inactive = (
+            self.request.GET.get("show_inactive") == "on"
+            or tenant_status in {"all", "inactive"}
+        )
 
         lease_prefetch_queryset = (
             Lease.objects.all()
@@ -4118,7 +4122,6 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
             value for value in self.request.GET.getlist("interested_in") if value
         ]
 
-        tenant_status = self.request.GET.get("tenant_status")
         family_member = self.request.GET.get("family_member") == "1"
         potential_tenant = self.request.GET.get("potential_tenant") == "1"
         on_notice = self.request.GET.get("on_notice") == "1"
@@ -4217,6 +4220,8 @@ class TenantListView(LoginRequiredMixin, ExportMixin, SingleTableView):
                 is_active=True,
                 is_active_family_member=True,
             )
+        elif tenant_status == "all":
+            pass
         elif property_id or unit_id or on_notice:
             queryset = queryset.filter(
                 Q(has_matching_lease=True) | Q(is_active_family_member=True)

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TMS Punjab e-Stamp Helper
 // @namespace    https://kirayas.com/tms/
-// @version      1.0.0
+// @version      1.1.7
 // @description  Safely fills Punjab e-Stamp workflows launched from TMS.
 // @match        https://es.punjab-zameen.gov.pk/eStampCitizenPortal/*
 // @run-at       document-start
@@ -166,36 +166,134 @@
   function setMasked(id, value) {
     const el = document.getElementById(id);
     if (!el) return false;
-    const widget = window.jQuery && window.jQuery("#" + id).data("kendoMaskedTextBox");
+
+    const text = String(value || "");
+    const widget = window.jQuery &&
+      window.jQuery("#" + id).data("kendoMaskedTextBox");
+
     if (widget) {
-      widget.value(String(value || ""));
+      // Let Kendo apply its own mask. Do not overwrite the DOM value
+      // afterward with the unmasked text, because Punjab validation can
+      // reject and clear it.
+      widget.value(text);
       widget.trigger("change");
+      return true;
     }
-    el.value = String(value || "");
-    fireNative(el);
-    return true;
+
+    // Fallback only when the page is not using a Kendo masked control.
+    el.value = text;
+    return fireNative(el);
+  }
+
+  function formatCnic(value) {
+    const digits = String(value || "").replace(/\D/g, "");
+    if (digits.length !== 13) return String(value || "");
+    return digits.slice(0, 5) + "-" + digits.slice(5, 12) + "-" + digits.slice(12);
+  }
+
+  function formatPakistanMobile(value) {
+    let digits = String(value || "").replace(/\D/g, "");
+    if (digits.length === 12 && digits.startsWith("92")) digits = "0" + digits.slice(2);
+    else if (digits.length === 10 && digits.startsWith("3")) digits = "0" + digits;
+    return digits;
   }
 
   async function setDistrictAndTehsil(flow) {
-    if (!setDropdown("District", flow.property.district_portal_value)) {
-      throw new Error("Punjab District control was not available.");
-    }
+    const districtValue = String(flow.property.district_portal_value || "");
     const expectedValue = String(flow.property.tehsil_portal_value || "");
     const expectedLabel = String(flow.property.tehsil_name || "").trim().toLowerCase();
+
+    if (!setDropdown("District", districtValue)) {
+      throw new Error("Punjab District control was not available.");
+    }
+
+    // The Punjab page's District control uses its own populateTehsils()
+    // function. Because this helper starts at document-start, that function may
+    // appear slightly after the form controls themselves. Wait for it instead
+    // of silently skipping the dependent Tehsil load.
+    let populateTehsilsReady = false;
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      await sleep(500);
+      if (typeof window.populateTehsils === "function") {
+        populateTehsilsReady = true;
+        break;
+      }
+      await sleep(200);
+    }
+
+    if (!populateTehsilsReady) {
+      throw new Error("Punjab Tehsil loader was not available.");
+    }
+
+    // Give the portal a short moment to finish binding the District control,
+    // then invoke its own dependent-dropdown loader.
+    await sleep(300);
+    window.populateTehsils();
+
+    // Punjab loads Tehsil asynchronously after District changes.  Do not try
+    // to select the Tehsil until the Kendo data source has actually loaded.
+    let requestedRead = false;
+    let lastAvailable = [];
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      await sleep(400);
+
       const el = document.getElementById("Tehsil");
       const widget = kendoDropdown("Tehsil");
       if (!el || !widget) continue;
-      const option = Array.from(el.options || []).find((item) => {
-        return String(item.value) === expectedValue &&
-          String(item.textContent || item.text || "").trim().toLowerCase() === expectedLabel;
+
+      if (!requestedRead && attempt >= 2 && widget.dataSource && typeof widget.dataSource.read === "function") {
+        requestedRead = true;
+        try { widget.dataSource.read(); } catch (_error) { /* portal change handler may already be loading it */ }
+      }
+
+      const data = widget.dataSource && typeof widget.dataSource.data === "function"
+        ? Array.from(widget.dataSource.data() || [])
+        : [];
+
+      const records = data.map((item) => {
+        const value = item && (item.Value ?? item.value ?? item.Id ?? item.id ?? item.TehsilId ?? item.TehsilID);
+        const label = item && (item.Text ?? item.text ?? item.Name ?? item.name ?? item.TehsilName);
+        return {
+          value: value == null ? "" : String(value),
+          label: label == null ? "" : String(label).trim(),
+        };
       });
-      if (!option) continue;
-      if (!setDropdown("Tehsil", expectedValue)) continue;
-      return;
+
+      const optionRecords = Array.from(el.options || []).map((item) => ({
+        value: String(item.value || ""),
+        label: String(item.textContent || item.text || "").trim(),
+      }));
+
+      const available = records.length ? records : optionRecords;
+      lastAvailable = available.map((item) => item.label).filter(Boolean).slice(0, 8);
+
+      let match = available.find((item) => item.value === expectedValue);
+      if (!match && expectedLabel) {
+        match = available.find((item) => item.label.toLowerCase() === expectedLabel);
+      }
+      if (!match) continue;
+
+      widget.value(match.value || expectedValue);
+      widget.trigger("change");
+      window.jQuery("#Tehsil").trigger("change");
+      fireNative(el);
+
+      const selectedValue = String(widget.value() || el.value || "");
+      const selectedText = String(widget.text ? widget.text() : "").trim().toLowerCase();
+      if (selectedValue === String(match.value || expectedValue) ||
+          (expectedLabel && selectedText === expectedLabel)) {
+        return;
+      }
     }
-    throw new Error("The expected Tehsil did not load for the selected District.");
+
+    const availableText = lastAvailable.length
+      ? " Available Tehsils: " + lastAvailable.join(", ") + "."
+      : "";
+    throw new Error(
+      "The expected Tehsil did not load for the selected District. " +
+      "District=" + districtValue + ", expected Tehsil=" +
+      (flow.property.tehsil_name || expectedValue || "unknown") + "." +
+      availableText
+    );
   }
 
   async function fillChallan(flow) {
@@ -213,13 +311,24 @@
       fireNative(self);
     }
     await setDistrictAndTehsil(flow);
+    const applicantCnic = formatCnic(flow.applicant.cnic);
+    const applicantPhone = formatPakistanMobile(flow.applicant.phone);
+    const applicantEmail = String(flow.applicant.email || "").trim();
+
+    if (!applicantEmail) {
+      throw new Error(
+        "Applicant Email is missing in TMS. Add an email address to the linked " +
+        (flow.applicant.source_label || "caretaker/owner") +
+        " record, then launch the Punjab e-Stamp again."
+      );
+    }
+
     setNative("PersonName", flow.applicant.name);
-    setNative("PersonCnic", flow.applicant.cnic);
+    setMasked("PersonCnic", applicantCnic);
     setDropdown("Relation", flow.applicant.relation_portal_value);
     setNative("RelationName", flow.applicant.relation_person_name);
-    setMasked("PersonPhone", flow.applicant.phone);
-    setNative("PersonPhoneMasked", flow.applicant.phone);
-    setNative("PersonEmail", flow.applicant.email);
+    setMasked("PersonPhone", applicantPhone);
+    setNative("PersonEmail", applicantEmail);
     setNative("PersonAddress", flow.applicant.address);
     setDropdown("Purpose", flow.portal.purpose_portal_value);
     setNative("Denomination", flow.portal.denomination);
@@ -493,3 +602,5 @@
   runWhenReady();
   announceReady();
 })();
+
+

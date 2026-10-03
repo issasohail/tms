@@ -377,32 +377,117 @@
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Stamp #</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.stamp_number|default:"-" }}</span></div>
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Status</span><span class="punjab-estamp-value">{{ punjab_estamp.status_label }}</span></div>
         </div>
-        <div class="small text-muted mt-2">Punjab submission stays in dry-run mode: review the populated form, solve CAPTCHA, and click the portal's final action yourself. <a href="{% static 'punjab_estamp/punjab_portal_helper.user.js' %}" target="_blank" rel="noopener">Install/update browser helper</a>.</div>
+        <div class="small text-muted mt-2">
+          Punjab submission stays in dry-run mode: review the populated form, solve CAPTCHA, and click the portal's final action yourself.
+          <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-bs-toggle="modal" data-bs-target="#punjabEstampHelperInstallModal">Install/update browser helper</button>.
+        </div>
       </div>
     </div>
 
     {% if punjab_estamp.missing %}
-    <div class="modal fade" id="punjabEstampMissingModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal fade" id="punjabEstampMissingModal" tabindex="-1" aria-hidden="true" data-save-url="{% url 'punjab_estamp:configuration_update' master_lease.pk history.pk %}">
+      <div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">
         <div class="modal-header"><h5 class="modal-title">Punjab e-Stamp Configuration Required</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-          <p class="mb-2">Complete the following before creating a Punjab Stamp Paper:</p>
-          <ul class="mb-0">{% for item in punjab_estamp.missing %}<li>{{ item }}</li>{% endfor %}</ul>
+          <div class="alert alert-light border py-2 mb-3">
+            <strong>Property:</strong> {{ punjab_estamp.property.property_name|default:"-" }}{% if punjab_estamp.property.unit_number %} / {{ punjab_estamp.property.unit_number }}{% endif %}<br>
+            <strong>Applicant:</strong> {{ punjab_estamp.applicant.source_label|default:"Not linked" }}{% if punjab_estamp.applicant.name %} - {{ punjab_estamp.applicant.name }}{% endif %}{% if punjab_estamp.applicant.record_id %} <span class="text-muted">(Tenant #{{ punjab_estamp.applicant.record_id }})</span>{% endif %}
+          </div>
+          <p class="mb-2">Missing information:</p>
+          <ul class="mb-3">{% for item in punjab_estamp.missing %}<li>{{ item }}</li>{% endfor %}</ul>
+          {% if punjab_estamp.quick_fix_allowed %}
+          <form id="punjabEstampQuickFixForm">
+            <div class="row g-2">
+              <div class="col-md-6"><label class="form-label form-label-sm">Zila / District</label><select class="form-select form-select-sm" name="district_id" id="punjabQuickDistrict"><option value="">Select District</option>{% for district in punjab_estamp.quick_fix_districts %}<option value="{{ district.pk }}" {% if punjab_estamp.property.district_id == district.pk %}selected{% endif %}>{{ district.name }}</option>{% endfor %}</select></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">Tehsil</label><select class="form-select form-select-sm" name="tehsil_id" id="punjabQuickTehsil"><option value="">Select Tehsil</option>{% for tehsil in punjab_estamp.quick_fix_tehsils %}<option value="{{ tehsil.pk }}" data-district-id="{{ tehsil.district_id }}" {% if punjab_estamp.property.tehsil_id == tehsil.pk %}selected{% endif %}>{{ tehsil.name }}</option>{% endfor %}</select></div>
+              {% if punjab_estamp.applicant.record_id %}
+              <div class="col-md-6"><label class="form-label form-label-sm">Applicant Name</label><input class="form-control form-control-sm" name="name" value="{{ punjab_estamp.applicant.name|default:'' }}"></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">CNIC</label><input class="form-control form-control-sm" name="cnic" value="{{ punjab_estamp.applicant.cnic|default:'' }}"></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">Phone</label><input class="form-control form-control-sm" name="phone" value="{{ punjab_estamp.applicant.phone|default:'' }}"></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">Email</label><input type="email" class="form-control form-control-sm" name="email" value="{{ punjab_estamp.applicant.email|default:'' }}"></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">Relation</label><select class="form-select form-select-sm" name="relation_id"><option value="">Select Relation</option>{% for relation in punjab_estamp.quick_fix_relations %}<option value="{{ relation.pk }}" {% if punjab_estamp.applicant.relation_id == relation.pk %}selected{% endif %}>{{ relation.name }}</option>{% endfor %}</select></div>
+              <div class="col-md-6"><label class="form-label form-label-sm">Relation / Father Name</label><input class="form-control form-control-sm" name="relation_person_name" value="{{ punjab_estamp.applicant.relation_person_name|default:'' }}"></div>
+              <div class="col-12"><label class="form-label form-label-sm">Address</label><input class="form-control form-control-sm" name="address" value="{{ punjab_estamp.applicant.address|default:'' }}"></div>
+              {% else %}
+              <div class="col-12"><div class="alert alert-warning py-2 mb-0">No Owner/Caretaker Tenant is linked to this property. Use <strong>Edit Property</strong> to select one first.</div></div>
+              {% endif %}
+            </div>
+            <div class="alert alert-danger py-2 mt-3 d-none" id="punjabQuickFixError"></div>
+          </form>
+          {% endif %}
         </div>
-        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button><a class="btn btn-primary" href="{% url 'properties:property_update' master_lease.unit.property_id %}">Edit Property</a></div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button><a class="btn btn-outline-primary" href="{% url 'properties:property_update' master_lease.unit.property_id %}">Edit Property</a>{% if punjab_estamp.quick_fix_allowed %}<button type="button" class="btn btn-primary" id="punjabQuickFixSave">Save & Continue</button>{% endif %}</div>
       </div></div>
     </div>
+    {% if punjab_estamp.quick_fix_allowed %}
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const modal = document.getElementById("punjabEstampMissingModal"), form = document.getElementById("punjabEstampQuickFixForm"), save = document.getElementById("punjabQuickFixSave"), district = document.getElementById("punjabQuickDistrict"), tehsil = document.getElementById("punjabQuickTehsil"), errorBox = document.getElementById("punjabQuickFixError");
+      if (!modal || !form || !save) return;
+      function csrfToken(){ const m=document.cookie.match(/(?:^|; )csrftoken=([^;]+)/); return m?decodeURIComponent(m[1]):""; }
+      function filterTehsils(){ if(!district||!tehsil)return; const id=district.value; Array.from(tehsil.options).forEach((o,i)=>{if(i)o.hidden=!!id&&o.dataset.districtId!==id;}); const selected=tehsil.options[tehsil.selectedIndex]; if(selected&&selected.hidden)tehsil.value=""; }
+      district?.addEventListener("change", filterTehsils); filterTehsils();
+      save.addEventListener("click", async function(){ errorBox.classList.add("d-none"); save.disabled=true; try { const payload=Object.fromEntries(new FormData(form).entries()); const response=await fetch(modal.dataset.saveUrl,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-CSRFToken":csrfToken(),"X-Requested-With":"XMLHttpRequest"},body:JSON.stringify(payload)}); const data=await response.json(); if(!response.ok||data.ok===false){ const remaining=Array.isArray(data.remaining)&&data.remaining.length?" Remaining: "+data.remaining.join(", "):""; throw new Error((data.error||"Some e-Stamp information is still incomplete.")+remaining); } window.location.reload(); } catch(error){ errorBox.textContent=error.message||"Could not save Punjab e-Stamp information."; errorBox.classList.remove("d-none"); save.disabled=false; }});
+    });
+    </script>
     {% endif %}
+    {% endif %}
+
+    <div class="modal fade" id="punjabEstampHelperInstallModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Install / Update Punjab e-Stamp Helper</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2"><strong>Step 1:</strong> Install and enable Tampermonkey in Chrome.</p>
+          <div class="alert alert-danger py-2 mb-3">
+            <strong>Required Chrome setting:</strong> Open
+            <a href="chrome://extensions/" target="_blank" rel="noopener"><code>chrome://extensions/</code></a>,
+            open <strong>Tampermonkey → Details</strong>, and turn <strong>Allow User Scripts</strong> <strong>ON</strong>.
+            Keep <strong>Site access</strong> set to <strong>On all sites</strong> (or allow <code>es.punjab-zameen.gov.pk</code>).
+          </div>
+          <p class="small text-muted mb-3">
+            If Chrome blocks the <code>chrome://</code> link from this web page, copy <code>chrome://extensions/</code> into the address bar manually.
+          </p>
+          <p class="mb-2"><strong>Step 2:</strong> Open the TMS helper installer and click <strong>Install</strong>, <strong>Reinstall</strong>, or <strong>Update</strong> in Tampermonkey.</p>
+          <div class="alert alert-warning py-2 mb-0">
+            If the helper opens as plain JavaScript text instead of a Tampermonkey install screen, Tampermonkey is disabled or <strong>Allow User Scripts</strong> is still OFF.
+          </div>
+        </div>
+        <div class="modal-footer flex-wrap">
+          <a class="btn btn-outline-dark" href="chrome://extensions/" target="_blank" rel="noopener">Open Chrome Extensions</a>
+          <a class="btn btn-outline-secondary" href="https://www.tampermonkey.net/" target="_blank" rel="noopener">Get Tampermonkey</a>
+          <a class="btn btn-primary" href="{% static 'punjab_estamp/punjab_portal_helper.user.js' %}" target="_blank" rel="noopener">Install / Update TMS Helper</a>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div></div>
+    </div>
 
     <div class="modal fade" id="punjabEstampConnectionModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title">Punjab e-Stamp Connection</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-header"><h5 class="modal-title">Punjab e-Stamp Helper Not Detected</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-          <p>Punjab e-Stamp portal could not be reached or did not respond.</p>
-          <p class="mb-0">If you are using a VPN or proxy, disconnect it and try again. Also check your internet connection and confirm that the Punjab e-Stamp website opens directly in your browser.</p>
-          <div class="small text-muted mt-2">Also confirm that the TMS Punjab e-Stamp browser helper is installed and enabled.</div>
+          <p>The Punjab e-Stamp page opened, but TMS did not receive a response from the browser helper.</p>
+          <p class="mb-2">Confirm all of the following, then try again:</p>
+          <ul class="mb-2">
+            <li>Tampermonkey is enabled.</li>
+            <li><strong>Allow User Scripts</strong> is <strong>ON</strong> in Tampermonkey's Chrome extension details.</li>
+            <li>Site access is <strong>On all sites</strong> or includes <code>es.punjab-zameen.gov.pk</code>.</li>
+            <li><strong>TMS Punjab e-Stamp Helper</strong> is installed and enabled.</li>
+          </ul>
+          <div class="small text-muted">
+            Open <a href="chrome://extensions/" target="_blank" rel="noopener"><code>chrome://extensions/</code></a> → Tampermonkey → Details.
+            If Chrome blocks that link, paste <code>chrome://extensions/</code> into the address bar.
+          </div>
         </div>
-        <div class="modal-footer"><button type="button" class="btn btn-primary" id="punjabEstampTryAgain">Try Again</button><a class="btn btn-outline-primary" href="https://es.punjab-zameen.gov.pk/eStampCitizenPortal/ChallanFormView/HomePage" target="_blank" rel="noopener">Open Punjab e-Stamp</a><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button></div>
+        <div class="modal-footer flex-wrap">
+          <button type="button" class="btn btn-primary" id="punjabEstampTryAgain">Try Again</button>
+          <a class="btn btn-outline-dark" href="chrome://extensions/" target="_blank" rel="noopener">Chrome Extensions</a>
+          <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#punjabEstampHelperInstallModal" data-bs-dismiss="modal">Install / Update Helper</button>
+          <a class="btn btn-outline-secondary" href="https://es.punjab-zameen.gov.pk/eStampCitizenPortal/ChallanFormView/AddChallanForWhitePaper?name=GenerateChallan&amp;agree=true" target="_blank" rel="noopener">Open Punjab e-Stamp</a>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        </div>
       </div></div>
     </div>
 

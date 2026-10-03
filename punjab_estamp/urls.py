@@ -22,6 +22,11 @@ urlpatterns = [
         name="state",
     ),
     path(
+        "workflow/<int:lease_id>/<int:history_id>/configuration/",
+        views.configuration_update,
+        name="configuration_update",
+    ),
+    path(
         "workflow/<int:lease_id>/<int:history_id>/launch/",
         views.launch,
         name="launch",

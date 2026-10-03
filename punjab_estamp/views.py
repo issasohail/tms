@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.validators import validate_email
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
@@ -12,9 +13,15 @@ from django.views.decorators.http import require_GET, require_POST
 
 from leases.models import Lease
 from leases.models_renewal import LeaseRenewal
-from punjab_estamp.models import LeaseEStampWorkflow
+from punjab_estamp.models import (
+    LeaseEStampWorkflow,
+    PunjabEStampDistrict,
+    PunjabEStampRelation,
+    PunjabEStampTehsil,
+)
 from punjab_estamp.services.workflow import (
     mark_invalid,
+    missing_configuration,
     mark_paid,
     mark_stamp_issued,
     prepare_replacement,
@@ -27,7 +34,8 @@ from punjab_estamp.services.workflow import (
 
 PUNJAB_HOME_URL = (
     "https://es.punjab-zameen.gov.pk/"
-    "eStampCitizenPortal/ChallanFormView/HomePage"
+    "eStampCitizenPortal/ChallanFormView/AddChallanForWhitePaper"
+    "?name=GenerateChallan&agree=true"
 )
 PUNJAB_RETRIEVAL_URL = (
     "https://es.punjab-zameen.gov.pk/"
@@ -129,6 +137,75 @@ def replacement(request, lease_id, history_id):
             "The invalid Challan was archived. A replacement can now be created.",
         )
     return _agreement_redirect(lease, history)
+
+
+@login_required
+@require_POST
+def configuration_update(request, lease_id, history_id):
+    """Save missing pre-challan e-Stamp configuration without leaving the agreement."""
+    _require_lease_change(request.user)
+    lease, history = _lease_and_history(lease_id, history_id)
+    existing = LeaseEStampWorkflow.objects.filter(lease=lease, lease_history=history).first()
+    if existing and existing.challan_number:
+        return JsonResponse({"ok": False, "error": "This Challan already exists. Historical applicant data cannot be changed."}, status=409)
+
+    try:
+        payload = _json_body(request)
+        property_obj = lease.unit.property
+        applicant, _property_data, _portal_data = snapshot_components(lease)
+
+        district_id = payload.get("district_id")
+        tehsil_id = payload.get("tehsil_id")
+        if district_id:
+            property_obj.zila = get_object_or_404(PunjabEStampDistrict, pk=district_id, active=True)
+        if tehsil_id:
+            tehsil = get_object_or_404(PunjabEStampTehsil, pk=tehsil_id, active=True)
+            if property_obj.zila_id and tehsil.district_id != property_obj.zila_id:
+                raise ValidationError("The selected Tehsil does not belong to the selected District.")
+            property_obj.tehsil = tehsil
+        property_obj.full_clean(exclude=None)
+        property_obj.save()
+
+        record_id = applicant.get("record_id")
+        if record_id:
+            from tenants.models import Tenant
+            tenant = get_object_or_404(Tenant, pk=record_id)
+            if "name" in payload:
+                tenant.first_name = str(payload.get("name") or "").strip()
+            if "relation_person_name" in payload:
+                tenant.last_name = str(payload.get("relation_person_name") or "").strip()
+            if "cnic" in payload:
+                tenant.cnic = str(payload.get("cnic") or "").strip()
+            if "phone" in payload:
+                tenant.phone = str(payload.get("phone") or "").strip()
+            if "email" in payload:
+                email = str(payload.get("email") or "").strip()
+                if email:
+                    validate_email(email)
+                tenant.email = email or None
+            if "address" in payload:
+                address = str(payload.get("address") or "").strip()
+                tenant.address = address
+                tenant.permanent_address = address
+            if payload.get("relation_id"):
+                tenant.relation = get_object_or_404(PunjabEStampRelation, pk=payload["relation_id"], active=True)
+            tenant.full_clean()
+            tenant.save()
+        elif any(payload.get(key) for key in ("name", "cnic", "phone", "email", "relation_id", "relation_person_name", "address")):
+            raise ValidationError("Select an Owner or Caretaker Tenant on the Property before entering applicant identity.")
+
+        lease, _history = _lease_and_history(lease_id, history_id)
+        remaining = missing_configuration(lease)
+        applicant_after, property_after, _portal_after = snapshot_components(lease)
+        return JsonResponse({
+            "ok": not bool(remaining),
+            "saved": True,
+            "remaining": remaining,
+            "applicant": {"source_label": applicant_after.get("source_label"), "name": applicant_after.get("name"), "record_id": applicant_after.get("record_id")},
+            "property": {"property_name": property_after.get("property_name"), "unit_number": property_after.get("unit_number")},
+        })
+    except ValidationError as exc:
+        return JsonResponse({"ok": False, "error": " ".join(exc.messages)}, status=422)
 
 
 @login_required

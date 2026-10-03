@@ -180,20 +180,10 @@
             <div class="col-12 col-lg-6">{{ form.owner_tenant|as_crispy_field }}</div>
             <div class="col-12 col-lg-6">
               <div class="border rounded bg-light p-2 small h-100" data-tenant-identity-panel="owner">
-                <span class="text-muted">Select the Tenant record to use its verified owner identity.</span>
+                <span class="text-muted">Select the Tenant record to use its owner identity.</span>
               </div>
             </div>
-            <div class="col-12"><div class="small text-muted">Legacy fallback fields are retained for compatibility and are filled from the selected Tenant when saved.</div></div>
-            <div class="col-4 col-md-2 col-xl-1">{{ form.owner_prefix|as_crispy_field }}</div>
-            <div class="col-8 col-md-4 col-xl-3">{{ form.owner_name|as_crispy_field }}</div>
-            <div class="col-8 col-md-4 col-xl-3">{{ form.owner_father_name|as_crispy_field }}</div>
-            <div class="col-4 col-md-2 col-xl-1">{{ form.relation|as_crispy_field }}</div>
-            <div class="col-12 col-md-4 col-xl-2">{{ form.owner_cnic|as_crispy_field }}</div>
-            <div class="col-12 col-md-4 col-xl-2">{{ form.owner_phone|as_crispy_field }}</div>
-            <div class="col-12 col-md-8 col-xl-4">{{ form.owner_address|as_crispy_field }}</div>
-            <div class="col-12 col-md-4 col-xl-3">{{ form.owner_photo|as_crispy_field }}</div>
-            <div class="col-12 col-xl-8">{{ form.bank_account_details|as_crispy_field }}</div>
-            <div class="col-12 col-md-4">{{ form.welcome_bank_account_mode|as_crispy_field }}</div>
+            <div class="col-12"><div class="small text-muted">Owner identity is stored only on the linked Tenant record.</div></div>
           </div>
         </div>
 
@@ -209,14 +199,19 @@
                 <span class="text-muted">Caretaker is optional. Select a Tenant to use that identity.</span>
               </div>
             </div>
-            <div class="col-12"><div class="small text-muted">Legacy caretaker fields remain available as a fallback.</div></div>
-            <div class="col-4 col-md-2 col-xl-1">{{ form.caretaker_prefix|as_crispy_field }}</div>
-            <div class="col-8 col-md-4 col-xl-3">{{ form.caretaker_name|as_crispy_field }}</div>
-            <div class="col-8 col-md-4 col-xl-3">{{ form.caretaker_father_name|as_crispy_field }}</div>
-            <div class="col-4 col-md-2 col-xl-1">{{ form.caretaker_relation|as_crispy_field }}</div>
-            <div class="col-12 col-md-4 col-xl-2">{{ form.caretaker_cnic|as_crispy_field }}</div>
-            <div class="col-12 col-md-4 col-xl-2">{{ form.caretaker_phone|as_crispy_field }}</div>
-            <div class="col-12 col-md-8 col-xl-4">{{ form.caretaker_address|as_crispy_field }}</div>
+            <div class="col-12"><div class="small text-muted">Caretaker identity is stored only on the linked Tenant record.</div></div>
+          </div>
+        </div>
+
+        <div class="property-section">
+          <div class="property-section-title"><i class="bi bi-bank"></i> Bank Account Messaging</div>
+          <div class="row g-2">
+            <div class="col-12 col-md-6">{{ form.welcome_bank_account_mode|as_crispy_field }}</div>
+            {% if object and object.pk %}
+            <div class="col-12 col-md-6 d-flex align-items-end">
+              <a class="btn btn-outline-primary btn-sm" href="{% url 'properties:property_detail' object.pk %}"><i class="bi bi-bank"></i> Manage Property Bank Accounts</a>
+            </div>
+            {% endif %}
           </div>
         </div>
 
@@ -280,18 +275,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const identityUrlTemplate = "{% url 'properties:property_tenant_identity' 0 %}";
-  const legacyFields = {
-    owner: {
-      prefix: "id_owner_prefix", name: "id_owner_name",
-      father_husband_name: "id_owner_father_name", relation: "id_relation",
-      cnic: "id_owner_cnic", phone: "id_owner_phone", address: "id_owner_address"
-    },
-    caretaker: {
-      prefix: "id_caretaker_prefix", name: "id_caretaker_name",
-      father_husband_name: "id_caretaker_father_name", relation: "id_caretaker_relation",
-      cnic: "id_caretaker_cnic", phone: "id_caretaker_phone", address: "id_caretaker_address"
-    }
-  };
   const escapeHtml = (value) => String(value || "").replace(/[&<>'"]/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
   })[character]);
@@ -311,10 +294,6 @@ document.addEventListener("DOMContentLoaded", () => {
       );
       if (!response.ok) throw new Error("Tenant identity request failed");
       const tenant = await response.json();
-      Object.entries(legacyFields[role]).forEach(([key, fieldId]) => {
-        const field = document.getElementById(fieldId);
-        if (field) field.value = tenant[key] || "";
-      });
       panel.innerHTML = `
         <div><strong>${escapeHtml(tenant.full_name) || "-"}</strong> ${tenant.relation ? `(${escapeHtml(tenant.relation)})` : ""}</div>
         <div>CNIC: ${escapeHtml(tenant.cnic) || "-"} &middot; Phone: ${escapeHtml(tenant.phone) || "-"}</div>

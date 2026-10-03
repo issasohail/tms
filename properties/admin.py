@@ -9,7 +9,7 @@ from .models import Property, PropertyBankAccount, Unit  # Import models from mo
 class UnitAdmin(admin.ModelAdmin):
     # , 'rent_amount', 'is_occupied')
     list_display = ('property', 'unit_number', 'status',
-                    "interest_type", "is_smart_meter", "electric_meter_num", "use_property_bank_account")
+                    "interest_type", "is_smart_meter", "electric_meter_num", "bank_account")
     list_filter = ("is_smart_meter", "property", "status", "interest_type")
     search_fields = ('unit_number', 'property__name', "electric_meter_num")
     ordering = ('property', 'unit_number')
@@ -37,26 +37,10 @@ class PropertyAdmin(admin.ModelAdmin):
                 "description",
             )
         }),
-        ("Owner", {
+        ("Owner / Caretaker", {
             "fields": (
-                "owner_prefix",
-                "owner_name",
-                "owner_father_name",
-                "relation",
-                "owner_cnic",
-                "owner_phone",
-                "owner_address",
-            )
-        }),
-        ("Caretaker", {
-            "fields": (
-                "caretaker_prefix",
-                "caretaker_name",
-                "caretaker_father_name",
-                "caretaker_relation",
-                "caretaker_cnic",
-                "caretaker_phone",
-                "caretaker_address",
+                "owner_tenant",
+                "caretaker_tenant",
             )
         }),
         ("Address & Payment", {
@@ -66,7 +50,6 @@ class PropertyAdmin(admin.ModelAdmin):
                 "property_city",
                 "property_state",
                 "property_zipcode",
-                "bank_account_details",
                 "welcome_bank_account_mode",
             )
         }),

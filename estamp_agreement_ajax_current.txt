@@ -1,0 +1,224 @@
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:319:                    <option value="all" {% if filter_lease_status == "all" %}selected{% endif %}>All</option>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:320:                </select>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:321:            </div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:322:            <div class="col-md-2 col-6">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:323:                <label class="form-label small mb-1">Lease</label>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:324:                <select name="lease_select" id="clauseLeaseSelect" class="form-select form-select-sm clause-filter-select">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:325:                    <option value="">Choose Lease</option>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:326:                    {% for item in filter_lease_choices %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:327:                        <option value="{{ item.id }}" data-url="{{ item.url }}" {% if filter_current_lease == item.id|stringformat:"s" %}selected{% endif %}>{{ item.label }}</option>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:328:                    {% endfor %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:329:                </select>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:330:            </div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:331:        </div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:332:    </form>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:333:
+> E:\tenant_management_system\leases\templates\leases\edit_clause.html:334:    <div class="card punjab-estamp-card mb-2" id="punjabEstampCard" data-workflow-state="{{ punjab_estamp.state }}" data-launch-url="{% url 'punjab_estamp:launch' master_lease.pk history.pk %}">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:335:      <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:336:        <div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:337:          <strong><i class="fas fa-stamp me-1"></i>Punjab e-Stamp</strong>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:338:          <span class="badge {% if punjab_estamp.state == 'uploaded' %}bg-success{% elif punjab_estamp.state == 'invalid' or punjab_estamp.state == 'failed' %}bg-danger{% elif punjab_estamp.state == 'paid' or punjab_estamp.state == 'stamp_issued' %}bg-primary{% elif punjab_estamp.state == 'challan_generated' %}bg-warning text-dark{% else %}bg-secondary{% endif %} ms-1">{{ punjab_estamp.status_label }}</span>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:339:          <span class="small text-muted ms-1">{{ history.history_label }}</span>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:340:        </div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:341:        <div class="d-flex flex-wrap gap-1">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:342:          {% if punjab_estamp.state == 'ready' %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:343:            {% if punjab_estamp.missing %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:344:              <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#punjabEstampMissingModal"><i class="fas fa-plus-circle"></i> Create Stamp Paper</button>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:345:            {% else %}
+> E:\tenant_management_system\leases\templates\leases\edit_clause.html:346:              <button class="btn btn-success btn-sm punjab-estamp-launch" type="button"><i class="fas fa-plus-circle"></i> Create Stamp Paper</button>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:347:            {% endif %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:348:          {% elif punjab_estamp.state == 'challan_generated' %}
+> E:\tenant_management_system\leases\templates\leases\edit_clause.html:349:            <button type="button" class="btn btn-outline-primary btn-sm punjab-estamp-launch">Check / Continue</button>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:350:            {% if punjab_estamp.whatsapp_url %}<a class="btn btn-success btn-sm" href="{{ punjab_estamp.whatsapp_url }}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> WhatsApp Payment</a>{% else %}<button class="btn btn-success btn-sm" type="button" disabled>WhatsApp Payment</button>{% endif %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:351:          {% elif punjab_estamp.state == 'paid' %}
+> E:\tenant_management_system\leases\templates\leases\edit_clause.html:352:            <button type="button" class="btn btn-primary btn-sm punjab-estamp-launch">Continue Stamp Process</button>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:353:          {% elif punjab_estamp.state == 'stamp_issued' %}
+> E:\tenant_management_system\leases\templates\leases\edit_clause.html:354:            <button type="button" class="btn btn-primary btn-sm punjab-estamp-launch">Download / Continue</button>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:355:          {% elif punjab_estamp.state == 'uploaded' %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:356:            {% if punjab_estamp.workflow.lease_document_id %}<a class="btn btn-primary btn-sm" href="{% url 'leases:lease_file_view' punjab_estamp.workflow.lease_document_id %}" target="_blank" rel="noopener">View E-Stamp</a>{% else %}<button class="btn btn-primary btn-sm" type="button" disabled>View E-Stamp</button>{% endif %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:357:          {% elif punjab_estamp.state == 'invalid' %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:358:            <form method="post" action="{% url 'punjab_estamp:replacement' master_lease.pk history.pk %}" class="d-inline">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:359:              {% csrf_token %}<button class="btn btn-danger btn-sm" type="submit"><i class="fas fa-redo"></i> Create Replacement Challan</button>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:360:            </form>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:361:          {% else %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:362:            <button type="button" class="btn btn-outline-danger btn-sm" disabled>Check / Continue</button>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:363:          {% endif %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:364:        </div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:365:      </div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:366:      <div class="card-body py-2">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:367:        <div class="punjab-estamp-grid">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:368:          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Property</span><span class="punjab-estamp-value">{{ punjab_estamp.property.property_name|default:"-" }}</span></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:369:          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Unit</span><span class="punjab-estamp-value">{{ punjab_estamp.property.unit_number|default:"-" }}</span></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:370:          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Tenant</span><span class="punjab-estamp-value">{{ master_lease.tenant.get_full_name|default:"-" }}</span></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:371:          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Applicant</span><span class="punjab-estamp-value">{{ punjab_estamp.applicant.source_label|default:"-" }}{% if punjab_estamp.applicant.name %} - {{ punjab_estamp.applicant.name }}{% endif %}</span></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:372:          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Zila / District</span><span class="punjab-estamp-value">{{ punjab_estamp.property.district_name|default:"-" }}</span></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:373:          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Tehsil</span><span class="punjab-estamp-value">{{ punjab_estamp.property.tehsil_name|default:"-" }}</span></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:374:          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Purpose</span><span class="punjab-estamp-value">{{ punjab_estamp.portal.purpose_name|default:"-" }}</span></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:375:          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Challan</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.challan_number|default:"-" }}</span></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:376:          <div class="punjab-estamp-item"><span class="punjab-estamp-label">PSID</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.psid|default:"-" }}</span></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:377:          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Stamp #</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.stamp_number|default:"-" }}</span></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:378:          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Status</span><span class="punjab-estamp-value">{{ punjab_estamp.status_label }}</span></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:379:        </div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:380:        <div class="small text-muted mt-2">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:381:          Punjab submission stays in dry-run mode: review the populated form, solve CAPTCHA, and click the portal's final action yourself.
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:382:          <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-bs-toggle="modal" data-bs-target="#punjabEstampHelperInstallModal">Install/update browser helper</button>.
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:383:        </div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:384:      </div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:385:    </div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:386:
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:387:    {% if punjab_estamp.missing %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:388:    <div class="modal fade" id="punjabEstampMissingModal" tabindex="-1" aria-hidden="true" data-save-url="{% url 'punjab_estamp:configuration_update' master_lease.pk history.pk %}">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:389:      <div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:390:        <div class="modal-header"><h5 class="modal-title">Punjab e-Stamp Configuration Required</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:391:        <div class="modal-body">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:392:          <div class="alert alert-light border py-2 mb-3">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:393:            <strong>Property:</strong> {{ punjab_estamp.property.property_name|default:"-" }}{% if punjab_estamp.property.unit_number %} / {{ punjab_estamp.property.unit_number }}{% endif %}<br>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:394:            <strong>Applicant:</strong> {{ punjab_estamp.applicant.source_label|default:"Not linked" }}{% if punjab_estamp.applicant.name %} - {{ punjab_estamp.applicant.name }}{% endif %}{% if punjab_estamp.applicant.record_id %} <span class="text-muted">(Tenant #{{ punjab_estamp.applicant.record_id }})</span>{% endif %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:395:          </div>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:396:          <p class="mb-2">Missing information:</p>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:397:          <ul class="mb-3">{% for item in punjab_estamp.missing %}<li>{{ item }}</li>{% endfor %}</ul>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:398:          {% if punjab_estamp.quick_fix_allowed %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:399:          <form id="punjabEstampQuickFixForm">
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1504:        });
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1505:    });
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1506:
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1507:    placeholderSearch?.addEventListener('input', function() {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1508:        const term = this.value.trim().toLowerCase();
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1509:        placeholderButtons.forEach(btn => {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1510:        const searchableText = (btn.dataset.search || btn.dataset.token || '').toLowerCase();
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1511:        btn.classList.toggle('d-none', term && !searchableText.includes(term));
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1512:        });
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1513:    });
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1514:    });
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1515:</script>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1516:
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1517:<script>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1518:(() => {
+> E:\tenant_management_system\leases\templates\leases\edit_clause.html:1519:  const card = document.getElementById('punjabEstampCard');
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1520:  if (!card) return;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1521:  const PUNJAB_ORIGIN = 'https://es.punjab-zameen.gov.pk';
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1522:  const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]')?.value || '';
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1523:  const connectionModalElement = document.getElementById('punjabEstampConnectionModal');
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1524:  let active = null;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1525:  let lastLaunchButton = null;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1526:
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1527:  function channelId() {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1528:    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1529:    return String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1530:  }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1531:
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1532:  function showConnectionHelp() {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1533:    if (connectionModalElement) bootstrap.Modal.getOrCreateInstance(connectionModalElement).show();
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1534:  }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1535:
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1536:  function helperResponse(source, origin, requestId, ok, payload, error) {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1537:    source.postMessage({
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1538:      type: 'TMS_ESTAMP_RESPONSE',
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1539:      requestId: requestId,
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1540:      ok: ok,
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1541:      payload: payload || {},
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1542:      error: error || ''
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1543:    }, origin);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1544:  }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1545:
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1546:  async function jsonResponse(response) {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1547:    let payload = {};
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1548:    try { payload = await response.json(); } catch (_error) { /* handled below */ }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1549:    if (!response.ok || payload.ok === false) {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1550:      throw new Error(payload.error || 'TMS could not continue the Punjab e-Stamp workflow.');
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1551:    }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1552:    return payload;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1553:  }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1554:
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1555:  async function launchPunjab(button) {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1556:    lastLaunchButton = button;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1557:    const popup = window.open('about:blank', '_blank');
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1558:    if (!popup) {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1559:      alert('Allow pop-ups for TMS, then try again.');
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1560:      return;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1561:    }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1562:    try {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1563:      popup.document.title = 'Opening Punjab e-Stamp';
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1564:      popup.document.body.innerHTML = '<p style="font:16px Arial;padding:24px">Preparing the Punjab e-Stamp workflow...</p>';
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1565:    } catch (_error) { /* navigation still proceeds */ }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1566:    button.disabled = true;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1567:    try {
+> E:\tenant_management_system\leases\templates\leases\edit_clause.html:1568:      const response = await fetch(card.dataset.launchUrl, {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1569:        method: 'POST',
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1570:        credentials: 'same-origin',
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1571:        headers: {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1572:          'X-CSRFToken': csrfToken,
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1573:          'X-Requested-With': 'XMLHttpRequest'
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1574:        }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1575:      });
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1576:      const payload = await jsonResponse(response);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1577:      active = {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1578:        popup: popup,
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1579:        channel: channelId(),
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1580:        flow: payload.flow,
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1581:        initialized: false,
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1582:        timer: null
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1583:      };
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1584:      active.timer = window.setTimeout(() => {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1585:        if (active && !active.initialized) showConnectionHelp();
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1586:      }, 15000);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1587:      popup.location.replace(payload.portal_url);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1588:    } catch (error) {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1589:      popup.close();
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1590:      alert(error.message);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1591:    } finally {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1592:      button.disabled = false;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1593:    }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1594:  }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1595:
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1596:  async function relayPortalEvent(message, source, origin) {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1597:    const response = await fetch(active.flow.eventUrl, {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1598:      method: 'POST',
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1599:      credentials: 'same-origin',
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1600:      headers: {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1601:        'Content-Type': 'application/json',
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1602:        'X-CSRFToken': csrfToken,
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1603:        'X-Requested-With': 'XMLHttpRequest'
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1604:      },
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1605:      body: JSON.stringify(message.payload || {})
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1606:    });
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1607:    const payload = await jsonResponse(response);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1608:    if (payload.workflow) {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1609:      active.flow.challan = payload.workflow.challan_number || active.flow.challan;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1610:      active.flow.psid = payload.workflow.psid || active.flow.psid;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1611:      active.flow.stampNumber = payload.workflow.stamp_number || active.flow.stampNumber;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1612:    }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1613:    helperResponse(source, origin, message.requestId, true, payload);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1654:        channel: active.channel,
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1655:        flow: active.flow
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1656:      }, PUNJAB_ORIGIN);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1657:      return;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1658:    }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1659:    if (message.type !== 'TMS_ESTAMP_REQUEST' || message.channel !== active.channel) return;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1660:    try {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1661:      if (message.kind === 'event') await relayPortalEvent(message, event.source, event.origin);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1662:      else if (message.kind === 'pdf') await uploadCapturedPdf(message, event.source, event.origin);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1663:      else throw new Error('Unknown browser-helper request.');
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1664:    } catch (error) {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1665:      helperResponse(event.source, event.origin, message.requestId, false, {}, error.message);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1666:    }
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1667:  });
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1668:
+> E:\tenant_management_system\leases\templates\leases\edit_clause.html:1669:  document.querySelectorAll('.punjab-estamp-launch').forEach((button) => {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1670:    button.addEventListener('click', () => launchPunjab(button));
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1671:  });
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1672:  document.getElementById('punjabEstampTryAgain')?.addEventListener('click', () => {
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1673:    bootstrap.Modal.getOrCreateInstance(connectionModalElement).hide();
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1674:    if (lastLaunchButton) launchPunjab(lastLaunchButton);
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1675:  });
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1676:})();
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1677:</script>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1678:
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1679:<script>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1680:  window.TMS_PUBLIC_CNIC_OCR_URL = "{% url 'tenants:cnic_identity_ocr' %}";
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1681:  window.TMS_IDENTITY_LOCK_MAIN = false;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1682:  window.TMS_CNIC_ALLOW_MANUAL_ENTRY = true;
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1683:</script>
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1684:{% include "partials/identity_media_public.html" %}
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1685:
+  E:\tenant_management_system\leases\templates\leases\edit_clause.html:1686:{% endblock %}

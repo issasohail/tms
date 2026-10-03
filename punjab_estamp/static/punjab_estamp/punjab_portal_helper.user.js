@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TMS Punjab e-Stamp Helper
 // @namespace    https://kirayas.com/tms/
-// @version      1.1.7
+// @version      1.1.8
 // @description  Safely fills Punjab e-Stamp workflows launched from TMS.
 // @match        https://es.punjab-zameen.gov.pk/eStampCitizenPortal/*
 // @run-at       document-start
@@ -405,7 +405,7 @@
 
   async function handleRetrieval(flow) {
     setNative("CNICSearchBox", flow.applicant.cnic);
-    setNative("MobileSearchBox", flow.applicant.phone);
+    setNative("MobileSearchBox", formatPakistanMobile(flow.applicant.phone));
     const email = document.getElementById("useEmailCheckbox");
     if (email && email.checked) email.click();
     installOtpCapture();
@@ -471,7 +471,7 @@
     setNative("SearchBox", flow.challan || flow.psid);
     setNative("StampSearchBox", flow.stampNumber);
     setNative("CNICSearchBox", flow.applicant.cnic);
-    setNative("MobileSearchBox", flow.applicant.phone);
+    setNative("MobileSearchBox", formatPakistanMobile(flow.applicant.phone));
     setNative("continuitySheetBox", flow.portal.continuation_sheets || "1");
     const email = document.getElementById("useEmailCheckbox");
     if (email && email.checked) email.click();

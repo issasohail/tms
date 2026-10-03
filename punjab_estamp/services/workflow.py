@@ -89,20 +89,58 @@ def _empty_applicant():
     }
 
 
-def applicant_snapshot(lease):
+def applicant_snapshot(lease, source=None):
+    """Return the linked Tenant used as the Punjab e-Stamp applicant.
+
+    Valid explicit choices are Owner and Caretaker only. Browser code never
+    supplies a Tenant primary key for applicant selection.
+
+    With no explicit choice, Owner is preferred and Caretaker is the fallback.
+    """
     property_obj = lease.unit.property
-    if property_obj.caretaker_tenant_id:
-        return _linked_applicant(property_obj.caretaker_tenant, "linked_caretaker")
+
+    if source not in (None, "", "owner", "caretaker"):
+        raise ValidationError(
+            "Punjab e-Stamp applicant must be Owner or Caretaker."
+        )
+
+    if source == "owner":
+        if property_obj.owner_tenant_id:
+            return _linked_applicant(
+                property_obj.owner_tenant,
+                "linked_owner",
+            )
+        return _empty_applicant()
+
+    if source == "caretaker":
+        if property_obj.caretaker_tenant_id:
+            return _linked_applicant(
+                property_obj.caretaker_tenant,
+                "linked_caretaker",
+            )
+        return _empty_applicant()
+
+    # Default for a new e-Stamp: Owner first.
     if property_obj.owner_tenant_id:
-        return _linked_applicant(property_obj.owner_tenant, "linked_owner")
+        return _linked_applicant(
+            property_obj.owner_tenant,
+            "linked_owner",
+        )
+
+    if property_obj.caretaker_tenant_id:
+        return _linked_applicant(
+            property_obj.caretaker_tenant,
+            "linked_caretaker",
+        )
+
     return _empty_applicant()
 
-def snapshot_components(lease, purpose=None):
+def snapshot_components(lease, purpose=None, applicant_source=None):
     property_obj = lease.unit.property
     purpose = purpose or default_lease_purpose()
     district = property_obj.zila
     tehsil = property_obj.tehsil
-    applicant = applicant_snapshot(lease)
+    applicant = applicant_snapshot(lease, applicant_source)
     property_data = {
         "property_id": property_obj.pk,
         "property_name": _text(property_obj.property_name),
@@ -139,10 +177,14 @@ def snapshot_components(lease, purpose=None):
     return applicant, property_data, portal_data
 
 
-def missing_configuration(lease, purpose=None):
+def missing_configuration(lease, purpose=None, applicant_source=None):
     property_obj = lease.unit.property
     purpose = purpose or default_lease_purpose()
-    applicant, _property_data, _portal_data = snapshot_components(lease, purpose)
+    applicant, _property_data, _portal_data = snapshot_components(
+        lease,
+        purpose,
+        applicant_source=applicant_source,
+    )
     missing = []
 
     if not property_obj.zila_id:
@@ -178,14 +220,18 @@ def missing_configuration(lease, purpose=None):
     return missing
 
 
-def _validated_components(lease, purpose=None):
+def _validated_components(lease, purpose=None, applicant_source=None):
     purpose = purpose or default_lease_purpose()
-    missing = missing_configuration(lease, purpose)
+    missing = missing_configuration(lease, purpose, applicant_source)
     if missing:
         raise ValidationError(
             "Punjab e-Stamp configuration is incomplete: " + ", ".join(missing)
         )
-    applicant, property_data, portal_data = snapshot_components(lease, purpose)
+    applicant, property_data, portal_data = snapshot_components(
+        lease,
+        purpose,
+        applicant_source=applicant_source,
+    )
     return purpose, applicant, property_data, portal_data
 
 
@@ -225,7 +271,7 @@ def _missing_stored_snapshot(workflow):
 
 
 @transaction.atomic
-def prepare_workflow(lease, lease_history, user=None):
+def prepare_workflow(lease, lease_history, user=None, applicant_source=None):
     if lease_history.lease_id != lease.pk:
         raise ValidationError("The selected agreement history does not belong to this lease.")
     workflow = (
@@ -239,7 +285,10 @@ def prepare_workflow(lease, lease_history, user=None):
         if workflow.challan_number or workflow.status != workflow.STATUS_READY:
             return workflow, False
 
-    purpose, _applicant, _property_data, _portal_data = _validated_components(lease)
+    purpose, _applicant, _property_data, _portal_data = _validated_components(
+        lease,
+        applicant_source=applicant_source,
+    )
     if workflow is None:
         workflow, created = LeaseEStampWorkflow.objects.get_or_create(
             lease_history=lease_history,
@@ -482,6 +531,14 @@ def workflow_card_context(lease, lease_history):
         .first()
     )
     purpose = workflow.purpose if workflow and workflow.purpose_id else default_lease_purpose()
+
+    owner_applicant = applicant_snapshot(lease, "owner")
+    caretaker_applicant = applicant_snapshot(lease, "caretaker")
+    applicant_options = {
+        "owner": owner_applicant,
+        "caretaker": caretaker_applicant,
+    }
+
     current_applicant, current_property, current_portal = snapshot_components(
         lease, purpose
     )
@@ -501,6 +558,21 @@ def workflow_card_context(lease, lease_history):
         if use_stored_snapshot and workflow.portal_snapshot
         else current_portal
     )
+    if use_stored_snapshot:
+        stored_source = (applicant or {}).get("source")
+        if stored_source == "linked_caretaker":
+            selected_applicant_source = "caretaker"
+        elif stored_source == "linked_owner":
+            selected_applicant_source = "owner"
+        else:
+            selected_applicant_source = ""
+    elif owner_applicant.get("record_id"):
+        selected_applicant_source = "owner"
+    elif caretaker_applicant.get("record_id"):
+        selected_applicant_source = "caretaker"
+    else:
+        selected_applicant_source = ""
+
     state = workflow.status if workflow else LeaseEStampWorkflow.STATUS_READY
     status_labels = {
         LeaseEStampWorkflow.STATUS_READY: "Not Created",
@@ -521,6 +593,9 @@ def workflow_card_context(lease, lease_history):
         "state": state,
         "status_label": status_labels[state],
         "applicant": applicant,
+        "applicant_options": applicant_options,
+        "selected_applicant_source": selected_applicant_source,
+        "applicant_locked": use_stored_snapshot,
         "property": property_data,
         "portal": portal_data,
         "missing": missing,

@@ -1,0 +1,60 @@
+    parse();
+    const observer = new MutationObserver(parse);
+    if (document.body) observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  }
+
+  function collectOtp() {
+    const combined = document.getElementById("otp-input");
+    let otp = combined ? String(combined.value || "").replace(/\D/g, "") : "";
+    if (!/^\d{6}$/.test(otp)) {
+      otp = Array.from({ length: 6 }, (_item, index) => {
+        const box = document.getElementById("box" + index);
+        return box ? String(box.value || "").replace(/\D/g, "") : "";
+      }).join("");
+    }
+    if (/^\d{6}$/.test(otp) && activeFlow) safeSessionSet(otpKey(activeFlow.flow), otp);
+    return otp;
+  }
+
+  function fillOtp(otp) {
+    if (!/^\d{6}$/.test(otp)) return;
+    for (let index = 0; index < 6; index += 1) {
+      const box = document.getElementById("box" + index);
+      if (box) { box.value = otp[index]; fireNative(box); }
+    }
+    const combined = document.getElementById("otp-input");
+    if (combined) { combined.value = otp; fireNative(combined); }
+    collectOtp();
+  }
+
+  function installOtpCapture() {
+    document.addEventListener("input", (event) => {
+      if (event.target && (event.target.id === "otp-input" || /^box[0-5]$/.test(event.target.id))) collectOtp();
+    }, true);
+    if (window.OTPCredential && navigator.credentials) {
+      const controller = new AbortController();
+      window.setTimeout(() => controller.abort(), 60000);
+      navigator.credentials.get({ otp: { transport: ["sms"] }, signal: controller.signal })
+        .then((credential) => {
+          const code = credential && String(credential.code || "").replace(/\D/g, "");
+          if (/^\d{6}$/.test(code)) fillOtp(code);
+        })
+        .catch(() => { /* manual OTP entry always remains available */ });
+    }
+  }
+
+  async function handleRetrieval(flow) {
+    setNative("CNICSearchBox", flow.applicant.cnic);
+    setNative("MobileSearchBox", formatPakistanMobile(flow.applicant.phone));
+    const email = document.getElementById("useEmailCheckbox");
+    if (email && email.checked) email.click();
+    installOtpCapture();
+    const marker = "TMS_ESTAMP_RETRIEVAL_REQUESTED_" + flow.workflowId;
+    if (!safeSessionGet(marker)) {
+      await sleep(500);
+      const button = document.getElementById("btnSearchChallan");
+      if (button) {
+        safeSessionSet(marker, "1");
+        button.click();
+      }
+    }

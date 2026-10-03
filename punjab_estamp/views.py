@@ -152,7 +152,15 @@ def configuration_update(request, lease_id, history_id):
     try:
         payload = _json_body(request)
         property_obj = lease.unit.property
-        applicant, _property_data, _portal_data = snapshot_components(lease)
+
+        applicant_source = str(
+            payload.get("applicant_source") or ""
+        ).strip() or None
+
+        applicant, _property_data, _portal_data = snapshot_components(
+            lease,
+            applicant_source=applicant_source,
+        )
 
         district_id = payload.get("district_id")
         tehsil_id = payload.get("tehsil_id")
@@ -195,8 +203,14 @@ def configuration_update(request, lease_id, history_id):
             raise ValidationError("Select an Owner or Caretaker Tenant on the Property before entering applicant identity.")
 
         lease, _history = _lease_and_history(lease_id, history_id)
-        remaining = missing_configuration(lease)
-        applicant_after, property_after, _portal_after = snapshot_components(lease)
+        remaining = missing_configuration(
+            lease,
+            applicant_source=applicant_source,
+        )
+        applicant_after, property_after, _portal_after = snapshot_components(
+            lease,
+            applicant_source=applicant_source,
+        )
         return JsonResponse({
             "ok": not bool(remaining),
             "saved": True,
@@ -214,8 +228,25 @@ def launch(request, lease_id, history_id):
     """Return an in-memory browser-helper configuration; never submit Punjab."""
     _require_lease_change(request.user)
     lease, history = _lease_and_history(lease_id, history_id)
+
     try:
-        workflow, _created = prepare_workflow(lease, history, request.user)
+        # Browser launches send JSON so the Owner/Caretaker toggle can be
+        # supplied. Keep normal/legacy empty POST requests compatible too.
+        payload = (
+            _json_body(request)
+            if request.content_type == "application/json"
+            else {}
+        )
+        applicant_source = str(
+            payload.get("applicant_source") or ""
+        ).strip() or None
+
+        workflow, _created = prepare_workflow(
+            lease,
+            history,
+            request.user,
+            applicant_source=applicant_source,
+        )
     except ValidationError as exc:
         return JsonResponse({"ok": False, "error": " ".join(exc.messages)}, status=422)
 
@@ -240,7 +271,9 @@ def launch(request, lease_id, history_id):
         launch_token = ""
     else:
         applicant, property_data, portal_data = snapshot_components(
-            lease, workflow.purpose
+            lease,
+            workflow.purpose,
+            applicant_source=applicant_source,
         )
         launch_token = signing.dumps(
             {

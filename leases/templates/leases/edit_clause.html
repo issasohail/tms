@@ -331,7 +331,198 @@
         </div>
     </form>
 
-    <div class="card punjab-estamp-card mb-2" id="punjabEstampCard" data-workflow-state="{{ punjab_estamp.state }}" data-launch-url="{% url 'punjab_estamp:launch' master_lease.pk history.pk %}">
+    
+<style id="estamp_responsive_compact_layout_v1">
+  /*
+   * Punjab e-Stamp card
+   * Compact on desktop, fluid on tablet/mobile.
+   */
+  #punjabEstampCard {
+    --estamp-gap-x: .65rem;
+    --estamp-gap-y: .35rem;
+  }
+
+  #punjabEstampCard .card-header {
+    padding-top: .4rem !important;
+    padding-bottom: .4rem !important;
+    min-height: 38px;
+  }
+
+  #punjabEstampCard .card-header .btn-sm {
+    padding: .22rem .48rem;
+    line-height: 1.25;
+  }
+
+  #punjabEstampBody {
+    padding: .48rem .65rem !important;
+  }
+
+  /*
+   * auto-fit is important here:
+   * it fills available horizontal space and automatically wraps.
+   */
+  #punjabEstampCard .punjab-estamp-grid {
+    display: grid;
+    grid-template-columns:
+      repeat(auto-fit, minmax(min(100%, 145px), 1fr));
+    column-gap: var(--estamp-gap-x);
+    row-gap: var(--estamp-gap-y);
+    align-items: start;
+  }
+
+  #punjabEstampCard .punjab-estamp-item {
+    min-width: 0;
+    margin: 0 !important;
+  }
+
+  #punjabEstampCard .punjab-estamp-label {
+    display: block;
+    margin-bottom: .05rem;
+    font-size: .67rem;
+    line-height: 1.05;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .015rem;
+  }
+
+  #punjabEstampCard .punjab-estamp-value {
+    display: block;
+    min-width: 0;
+    font-size: .78rem;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  /*
+   * Applicant details are allowed to span the card, but the individual
+   * values inside them remain horizontal/compact.
+   */
+  #punjabEstampCard .punjab-estamp-applicant-detail .row {
+    --bs-gutter-x: .65rem;
+    --bs-gutter-y: .18rem;
+  }
+
+  #punjabEstampCard .punjab-estamp-applicant-detail .row > div {
+    line-height: 1.18;
+  }
+
+  #punjabEstampCard .punjab-estamp-applicant-detail {
+    font-size: .76rem;
+  }
+
+  #punjabEstampCard .punjab-estamp-applicant-detail strong {
+    white-space: nowrap;
+  }
+
+  #punjabEstampCard .btn-group.btn-group-sm {
+    flex-wrap: nowrap;
+  }
+
+  #punjabEstampCard .small.text-muted.mt-2 {
+    margin-top: .35rem !important;
+    line-height: 1.15;
+    font-size: .7rem;
+  }
+
+
+  /* Wide desktop: deliberately pack more fields into each row. */
+  @media (min-width: 1200px) {
+    #punjabEstampCard .punjab-estamp-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    #punjabEstampCard .punjab-estamp-item[style*="grid-column"] {
+      grid-column: 1 / -1 !important;
+    }
+
+    #punjabEstampCard .punjab-estamp-applicant-detail .row > .col-md-4 {
+      width: 16.66666667%;
+    }
+
+    #punjabEstampCard .punjab-estamp-applicant-detail .row > .col-12 {
+      width: 33.33333333%;
+    }
+  }
+
+
+  /* Normal desktop / landscape tablet */
+  @media (min-width: 768px) and (max-width: 1199.98px) {
+    #punjabEstampCard .punjab-estamp-grid {
+      grid-template-columns:
+        repeat(auto-fit, minmax(155px, 1fr));
+    }
+  }
+
+
+  /*
+   * Mobile:
+   * use all available width.  At 360px this normally gives two smaller
+   * fields when they fit, otherwise one full-width field.
+   */
+  @media (max-width: 767.98px) {
+    #punjabEstampCard {
+      --estamp-gap-x: .45rem;
+      --estamp-gap-y: .38rem;
+    }
+
+    #punjabEstampCard .card-header {
+      gap: .35rem !important;
+      align-items: flex-start !important;
+    }
+
+    #punjabEstampCard .card-header > div:last-child {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    #punjabEstampBody {
+      padding: .45rem .5rem !important;
+    }
+
+    #punjabEstampCard .punjab-estamp-grid {
+      grid-template-columns:
+        repeat(auto-fit, minmax(135px, 1fr));
+    }
+
+    #punjabEstampCard .punjab-estamp-item[style*="grid-column"] {
+      grid-column: 1 / -1 !important;
+    }
+
+    #punjabEstampCard .punjab-estamp-applicant-detail .row > div {
+      width: 50%;
+    }
+
+    #punjabEstampCard .punjab-estamp-applicant-detail .row > .col-12 {
+      width: 100%;
+    }
+
+    #punjabEstampCard .punjab-estamp-applicant-toggle + label {
+      padding-left: .45rem;
+      padding-right: .45rem;
+    }
+  }
+
+
+  /* Very narrow phones */
+  @media (max-width: 420px) {
+    #punjabEstampCard .punjab-estamp-grid {
+      grid-template-columns:
+        repeat(auto-fit, minmax(118px, 1fr));
+    }
+
+    #punjabEstampCard .punjab-estamp-applicant-detail .row > div {
+      width: 100%;
+    }
+  }
+
+
+  /* Collapse only the details; header/actions remain visible. */
+  #punjabEstampCard.estamp-details-hidden #punjabEstampBody {
+    display: none !important;
+  }
+</style>
+
+<div class="card punjab-estamp-card mb-2" id="punjabEstampCard" data-workflow-state="{{ punjab_estamp.state }}" data-launch-url="{% url 'punjab_estamp:launch' master_lease.pk history.pk %}">
       <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
           <strong><i class="fas fa-stamp me-1"></i>Punjab e-Stamp</strong>
@@ -339,6 +530,16 @@
           <span class="small text-muted ms-1">{{ history.history_label }}</span>
         </div>
         <div class="d-flex flex-wrap gap-1">
+          <button type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  id="punjabEstampToggleDetails"
+                  title="Hide or show Punjab e-Stamp details"
+                  aria-controls="punjabEstampBody"
+                  aria-expanded="true">
+            <i class="fas fa-chevron-up me-1"></i>
+            <span>Hide Details</span>
+          </button>
+
           {% if punjab_estamp.state == 'ready' %}
             {% if punjab_estamp.missing %}
               <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#punjabEstampMissingModal"><i class="fas fa-plus-circle"></i> Create Stamp Paper</button>
@@ -363,12 +564,155 @@
           {% endif %}
         </div>
       </div>
-      <div class="card-body py-2">
+      <div class="card-body py-2" id="punjabEstampBody">
         <div class="punjab-estamp-grid">
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Property</span><span class="punjab-estamp-value">{{ punjab_estamp.property.property_name|default:"-" }}</span></div>
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Unit</span><span class="punjab-estamp-value">{{ punjab_estamp.property.unit_number|default:"-" }}</span></div>
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Tenant</span><span class="punjab-estamp-value">{{ master_lease.tenant.get_full_name|default:"-" }}</span></div>
-          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Applicant</span><span class="punjab-estamp-value">{{ punjab_estamp.applicant.source_label|default:"-" }}{% if punjab_estamp.applicant.name %} - {{ punjab_estamp.applicant.name }}{% endif %}</span></div>
+          <div class="punjab-estamp-item">
+            <span class="punjab-estamp-label">Applicant</span>
+
+            <div class="btn-group btn-group-sm mt-1"
+                 role="group"
+                 aria-label="Punjab e-Stamp applicant">
+
+              <input type="radio"
+                     class="btn-check punjab-estamp-applicant-toggle"
+                     name="punjab_estamp_applicant_source"
+                     id="punjabEstampApplicantOwner"
+                     value="owner"
+                     {% if punjab_estamp.selected_applicant_source == "owner" %}checked{% endif %}
+                     {% if punjab_estamp.applicant_locked or not punjab_estamp.applicant_options.owner.record_id %}disabled{% endif %}>
+
+              <label class="btn btn-outline-primary"
+                     for="punjabEstampApplicantOwner">
+                <i class="fas fa-user me-1"></i>
+                Owner
+              </label>
+
+              <input type="radio"
+                     class="btn-check punjab-estamp-applicant-toggle"
+                     name="punjab_estamp_applicant_source"
+                     id="punjabEstampApplicantCaretaker"
+                     value="caretaker"
+                     {% if punjab_estamp.selected_applicant_source == "caretaker" %}checked{% endif %}
+                     {% if punjab_estamp.applicant_locked or not punjab_estamp.applicant_options.caretaker.record_id %}disabled{% endif %}>
+
+              <label class="btn btn-outline-primary"
+                     for="punjabEstampApplicantCaretaker">
+                <i class="fas fa-user-shield me-1"></i>
+                Caretaker
+              </label>
+            </div>
+
+            {% if punjab_estamp.applicant_locked %}
+            <span class="small text-muted mt-1">
+              Locked to the applicant used for this Challan.
+            </span>
+            {% endif %}
+          </div>
+
+          <div class="punjab-estamp-item"
+               style="grid-column:1 / -1;">
+            <span class="punjab-estamp-label">Applicant Details</span>
+
+            {% with person=punjab_estamp.applicant_options.owner %}
+            <div class="punjab-estamp-applicant-detail {% if punjab_estamp.selected_applicant_source != 'owner' %}d-none{% endif %}"
+                 data-applicant-detail="owner"
+                 data-record-id="{{ person.record_id|default:'' }}"
+                 data-name="{{ person.name|default:'' }}"
+                 data-cnic="{{ person.cnic|default:'' }}"
+                 data-phone="{{ person.phone|default:'' }}"
+                 data-email="{{ person.email|default:'' }}"
+                 data-relation-id="{{ person.relation_id|default:'' }}"
+                 data-relation-name="{{ person.relation_name|default:'' }}"
+                 data-relation-person-name="{{ person.relation_person_name|default:'' }}"
+                 data-address="{{ person.address|default:'' }}">
+
+              {% if person.record_id %}
+              <div class="row g-1 small mt-1">
+                <div class="col-md-4">
+                  <strong>Name:</strong> {{ person.name|default:"-" }}
+                </div>
+                <div class="col-md-4">
+                  <strong>CNIC:</strong> {{ person.cnic|default:"-" }}
+                </div>
+                <div class="col-md-4">
+                  <strong>Phone:</strong> {{ person.phone|default:"-" }}
+                </div>
+
+                <div class="col-md-4">
+                  <strong>Email:</strong> {{ person.email|default:"-" }}
+                </div>
+                <div class="col-md-4">
+                  <strong>Relation:</strong> {{ person.relation_name|default:"-" }}
+                </div>
+                <div class="col-md-4">
+                  <strong>Relation / Father:</strong>
+                  {{ person.relation_person_name|default:"-" }}
+                </div>
+
+                <div class="col-12">
+                  <strong>Address:</strong> {{ person.address|default:"-" }}
+                </div>
+              </div>
+              {% else %}
+              <span class="small text-muted">
+                No Owner Tenant is linked to this property.
+              </span>
+              {% endif %}
+            </div>
+            {% endwith %}
+
+
+            {% with person=punjab_estamp.applicant_options.caretaker %}
+            <div class="punjab-estamp-applicant-detail {% if punjab_estamp.selected_applicant_source != 'caretaker' %}d-none{% endif %}"
+                 data-applicant-detail="caretaker"
+                 data-record-id="{{ person.record_id|default:'' }}"
+                 data-name="{{ person.name|default:'' }}"
+                 data-cnic="{{ person.cnic|default:'' }}"
+                 data-phone="{{ person.phone|default:'' }}"
+                 data-email="{{ person.email|default:'' }}"
+                 data-relation-id="{{ person.relation_id|default:'' }}"
+                 data-relation-name="{{ person.relation_name|default:'' }}"
+                 data-relation-person-name="{{ person.relation_person_name|default:'' }}"
+                 data-address="{{ person.address|default:'' }}">
+
+              {% if person.record_id %}
+              <div class="row g-1 small mt-1">
+                <div class="col-md-4">
+                  <strong>Name:</strong> {{ person.name|default:"-" }}
+                </div>
+                <div class="col-md-4">
+                  <strong>CNIC:</strong> {{ person.cnic|default:"-" }}
+                </div>
+                <div class="col-md-4">
+                  <strong>Phone:</strong> {{ person.phone|default:"-" }}
+                </div>
+
+                <div class="col-md-4">
+                  <strong>Email:</strong> {{ person.email|default:"-" }}
+                </div>
+                <div class="col-md-4">
+                  <strong>Relation:</strong> {{ person.relation_name|default:"-" }}
+                </div>
+                <div class="col-md-4">
+                  <strong>Relation / Father:</strong>
+                  {{ person.relation_person_name|default:"-" }}
+                </div>
+
+                <div class="col-12">
+                  <strong>Address:</strong> {{ person.address|default:"-" }}
+                </div>
+              </div>
+              {% else %}
+              <span class="small text-muted">
+                No Caretaker Tenant is linked to this property.
+              </span>
+              {% endif %}
+            </div>
+            {% endwith %}
+          </div>
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Zila / District</span><span class="punjab-estamp-value">{{ punjab_estamp.property.district_name|default:"-" }}</span></div>
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Tehsil</span><span class="punjab-estamp-value">{{ punjab_estamp.property.tehsil_name|default:"-" }}</span></div>
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Purpose</span><span class="punjab-estamp-value">{{ punjab_estamp.portal.purpose_name|default:"-" }}</span></div>
@@ -397,6 +741,10 @@
           <ul class="mb-3">{% for item in punjab_estamp.missing %}<li>{{ item }}</li>{% endfor %}</ul>
           {% if punjab_estamp.quick_fix_allowed %}
           <form id="punjabEstampQuickFixForm">
+            <input type="hidden"
+                   name="applicant_source"
+                   id="punjabQuickApplicantSource"
+                   value="{{ punjab_estamp.selected_applicant_source }}">
             <div class="row g-2">
               <div class="col-md-6"><label class="form-label form-label-sm">Zila / District</label><select class="form-select form-select-sm" name="district_id" id="punjabQuickDistrict"><option value="">Select District</option>{% for district in punjab_estamp.quick_fix_districts %}<option value="{{ district.pk }}" {% if punjab_estamp.property.district_id == district.pk %}selected{% endif %}>{{ district.name }}</option>{% endfor %}</select></div>
               <div class="col-md-6"><label class="form-label form-label-sm">Tehsil</label><select class="form-select form-select-sm" name="tehsil_id" id="punjabQuickTehsil"><option value="">Select Tehsil</option>{% for tehsil in punjab_estamp.quick_fix_tehsils %}<option value="{{ tehsil.pk }}" data-district-id="{{ tehsil.district_id }}" {% if punjab_estamp.property.tehsil_id == tehsil.pk %}selected{% endif %}>{{ tehsil.name }}</option>{% endfor %}</select></div>
@@ -1585,6 +1933,113 @@
     return card.dataset.workflowState;
   }
 
+  function selectedPunjabApplicantSource() {
+    return card.querySelector(
+      'input[name="punjab_estamp_applicant_source"]:checked'
+    )?.value || '';
+  }
+
+  function syncPunjabApplicant(source) {
+    if (!source) return;
+
+    card.querySelectorAll(
+      '.punjab-estamp-applicant-detail'
+    ).forEach((detail) => {
+      detail.classList.toggle(
+        'd-none',
+        detail.dataset.applicantDetail !== source
+      );
+    });
+
+    const quickSource =
+      document.getElementById('punjabQuickApplicantSource');
+
+    if (quickSource) {
+      quickSource.value = source;
+    }
+
+    const detail = card.querySelector(
+      '.punjab-estamp-applicant-detail[data-applicant-detail="' +
+      source +
+      '"]'
+    );
+
+    const form =
+      document.getElementById('punjabEstampQuickFixForm');
+
+    if (!detail || !form) return;
+
+    const setValue = (name, value) => {
+      const field = form.elements.namedItem(name);
+      if (field) field.value = value || '';
+    };
+
+    setValue('name', detail.dataset.name);
+    setValue('cnic', detail.dataset.cnic);
+    setValue('phone', detail.dataset.phone);
+    setValue('email', detail.dataset.email);
+    setValue('relation_id', detail.dataset.relationId);
+    setValue(
+      'relation_person_name',
+      detail.dataset.relationPersonName
+    );
+    setValue('address', detail.dataset.address);
+  }
+
+  function syncPunjabEstampDetailsButton() {
+    const button =
+      card.querySelector('#punjabEstampToggleDetails');
+
+    if (!button) return;
+
+    const hidden =
+      card.classList.contains('estamp-details-hidden');
+
+    button.setAttribute(
+      'aria-expanded',
+      hidden ? 'false' : 'true'
+    );
+
+    const icon = button.querySelector('i');
+    const label = button.querySelector('span');
+
+    if (icon) {
+      icon.classList.toggle('fa-chevron-up', !hidden);
+      icon.classList.toggle('fa-chevron-down', hidden);
+    }
+
+    if (label) {
+      label.textContent =
+        hidden ? 'Show Details' : 'Hide Details';
+    }
+  }
+
+  card.addEventListener('click', (event) => {
+    const toggle = event.target.closest(
+      '#punjabEstampToggleDetails'
+    );
+
+    if (!toggle || !card.contains(toggle)) return;
+
+    card.classList.toggle('estamp-details-hidden');
+    syncPunjabEstampDetailsButton();
+  });
+
+  syncPunjabEstampDetailsButton();
+
+
+  card.addEventListener('change', (event) => {
+    const toggle = event.target.closest(
+      '.punjab-estamp-applicant-toggle'
+    );
+
+    if (!toggle) return;
+
+    syncPunjabApplicant(toggle.value);
+  });
+
+  syncPunjabApplicant(selectedPunjabApplicantSource());
+
   async function launchPunjab(button) {
     lastLaunchButton = button;
     const popup = window.open('about:blank', '_blank');
@@ -1602,9 +2057,13 @@
         method: 'POST',
         credentials: 'same-origin',
         headers: {
+          'Content-Type': 'application/json',
           'X-CSRFToken': csrfToken,
           'X-Requested-With': 'XMLHttpRequest'
-        }
+        },
+        body: JSON.stringify({
+          applicant_source: selectedPunjabApplicantSource()
+        })
       });
       const payload = await jsonResponse(response);
 

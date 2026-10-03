@@ -1,0 +1,170 @@
+
+  function watchForChallan(flow) {
+    const parse = async () => {
+      const text = (document.body && document.body.innerText) || "";
+      const match = text.match(/Your\s+Challan\s+Number\s+is\s+([A-Za-z0-9-]+)\s+And\s+Your\s+PSID\s+is\s+([0-9]+)/i);
+      if (!match || safeSessionGet("TMS_ESTAMP_CHALLAN_SENT_" + flow.workflowId)) return;
+      safeSessionSet("TMS_ESTAMP_CHALLAN_SENT_" + flow.workflowId, "1");
+      try {
+        await sendRequest("event", {
+          action: "challan_generated",
+          challan_number: match[1].trim(),
+          psid: match[2].trim(),
+          launch_token: flow.launchToken
+        });
+        banner("Challan and PSID saved to TMS. Return to TMS for the payment action.", "success");
+      } catch (error) {
+        safeSessionRemove("TMS_ESTAMP_CHALLAN_SENT_" + flow.workflowId);
+        banner(error.message, "error");
+      }
+    };
+    parse();
+    const observer = new MutationObserver(parse);
+    if (document.body) observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  }
+
+  function collectOtp() {
+    const combined = document.getElementById("otp-input");
+    let otp = combined ? String(combined.value || "").replace(/\D/g, "") : "";
+    if (!/^\d{6}$/.test(otp)) {
+      otp = Array.from({ length: 6 }, (_item, index) => {
+        const box = document.getElementById("box" + index);
+        return box ? String(box.value || "").replace(/\D/g, "") : "";
+      }).join("");
+    }
+    if (/^\d{6}$/.test(otp) && activeFlow) safeSessionSet(otpKey(activeFlow.flow), otp);
+    return otp;
+  }
+
+  function fillOtp(otp) {
+    if (!/^\d{6}$/.test(otp)) return;
+    for (let index = 0; index < 6; index += 1) {
+      const box = document.getElementById("box" + index);
+      if (box) { box.value = otp[index]; fireNative(box); }
+    }
+    const combined = document.getElementById("otp-input");
+    if (combined) { combined.value = otp; fireNative(combined); }
+    collectOtp();
+  }
+
+  function installOtpCapture() {
+    document.addEventListener("input", (event) => {
+      if (event.target && (event.target.id === "otp-input" || /^box[0-5]$/.test(event.target.id))) collectOtp();
+    }, true);
+    if (window.OTPCredential && navigator.credentials) {
+      const controller = new AbortController();
+      window.setTimeout(() => controller.abort(), 60000);
+      navigator.credentials.get({ otp: { transport: ["sms"] }, signal: controller.signal })
+        .then((credential) => {
+          const code = credential && String(credential.code || "").replace(/\D/g, "");
+          if (/^\d{6}$/.test(code)) fillOtp(code);
+        })
+        .catch(() => { /* manual OTP entry always remains available */ });
+    }
+  }
+
+  async function handleRetrieval(flow) {
+    setNative("CNICSearchBox", flow.applicant.cnic);
+    setNative("MobileSearchBox", formatPakistanMobile(flow.applicant.phone));
+    const email = document.getElementById("useEmailCheckbox");
+    if (email && email.checked) email.click();
+    installOtpCapture();
+    const marker = "TMS_ESTAMP_RETRIEVAL_REQUESTED_" + flow.workflowId;
+    if (!safeSessionGet(marker)) {
+      await sleep(500);
+      const button = document.getElementById("btnSearchChallan");
+      if (button) {
+        safeSessionSet(marker, "1");
+        button.click();
+      }
+    }
+    banner("Retrieval details filled. Enter the OTP received from Punjab; manual entry always remains available.");
+  }
+
+  function normalized(value) {
+    return String(value || "").replace(/\s+/g, "").toUpperCase();
+  }
+
+  function tableRecords() {
+    return Array.from(document.querySelectorAll("table tr")).slice(1).map((row) => {
+      const cells = Array.from(row.querySelectorAll("td")).map((cell) => String(cell.innerText || "").replace(/\s+/g, " ").trim());
+      return {
+        issuedBy: cells[0] || "",
+        stampNumber: cells[1] || "",
+        challanNumber: cells[2] || "",
+        deed: cells[3] || "",
+        amountPaid: cells[4] || "",
+        paymentDate: cells[5] || "",
+        status: cells[6] || ""
+      };
+    }).filter((record) => record.stampNumber && record.challanNumber);
+  }
+
+  async function handleRetrievalResults(flow) {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const records = tableRecords();
+      if (!records.length) { await sleep(500); continue; }
+      const match = records.find((record) => normalized(record.challanNumber) === normalized(flow.challan));
+      if (!match) {
+        banner("No exact Punjab row matched the TMS Challan. No other row was selected.", "error");
+        await sendRequest("event", { action: "portal_error", error: "No exact Challan match was found in Punjab retrieval results." }).catch(() => {});
+        return;
+      }
+      await sendRequest("event", {
+        action: "stamp_found",
+        challan_number: match.challanNumber,
+        stamp_number: match.stampNumber,
+        amount_paid: match.amountPaid,
+        payment_date: match.paymentDate,
+        portal_status: match.status
+      });
+      flow.stampNumber = match.stampNumber;
+      activeFlow.flow = flow;
+      saveFlow(activeFlow);
+      window.location.assign(flow.downloadUrl);
+      return;
+    }
+    banner("Punjab retrieval results did not load. Try the search again.", "error");
+  }
+
+  async function handleDownload(flow) {
+    setNative("SearchBox", flow.challan || flow.psid);
+    setNative("StampSearchBox", flow.stampNumber);
+    setNative("CNICSearchBox", flow.applicant.cnic);
+    setNative("MobileSearchBox", formatPakistanMobile(flow.applicant.phone));
+    setNative("continuitySheetBox", flow.portal.continuation_sheets || "1");
+    const email = document.getElementById("useEmailCheckbox");
+    if (email && email.checked) email.click();
+    const pageText = (document.body && document.body.innerText) || "";
+    if (/already\s+(?:been\s+)?(?:issued|generated)/i.test(pageText)) {
+      banner("Punjab reports an existing stamp. TMS will only download it and will never regenerate it.");
+    }
+    const marker = "TMS_ESTAMP_DOWNLOAD_SEARCHED_" + flow.workflowId;
+    if (!safeSessionGet(marker)) {
+      await sleep(500);
+      const button = document.getElementById("btnSearchChallan");
+      if (button) { safeSessionSet(marker, "1"); button.click(); }
+    }
+    scanPdfLinks();
+    const observer = new MutationObserver(scanPdfLinks);
+    if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function looksLikePdf(response, url) {
+    const type = String(response.headers.get("content-type") || "").toLowerCase();
+    const disposition = String(response.headers.get("content-disposition") || "").toLowerCase();
+    return type.includes("application/pdf") || disposition.includes(".pdf") || /\.pdf(?:$|[?#])/i.test(String(url || ""));
+  }
+
+  async function uploadPdfBlob(blob, filename) {
+    if (pdfCaptured || !activeFlow || !blob || !blob.size) return;
+    const otp = safeSessionGet(otpKey(activeFlow.flow)) || "";
+    if (!/^\d{6}$/.test(otp)) {
+      banner("PDF found, but the workflow OTP/PIN is unavailable. Enter the OTP and download again.", "error");
+      return;
+    }
+    pdfCaptured = true;
+    banner("Punjab PDF captured. Uploading through the existing TMS E-Stamp processor...");
+    try {
+      const buffer = await blob.arrayBuffer();
+      await sendRequest("pdf", {

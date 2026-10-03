@@ -1,0 +1,198 @@
+===== OTP CAPTURE =====
+          challan_number: match[1].trim(),
+          psid: match[2].trim(),
+          launch_token: flow.launchToken
+        });
+        banner("Challan and PSID saved to TMS. Return to TMS for the payment action.", "success");
+      } catch (error) {
+        safeSessionRemove("TMS_ESTAMP_CHALLAN_SENT_" + flow.workflowId);
+        banner(error.message, "error");
+      }
+    };
+    parse();
+    const observer = new MutationObserver(parse);
+    if (document.body) observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  }
+
+  function collectOtp() {
+    const combined = document.getElementById("otp-input");
+    let otp = combined ? String(combined.value || "").replace(/\D/g, "") : "";
+    if (!/^\d{6}$/.test(otp)) {
+      otp = Array.from({ length: 6 }, (_item, index) => {
+        const box = document.getElementById("box" + index);
+        return box ? String(box.value || "").replace(/\D/g, "") : "";
+      }).join("");
+    }
+    if (/^\d{6}$/.test(otp) && activeFlow) safeSessionSet(otpKey(activeFlow.flow), otp);
+    return otp;
+  }
+
+  function fillOtp(otp) {
+    if (!/^\d{6}$/.test(otp)) return;
+    for (let index = 0; index < 6; index += 1) {
+      const box = document.getElementById("box" + index);
+      if (box) { box.value = otp[index]; fireNative(box); }
+    }
+    const combined = document.getElementById("otp-input");
+    if (combined) { combined.value = otp; fireNative(combined); }
+    collectOtp();
+  }
+
+  function installOtpCapture() {
+    document.addEventListener("input", (event) => {
+      if (event.target && (event.target.id === "otp-input" || /^box[0-5]$/.test(event.target.id))) collectOtp();
+    }, true);
+    if (window.OTPCredential && navigator.credentials) {
+      const controller = new AbortController();
+      window.setTimeout(() => controller.abort(), 60000);
+      navigator.credentials.get({ otp: { transport: ["sms"] }, signal: controller.signal })
+        .then((credential) => {
+          const code = credential && String(credential.code || "").replace(/\D/g, "");
+          if (/^\d{6}$/.test(code)) fillOtp(code);
+        })
+        .catch(() => { /* manual OTP entry always remains available */ });
+    }
+  }
+
+  async function handleRetrieval(flow) {
+    setNative("CNICSearchBox", flow.applicant.cnic);
+    setNative("MobileSearchBox", formatPakistanMobile(flow.applicant.phone));
+    const email = document.getElementById("useEmailCheckbox");
+    if (email && email.checked) email.click();
+    installOtpCapture();
+    const marker = "TMS_ESTAMP_RETRIEVAL_REQUESTED_" + flow.workflowId;
+    if (!safeSessionGet(marker)) {
+      await sleep(500);
+      const button = document.getElementById("btnSearchChallan");
+
+===== PDF CAPTURE / UPLOAD =====
+    setNative("SearchBox", flow.challan || flow.psid);
+    setNative("StampSearchBox", flow.stampNumber);
+    setNative("CNICSearchBox", flow.applicant.cnic);
+    setNative("MobileSearchBox", formatPakistanMobile(flow.applicant.phone));
+    setNative("continuitySheetBox", flow.portal.continuation_sheets || "1");
+    const email = document.getElementById("useEmailCheckbox");
+    if (email && email.checked) email.click();
+    const pageText = (document.body && document.body.innerText) || "";
+    if (/already\s+(?:been\s+)?(?:issued|generated)/i.test(pageText)) {
+      banner("Punjab reports an existing stamp. TMS will only download it and will never regenerate it.");
+    }
+    const marker = "TMS_ESTAMP_DOWNLOAD_SEARCHED_" + flow.workflowId;
+    if (!safeSessionGet(marker)) {
+      await sleep(500);
+      const button = document.getElementById("btnSearchChallan");
+      if (button) { safeSessionSet(marker, "1"); button.click(); }
+    }
+    scanPdfLinks();
+    const observer = new MutationObserver(scanPdfLinks);
+    if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function looksLikePdf(response, url) {
+    const type = String(response.headers.get("content-type") || "").toLowerCase();
+    const disposition = String(response.headers.get("content-disposition") || "").toLowerCase();
+    return type.includes("application/pdf") || disposition.includes(".pdf") || /\.pdf(?:$|[?#])/i.test(String(url || ""));
+  }
+
+  async function uploadPdfBlob(blob, filename) {
+    if (pdfCaptured || !activeFlow || !blob || !blob.size) return;
+    const otp = safeSessionGet(otpKey(activeFlow.flow)) || "";
+    if (!/^\d{6}$/.test(otp)) {
+      banner("PDF found, but the workflow OTP/PIN is unavailable. Enter the OTP and download again.", "error");
+      return;
+    }
+    pdfCaptured = true;
+    banner("Punjab PDF captured. Uploading through the existing TMS E-Stamp processor...");
+    try {
+      const buffer = await blob.arrayBuffer();
+      await sendRequest("pdf", {
+        filename: filename || "Punjab-eStamp.pdf",
+        mimeType: blob.type || "application/pdf",
+        otp: otp,
+        buffer: buffer
+      }, [buffer]);
+      clearSensitiveFlow();
+      banner("E-Stamp PDF was processed and uploaded to TMS. Temporary OTP/PIN cleared.", "success");
+    } catch (error) {
+      pdfCaptured = false;
+      banner(error.message, "error");
+    }
+  }
+
+  function installPdfCapture() {
+    const originalFetch = window.fetch;
+    if (originalFetch) {
+      window.fetch = async function () {
+        const response = await originalFetch.apply(this, arguments);
+        try {
+          const url = typeof arguments[0] === "string" ? arguments[0] : arguments[0] && arguments[0].url;
+          if (looksLikePdf(response, url)) response.clone().blob().then((blob) => uploadPdfBlob(blob, "Punjab-eStamp.pdf"));
+        } catch (_error) { /* normal download continues */ }
+        return response;
+      };
+    }
+    const originalOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (_method, url) {
+      this.__tmsEstampUrl = url;
+      this.addEventListener("load", function () {
+        try {
+          const type = String(this.getResponseHeader("content-type") || "").toLowerCase();
+          if (!type.includes("pdf") && !/\.pdf(?:$|[?#])/i.test(String(this.__tmsEstampUrl || ""))) return;
+          if (this.response instanceof Blob) uploadPdfBlob(this.response, "Punjab-eStamp.pdf");
+          else if (this.response instanceof ArrayBuffer) uploadPdfBlob(new Blob([this.response], { type: "application/pdf" }), "Punjab-eStamp.pdf");
+        } catch (_error) { /* normal download continues */ }
+      });
+      return originalOpen.apply(this, arguments);
+    };
+    document.addEventListener("click", (event) => {
+      const link = event.target && event.target.closest ? event.target.closest("a[href]") : null;
+      if (!link || !/^(blob:|.*\.pdf(?:$|[?#]))/i.test(link.href || "")) return;
+      window.setTimeout(() => originalFetch(link.href, { credentials: "include" })
+        .then((response) => response.blob())
+        .then((blob) => uploadPdfBlob(blob, (link.download || "Punjab-eStamp.pdf")))
+        .catch(() => {}), 0);
+    }, true);
+  }
+
+  function scanPdfLinks() {
+    const link = Array.from(document.querySelectorAll("a[href]")).find((item) => /^(blob:|.*\.pdf(?:$|[?#]))/i.test(item.href || ""));
+    if (!link || !window.fetch) return;
+    window.fetch(link.href, { credentials: "include" })
+      .then((response) => response.blob())
+      .then((blob) => uploadPdfBlob(blob, link.download || "Punjab-eStamp.pdf"))
+      .catch(() => {});
+  }
+
+  async function route() {
+    const envelope = activeFlow || loadFlow();
+    if (!envelope) { announceReady(); return; }
+    activeFlow = envelope;
+    tmsOrigin = envelope.tmsOrigin;
+    const flow = envelope.flow;
+    const path = window.location.pathname.toLowerCase();
+    try {
+      if (path.includes("/stamp/stampretrievalbycnic")) {
+        await handleRetrievalResults(flow);
+      } else if (path.includes("/stamp/searchchallan")) {
+        await handleDownload(flow);
+      } else if (path.includes("/stamp/stampretrieval")) {
+        await handleRetrieval(flow);
+      } else if (!(await fillChallan(flow))) {
+        banner("Open Generate Challan 32-A on Punjab. TMS will fill it in dry-run mode.");
+      }
+    } catch (error) {
+      banner(error.message || "Punjab helper could not continue.", "error");
+      sendRequest("event", { action: "portal_error", error: error.message || "Punjab helper error." }).catch(() => {});
+    }
+  }
+
+  let routed = false;
+  function runWhenReady() {
+    if (routed || document.readyState === "loading") return;
+    routed = true;
+    route();
+  }
+
+  installPdfCapture();
+  activeFlow = loadFlow();
+  if (activeFlow) tmsOrigin = activeFlow.tmsOrigin;

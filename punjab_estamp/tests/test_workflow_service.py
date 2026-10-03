@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -149,8 +150,8 @@ class PunjabEStampWorkflowServiceTests(TestCase):
         self.property.caretaker_tenant = self.caretaker
         self.property.save(update_fields=["caretaker_tenant"])
         linked = applicant_snapshot(self.lease)
-        self.assertEqual(linked["source"], "linked_caretaker")
-        self.assertEqual(linked["record_id"], self.caretaker.pk)
+        self.assertEqual(linked["source"], "linked_owner")
+        self.assertEqual(linked["record_id"], self.owner.pk)
 
         self.property.caretaker_tenant = None
         self.property.caretaker_name = ""
@@ -255,7 +256,7 @@ class PunjabEStampWorkflowServiceTests(TestCase):
             "PSID - Copy this number: `40170000000000001`",
             message,
         )
-        self.assertEqual(workflow.applicant_snapshot["phone"], "+923007654321")
+        self.assertEqual(workflow.applicant_snapshot["phone"], "+923001234567")
 
         workflow, changed = mark_paid(workflow, self.user)
         self.assertTrue(changed)
@@ -284,7 +285,7 @@ class PunjabEStampWorkflowServiceTests(TestCase):
         self.assertEqual(workflow.replacement_count, 1)
         self.assertEqual(workflow.challan_number, "")
         self.assertEqual(workflow.challan_history[0]["challan_number"], "CHALLAN-1")
-        self.assertEqual(workflow.applicant_snapshot["name"], "Caretaker")
+        self.assertEqual(workflow.applicant_snapshot["name"], "Owner")
 
     def test_state_api_exposes_no_otp_or_pin_fields(self):
         workflow, _ = prepare_workflow(self.lease, self.history, self.user)
@@ -383,6 +384,245 @@ class PunjabEStampWorkflowServiceTests(TestCase):
         workflow.refresh_from_db()
         self.assertEqual(workflow.status, workflow.STATUS_STAMP_ISSUED)
 
+    def test_applicant_default_is_owner_and_explicit_caretaker_is_supported(self):
+        self.property.caretaker_tenant = self.caretaker
+        self.property.save(update_fields=["caretaker_tenant"])
+
+        default_applicant = applicant_snapshot(self.lease)
+        self.assertEqual(default_applicant["source"], "linked_owner")
+        self.assertEqual(default_applicant["record_id"], self.owner.pk)
+
+        owner_applicant = applicant_snapshot(self.lease, "owner")
+        self.assertEqual(owner_applicant["source"], "linked_owner")
+        self.assertEqual(owner_applicant["record_id"], self.owner.pk)
+
+        caretaker_applicant = applicant_snapshot(self.lease, "caretaker")
+        self.assertEqual(caretaker_applicant["source"], "linked_caretaker")
+        self.assertEqual(caretaker_applicant["record_id"], self.caretaker.pk)
+
+
+    def test_applicant_default_falls_back_to_caretaker_when_owner_missing(self):
+        self.property.owner_tenant = None
+        self.property.caretaker_tenant = self.caretaker
+        self.property.save(
+            update_fields=[
+                "owner_tenant",
+                "caretaker_tenant",
+            ]
+        )
+
+        applicant = applicant_snapshot(self.lease)
+
+        self.assertEqual(applicant["source"], "linked_caretaker")
+        self.assertEqual(applicant["record_id"], self.caretaker.pk)
+
+
+    def test_explicit_unavailable_caretaker_cannot_launch(self):
+        self.client.force_login(self.user)
+        self.property.caretaker_tenant = None
+        self.property.save(update_fields=["caretaker_tenant"])
+
+        response = self.client.post(
+            reverse(
+                "punjab_estamp:launch",
+                args=[self.lease.pk, self.history.pk],
+            ),
+            data=json.dumps(
+                {
+                    "applicant_source": "caretaker",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+
+    def test_explicit_caretaker_launch_uses_caretaker_snapshot(self):
+        self.client.force_login(self.user)
+        self.property.caretaker_tenant = self.caretaker
+        self.property.save(update_fields=["caretaker_tenant"])
+
+        response = self.client.post(
+            reverse(
+                "punjab_estamp:launch",
+                args=[self.lease.pk, self.history.pk],
+            ),
+            data=json.dumps(
+                {
+                    "applicant_source": "caretaker",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        payload = response.json()
+        flow = payload["flow"]
+
+        self.assertEqual(
+            flow["applicant"]["source"],
+            "linked_caretaker",
+        )
+        self.assertEqual(
+            flow["applicant"]["record_id"],
+            self.caretaker.pk,
+        )
+
+
+    def test_signed_launch_snapshot_freezes_selected_caretaker(self):
+        self.client.force_login(self.user)
+        self.property.caretaker_tenant = self.caretaker
+        self.property.save(update_fields=["caretaker_tenant"])
+
+        launch = self.client.post(
+            reverse(
+                "punjab_estamp:launch",
+                args=[self.lease.pk, self.history.pk],
+            ),
+            data=json.dumps(
+                {
+                    "applicant_source": "caretaker",
+                }
+            ),
+            content_type="application/json",
+        ).json()
+
+        workflow_id = launch["flow"]["workflowId"]
+
+        self.caretaker.first_name = "Changed After Launch"
+        self.caretaker.save(update_fields=["first_name"])
+
+        event_url = reverse(
+            "punjab_estamp:event",
+            args=[workflow_id],
+        )
+
+        response = self.client.post(
+            event_url,
+            data=json.dumps(
+                {
+                    "action": "challan_generated",
+                    "challan_number": "CARETAKER-TEST-1",
+                    "psid": "40170000000000009",
+                    "launch_token": launch["flow"]["launchToken"],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        workflow = LeaseEStampWorkflow.objects.get(
+            pk=workflow_id
+        )
+
+        self.assertEqual(
+            workflow.applicant_snapshot["source"],
+            "linked_caretaker",
+        )
+        self.assertEqual(
+            workflow.applicant_snapshot["name"],
+            "Caretaker",
+        )
+
+
+    def test_existing_challan_ignores_opposite_applicant_source(self):
+        self.client.force_login(self.user)
+        self.property.caretaker_tenant = self.caretaker
+        self.property.save(update_fields=["caretaker_tenant"])
+
+        workflow, _ = prepare_workflow(
+            self.lease,
+            self.history,
+            self.user,
+        )
+
+        workflow, _ = record_challan(
+            workflow,
+            "LOCKED-OWNER-1",
+            "40170000000000010",
+            self.user,
+        )
+
+        self.assertEqual(
+            workflow.applicant_snapshot["source"],
+            "linked_owner",
+        )
+
+        response = self.client.post(
+            reverse(
+                "punjab_estamp:launch",
+                args=[self.lease.pk, self.history.pk],
+            ),
+            data=json.dumps(
+                {
+                    "applicant_source": "caretaker",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        workflow.refresh_from_db()
+
+        self.assertEqual(
+            workflow.applicant_snapshot["source"],
+            "linked_owner",
+        )
+
+
+    def test_card_context_exposes_both_applicants_and_locks_existing_challan(self):
+        self.property.caretaker_tenant = self.caretaker
+        self.property.save(update_fields=["caretaker_tenant"])
+
+        context = workflow_card_context(
+            self.lease,
+            self.history,
+        )
+
+        self.assertEqual(
+            context["selected_applicant_source"],
+            "owner",
+        )
+        self.assertFalse(context["applicant_locked"])
+
+        self.assertEqual(
+            context["applicant_options"]["owner"]["record_id"],
+            self.owner.pk,
+        )
+        self.assertEqual(
+            context["applicant_options"]["caretaker"]["record_id"],
+            self.caretaker.pk,
+        )
+
+        workflow, _ = prepare_workflow(
+            self.lease,
+            self.history,
+            self.user,
+        )
+
+        workflow, _ = record_challan(
+            workflow,
+            "CARD-LOCK-1",
+            "40170000000000011",
+            self.user,
+        )
+
+        context = workflow_card_context(
+            self.lease,
+            self.history,
+        )
+
+        self.assertTrue(context["applicant_locked"])
+        self.assertEqual(
+            context["selected_applicant_source"],
+            "owner",
+        )
+
+
     def test_automatic_pdf_uses_existing_processor_and_is_idempotent(self):
         workflow, _ = prepare_workflow(self.lease, self.history, self.user)
         workflow, _ = record_challan(
@@ -458,6 +698,16 @@ class PunjabEStampWorkflowServiceTests(TestCase):
         helper_path = finders.find("punjab_estamp/punjab_portal_helper.user.js")
         self.assertTrue(helper_path)
         source = Path(helper_path).read_text(encoding="utf-8")
+        self.assertEqual(
+            source.count(
+                'setNative("MobileSearchBox", formatPakistanMobile(flow.applicant.phone));'
+            ),
+            2,
+        )
+        self.assertNotIn(
+            'setNative("MobileSearchBox", flow.applicant.phone);',
+            source,
+        )
         self.assertIn("TMS dry run complete", source)
         self.assertIn("flow.dryRun !== true", source)
         self.assertNotIn("localStorage", source)
@@ -549,3 +799,4 @@ class PunjabEStampWorkflowServiceTests(TestCase):
             self.assertIn(f'<option value="{self.relation.pk}">S/O</option>', html)
             self.assertNotIn(">OTP<", html)
             self.assertNotIn(">PDF PIN<", html)
+

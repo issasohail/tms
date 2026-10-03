@@ -331,7 +331,7 @@
         </div>
     </form>
 
-    
+
 <style id="estamp_responsive_compact_layout_v1">
   /*
    * Punjab e-Stamp card
@@ -522,6 +522,182 @@
   }
 </style>
 
+
+<style id="estamp_compact_collapsed_header_final_css">
+
+  /* ===== Final collapsed e-Stamp header layout ===== */
+
+  #punjabEstampCard .card-header {
+    gap: .35rem !important;
+    padding-top: .32rem !important;
+    padding-bottom: .32rem !important;
+  }
+
+  #punjabEstampCard .card-header > div:last-child {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  #punjabEstampCard .punjab-estamp-header-applicant {
+    white-space: nowrap;
+  }
+
+  #punjabEstampCard .punjab-estamp-header-label {
+    font-size: .62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    opacity: .7;
+  }
+
+  #punjabEstampCard .punjab-estamp-header-applicant .btn-group {
+    margin-top: 0 !important;
+  }
+
+  #punjabEstampCard .punjab-estamp-applicant-toggle + label {
+    padding: .15rem .32rem !important;
+    font-size: .66rem !important;
+    line-height: 1.1 !important;
+  }
+
+  #punjabEstampCard .punjab-estamp-applicant-toggle + label i,
+  #punjabEstampCard .punjab-estamp-applicant-toggle + label svg {
+    display: none !important;
+  }
+
+  #punjabEstampCard .punjab-estamp-header-meta {
+    flex: 0 1 auto;
+  }
+
+  #punjabEstampCard .punjab-estamp-header-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .2rem;
+    padding: .13rem .3rem;
+    border: 1px solid rgba(0,0,0,.13);
+    border-radius: .25rem;
+    background: rgba(255,255,255,.7);
+    white-space: nowrap;
+    line-height: 1.08;
+  }
+
+  #punjabEstampCard .punjab-estamp-header-pill .meta-label {
+    font-size: .58rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    opacity: .65;
+  }
+
+  #punjabEstampCard .punjab-estamp-header-pill .meta-value {
+    font-size: .67rem;
+    font-weight: 600;
+  }
+
+  #punjabEstampCard .punjab-estamp-purpose {
+    grid-column: span 2;
+  }
+
+  #punjabEstampCard .punjab-estamp-body-psid,
+  #punjabEstampCard .punjab-estamp-body-stamp,
+  #punjabEstampCard .punjab-estamp-body-status {
+    display: none !important;
+  }
+
+  @media (min-width: 1200px) {
+    #punjabEstampCard .punjab-estamp-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      column-gap: .55rem;
+      row-gap: .25rem;
+    }
+
+    #punjabEstampCard .punjab-estamp-purpose {
+      grid-column: span 2;
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 1199.98px) {
+    #punjabEstampCard .card-header > div:last-child {
+      justify-content: flex-start;
+    }
+
+    #punjabEstampCard .punjab-estamp-grid {
+      display: grid;
+      grid-template-columns:
+        repeat(auto-fit, minmax(155px, 1fr));
+      column-gap: .55rem;
+      row-gap: .3rem;
+    }
+
+    #punjabEstampCard .punjab-estamp-purpose {
+      grid-column: span 2;
+    }
+  }
+
+  @media (max-width: 767.98px) {
+    #punjabEstampCard .card-header {
+      align-items: flex-start !important;
+    }
+
+    #punjabEstampCard .card-header > div:last-child {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    #punjabEstampCard .punjab-estamp-header-applicant {
+      flex: 0 0 auto;
+    }
+
+    #punjabEstampCard .punjab-estamp-header-meta {
+      width: 100%;
+    }
+
+    #punjabEstampCard .punjab-estamp-header-pill {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    #punjabEstampCard .punjab-estamp-header-pill .meta-value {
+      overflow-wrap: anywhere;
+    }
+
+    #punjabEstampCard .punjab-estamp-grid {
+      display: grid;
+      grid-template-columns:
+        repeat(auto-fit, minmax(135px, 1fr));
+      column-gap: .45rem;
+      row-gap: .35rem;
+    }
+
+    #punjabEstampCard .punjab-estamp-purpose {
+      grid-column: 1 / -1;
+    }
+
+    #punjabEstampCard .punjab-estamp-applicant-detail-original {
+      display: none !important;
+    }
+
+    #punjabEstampCard .punjab-estamp-applicant-mobile-summary {
+      display: block !important;
+      font-size: .74rem;
+      line-height: 1.15;
+    }
+
+    #punjabEstampCard .punjab-estamp-applicant-mobile-summary .line {
+      margin-bottom: .12rem;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  @media (max-width: 420px) {
+    #punjabEstampCard .punjab-estamp-grid {
+      grid-template-columns:
+        repeat(auto-fit, minmax(118px, 1fr));
+    }
+  }
+
+</style>
+
 <div class="card punjab-estamp-card mb-2" id="punjabEstampCard" data-workflow-state="{{ punjab_estamp.state }}" data-launch-url="{% url 'punjab_estamp:launch' master_lease.pk history.pk %}">
       <div class="card-header py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
@@ -530,14 +706,116 @@
           <span class="small text-muted ms-1">{{ history.history_label }}</span>
         </div>
         <div class="d-flex flex-wrap gap-1">
+          <div class="punjab-estamp-header-applicant d-flex align-items-center gap-1">
+            <span class="punjab-estamp-header-label">Applicant</span>
+            <div class="btn-group btn-group-sm mt-1"
+                 role="group"
+                 aria-label="Punjab e-Stamp applicant">
+
+              <input type="radio"
+                     class="btn-check punjab-estamp-applicant-toggle"
+                     name="punjab_estamp_applicant_source"
+                     id="punjabEstampApplicantOwner"
+                     value="owner"
+                     {% if punjab_estamp.selected_applicant_source == "owner" %}checked{% endif %}
+                     {% if punjab_estamp.applicant_locked or not punjab_estamp.applicant_options.owner.record_id %}disabled{% endif %}>
+
+              <label class="btn btn-outline-primary"
+                     for="punjabEstampApplicantOwner">
+                Owner
+              </label>
+
+              <input type="radio"
+                     class="btn-check punjab-estamp-applicant-toggle"
+                     name="punjab_estamp_applicant_source"
+                     id="punjabEstampApplicantCaretaker"
+                     value="caretaker"
+                     {% if punjab_estamp.selected_applicant_source == "caretaker" %}checked{% endif %}
+                     {% if punjab_estamp.applicant_locked or not punjab_estamp.applicant_options.caretaker.record_id %}disabled{% endif %}>
+
+              <label class="btn btn-outline-primary"
+                     for="punjabEstampApplicantCaretaker">
+                Caretaker
+              </label>
+            </div>
+          </div>
+
+          <div class="punjab-estamp-header-meta d-flex flex-wrap align-items-center gap-1">
+            <span class="punjab-estamp-header-pill">
+              <span class="meta-label">PSID</span>
+              <span class="meta-value">{{ punjab_estamp.workflow.psid|default:"-" }}</span>
+            </span>
+
+            <span class="punjab-estamp-header-pill">
+              <span class="meta-label">Stamp #</span>
+              <span class="meta-value">{{ punjab_estamp.workflow.stamp_number|default:"-" }}</span>
+            </span>
+
+            <span class="punjab-estamp-header-pill">
+              <span class="meta-label">Status</span>
+              <span class="meta-value">{{ punjab_estamp.status_label }}</span>
+            </span>
+          </div>
+
+          <button type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  data-bs-toggle="modal"
+                  data-bs-target="#punjabEstampHelperInstallModal"
+                  title="Install or update Punjab e-Stamp browser helper">
+            <i class="fas fa-puzzle-piece me-1"></i>Helper
+          </button>
+
           <button type="button"
                   class="btn btn-outline-secondary btn-sm"
                   id="punjabEstampToggleDetails"
-                  title="Hide or show Punjab e-Stamp details"
                   aria-controls="punjabEstampBody"
-                  aria-expanded="true">
-            <i class="fas fa-chevron-up me-1"></i>
-            <span>Hide Details</span>
+                  aria-expanded="false"
+                  onclick="
+                    const card = document.getElementById('punjabEstampCard');
+                    const body = document.getElementById('punjabEstampBody');
+                    if (!card || !body) return false;
+
+                    const currentlyHidden =
+                      window.getComputedStyle(body).display === 'none';
+
+                    if (currentlyHidden) {
+                      card.classList.remove('estamp-details-hidden');
+                      body.style.setProperty('display', 'block', 'important');
+                      this.setAttribute('aria-expanded', 'true');
+
+                      const icon = this.querySelector('i');
+                      const label = this.querySelector('span');
+
+                      if (icon) {
+                        icon.classList.remove('fa-chevron-down');
+                        icon.classList.add('fa-chevron-up');
+                      }
+
+                      if (label) {
+                        label.textContent = 'Hide Details';
+                      }
+                    } else {
+                      card.classList.add('estamp-details-hidden');
+                      body.style.setProperty('display', 'none', 'important');
+                      this.setAttribute('aria-expanded', 'false');
+
+                      const icon = this.querySelector('i');
+                      const label = this.querySelector('span');
+
+                      if (icon) {
+                        icon.classList.remove('fa-chevron-up');
+                        icon.classList.add('fa-chevron-down');
+                      }
+
+                      if (label) {
+                        label.textContent = 'Show Details';
+                      }
+                    }
+
+                    return false;
+                  ">
+            <i class="fas fa-chevron-down me-1"></i>
+            <span>Show Details</span>
           </button>
 
           {% if punjab_estamp.state == 'ready' %}
@@ -564,52 +842,13 @@
           {% endif %}
         </div>
       </div>
-      <div class="card-body py-2" id="punjabEstampBody">
+      <div class="card-body py-2" id="punjabEstampBody" style="display:none !important;">
         <div class="punjab-estamp-grid">
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Property</span><span class="punjab-estamp-value">{{ punjab_estamp.property.property_name|default:"-" }}</span></div>
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Unit</span><span class="punjab-estamp-value">{{ punjab_estamp.property.unit_number|default:"-" }}</span></div>
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Tenant</span><span class="punjab-estamp-value">{{ master_lease.tenant.get_full_name|default:"-" }}</span></div>
           <div class="punjab-estamp-item">
             <span class="punjab-estamp-label">Applicant</span>
-
-            <div class="btn-group btn-group-sm mt-1"
-                 role="group"
-                 aria-label="Punjab e-Stamp applicant">
-
-              <input type="radio"
-                     class="btn-check punjab-estamp-applicant-toggle"
-                     name="punjab_estamp_applicant_source"
-                     id="punjabEstampApplicantOwner"
-                     value="owner"
-                     {% if punjab_estamp.selected_applicant_source == "owner" %}checked{% endif %}
-                     {% if punjab_estamp.applicant_locked or not punjab_estamp.applicant_options.owner.record_id %}disabled{% endif %}>
-
-              <label class="btn btn-outline-primary"
-                     for="punjabEstampApplicantOwner">
-                <i class="fas fa-user me-1"></i>
-                Owner
-              </label>
-
-              <input type="radio"
-                     class="btn-check punjab-estamp-applicant-toggle"
-                     name="punjab_estamp_applicant_source"
-                     id="punjabEstampApplicantCaretaker"
-                     value="caretaker"
-                     {% if punjab_estamp.selected_applicant_source == "caretaker" %}checked{% endif %}
-                     {% if punjab_estamp.applicant_locked or not punjab_estamp.applicant_options.caretaker.record_id %}disabled{% endif %}>
-
-              <label class="btn btn-outline-primary"
-                     for="punjabEstampApplicantCaretaker">
-                <i class="fas fa-user-shield me-1"></i>
-                Caretaker
-              </label>
-            </div>
-
-            {% if punjab_estamp.applicant_locked %}
-            <span class="small text-muted mt-1">
-              Locked to the applicant used for this Challan.
-            </span>
-            {% endif %}
           </div>
 
           <div class="punjab-estamp-item"
@@ -715,15 +954,14 @@
           </div>
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Zila / District</span><span class="punjab-estamp-value">{{ punjab_estamp.property.district_name|default:"-" }}</span></div>
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Tehsil</span><span class="punjab-estamp-value">{{ punjab_estamp.property.tehsil_name|default:"-" }}</span></div>
-          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Purpose</span><span class="punjab-estamp-value">{{ punjab_estamp.portal.purpose_name|default:"-" }}</span></div>
+          <div class="punjab-estamp-item punjab-estamp-purpose"><span class="punjab-estamp-label">Purpose</span><span class="punjab-estamp-value">{{ punjab_estamp.portal.purpose_name|default:"-" }}</span></div>
           <div class="punjab-estamp-item"><span class="punjab-estamp-label">Challan</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.challan_number|default:"-" }}</span></div>
-          <div class="punjab-estamp-item"><span class="punjab-estamp-label">PSID</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.psid|default:"-" }}</span></div>
-          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Stamp #</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.stamp_number|default:"-" }}</span></div>
-          <div class="punjab-estamp-item"><span class="punjab-estamp-label">Status</span><span class="punjab-estamp-value">{{ punjab_estamp.status_label }}</span></div>
+          <div class="punjab-estamp-item punjab-estamp-body-psid"><span class="punjab-estamp-label">PSID</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.psid|default:"-" }}</span></div>
+          <div class="punjab-estamp-item punjab-estamp-body-stamp"><span class="punjab-estamp-label">Stamp #</span><span class="punjab-estamp-value">{{ punjab_estamp.workflow.stamp_number|default:"-" }}</span></div>
+          <div class="punjab-estamp-item punjab-estamp-body-status"><span class="punjab-estamp-label">Status</span><span class="punjab-estamp-value">{{ punjab_estamp.status_label }}</span></div>
         </div>
         <div class="small text-muted mt-2">
           Punjab submission stays in dry-run mode: review the populated form, solve CAPTCHA, and click the portal's final action yourself.
-          <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-bs-toggle="modal" data-bs-target="#punjabEstampHelperInstallModal">Install/update browser helper</button>.
         </div>
       </div>
     </div>
@@ -1030,8 +1268,8 @@
             </div>
         </div>
 
-        
-        
+
+
         <div class="col-md-6">
             <div class="card">
                 <div class="card-header bg-dark text-white">
@@ -1055,8 +1293,8 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Agreement Date</label>
-                            <input type="date" class="form-control" 
-                                   name="agreement_date" 
+                            <input type="date" class="form-control"
+                                   name="agreement_date"
                                    value="{{ agreement_date|date:'Y-m-d' }}" readonly>
                         </div>
 
@@ -1075,7 +1313,7 @@
                                 {% endfor %}
                             </div>
                         </div>
-                        
+
                         {% for clause in clauses %}
                             <div class="mb-3 clause-row">
                             <div class="clause-no">
@@ -1584,7 +1822,7 @@
     });
   }
 
-  
+
   const partyForm = document.getElementById('agreementPartyForm');
   const partyIndicator = document.getElementById('partySaveIndicator');
   const quickTenantUrl = "{% url 'leases:create_agreement_party_ajax' %}";
@@ -1933,6 +2171,115 @@
     return card.dataset.workflowState;
   }
 
+
+  function renderPunjabApplicantMobileSummary() {
+    card.querySelectorAll(
+      '.punjab-estamp-applicant-detail'
+    ).forEach((detail) => {
+      const box = detail.querySelector(
+        '.punjab-estamp-applicant-mobile-summary'
+      );
+
+      if (!box) return;
+
+      const name = detail.dataset.name || '-';
+      const relation = detail.dataset.relationName || '';
+      const father =
+        detail.dataset.relationPersonName || '';
+      const cnic = detail.dataset.cnic || '-';
+      const phone = detail.dataset.phone || '-';
+      const email = detail.dataset.email || '';
+      const address = detail.dataset.address || '-';
+
+      const identity =
+        [name, relation, father]
+        .filter(Boolean)
+        .join(' Â -  ');
+
+      const contact =
+        [phone, email]
+        .filter(Boolean)
+        .join(' Â -  ');
+
+      box.innerHTML =
+        '<div class="line"><strong>' +
+        identity +
+        '</strong></div>' +
+        '<div class="line"><strong>CNIC:</strong> ' +
+        cnic +
+        '</div>' +
+        '<div class="line">' +
+        contact +
+        '</div>' +
+        '<div class="line"><strong>Address:</strong> ' +
+        address +
+        '</div>';
+    });
+  }
+
+  function setPunjabEstampDetailsHidden(hidden) {
+    const body =
+      card.querySelector('#punjabEstampBody');
+
+    const button =
+      card.querySelector('#punjabEstampToggleDetails');
+
+    if (body) {
+      body.style.display = hidden ? 'none' : '';
+    }
+
+    card.classList.toggle(
+      'estamp-details-hidden',
+      hidden
+    );
+
+    if (!button) return;
+
+    button.setAttribute(
+      'aria-expanded',
+      hidden ? 'false' : 'true'
+    );
+
+    const icon = button.querySelector('i');
+    const label = button.querySelector('span');
+
+    if (icon) {
+      icon.classList.toggle(
+        'fa-chevron-down',
+        hidden
+      );
+      icon.classList.toggle(
+        'fa-chevron-up',
+        !hidden
+      );
+    }
+
+    if (label) {
+      label.textContent =
+        hidden ? 'Show Details' : 'Hide Details';
+    }
+  }
+
+  card.addEventListener('click', (event) => {
+    const button = event.target.closest(
+      '#punjabEstampToggleDetails'
+    );
+
+    if (!button || !card.contains(button)) {
+      return;
+    }
+
+    const hidden =
+      !card.classList.contains(
+        'estamp-details-hidden'
+      );
+
+    setPunjabEstampDetailsHidden(hidden);
+  });
+
+  renderPunjabApplicantMobileSummary();
+  setPunjabEstampDetailsHidden(true);
+
   function selectedPunjabApplicantSource() {
     return card.querySelector(
       'input[name="punjab_estamp_applicant_source"]:checked'
@@ -1986,43 +2333,6 @@
     setValue('address', detail.dataset.address);
   }
 
-  function syncPunjabEstampDetailsButton() {
-    const button =
-      card.querySelector('#punjabEstampToggleDetails');
-
-    if (!button) return;
-
-    const hidden =
-      card.classList.contains('estamp-details-hidden');
-
-    button.setAttribute(
-      'aria-expanded',
-      hidden ? 'false' : 'true'
-    );
-
-    const icon = button.querySelector('i');
-    const label = button.querySelector('span');
-
-    if (icon) {
-      icon.classList.toggle('fa-chevron-up', !hidden);
-      icon.classList.toggle('fa-chevron-down', hidden);
-    }
-
-    if (label) {
-      label.textContent =
-        hidden ? 'Show Details' : 'Hide Details';
-    }
-  }
-
-  card.addEventListener('click', (event) => {
-    const toggle = event.target.closest(
-      '#punjabEstampToggleDetails'
-    );
-
-    if (!toggle || !card.contains(toggle)) return;
-
-    card.classList.toggle('estamp-details-hidden');
-    syncPunjabEstampDetailsButton();
   });
 
   syncPunjabEstampDetailsButton();
